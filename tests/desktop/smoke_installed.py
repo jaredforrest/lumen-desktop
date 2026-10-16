@@ -54,7 +54,7 @@ def ipc(method,*values):return call('quickshell','-p',str(assets),'ipc','call','
 def state():return json.loads(ipc('filesStatus'))
 def key(*values):call('wtype','-s','150',*values)
 try:
- conf=run/'sway.conf';conf.write_text('output HEADLESS-1 resolution 1440x1000\nxwayland disable\nfor_window [app_id="org.quickshell"] floating enable\n')
+ conf=run/'sway.conf';conf.write_text('output HEADLESS-1 resolution 1440x1000\nxwayland disable\ndefault_border none\nfor_window [app_id="org.quickshell"] floating enable\n')
  if args.effects:
   with conf.open('a') as stream:stream.write('corner_radius 12\nshadows enable\nshadow_blur_radius 28\nanimation_duration_ms 0\nblur enable\nblur_xray disable\nlayer_effects "lumen-dock" "blur enable; corner_radius 22"\nlayer_effects "lumen-menu-popup" "blur enable; blur_ignore_transparent enable"\n')
  launch([args.sway,'--unsupported-gpu','-c',str(conf)],'sway');wait(lambda:list(runtime.glob('sway-ipc*.sock')))
