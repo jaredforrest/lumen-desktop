@@ -6,7 +6,7 @@ import Quickshell
 Item {
     id: view
     focus: true
-    property string displayName: Quickshell.env("LUMEN_AUTH_NAME") || "Jared"
+    property string displayName: Quickshell.env("LUMEN_AUTH_NAME") || Quickshell.env("USER") || "User"
     property string errorMessage: ""
     property string prompt: "Enter Password"
     property bool busy: false

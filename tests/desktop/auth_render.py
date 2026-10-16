@@ -18,11 +18,11 @@ out=a.output.resolve();runtime=Path(os.environ['XDG_RUNTIME_DIR']);assets=out/'a
 shutil.copytree(a.assets or a.source/'res/lumen-desktop/auth',assets/'auth')
 for path in [assets/'auth', *(assets/'auth').rglob('*')]:
     path.chmod(0o755 if path.is_dir() else 0o644)
-(assets/'shell').mkdir();shutil.copy(a.source/'res/lumen-desktop/shell/wallpaper.png',assets/'shell/wallpaper.png')
+(assets/'shell').mkdir();shutil.copy(a.source/'res/lumen-desktop/shell/wallpaper.png',assets/'shell/wallpaper.png');shutil.copy(a.source/'res/lumen-desktop/shell/wallpaper.png',assets/'auth/wallpaper.png')
 prefix=Path(shutil.which('lumen-desktop-shell')).read_text().split('\nexec quickshell ')[0]
 raw=sp.check_output(['bash','-c',prefix+'\nexec env -0'],stderr=sp.DEVNULL)
 env=dict(os.environ);env.update(dict(v.decode().split('=',1) for v in raw.split(b'\0') if b'=' in v))
-env.update(WLR_BACKENDS='headless',WLR_RENDERER='pixman',WLR_LIBINPUT_NO_DEVICES='1',QT_QPA_PLATFORM='wayland',GDK_BACKEND='wayland',LUMEN_AUTH_SESSION='/bin/true')
+env.update(WLR_BACKENDS='headless',WLR_RENDERER='pixman',WLR_LIBINPUT_NO_DEVICES='1',QT_QPA_PLATFORM='wayland',GDK_BACKEND='wayland',LUMEN_AUTH_SESSION='/bin/true',LUMEN_AUTH_USER='test-user',LUMEN_AUTH_NAME='Test User')
 if a.font_config:env['FONTCONFIG_FILE']=str(a.font_config)
 for k in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK'):env.pop(k,None)
 procs=[];checks=[];requests=[]

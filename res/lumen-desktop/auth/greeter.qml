@@ -23,7 +23,7 @@ ShellRoot {
             Greetd.respond(response);
         } else {
             pending = response;
-            Greetd.createSession("jalio");
+            Greetd.createSession(Quickshell.env("LUMEN_AUTH_USER") || "user");
         }
     }
     Connections {

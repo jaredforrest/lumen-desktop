@@ -7,12 +7,13 @@ let
   hostSwayPackage = config.programs.sway.package;
   assets = ../res/lumen-desktop;
   desktopTimeZone = config.time.timeZone;
-  auth = import ../packages/lumen-auth.nix { inherit pkgs lib; swayPackage = config.programs.sway.package; };
+  auth = import ../packages/lumen-auth.nix { inherit pkgs lib; user = desktopUser; displayName = cfg.displayName; swayPackage = config.programs.sway.package; };
   bitwardenPackage = cfg.bitwardenPackage;
 in {
   options.services.lumen-desktop = {
     enable = lib.mkEnableOption "Lumen desktop session";
     user = lib.mkOption { type = lib.types.str; description = "Desktop login user."; };
+    displayName = lib.mkOption { type = lib.types.str; default = cfg.user; description = "Name shown by the greeter and lock screen."; };
     settingsPackage = lib.mkOption { type = lib.types.package; description = "Host settings command implementing the settings JSON contract."; };
     bitwardenPackage = lib.mkOption { type = lib.types.package; default = pkgs.bitwarden-desktop; };
   };
@@ -51,6 +52,7 @@ in {
     session = import ../packages/session.nix {
       inherit pkgs settingsPackage;
       user = config.home.username;
+      displayName = cfg.displayName;
       homeDirectory = config.home.homeDirectory;
       timeZone = desktopTimeZone;
       swayPackage = hostSwayPackage;

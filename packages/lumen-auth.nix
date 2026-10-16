@@ -1,4 +1,4 @@
-{ pkgs, lib ? pkgs.lib, swayPackage ? pkgs.sway }:
+{ pkgs, lib ? pkgs.lib, swayPackage ? pkgs.sway, user ? "user", displayName ? user }:
 let
   assets = pkgs.runCommand "lumen-auth-assets" {} ''
     mkdir -p $out
@@ -16,6 +16,7 @@ let
     runtimeInputs = [ pkgs.quickshell pkgs.util-linux pkgs.coreutils pkgs.swaylock ];
     text = ''
       export FONTCONFIG_FILE=${fontConfig}
+      export LUMEN_AUTH_NAME=${lib.escapeShellArg displayName}
       # Serialize startup, then return only once the compositor confirms coverage.
       exec 9>"$XDG_RUNTIME_DIR/lumen-lock-startup"
       flock 9
@@ -52,7 +53,8 @@ let
     name = "lumen-greeter";
     runtimeInputs = [ pkgs.coreutils ];
     text = ''
-      export LUMEN_AUTH_NAME=Jared
+      export LUMEN_AUTH_NAME=${lib.escapeShellArg displayName}
+      export LUMEN_AUTH_USER=${lib.escapeShellArg user}
       export LUMEN_AUTH_SESSION=${swayPackage}/bin/sway
       export LUMEN_AUTH_HYPRLAND=${pkgs.hyprland}/bin/Hyprland
       export SWAY_UNSUPPORTED_GPU=1

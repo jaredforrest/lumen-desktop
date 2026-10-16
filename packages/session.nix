@@ -1,9 +1,9 @@
-{ pkgs, settingsPackage, user ? "user", homeDirectory ? "/home/${user}", timeZone ? "UTC", swayPackage ? pkgs.sway, rofiPackage ? pkgs.rofi }:
+{ pkgs, settingsPackage, user ? "user", displayName ? user, homeDirectory ? "/home/${user}", timeZone ? "UTC", swayPackage ? pkgs.sway, rofiPackage ? pkgs.rofi }:
 let
   lib = pkgs.lib;
   assets = ../res/lumen-desktop;
   desktopTimeZone = timeZone;
-  auth = import ./lumen-auth.nix { inherit pkgs; swayPackage = swayPackage; };
+  auth = import ./lumen-auth.nix { inherit pkgs user displayName; swayPackage = swayPackage; };
     nixSettings = settingsPackage;
     appearance = import ../packages/lumen-appearance.nix { inherit pkgs nixSettings; };
     qtTheme = import ../packages/lumen-qt-theme.nix { inherit pkgs; };
