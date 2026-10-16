@@ -8,6 +8,7 @@ One repository currently contains several components with a shared release bound
 | `res/lumen-desktop/notifications` | Notification daemon and history |
 | `res/lumen-desktop/auth` | Greeter and lock interface |
 | `res/lumen-desktop/global-menu` | Menu bridge and protocol adapters |
+| `res/utilities` | Screen capture, recording and shortcut dispatch |
 | `res/character-viewer` | Character selection and input service |
 | `packages` | Reproducible runtime factories, compositor/toolkit patches, app adapters |
 | `modules` | Optional NixOS/Home Manager integration |
