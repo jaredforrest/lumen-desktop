@@ -1,6 +1,5 @@
 { pkgs, profileBridge }:
 let
-  profileBridge = profileBridge;
   makeCraft = pname: hash: pkgs.stdenvNoCC.mkDerivation {
     inherit pname;
     version = "0.5.0";

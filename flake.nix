@@ -9,6 +9,8 @@
       compositorPkgs = import compositor-packages { inherit system; };
       settings = import ./packages/settings-adapter.nix { inherit pkgs; };
       session = import ./packages/session.nix { inherit pkgs; settingsPackage = settings; };
+      profileBridge = import ./packages/lumen-native-profile.nix { inherit pkgs; nixSettings = settings; };
+      office = import ./packages/craft-office.nix { inherit pkgs profileBridge; };
       runtime = import ./tests/desktop/runtime.nix { inherit pkgs; };
       privateBus = pkgs.writeShellScriptBin "dbus-run-session" ''
         exec ${pkgs.dbus}/bin/dbus-run-session --config-file=${pkgs.dbus}/share/dbus-1/session.conf "$@"
@@ -29,6 +31,9 @@
         character-viewer = import ./res/character-viewer { inherit pkgs; };
         localsend = import ./packages/localsend-desktop-style.nix { inherit pkgs; };
         test-runtime = runtime;
+        inherit (office) wordcraft gridcraft deckcraft;
+        profile-bridge = profileBridge;
+        prism = import ./packages/prism-nix-profile.nix { inherit pkgs profileBridge; };
       };
       checks.${system} = {
         source-contracts = pkgs.runCommand "lumen-source-contracts" { nativeBuildInputs = [ pkgs.python3 ]; } ''
