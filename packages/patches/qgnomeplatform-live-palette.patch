@@ -1,0 +1,29 @@
+--- a/src/common/gnomesettings.cpp
++++ b/src/common/gnomesettings.cpp
+@@ -448,6 +448,17 @@
+ void GnomeSettingsPrivate::themeChanged()
+ {
+     loadTheme();
++    // Keep the object returned by palette() alive while refreshing its value.
++    if (m_palette) {
++        const auto variant = m_gtkThemeHighContrastVariant
++            ? (m_gtkThemeDarkVariant ? Adwaita::ColorVariant::AdwaitaHighcontrastInverse : Adwaita::ColorVariant::AdwaitaHighcontrast)
++            : (m_gtkThemeDarkVariant ? Adwaita::ColorVariant::AdwaitaDark : Adwaita::ColorVariant::Adwaita);
++        *m_palette = Adwaita::Colors::palette(variant);
++        if (qobject_cast<QApplication *>(QCoreApplication::instance()))
++            QApplication::setPalette(*m_palette);
++        else
++            QGuiApplication::setPalette(*m_palette);
++    }
+ }
+ 
+ void GnomeSettingsPrivate::loadTitlebar()
+@@ -486,6 +497,8 @@
+ void GnomeSettingsPrivate::loadTheme()
+ {
+     QString styleOverride;
++    m_gtkThemeHighContrastVariant = false;
++    m_gtkThemeDarkVariant = false;
+ 
+     // g_object_get(gtk_settings_get_default(), "gtk-theme-name", &m_gtkTheme, NULL);
+     m_gtkTheme = getSettingsProperty<QString>(QStringLiteral("gtk-theme"));

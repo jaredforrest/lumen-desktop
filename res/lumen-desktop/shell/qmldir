@@ -1,0 +1,67 @@
+singleton Theme 1.0 Theme.qml
+Dock 1.0 Dock.qml
+GlobalMenu 1.0 GlobalMenu.qml
+MenuBar 1.0 MenuBar.qml
+MenuButton 1.0 MenuButton.qml
+PanelSurface 1.0 PanelSurface.qml
+PanelLabel 1.0 PanelLabel.qml
+SoundControl 1.0 SoundControl.qml
+CalendarCard 1.0 CalendarCard.qml
+CalendarWindow 1.0 CalendarWindow.qml
+SystemPanels 1.0 SystemPanels.qml
+AppPreview 1.0 AppPreview.qml
+ControlTile 1.0 ControlTile.qml
+SystemGlyph 1.0 SystemGlyph.qml
+AudioState 1.0 AudioState.qml
+AppLauncher 1.0 AppLauncher.qml
+AppIcon 1.0 AppIcon.qml
+MenuCard 1.0 MenuCard.qml
+MediaControl 1.0 MediaControl.qml
+SystemState 1.0 SystemState.qml
+ControlRow 1.0 ControlRow.qml
+ConnectivityPanel 1.0 ConnectivityPanel.qml
+VolumeHud 1.0 VolumeHud.qml
+BrightnessControl 1.0 BrightnessControl.qml
+NotificationState 1.0 NotificationState.qml
+NotificationCard 1.0 NotificationCard.qml
+NotificationCentre 1.0 NotificationCentre.qml
+NotificationBanners 1.0 NotificationBanners.qml
+SearchState 1.0 SearchState.qml
+SettingsState 1.0 SettingsState.qml
+SettingsWindow 1.0 SettingsWindow.qml
+SettingsToggle 1.0 SettingsToggle.qml
+FilesState 1.0 FilesState.qml
+FilesWindow 1.0 FilesWindow.qml
+DesktopScrollBar 1.0 DesktopScrollBar.qml
+DialogButton 1.0 DialogButton.qml
+WindowControls 1.0 WindowControls.qml
+singleton AppLaunch 1.0 AppLaunch.qml
+
+DesktopComboBox 1.0 DesktopComboBox.qml
+AudioDeviceControl 1.0 AudioDeviceControl.qml
+DisplaySettingsPane 1.0 DisplaySettingsPane.qml
+TextToolsWindow 1.0 TextToolsWindow.qml
+WindowOverview 1.0 WindowOverview.qml
+QuickLookWindow 1.0 QuickLookWindow.qml
+
+FilePreview 1.0 FilePreview.qml
+ColumnView 1.0 ColumnView.qml
+FilesDropArea 1.0 FilesDropArea.qml
+FileInfoPanel 1.0 FileInfoPanel.qml
+CreativeTools 1.0 CreativeTools.qml
+CreativeSlider 1.0 CreativeSlider.qml
+FolderDropTarget 1.0 FolderDropTarget.qml
+FolderStack 1.0 FolderStack.qml
+PrivacySecurityPane 1.0 PrivacySecurityPane.qml
+
+DateTimeField 1.0 DateTimeField.qml
+NotificationPanel 1.0 NotificationPanel.qml
+CalendarAccountsPane 1.0 CalendarAccountsPane.qml
+
+StatusMessage 1.0 StatusMessage.qml
+SystemSlider 1.0 SystemSlider.qml
+FileInfoWindow 1.0 FileInfoWindow.qml
+SessionOptions 1.0 SessionOptions.qml
+HelpWindow 1.0 HelpWindow.qml
+DesktopSpinBox 1.0 DesktopSpinBox.qml
+RemoteDesktopWindow 1.0 RemoteDesktopWindow.qml

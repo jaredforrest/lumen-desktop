@@ -1,0 +1,84 @@
+* {
+    font: "@font@ 14";
+    background-color: transparent;
+    text-color: @text@;
+    border-color: @border@;
+   
+}
+window {
+    width: 680px;
+    location: north;
+    anchor: north;
+    y-offset: 18%;
+    background-color: @background@;
+    border: 1px;
+    border-radius: 20px;
+   
+}
+mainbox {
+    padding: 12px;
+    spacing: 10px;
+    children: [ inputbar, message, listview ];
+   
+}
+inputbar {
+    padding: 12px;
+    spacing: 12px;
+    children: [ prompt, entry ];
+   
+}
+prompt {
+    text-color: @muted@;
+    font: "@font@ 22";
+   
+}
+entry {
+    expand: true;
+    font: "@font@ 22";
+    placeholder: "Search";
+    placeholder-color: @muted@;
+    cursor: text;
+   
+}
+listview {
+    lines: 7;
+    columns: 1;
+    fixed-height: false;
+    scrollbar: false;
+    spacing: 2px;
+   
+}
+element {
+    padding: 9px 12px;
+    spacing: 12px;
+    border-radius: 8px;
+   
+}
+element selected.normal, element selected.active {
+    background-color: @accent@;
+    text-color: @selectedText@;
+   
+}
+element-icon {
+    size: 28px;
+   
+}
+element-text {
+    vertical-align: 0.5;
+   
+}
+message {
+    padding: 8px 12px;
+    border-radius: 8px;
+    background-color: @field@;
+   
+}
+error-message {
+    padding: 18px;
+   
+}
+element-text, element-icon {
+    text-color: inherit;
+    background-color: transparent;
+   
+}

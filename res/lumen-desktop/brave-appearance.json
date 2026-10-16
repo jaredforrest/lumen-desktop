@@ -1,0 +1,14 @@
+{
+  "profile": {
+    "browser.custom_chrome_frame": false,
+    "extensions.theme.system_theme": 1,
+    "brave.ai_chat.show_toolbar_button": false,
+    "brave.rewards.show_brave_rewards_button_in_location_bar": false,
+    "brave.wallet.show_wallet_icon_on_toolbar": false,
+    "brave.today.should_show_toolbar_button": false,
+    "tab_search.pinned_to_tabstrip": false
+  },
+  "local_state": {
+    "brave.tabs.compact_horizontal_tabs": true
+  }
+}

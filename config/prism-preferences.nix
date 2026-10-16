@@ -1,0 +1,67 @@
+# Authoritative desktop settings. Edited by the Settings interface.
+# Never put secrets here: Nix build outputs are publicly readable.
+{
+  "prismlauncher.cfg" = {
+    "ApplicationTheme" = "system";
+    "AutoCloseConsole" = "false";
+    "CentralModsDir" = "mods";
+    "CloseAfterLaunch" = "false";
+    "ConsoleFont" = "DejaVuSansM Nerd Font Mono";
+    "ConsoleFontSize" = "11";
+    "ConsoleMaxLines" = "100000";
+    "ConsoleOverflowStop" = "true";
+    "CustomGLFWPath" = "";
+    "CustomOpenALPath" = "";
+    "DownloadsDir" = "";
+    "DownloadsDirWatchRecursive" = "false";
+    "EnableFeralGamemode" = "false";
+    "EnableMangoHud" = "false";
+    "Env" = "{}";
+    "IconTheme" = "pe_colored";
+    "IconsDir" = "icons";
+    "IgnoreJavaCompatibility" = "false";
+    "IgnoreJavaWizard" = "false";
+    "InstanceDir" = "instances";
+    "JProfilerPath" = "";
+    "JVisualVMPath" = "";
+    "JavaPath" = "";
+    "JsonEditor" = "";
+    "JvmArgs" = "";
+    "Language" = "en_GB";
+    "LaunchMaximized" = "false";
+    "MCEditPath" = "";
+    "MSAClientIDOverride" = "";
+    "MaxMemAlloc" = "8192";
+    "MenuBarInsteadOfToolBar" = "false";
+    "MetaURLOverride" = "";
+    "MinMemAlloc" = "512";
+    "MinecraftWinHeight" = "480";
+    "MinecraftWinWidth" = "854";
+    "ModDependenciesDisabled" = "false";
+    "ModMetadataDisabled" = "false";
+    "NumberOfConcurrentDownloads" = "6";
+    "NumberOfConcurrentTasks" = "10";
+    "OnlineFixes" = "false";
+    "PastebinCustomAPIBase" = "";
+    "PastebinType" = "3";
+    "PermGen" = "128";
+    "PostExitCommand" = "";
+    "PreLaunchCommand" = "";
+    "ProxyAddr" = "127.0.0.1";
+    "ProxyPort" = "8080";
+    "ProxyType" = "None";
+    "QuitAfterGameStop" = "false";
+    "RecordGameTime" = "true";
+    "ShowConsole" = "false";
+    "ShowConsoleOnError" = "true";
+    "ShowGameTime" = "true";
+    "ShowGameTimeWithoutDays" = "false";
+    "ShowGlobalGameTime" = "true";
+    "ToolbarsLocked" = "false";
+    "UseDiscreteGpu" = "false";
+    "UseNativeGLFW" = "false";
+    "UseNativeOpenAL" = "false";
+    "UserAgentOverride" = "";
+    "WrapperCommand" = "";
+  };
+}

@@ -1,0 +1,486 @@
+--- a/include/sway/sway_text_node.h
++++ b/include/sway/sway_text_node.h
+@@ -25,4 +25,7 @@
+ 
+ void sway_text_node_set_background(struct sway_text_node *node, float background[4]);
+ 
++struct sway_text_node *sway_traffic_node_create(struct wlr_scene_tree *parent, int action, float color[4]);
++void sway_traffic_node_hover(struct sway_text_node *node, bool hover);
++
+ #endif
+--- a/sway/sway_text_node.c
++++ b/sway/sway_text_node.c
+@@ -48,6 +48,9 @@
+ 	char *text;
+ 	struct sway_text_node props;
+ 
++	bool traffic;
++	bool hover;
++	int action;
+ 	bool visible;
+ 	float scale;
+ 	enum wl_output_subpixel subpixel;
+@@ -124,8 +127,33 @@
+ 	cairo_set_source_rgba(cairo, color[0], color[1], color[2], color[3]);
+ 	cairo_move_to(cairo, 0, (config->font_baseline - buffer->props.baseline) * scale);
+ 
+-	render_text(cairo, config->font_description, scale, buffer->props.pango_markup,
+-		"%s", buffer->text);
++	if (buffer->traffic) {
++		cairo_new_path(cairo);
++		cairo_arc(cairo, 6 * scale, 6 * scale, 5.5 * scale, 0, 6.283185307179586);
++		cairo_fill_preserve(cairo);
++		cairo_set_source_rgba(cairo, color[0] / 1.12, color[1] / 1.12, color[2] / 1.12, color[3]);
++		cairo_set_line_width(cairo, scale);
++		cairo_stroke(cairo);
++		if (buffer->hover) {
++			cairo_set_source_rgba(cairo, .2, .2, .2, 1);
++			cairo_move_to(cairo, 3.5 * scale, 6 * scale);
++			cairo_line_to(cairo, 8.5 * scale, 6 * scale);
++			if (buffer->action == 2) {
++				cairo_move_to(cairo, 6 * scale, 3.5 * scale);
++				cairo_line_to(cairo, 6 * scale, 8.5 * scale);
++			} else if (buffer->action == 0) {
++				cairo_new_path(cairo);
++				cairo_move_to(cairo, 3.5 * scale, 3.5 * scale);
++				cairo_line_to(cairo, 8.5 * scale, 8.5 * scale);
++				cairo_move_to(cairo, 8.5 * scale, 3.5 * scale);
++				cairo_line_to(cairo, 3.5 * scale, 8.5 * scale);
++			}
++			cairo_stroke(cairo);
++		}
++	} else {
++		render_text(cairo, config->font_description, scale, buffer->props.pango_markup,
++			"%s", buffer->text);
++	}
+ 
+ 	cairo_surface_flush(surface);
+ 
+@@ -197,6 +225,11 @@
+ 
+ static void text_calc_size(struct text_buffer *buffer) {
+ 	struct sway_text_node *props = &buffer->props;
++	if (buffer->traffic) {
++		props->width = props->height = 12;
++		wlr_scene_buffer_set_dest_size(buffer->buffer_node, 12, 12);
++		return;
++	}
+ 
+ 	cairo_surface_t *recorder = cairo_recording_surface_create(
+ 		CAIRO_CONTENT_COLOR_ALPHA, NULL);
+@@ -303,3 +336,23 @@
+ 	memcpy(&node->background, background, sizeof(*background) * 4);
+ 	render_backing_buffer(buffer);
+ }
++
++struct sway_text_node *sway_traffic_node_create(struct wlr_scene_tree *parent,
++		int action, float color[4]) {
++	struct sway_text_node *node = sway_text_node_create(parent, "", color, false);
++	if (!node) return NULL;
++	struct text_buffer *buffer = wl_container_of(node, buffer, props);
++	buffer->traffic = true;
++	buffer->action = action;
++	text_calc_size(buffer);
++	render_backing_buffer(buffer);
++	return node;
++}
++
++void sway_traffic_node_hover(struct sway_text_node *node, bool hover) {
++	if (!node) return;
++	struct text_buffer *buffer = wl_container_of(node, buffer, props);
++	if (buffer->hover == hover) return;
++	buffer->hover = hover;
++	render_backing_buffer(buffer);
++}
+--- a/include/sway/tree/container.h
++++ b/include/sway/tree/container.h
+@@ -67,6 +67,16 @@
+ 	double content_width, content_height;
+ };
+ 
++struct sway_lumen_placement {
++ char *workspace;
++ uint64_t parent_id;
++ int index;
++ bool floating;
++ struct wlr_box box;
++ double width_fraction, height_fraction;
++ enum sway_container_border border;
++};
++
+ struct sway_container {
+ 	struct sway_node node;
+ 	struct sway_view *view;
+@@ -82,6 +92,7 @@
+ 
+ 		struct sway_text_node *title_text;
+ 		struct sway_text_node *marks_text;
++		struct sway_text_node *traffic[3];
+ 	} title_bar;
+ 
+ 	struct {
+@@ -139,6 +150,7 @@
+ 	// Both hidden and visible scratchpad containers have scratchpad=true.
+ 	// Hidden scratchpad containers have a NULL parent.
+ 	bool scratchpad;
++ struct sway_lumen_placement *lumen_minimized, *lumen_filled;
+ 
+ 	// Stores last output size and position for adjusting coordinates of
+ 	// scratchpad windows.
+@@ -185,6 +197,10 @@
+ struct sway_container *container_create(struct sway_view *view);
+ 
+ void container_destroy(struct sway_container *con);
++bool container_lumen_action_enabled(struct sway_container *con, int action);
++void container_lumen_minimize(struct sway_container *con);
++void container_lumen_fill(struct sway_container *con);
++void container_lumen_placement_free(struct sway_lumen_placement *placement);
+ 
+ void container_begin_destroy(struct sway_container *con);
+ 
+--- a/sway/tree/container.c
++++ b/sway/tree/container.c
+@@ -287,6 +287,13 @@
+ 		scene_shadow_set_color(con->shadow, shadow_color, alpha);
+ 	}
+ 
++	for (int i = 0; i < 3; i++) {
++		if (!con->title_bar.traffic[i]) continue;
++		float lights[3][4] = {{1, .373, .341, 1}, {.996, .737, .180, 1}, {.157, .784, .251, 1}};
++		float inactive[4] = {.55, .55, .57, 1};
++		sway_text_node_set_color(con->title_bar.traffic[i], con->current.focused && container_lumen_action_enabled(con, i) ? lights[i] : inactive);
++		sway_text_node_set_background(con->title_bar.traffic[i], colors->background);
++	}
+ 	if (con->title_bar.title_text) {
+ 		sway_text_node_set_color(con->title_bar.title_text, colors->text);
+ 		sway_text_node_set_background(con->title_bar.title_text, colors->background);
+@@ -380,6 +387,16 @@
+ 	int width = con->title_width;
+ 	int height = container_titlebar_height();
+ 
++ if (con->view) {
++  for (int i = 0; i < 3; i++) {
++   if (!con->title_bar.traffic[i]) con->title_bar.traffic[i] = sway_traffic_node_create(con->title_bar.tree, i, (float[4]){1,0,0,1});
++   struct sway_text_node *button = con->title_bar.traffic[i];
++   if (!button) continue;
++   wlr_scene_node_set_enabled(button->node, width >= 96);
++   wlr_scene_node_set_position(button->node, 14+i*20, (height-12)/2);
++   wlr_scene_node_raise_to_top(button->node);
++  }
++ }
+ 	struct wlr_box left_cut = {0};
+ 	struct wlr_box right_cut = {0};
+ 
+@@ -425,7 +442,7 @@
+ 			h_padding = config->titlebar_h_padding;
+ 		}
+ 
+-		h_padding = MAX(h_padding, config->titlebar_h_padding);
++		h_padding = MAX(h_padding, con->view && width >= 96 ? 76 : config->titlebar_h_padding);
+ 
+ 		int alloc_width = MIN((int) node->width,
+ 			width - h_padding - config->titlebar_h_padding);
+@@ -572,6 +589,8 @@
+ 		finish_animation(&con->animation_state.animation);
+ 	}
+ 
++ container_lumen_placement_free(con->lumen_minimized);
++ container_lumen_placement_free(con->lumen_filled);
+ 	free(con->title);
+ 	free(con->formatted_title);
+ 	free(con->title_format);
+@@ -893,7 +912,7 @@
+ }
+ 
+ size_t container_titlebar_height(void) {
+-	return config->font_height + config->titlebar_v_padding * 2;
++	return MAX(32, config->font_height + config->titlebar_v_padding * 2);
+ }
+ 
+ void floating_calculate_constraints(int *min_width, int *max_width,
+--- a/sway/input/seatop_default.c
++++ b/sway/input/seatop_default.c
+@@ -14,6 +14,8 @@
+ #include "sway/server.h"
+ #include "sway/scene_descriptor.h"
+ #include "sway/tree/view.h"
++#include "sway/tree/root.h"
++#include "sway/sway_text_node.h"
+ #include "sway/tree/workspace.h"
+ #include "log.h"
+ #include "util.h"
+@@ -26,6 +28,9 @@
+ 	uint32_t pressed_buttons[SWAY_CURSOR_PRESSED_BUTTONS_CAP];
+ 	size_t pressed_button_count;
+ 	struct gesture_tracker gestures;
++	bool traffic_armed;
++	uint64_t traffic_id;
++	int traffic_action;
+ };
+ 
+ /*-----------------------------------------\
+@@ -329,6 +334,19 @@
+ 	return false;
+ }
+ 
++static int traffic_hit(struct sway_container *con, struct sway_cursor *cursor) {
++	int x, y;
++	if (!con || !con->view || con->title_width < 96 ||
++			!wlr_scene_node_coords(&con->title_bar.tree->node, &x, &y)) return -1;
++	double cx = cursor->cursor->x - x, cy = cursor->cursor->y - y;
++	int top = (container_titlebar_height() - 12) / 2;
++	if (cy < top - 4 || cy >= top + 16) return -1;
++	for (int i = 0; i < 3; i++) {
++		if (cx >= 10 + i * 20 && cx < 30 + i * 20 && container_lumen_action_enabled(con, i)) return i;
++	}
++	return -1;
++}
++
+ static void handle_button(struct sway_seat *seat, uint32_t time_msec,
+ 		struct wlr_input_device *device, uint32_t button,
+ 		enum wl_pointer_button_state state) {
+@@ -363,6 +381,29 @@
+ 	bool mod_resize_btn_pressed = mod_pressed && button == mod_resize_btn;
+ 	bool titlebar_left_btn_pressed = on_titlebar && button == BTN_LEFT;
+ 
++	struct seatop_default_event *e = seat->seatop_data;
++	int traffic = on_titlebar ? traffic_hit(cont, cursor) : -1;
++	if (button == BTN_LEFT && (!mod_pressed || e->traffic_armed)) {
++		if (state == WL_POINTER_BUTTON_STATE_PRESSED && traffic >= 0) {
++			e->traffic_armed = true;
++			e->traffic_id = cont->node.id;
++			e->traffic_action = traffic;
++			seat_set_focus(seat, node);
++			transaction_commit_dirty();
++			return;
++		}
++		if (state == WL_POINTER_BUTTON_STATE_RELEASED && e->traffic_armed) {
++			e->traffic_armed = false;
++			if (traffic >= 0 && cont->node.id == e->traffic_id && traffic == e->traffic_action) {
++				if (traffic == 0) view_close(cont->view);
++				else if (traffic == 1) container_lumen_minimize(cont);
++                else if (modifiers & WLR_MODIFIER_ALT) container_set_fullscreen(cont, FULLSCREEN_WORKSPACE);
++                else container_lumen_fill(cont);
++				transaction_commit_dirty();
++			}
++			return;
++		}
++	}
+ 	// Handle mouse bindings
+ 	if (trigger_pointer_button_binding(seat, device, button, state, modifiers,
+ 			on_titlebar, on_border, on_contents, on_workspace)) {
+@@ -607,6 +648,13 @@
+ 	double sx, sy;
+ 	struct sway_node *node = node_at_coords(seat,
+ 			cursor->cursor->x, cursor->cursor->y, &surface, &sx, &sy);
++
++	if (e->previous_node && e->previous_node->type == N_CONTAINER) {
++		for (int i = 0; i < 3; i++) sway_traffic_node_hover(e->previous_node->sway_container->title_bar.traffic[i], false);
++	}
++	struct sway_container *hover_con = node && node->type == N_CONTAINER ? node->sway_container : NULL;
++	int hovered = surface ? -1 : traffic_hit(hover_con, cursor);
++	if (hovered >= 0) for (int i = 0; i < 3; i++) sway_traffic_node_hover(hover_con->title_bar.traffic[i], container_lumen_action_enabled(hover_con, i));
+ 
+ 	if (config->focus_follows_mouse != FOLLOWS_NO) {
+ 		check_focus_follows_mouse(seat, e, node);
+--- a/sway/ipc-json.c
++++ b/sway/ipc-json.c
+@@ -233,7 +233,10 @@
+ 	sscanf(SWAY_VERSION, "%d.%d.%d", &major, &minor, &patch);
+ 
+ 	json_object_object_add(version, "human_readable", json_object_new_string(SWAY_VERSION));
+-	json_object_object_add(version, "sway_original_version", json_object_new_string(SWAY_ORIGINAL_VERSION));
++	json_object_object_add(version, "native_window_controls", json_object_new_boolean(true));
++ json_object_object_add(version, "native_window_actions", json_object_new_boolean(true));
++ json_object_object_add(version, "compositor_effects", json_object_new_boolean(true));
++ json_object_object_add(version, "sway_original_version", json_object_new_string(SWAY_ORIGINAL_VERSION));
+ 	json_object_object_add(version, "variant", json_object_new_string("sway"));
+ 	json_object_object_add(version, "major", json_object_new_int(major));
+ 	json_object_object_add(version, "minor", json_object_new_int(minor));
+--- a/sway/tree/root.c
++++ b/sway/tree/root.c
+@@ -14,6 +14,7 @@
+ #include "sway/tree/container.h"
+ #include "sway/tree/root.h"
+ #include "sway/tree/workspace.h"
++#include "sway/tree/view.h"
+ #include "list.h"
+ #include "log.h"
+ #include "util.h"
+@@ -115,6 +116,115 @@
+ 	con->transform = box;
+ }
+ 
++
++void container_lumen_placement_free(struct sway_lumen_placement *p) {
++ if (p) { free(p->workspace); free(p); }
++}
++
++bool container_lumen_action_enabled(struct sway_container *con, int action) {
++ if (!con || con->node.destroying || !con->view || !con->view->surface) return false;
++ if (action == 0) return true;
++ const char *app = view_get_app_id(con->view);
++ if (app && strcmp(app, "org.quickshell") == 0 && con->title) {
++  if (strcmp(con->title, "Window Overview") == 0 || strcmp(con->title, "Quick Look") == 0) return false;
++  if (action == 2 && strcmp(con->title, "Text Tools") == 0) return false;
++ }
++ return true;
++}
++
++static struct sway_lumen_placement *lumen_save(struct sway_container *con) {
++ if (!con->pending.workspace) return NULL;
++ struct sway_lumen_placement *p = calloc(1, sizeof(*p));
++ if (!p) return NULL;
++ p->workspace = strdup(con->pending.workspace->name);
++ if (!p->workspace) { free(p); return NULL; }
++ p->parent_id = con->pending.parent ? con->pending.parent->node.id : 0;
++ p->index = list_find(container_get_siblings(con), con);
++ p->floating = container_is_floating(con);
++ p->box = (struct wlr_box){con->pending.x, con->pending.y, con->pending.width, con->pending.height};
++ p->border = con->pending.border;
++ p->width_fraction = con->width_fraction; p->height_fraction = con->height_fraction;
++ return p;
++}
++
++static bool lumen_parent_matches(struct sway_container *con, void *data) {
++ return con->node.id == *(uint64_t *)data && !con->node.destroying && !con->view;
++}
++
++static void lumen_restore(struct sway_container *con, struct sway_lumen_placement *p) {
++ struct sway_workspace *ws = workspace_by_name(p->workspace);
++ if (!ws) {
++  struct sway_workspace *focused = seat_get_focused_workspace(input_manager_current_seat());
++  if (!focused) return;
++  ws = workspace_create(focused->output, p->workspace);
++ }
++ struct sway_container *parent = p->parent_id ? root_find_container(lumen_parent_matches, &p->parent_id) : NULL;
++ if (parent && parent->pending.workspace != ws) parent = NULL;
++ if (con->scratchpad) root_scratchpad_remove_container(con);
++ container_detach(con);
++ workspace_add_floating(ws, con);
++ if (!p->floating) {
++  container_set_floating(con, false);
++  container_detach(con);
++  list_t *siblings = parent ? parent->pending.children : ws->tiling;
++  int index = p->index < 0 ? 0 : p->index > siblings->length ? siblings->length : p->index;
++  if (parent) container_insert_child(parent, con, index);
++  else workspace_insert_tiling_direct(ws, con, index);
++  double width = parent ? parent->pending.width : ws->width;
++  double height = parent ? parent->pending.height : ws->height;
++  double wf = width > 0 ? p->box.width / width : p->width_fraction;
++  double hf = height > 0 ? p->box.height / height : p->height_fraction;
++  if (wf > 1) wf = 1;
++  if (hf > 1) hf = 1;
++  double totalw = 0, totalh = 0;
++  for (int i = 0; i < siblings->length; i++) {
++   struct sway_container *other = siblings->items[i];
++   if (other != con) { totalw += other->width_fraction; totalh += other->height_fraction; }
++  }
++  for (int i = 0; i < siblings->length; i++) {
++   struct sway_container *other = siblings->items[i];
++   if (other != con) {
++    if (totalw > 0) other->width_fraction *= (1-wf) / totalw;
++    if (totalh > 0) other->height_fraction *= (1-hf) / totalh;
++   }
++  }
++  con->width_fraction = wf; con->height_fraction = hf;
++ }
++ con->pending.x = p->box.x; con->pending.y = p->box.y;
++ con->pending.width = p->box.width; con->pending.height = p->box.height;
++ con->pending.border = p->border;
++ arrange_workspace(ws);
++ node_set_dirty(&con->node);
++ if (con->view && con->view->foreign_toplevel) wlr_foreign_toplevel_handle_v1_set_minimized(con->view->foreign_toplevel, false);
++ seat_set_focus(input_manager_current_seat(), &con->node);
++}
++
++void container_lumen_minimize(struct sway_container *con) {
++ if (!container_lumen_action_enabled(con, 1)) return;
++ if (con->scratchpad) { root_scratchpad_hide(con); return; }
++ con->lumen_minimized = lumen_save(con);
++ if (!con->lumen_minimized) return;
++ root_scratchpad_add_container(con, NULL);
++ if (con->view->foreign_toplevel) wlr_foreign_toplevel_handle_v1_set_minimized(con->view->foreign_toplevel, true);
++}
++
++void container_lumen_fill(struct sway_container *con) {
++ if (!container_lumen_action_enabled(con, 2)) return;
++ if (con->pending.fullscreen_mode != FULLSCREEN_NONE) { container_fullscreen_disable(con); return; }
++ if (con->lumen_filled) {
++  struct sway_lumen_placement *p = con->lumen_filled; con->lumen_filled = NULL;
++  lumen_restore(con, p); container_lumen_placement_free(p); return;
++ }
++ con->lumen_filled = lumen_save(con);
++ if (!con->lumen_filled) return;
++ struct sway_workspace *ws = con->pending.workspace;
++ container_set_floating(con, true);
++ con->pending.border = con->lumen_filled->border;
++ con->pending.x = ws->x; con->pending.y = ws->y;
++ con->pending.width = ws->width; con->pending.height = ws->height;
++ arrange_workspace(ws); node_set_dirty(&con->node);
++}
++
+ void root_scratchpad_add_container(struct sway_container *con, struct sway_workspace *ws) {
+ 	if (!sway_assert(!con->scratchpad, "Container is already in scratchpad")) {
+ 		return;
+@@ -179,6 +289,10 @@
+ }
+ 
+ void root_scratchpad_show(struct sway_container *con) {
++ if (con->lumen_minimized) {
++  struct sway_lumen_placement *p = con->lumen_minimized; con->lumen_minimized = NULL;
++  lumen_restore(con, p); container_lumen_placement_free(p); return;
++ }
+ 	struct sway_seat *seat = input_manager_current_seat();
+ 	struct sway_workspace *new_ws = seat_get_focused_workspace(seat);
+ 	if (!new_ws) {
+--- a/include/sway/commands.h
++++ b/include/sway/commands.h
+@@ -190,6 +190,7 @@
+ sway_cmd cmd_rename;
+ sway_cmd cmd_resize;
+ sway_cmd cmd_scratchpad;
++sway_cmd cmd_lumen_window;
+ sway_cmd cmd_scratchpad_minimize;
+ sway_cmd cmd_seamless_mouse;
+ sway_cmd cmd_set;
+--- a/sway/commands.c
++++ b/sway/commands.c
+@@ -137,6 +137,7 @@
+ /* Runtime-only commands. Keep alphabetized */
+ static const struct cmd_handler command_handlers[] = {
+ 	{ "allow_tearing", cmd_allow_tearing },
++ { "lumen_window", cmd_lumen_window },
+ 	{ "border", cmd_border },
+ 	{ "create_output", cmd_create_output },
+ 	{ "exit", cmd_exit },
+--- a/sway/commands/scratchpad.c
++++ b/sway/commands/scratchpad.c
+@@ -7,6 +7,8 @@
+ #include "sway/tree/container.h"
+ #include "sway/tree/root.h"
+ #include "sway/tree/workspace.h"
++#include "sway/tree/view.h"
++#include "sway/desktop/transaction.h"
+ 
+ static void scratchpad_toggle_auto(void) {
+ 	struct sway_seat *seat = input_manager_current_seat();
+@@ -130,3 +132,18 @@
+ 
+ 	return cmd_results_new(CMD_SUCCESS, NULL);
+ }
++
++struct cmd_results *cmd_lumen_window(int argc, char **argv) {
++ struct cmd_results *error = checkarg(argc, "lumen_window", EXPECTED_EQUAL_TO, 1);
++ if (error) return error;
++ struct sway_container *con = config->handler_context.container;
++ if (!con || !con->view) return cmd_results_new(CMD_INVALID, "Select an application window");
++ if (strcmp(argv[0], "close") == 0) view_close(con->view);
++ else if (strcmp(argv[0], "minimize") == 0) container_lumen_minimize(con);
++ else if (strcmp(argv[0], "fill") == 0) container_lumen_fill(con);
++ else if (strcmp(argv[0], "fullscreen") == 0) container_set_fullscreen(con,
++  con->pending.fullscreen_mode == FULLSCREEN_NONE ? FULLSCREEN_WORKSPACE : FULLSCREEN_NONE);
++ else return cmd_results_new(CMD_INVALID, "Expected close, minimize, fill or fullscreen");
++ transaction_commit_dirty();
++ return cmd_results_new(CMD_SUCCESS, NULL);
++}

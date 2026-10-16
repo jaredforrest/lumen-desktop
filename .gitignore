@@ -1,0 +1,8 @@
+/result*
+/.direnv/
+/artifacts/
+__pycache__/
+*.py[cod]
+.env*
+*.key
+*.pem

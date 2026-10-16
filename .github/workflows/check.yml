@@ -1,0 +1,22 @@
+name: Checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  contracts-and-units:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - run: nix flake check --print-build-logs --option abort-on-warn true
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cachix/install-nix-action@v31
+      - run: nix develop --command desktop-test-python tests/desktop/run_backend_tests.py --output artifacts/backends
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-logs
+          path: artifacts

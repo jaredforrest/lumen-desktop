@@ -1,0 +1,60 @@
+* {
+  border: none;
+  border-radius: 0;
+  min-height: 0;
+  font-family: "Interlude Variable", "Source Han Sans", "CommitMono Nerd Font";
+  font-size: 13px;
+}
+
+window#waybar {
+  background: rgba(37, 39, 44, 0.96);
+  color: #d1d1d6;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.module { padding: 0 10px; }
+.modules-left { margin-left: 12px; }
+.modules-right { margin-right: 12px; }
+
+#custom-apps {
+  color: #f5f5f7;
+  font-weight: 600;
+  padding: 0 16px 0 6px;
+}
+
+#workspaces { padding: 0; }
+#workspaces button {
+  color: #a1a1aa;
+  background: transparent;
+  padding: 0 11px;
+  margin: 5px 2px;
+  border-radius: 7px;
+  box-shadow: none;
+  text-shadow: none;
+  transition: background-color 140ms ease-out, color 140ms ease-out;
+}
+#workspaces button.focused, #workspaces button.active {
+  color: #d6e6ff;
+  background: rgba(122, 162, 214, 0.20);
+  font-weight: 600;
+}
+#workspaces button:hover { background: rgba(255, 255, 255, 0.10); }
+#workspaces button.urgent, #mode { color: #e6a16a; }
+
+#custom-clock { color: #f5f5f7; font-weight: 500; }
+#mpris { color: #a1a1aa; padding-right: 16px; }
+#custom-presentation, #custom-notifications, #bluetooth,
+#power-profiles-daemon { color: #b3b3bc; }
+#custom-presentation, #custom-notifications { min-width: 18px; }
+#custom-presentation.activated, #custom-notifications.deactivated {
+  color: #d6e6ff;
+  background: rgba(122, 162, 214, 0.20);
+  border-radius: 7px;
+}
+#network.disconnected, #battery.warning:not(.charging) { color: #e6a16a; }
+tooltip {
+  background: #303238;
+  border: 1px solid #42444b;
+  border-radius: 9px;
+}
+tooltip label { color: #f5f5f7; padding: 7px; }
