@@ -66,7 +66,7 @@ in {
       choice=$(printf 'Cancel\nLog out\n' | ${config.programs.rofi.package}/bin/rofi -dmenu -p "Session")
       if [ "$choice" = "Log out" ]; then ${hypr} dispatch exit; fi
     '';
-    sessionService = description: command: {
+    sessionService = description: command: lib.mkIf cfg.integrations.hyprland.enable {
       Unit = {
         Description = description;
         PartOf = [ "hyprland-session.target" ];
@@ -110,7 +110,7 @@ in {
       Timer = { OnActiveSec = "2s"; OnUnitActiveSec = "60s"; AccuracySec = "1s"; };
       Install.WantedBy = [ "graphical-session.target" ];
     };
-    systemd.user.services.lumen-calendar-sync = {
+    systemd.user.services.lumen-calendar-sync = lib.mkIf cfg.integrations.calendar.enable {
       Unit = {
         Description = "Sync connected iCloud and Google calendars";
         After = [ "graphical-session.target" ];
@@ -123,7 +123,7 @@ in {
         UMask = "0077";
       };
     };
-    systemd.user.timers.lumen-calendar-sync = {
+    systemd.user.timers.lumen-calendar-sync = lib.mkIf cfg.integrations.calendar.enable {
       Unit.PartOf = [ "graphical-session.target" ];
       Timer = { OnActiveSec = "2min"; OnUnitInactiveSec = "15min"; RandomizedDelaySec = "30s"; };
       Install.WantedBy = [ "graphical-session.target" ];
@@ -212,7 +212,7 @@ in {
           Type = "dbus";
           BusName = "org.freedesktop.Notifications";
           # Nix wraps Mako as .mako-wrapped; match both executable names.
-          ExecStartPre = "-${pkgs.procps}/bin/pkill -x (mako|[.]mako-wrapped)";
+          ExecStartPre = lib.mkIf cfg.integrations.replaceExistingShell "-${pkgs.procps}/bin/pkill -x (mako|[.]mako-wrapped)";
           ExecStart = "${notifications}/bin/lumen-notifications serve";
           Restart = "on-failure";
           RestartSec = 2;
