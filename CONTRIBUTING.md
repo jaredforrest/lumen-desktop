@@ -4,7 +4,8 @@ Use the pinned environment and work in this repository. Desktop implementation c
 
 ```sh
 nix flake check --print-build-logs --option abort-on-warn true
-nix develop --command desktop-test-python tests/desktop/run_backend_tests.py --output artifacts/backends
+nix build .#shell --out-link artifacts/shell-package --option abort-on-warn true
+LUMEN_TEST_SHELL_LAUNCHER="$PWD/artifacts/shell-package/bin/lumen-desktop-shell" nix develop --command desktop-test-python tests/desktop/run_backend_tests.py --output artifacts/backends
 ```
 
 `flake check` runs publication contracts and backend unit tests in the build sandbox. The integration command additionally exercises the Nix evaluator and QML helpers with private fixtures. Backend tests use temporary directories and private D-Bus sessions. A test must never connect to an actual account, edit a live profile, send a transfer or perform a session power action.
