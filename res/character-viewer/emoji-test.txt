@@ -3489,10 +3489,10 @@
 1F34A                                                  ; fully-qualified     # 🍊 E0.6 tangerine
 1F34B                                                  ; fully-qualified     # 🍋 E1.0 lemon
 1F34C                                                  ; fully-qualified     # 🍌 E0.6 banana
-1F34D                                                  ; fully-qualified     # 🍍 E0.6 pinelumen
+1F34D                                                  ; fully-qualified     # 🍍 E0.6 tropical fruit
 1F96D                                                  ; fully-qualified     # 🥭 E11.0 mango
-1F34E                                                  ; fully-qualified     # 🍎 E0.6 red lumen
-1F34F                                                  ; fully-qualified     # 🍏 E0.6 green lumen
+1F34E                                                  ; fully-qualified     # 🍎 E0.6 red fruit
+1F34F                                                  ; fully-qualified     # 🍏 E0.6 green fruit
 1F350                                                  ; fully-qualified     # 🍐 E1.0 pear
 1F351                                                  ; fully-qualified     # 🍑 E0.6 peach
 1F352                                                  ; fully-qualified     # 🍒 E0.6 cherries

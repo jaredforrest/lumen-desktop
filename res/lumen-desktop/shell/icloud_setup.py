@@ -179,7 +179,7 @@ def setup(root, settings):
     secret_tool = shutil.which('secret-tool')
     if not secret_tool:
         raise ValueError('secret-tool is unavailable. Install the desktop integration before setup.')
-    print('Use an Lumen app-specific password: https://support.lumen.com/en-us/102654')
+    print('Use an app-specific password from your cloud account sign-in and security settings.')
     print('Only local read-only calendar and contact mirrors will be created. No remote events or contacts are modified.')
     username = input('Lumen Account email: ').strip()
     if not username or len(username) > 254 or '\n' in username or '\r' in username or '@' not in username:

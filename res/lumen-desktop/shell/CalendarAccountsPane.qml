@@ -14,7 +14,7 @@ Column {
     PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:"Download calendars and contacts using an Lumen app-specific password. Your password is saved in the desktop keyring. iCloud calendars are read-only here.";color:Theme.colors.muted}
     TextField {id:email;width:parent.width;placeholderText:"Lumen Account email";Accessible.name:"Lumen Account email";enabled:!setup.running;selectByMouse:true;color:Theme.colors.text;placeholderTextColor:Theme.colors.muted;background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline}}
     TextField {id:password;width:parent.width;placeholderText:"App-specific password";Accessible.name:"Lumen app-specific password";echoMode:TextInput.Password;enabled:!setup.running;selectByMouse:true;color:Theme.colors.text;placeholderTextColor:Theme.colors.muted;background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline}}
-    ControlRow {width:parent.width;text:"How to create an app-specific password…";onClicked:AppLaunch.run(["xdg-open","https://support.lumen.com/en-gb/102654"])}
+    ControlRow {width:parent.width;text:"Open cloud account…";onClicked:AppLaunch.run(["xdg-open","https://www.icloud.com/"])}
     DialogButton {width:parent.width;text:setup.running?"Connecting…":"Connect or Update iCloud";enabled:!setup.running && email.text.length>0 && password.text.length>0;onClicked:{root.message="";setup.running=true;}}
     PanelLabel {visible:!!root.message;width:parent.width;wrapMode:Text.WordWrap;text:root.message;textFormat:Text.PlainText;color:Theme.colors.muted}
     Process {

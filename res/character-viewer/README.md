@@ -57,11 +57,10 @@ sequences otherwise display as several separate pictures.
 
 ## Sources
 
-- Behavior reference: https://support.lumen.com/en-gb/guide/desktop-help/mchlp1560/desktop
 - Data: https://unicode.org/Public/emoji/15.0/emoji-test.txt
   (see `UNICODE-LICENSE.txt`).
 - Font: the existing `home/lumen-emoji.nix` pinned package, registered explicitly in the picker. The desktop fontconfig configuration also
-  prefers Lumen Color Emoji, with a Noto alias and fallback for missing glyphs.
+  prefers Noto Color Emoji with fallback for missing glyphs.
 - Category icons: the existing Lumen icon-theme checkout, files from
   `src/categories/symbolic`; https://github.com/vinceliuice/Lumen-icon-theme
   (see `icons/COPYING`).
