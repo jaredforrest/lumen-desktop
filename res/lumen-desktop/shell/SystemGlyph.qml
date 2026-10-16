@@ -18,9 +18,8 @@ Canvas {
             c.beginPath();c.arc(12,20,1.1,0,Math.PI*2);c.fill();
         } else if(name==="bluetooth") {
             line([[12,2],[12,22],[18,16],[6,6]]);line([[12,2],[18,8],[6,18]]);
-        } else if(name==="airdrop") {
-            for(const r of [4,7,10])arc(12,11,r,Math.PI*.2,Math.PI*2.8);
-            line([[8,22],[12,16],[16,22],[8,22]]);
+        } else if(name==="share") {
+            c.strokeRect(4,9,16,12);line([[12,15],[12,3],[7,8]]);line([[12,3],[17,8]]);
         } else if(name==="moon") {
             c.beginPath();c.moveTo(16,3);c.bezierCurveTo(0,0,0,23,16,21);c.bezierCurveTo(8,18,8,7,16,3);c.stroke();
         } else if(name==="mirror") {

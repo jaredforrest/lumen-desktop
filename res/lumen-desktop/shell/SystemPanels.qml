@@ -19,7 +19,7 @@ Column {
         Column {width:145;spacing:10
             ControlTile {width:145;height:60;label:"Wi-Fi";symbol:"wifi";unavailable:!root.shell.systemState.wifi.available;active:root.shell.systemState.wifi.state==="COMPLETED";subtitle:active?"Connected":"Disconnected";onClicked:root.panelRequested("Wi-Fi")}
             ControlTile {width:145;height:60;label:"Bluetooth";symbol:"bluetooth";unavailable:!Bluetooth.defaultAdapter;active:!!Bluetooth.defaultAdapter && Bluetooth.defaultAdapter.enabled;subtitle:active?"On":"Off";onClicked:root.panelRequested("Bluetooth")}
-            ControlTile {width:145;height:60;label:"Sharing";subtitle:"LocalSend";symbol:"airdrop";unavailable:false;accessibleLabel:"Nearby Sharing — Open LocalSend";onClicked:{root.shell.claimPopup("");AppLaunch.run(["localsend_app"]);}}
+            ControlTile {width:145;height:60;label:"Sharing";subtitle:"LocalSend";symbol:"share";unavailable:false;accessibleLabel:"Open LocalSend nearby sharing";onClicked:{root.shell.claimPopup("");AppLaunch.run(["localsend_app"]);}}
         }
         MediaControl {x:155;width:145;height:130;onExpandRequested:root.panelRequested("Now Playing")}
         ControlTile {x:155;y:140;width:145;height:60;label:"Displays";subtitle:"Settings";symbol:"screen";unavailable:false;onClicked:root.shell.openSettings("Displays")}
