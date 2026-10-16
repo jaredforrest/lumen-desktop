@@ -57,7 +57,7 @@
         '';
       };
       devShells.${system}.default = pkgs.mkShell {
-        packages = [ runtime settings session.shellLauncher pkgs.nix pkgs.git pkgs.dbus pkgs.quickshell pkgs.sway pkgs.grim pkgs.wtype pkgs.gitleaks ];
+        packages = [ privateBus runtime settings session.shellLauncher pkgs.nix pkgs.git pkgs.dbus pkgs.quickshell pkgs.sway pkgs.grim pkgs.wtype pkgs.gitleaks ];
         shellHook = ''
           export PYTHONDONTWRITEBYTECODE=1
           echo "Lumen development shell. See CONTRIBUTING.md for isolated test commands."

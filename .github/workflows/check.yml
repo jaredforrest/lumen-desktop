@@ -7,14 +7,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: cachix/install-nix-action@v31
       - run: nix flake check --print-build-logs --option abort-on-warn true
   integration:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: cachix/install-nix-action@v31
+      - run: nix develop --command gitleaks git . --redact=100
       - run: nix develop --command desktop-test-python tests/desktop/run_backend_tests.py --output artifacts/backends
+      - run: |
+          mkdir -p artifacts
+          nix build .#compositor --out-link artifacts/compositor --option abort-on-warn true
+          nix develop --command desktop-test-python tests/desktop/smoke_installed.py --sway "$PWD/artifacts/compositor/bin/sway" --effects --output artifacts/shell
       - uses: actions/upload-artifact@v4
         if: always()
         with:
