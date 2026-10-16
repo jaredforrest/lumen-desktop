@@ -4,6 +4,8 @@ import Quickshell.Io
 import Quickshell.Wayland
 import "ReferenceDock.js" as ReferenceDock
 import "DockModel.js" as DockModel
+import "DockInteraction.js" as DockInteraction
+import "AppSwitcherModel.js" as SwitcherModel
 
 ShellRoot {
     id: root
@@ -34,9 +36,11 @@ ShellRoot {
     property alias quickLookWindow:quickLook
     TextToolsWindow {id:textTools;shell:root}
     property alias textToolsWindow:textTools
+    AppSwitcher {id:applicationSwitcher;shell:root}
     WindowOverview {id:overview;shell:root}
     property alias overviewWindow:overview
     function openTextTools(){textTools.show();focusOwnedWindow("Text Tools");}
+    function appSwitcherCommand(action){applicationSwitcher.command(action);}
     function openOverview(sameApp){overview.show(sameApp && active?(active.appId==="org.quickshell"?(active.title.startsWith("Files")?"Files":active.title):active.appId):"");if(overview.visible)focusOwnedWindow("Window Overview");}
     CalendarWindow {id:calendarWindow;shell:root}
     function openCalendar(){calendarWindow.open();}
@@ -75,8 +79,19 @@ ShellRoot {
     function filesAction(action){claimPopup("");filesActionTimer.action=action;filesActionTimer.restart();}
     Timer {id:filesActionTimer;property string action;interval:100;onTriggered:filesWindow.dispatch(action)}
     property var pins: ["brave-browser", "codex-desktop", "obsidian", "bitwarden", "foot", "writer", "calc", "impress", "org.gnome.Evince", "lumen-remote-desktop", "org.inkscape.Inkscape", "org.darktable.darktable", "audacity", "mpv", "com.github.xournalpp.xournalpp", "org.pulseaudio.pavucontrol"]
+    property var windowCreationOrder:[]
     property var windows: ToplevelManager.toplevels.values
+    onWindowsChanged:windowCreationOrder=SwitcherModel.creationOrder(windowCreationOrder,windows)
+    function windowIdentity(window){const entry=entryFor(window);return entry?entry.id:window.appId;}
+    function cycleAppWindow(direction){
+        const selected=SwitcherModel.cycleWindow(windowCreationOrder,windows,active,windowIdentity,direction==="previous"?-1:1);
+        if(selected)focusWindow(selected);
+    }
     property var active: ToplevelManager.activeToplevel
+    property var activationHistory: []
+    onActiveChanged: {
+        if (active) activationHistory=[active].concat(activationHistory.filter(w=>w!==active && windows.includes(w)));
+    }
     property var entries: DesktopEntries.applications.values
     property var pinned: { const available = entries; return pins.map(id => available.find(e => e.id === id || e.id === id + ".desktop")).filter(e => e !== undefined); }
     property var runningExtras: {
@@ -91,7 +106,20 @@ ShellRoot {
     property var referenceDock: DockModel.build(ReferenceDock.items, entries, dockApps)
     function dockWindows(item) { if(item.action==="calendar")return windows.filter(w=>w.appId==="org.quickshell" && w.title==="Calendar");if(item.action==="files")return windows.filter(w=>w.appId==="org.quickshell" && w.title.startsWith("Files"));if(item.action==="settings")return windows.filter(w=>w.appId==="org.quickshell" && w.title==="System Settings");return item.entry ? windowsFor(item.entry) : []; }
     function dockLabel(item) { return item.entry ? appLabel(item.entry) : item.name; }
-    function activateDock(item, newWindow, outputName) {
+    function activateDock(item, newWindow, outputName, modifiers) {
+        if (!item) return;
+        if (item.entry && modifiers && (modifiers & Qt.AltModifier) && !(modifiers & Qt.GroupSwitchModifier)) {
+            const matches=windowsFor(item.entry);
+            const hideOthers=!!(modifiers & Qt.MetaModifier);
+            if (matches.length && (hideOthers || matches.includes(active)) && Quickshell.env("SWAYSOCK")) {
+                const command=["lumen-focus-window",matches[0].appId,"","--activate-titles",JSON.stringify(matches.map(w=>w.title)),"--app-action",hideOthers?"hide-others":"hide"];
+                if (Theme.preferences.switchToAppSpace===false) command.push("--no-switch-space");
+                const previous=activationHistory.find(w=>!matches.includes(w) && windows.includes(w));
+                if (!hideOthers && previous) command.push("--previous-app",previous.appId,"--previous-title",previous.title);
+                Quickshell.execDetached(command);
+                return;
+            }
+        }
         if (item.entry) activate(item.entry, newWindow);
         else if (item.key === "downloads") downloadsStack.show(Quickshell.env("HOME")+"/Downloads",outputName || preferredOutput());
         else if (item.key === "trash") openFiles("trash:");
@@ -159,13 +187,19 @@ ShellRoot {
     }
     Timer {id:focusFallback;property var targetWindow;property int epoch;interval:160;onTriggered:if(epoch===root.focusEpoch && targetWindow && !targetWindow.activated && Quickshell.env("SWAYSOCK"))Quickshell.execDetached(["lumen-focus-window",targetWindow.appId,targetWindow.title])}
     function activate(entry, newWindow) {
-        if(entry.id==="lumen-files"){if(newWindow)newFilesWindow("");else openFiles("");return;}
-        if(entry.id==="lumen-system-settings"){openSettings("");return;}
-        if(entry.id==="lumen-calendar-app"){openCalendar();return;}
         const matches = windowsFor(entry);
+        if (newWindow || !matches.length) {
+            if(entry.id==="lumen-files"){if(newWindow)newFilesWindow("");else openFiles("");return;}
+            if(entry.id==="lumen-system-settings"){openSettings("");return;}
+            if(entry.id==="lumen-calendar-app"){openCalendar();return;}
+        }
         if (!newWindow && matches.length) {
-            const i = matches.indexOf(active);
-            focusWindow(matches[(i + 1) % matches.length]);
+            const ordered=activationHistory.filter(w=>matches.includes(w)).concat(matches.filter(w=>!activationHistory.includes(w)));
+            if (Quickshell.env("SWAYSOCK")) {
+                const command=["lumen-focus-window",ordered[0].appId,"","--activate-titles",JSON.stringify(ordered.map(w=>w.title))];
+                if (Theme.preferences.switchToAppSpace===false) command.push("--no-switch-space");
+                Quickshell.execDetached(command);
+            } else focusWindow(DockInteraction.activationWindow(matches,active,activationHistory));
         } else AppLaunch.runEntry(entry, newWindow);
     }
     function appLabel(entry) { return shortNames[entry.id] || entry.name; }
@@ -203,6 +237,8 @@ ShellRoot {
         function recognizeImage(path:string):void {root.claimPopup("");quickLook.show(path,null);quickLook.recognizeOnLoad=true;root.focusOwnedWindow("Quick Look");}
         function folderStackStatus():string {return JSON.stringify({visible:downloadsStack.visible,count:downloadsStack.rows.length,error:downloadsStack.error});}
         function focusDock():void {root.requestDockFocus(root.preferredOutput());}
+        function cycleWindow(direction:string):void {if(["next","previous"].includes(direction))root.cycleAppWindow(direction);}
+        function appSwitcher(action:string):string {root.appSwitcherCommand(action);return applicationSwitcher.status();}
         function overview(sameApp:bool):void {root.openOverview(sameApp);}
         function quickLookStatus():string {return JSON.stringify({visible:root.quickLookWindow.visible,type:root.quickLookWindow.result.type || "",playing:root.quickLookWindow.preview.playing,position:root.quickLookWindow.preview.position,playbackError:root.quickLookWindow.preview.playbackError,page:root.quickLookWindow.result.page || 1,pages:root.quickLookWindow.result.pages || 1,error:root.quickLookWindow.result.error || ""});}
         function overviewStatus():string {return JSON.stringify({visible:root.overviewWindow.visible,count:root.overviewWindow.matches.length,workspaces:root.overviewWindow.workspaces.length,error:root.overviewWindow.error});}

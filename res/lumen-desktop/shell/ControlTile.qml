@@ -3,6 +3,7 @@ PanelSurface {
     id: tile
     signal clicked()
     property bool active: false
+    property bool toggle: false
     property string label
     property string subtitle: unavailable && label ? "Unavailable" : ""
     property string symbol
@@ -22,7 +23,9 @@ PanelSurface {
     activeFocusOnTab: !unavailable
     Keys.onReturnPressed: if(!unavailable)clicked()
     Keys.onSpacePressed: if(!unavailable)clicked()
-    Accessible.role: Accessible.Button
+    Accessible.role: toggle?Accessible.CheckBox:Accessible.Button
+    Accessible.checkable: toggle
+    Accessible.checked: toggle && active
     Accessible.onPressAction: if(!unavailable)clicked()
-    Accessible.name:accessibleLabel+(unavailable?" — unavailable":"")
+    Accessible.name:accessibleLabel+(subtitle?", "+subtitle:"")+(unavailable?" — unavailable":"")
 }

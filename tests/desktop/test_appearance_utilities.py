@@ -39,4 +39,17 @@ class AppearanceUtilitiesTests(unittest.TestCase):
             tools.save_subject(str(source),str(dest),True)
             self.assertEqual(dest.read_bytes(),source.read_bytes())
 
+    def test_failed_subject_export_preserves_confirmed_existing_file(self):
+        import shutil
+        with tempfile.TemporaryDirectory() as tmp,patch.dict(os.environ,{'XDG_CACHE_HOME':tmp}):
+            folder=Path(tmp)/'lumen-desktop/subjects';folder.mkdir(parents=True)
+            source=folder/('a'*32+'.png');source.write_bytes(b'new fixture')
+            destination=Path(tmp)/'out.png';destination.write_bytes(b'existing')
+            def interrupted(source,stream):
+                stream.write(b'partial');raise OSError('simulated read failure')
+            with patch.object(shutil,'copyfileobj',side_effect=interrupted),self.assertRaises(OSError):
+                tools.save_subject(str(source),str(destination),True)
+            self.assertEqual(destination.read_bytes(),b'existing')
+            self.assertFalse(list(Path(tmp).glob('.lumen-export-*')))
+
 if __name__=='__main__':unittest.main()

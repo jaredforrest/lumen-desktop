@@ -24,7 +24,7 @@ Row {
             required property string modelData
             width: 12; height: 12
             enabled: index === 0 || (index === 1 ? root.canMinimize : root.canFullscreen)
-            Accessible.name: ["Close " + root.windowName, "Minimize " + root.windowName, "Fill or restore window"][index]
+            Accessible.name: ["Close " + root.windowName, "Minimize " + root.windowName, "Enter full screen"][index]
             background: Rectangle {
                 radius: 6
                 color: button.enabled && (root.windowActive || root.controlsHovered) ? button.modelData : Theme.dark ? "#555559" : "#ceced2"
@@ -41,7 +41,7 @@ Row {
             }
             onClicked: {
                 if (Theme.nativeWindowActions && root.Window.window)
-                    Quickshell.execDetached(["lumen-focus-window", "org.quickshell", root.Window.window.title, "--action", ["close","minimize","fill"][index]]);
+                    Quickshell.execDetached(["lumen-focus-window", "org.quickshell", root.Window.window.title, "--action", ["close","minimize","fullscreen"][index]]);
                 else root.triggered(index);
             }
         }

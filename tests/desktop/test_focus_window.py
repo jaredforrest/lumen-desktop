@@ -66,6 +66,63 @@ class FocusWindowTests(unittest.TestCase):
         self.assertEqual(focus.focus_command(tree(window(17, title=title)), 'writer', title),
                          '[con_id=17] focus')
 
+    def test_app_activation_uses_mru_not_tree_order(self):
+        self.assertEqual(focus.app_focus_command(tree(window(17,title='First'),window(18,title='Last')),
+                                                'writer',['Last','First']), '[con_id=18] focus')
+
+    def test_no_space_switch_activates_current_space_candidate(self):
+        root=dict(type='root',nodes=[tree(window(17,focused=True,title='Current'),workspace='1')['nodes'][0],
+                                    tree(window(18,title='Other'),workspace='2')['nodes'][0]])
+        self.assertIsNone(focus.app_focus_command(root,'writer',['Other','Current'],False))
+        self.assertEqual(focus.app_focus_command(root,'writer',['Other','Current'],True),'[con_id=18] focus')
+        self.assertIsNone(focus.app_focus_command(root,'writer',['Other'],False))
+
+    def test_app_activation_never_guesses_duplicate_titles(self):
+        with self.assertRaisesRegex(ValueError,'ambiguous'):
+            focus.app_focus_command(tree(window(17),window(18)),'writer',['Document'])
+
+    def test_app_activation_validates_title_list(self):
+        with self.assertRaisesRegex(ValueError,'list of strings'):
+            focus.app_focus_command(tree(window(17)),'writer','Document')
+
+    def test_hidden_app_unhides_all_but_restores_only_selected_minimised_window(self):
+        a=window(17,title='First');a['lumen_state']=dict(version=1,hidden=True,minimised=False,restore_workspace='1')
+        b=window(18,title='Second');b['lumen_state']=dict(version=1,hidden=True,minimised=True,restore_workspace='1')
+        result=focus.app_focus_command(tree(a,b,workspace='__i3_scratch'),'writer',['First','Second'])
+        self.assertEqual(result,'[con_id=17] lumen_window unhide; [con_id=18] lumen_window unhide; [con_id=17] focus')
+        result=focus.app_focus_command(tree(a,b,workspace='__i3_scratch'),'writer',['Second','First'])
+        self.assertTrue(result.endswith('[con_id=18] scratchpad show, focus'))
+
+    def test_hidden_window_original_workspace_respects_no_switch(self):
+        hidden=window(18,title='Hidden');hidden['lumen_state']=dict(version=1,hidden=True,minimised=False,restore_workspace='1')
+        root=dict(type='root',nodes=[tree(window(17,focused=True,title='Current'),workspace='1')['nodes'][0],
+                                    tree(hidden,workspace='__i3_scratch')['nodes'][0]])
+        self.assertEqual(focus.app_focus_command(root,'writer',['Hidden'],False),
+                         '[con_id=18] lumen_window unhide; [con_id=18] focus')
+
+    def test_hide_others_retains_target_application_and_uses_only_ids(self):
+        a=window(17,title='First');b=window(18,title='Second')
+        for node in (a,b):node['lumen_state']=dict(version=1)
+        b['app_id']='other'
+        self.assertEqual(focus.app_visibility_command(tree(a,b),'writer',['First'],'hide-others'),
+                         '[con_id=18] lumen_window hide')
+        self.assertEqual(focus.app_visibility_command(tree(a,b),'writer',['First'],'hide'),
+                         '[con_id=17] lumen_window hide')
+
+    def test_hiding_never_falls_back_to_minimisation_on_unpatched_backend(self):
+        with self.assertRaisesRegex(ValueError,'independent application hiding'):
+            focus.app_visibility_command(tree(window(17)),'writer',['Document'],'hide')
+
+    def test_hide_current_app_activates_previous_application(self):
+        a=window(17,title='Current');a['lumen_state']=dict(version=1)
+        b=window(18,title='Previous');b['app_id']='other'
+        with patch.object(focus.subprocess,'check_output',side_effect=[
+                json.dumps(tree(a,b)), '[{"success":true},{"success":true}]']) as run:
+            self.assertEqual(focus.main(['writer','','--activate-titles','["Current"]','--app-action','hide',
+                                        '--previous-app','other','--previous-title','Previous']),0)
+            self.assertEqual(run.call_args_list[1].args[0][-1],
+                             '[con_id=17] lumen_window hide; [con_id=18] focus')
+
     def test_main_reports_rejected_ipc_even_with_successful_process(self):
         with patch.object(focus.subprocess, 'check_output', side_effect=[
                 json.dumps(tree(window(17))), '[{"success":false,"error":"gone"}]']):

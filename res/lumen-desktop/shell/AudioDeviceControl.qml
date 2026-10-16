@@ -12,6 +12,7 @@ Column {
     property real optimisticVolume:-1
     property var pendingMute:null
     property string error:""
+    property string writingNode:""
     function setVolume(value){if(!available)return;optimisticVolume=Math.max(0,Math.min(1,value));pendingVolume=optimisticVolume;error="";debounce.restart();}
     function toggleMute(){if(!available)return;pendingMute=!(pendingMute===null?node.audio.muted:pendingMute);flush();}
     function flush(){
@@ -19,9 +20,9 @@ Column {
         if(pendingMute!==null){writer.command=["wpctl","set-mute",String(node.id),pendingMute?"1":"0"];pendingMute=null;}
         else if(pendingVolume>=0){writer.command=["wpctl","set-volume","-l","1",String(node.id),String(pendingVolume)];pendingVolume=-1;}
         else return;
-        writer.running=true;
+        writingNode=String(node.id);writer.running=true;
     }
-    onNodeChanged:{pendingVolume=-1;optimisticVolume=-1;pendingMute=null;}
+    onNodeChanged:{debounce.stop();reconcile.stop();pendingVolume=-1;optimisticVolume=-1;pendingMute=null;error="";}
     PanelLabel {width:parent.width;text:root.label;textFormat:Text.PlainText;font.pixelSize:12}
     Row {width:parent.width;spacing:8
         SystemSlider {
@@ -39,5 +40,5 @@ Column {
     Timer {id:reconcile;interval:200;onTriggered:if(!writer.running && root.pendingVolume<0)root.optimisticVolume=-1}
     // WirePlumber also handles nodes whose channel map is not exposed to Quickshell.
     // Serialize/coalesce writes; PipeWire events remain the authoritative read state.
-    Process {id:writer;onExited:(code,status)=>{if(code!==0)root.error="The sound setting could not be changed.";reconcile.restart();Qt.callLater(root.flush);}}
+    Process {id:writer;onExited:(code,status)=>{if(root.node && String(root.node.id)===root.writingNode && code!==0)root.error="The sound setting could not be changed.";reconcile.restart();Qt.callLater(root.flush);}}
 }

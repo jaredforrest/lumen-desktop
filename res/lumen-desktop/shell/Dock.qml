@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Effects
 import Quickshell
 import Quickshell.Wayland
+import "DockInteraction.js" as DockInteraction
 
 PanelWindow {
     id: dock
@@ -14,6 +15,7 @@ PanelWindow {
     function leaveKeyboard(){keyboardMode=false;hovered=-1;if(shell.popupOwner==="dock:"+outputName)shell.claimPopup("");}
     Connections {target:shell;function onRequestDockFocus(name){if(name===dock.outputName){shell.claimPopup("dock:"+dock.outputName);dock.keyboardMode=true;dock.hovered=dock.keyboardIndex;keyboard.focus=true;}}}
     property real pointerSlot: -1
+    property string pressedKey: ""
     function trackPointer(x, y) {
         keyboardMode = false;
         const position = (x - 12) / slot;
@@ -62,7 +64,7 @@ PanelWindow {
                 const n=shell.referenceDock.length;
                 dock.keyboardIndex=event.key===Qt.Key_Home?0:event.key===Qt.Key_End?n-1:(dock.keyboardIndex+(event.key===Qt.Key_Right?1:-1)+n)%n;
                 dock.hovered=dock.keyboardIndex;event.accepted=true;
-            } else if(event.key===Qt.Key_Return || event.key===Qt.Key_Space){const item=shell.referenceDock[dock.keyboardIndex];dock.leaveKeyboard();shell.activateDock(item,!!(event.modifiers & Qt.ShiftModifier),dock.outputName);event.accepted=true;}
+            } else if(event.key===Qt.Key_Return || event.key===Qt.Key_Space){const item=shell.referenceDock[dock.keyboardIndex];dock.leaveKeyboard();shell.activateDock(item,!!(event.modifiers & Qt.ShiftModifier),dock.outputName,event.modifiers);event.accepted=true;}
             else if(event.key===Qt.Key_Up || event.key===Qt.Key_Menu){const item=shell.referenceDock[dock.keyboardIndex];if(item.entry){dock.keyboardMode=false;dock.contextEntry=item.entry;dock.contextX=((dock.screen?dock.screen.width:1440)-dock.width)/2+12+(dock.keyboardIndex+0.5)*dock.slot;}event.accepted=true;}
         }
     }
@@ -124,17 +126,23 @@ PanelWindow {
         onEntered: dock.trackPointer(mouseX, mouseY)
         onPositionChanged: mouse => dock.trackPointer(mouse.x, mouse.y)
         onExited: dock.clearPointer()
-        onCanceled: dock.clearPointer()
+        onCanceled: { dock.pressedKey=""; dock.clearPointer(); }
+        onPressed: mouse => {
+            dock.trackPointer(mouse.x,mouse.y);
+            dock.pressedKey=dock.hovered>=0?shell.referenceDock[dock.hovered].key:"";
+        }
         onReleased: if (!containsMouse) dock.clearPointer()
         onClicked: mouse => {
             dock.trackPointer(mouse.x, mouse.y);
             if (dock.hovered < 0) return;
             const index = dock.hovered;
-            const item = shell.referenceDock[index];
-            if (mouse.button === Qt.RightButton && item.entry) {
+            const item = DockInteraction.releaseTarget(shell.referenceDock,dock.pressedKey,index);
+            dock.pressedKey="";
+            if (!item) return;
+            if ((mouse.button === Qt.RightButton || (mouse.modifiers & Qt.ControlModifier)) && item.entry) {
                 dock.contextEntry = item.entry;
                 dock.contextX = ((dock.screen ? dock.screen.width : 1440) - dock.width) / 2 + 12 + (index + 0.5) * dock.slot;
-            } else shell.activateDock(item, !!(mouse.modifiers & Qt.ShiftModifier), dock.outputName);
+            } else shell.activateDock(item, !!(mouse.modifiers & Qt.ShiftModifier), dock.outputName, mouse.modifiers);
         }
     }
 

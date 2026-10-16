@@ -12,13 +12,15 @@ Column {
     property string error: ""
     property bool editing: false
     property int revision: 0
+    property string writingBus: ""
+    onSelectedBusChanged:{revision++;pending=-1;editing=false;debounce.stop();error="";const selected=displays.find(d=>d.bus===selectedBus) || (displays.length===1?displays[0]:null);level=selected?selected.level:0;}
     readonly property string python: Quickshell.env("GLOBAL_MENU_PYTHON") || "python3"
     readonly property string helper: Qt.resolvedUrl("system-controls.py").toString().replace(/^file:\/\//, "")
     spacing:6
     function flush() {
         if(writer.running || !display || pending<0)return;
         writer.command=[python,helper,"brightness",display.bus,String(Math.round(pending*display.maximum))];
-        pending=-1;writer.running=true;
+        writingBus=display.bus;pending=-1;writer.running=true;
     }
     DesktopComboBox {visible:root.displays.length>1;width:parent.width;model:root.displays;textRole:"name";currentIndex:root.displays.findIndex(d=>d.bus===root.selectedBus);displayText:currentIndex<0?"Choose display":currentText;onActivated:index=>{root.selectedBus=root.displays[index].bus;root.level=root.display.level;} Accessible.name:"Brightness display"}
     PanelLabel {text:root.display?"Display":"Display · Unavailable";font.pixelSize:12;font.weight:Font.DemiBold}
@@ -55,7 +57,7 @@ Column {
         }
     }
     Timer {id:debounce;interval:100;onTriggered:root.flush()}
-    Process {id:writer;onExited:(code,status)=>{if(code!==0)root.error="The display rejected the brightness change";if(root.pending>=0)root.flush();else refresh.restart();}}
+    Process {id:writer;onExited:(code,status)=>{if(root.display && root.display.bus===root.writingBus && code!==0)root.error="The display rejected the brightness change";if(root.pending>=0)root.flush();else refresh.restart();}}
     Process {
         id:reader;property int requestRevision:0
         command:[root.python,root.helper,"displays"]

@@ -10,8 +10,11 @@ Item {
     property string errorMessage: ""
     property string prompt: "Enter Password"
     property bool busy: false
-    onBusyChanged: if (!busy) Qt.callLater(() => password.forceActiveFocus())
+    onBusyChanged: {if(busy && password)password.clear();else Qt.callLater(() => password.forceActiveFocus());}
     property bool echoResponse: false
+    onEchoResponseChanged:if(password)password.clear()
+    onPromptChanged:if(password)password.clear()
+    onVisibleChanged:if(!visible && password)password.clear()
     property date now: new Date()
     readonly property real unit: Math.max(0.65, Math.min(1.6, height / 900))
     signal submitted(string response)

@@ -13,7 +13,8 @@ PanelSurface {
     signal expandRequested()
     activeFocusOnTab:true
     Accessible.role:Accessible.Button
-    Accessible.name:notification.app+", "+notification.summary+(expandStack?", "+stackCount+" notifications. Expand stack":"")
+    onNotificationChanged:timeLabel=stamp()
+    Accessible.name:notification.app+", "+notification.summary+(expandStack?", "+stackCount+" notifications. Expand stack":expanded?", details expanded":"")
     Keys.onReturnPressed:activate()
     Keys.onSpacePressed:activate()
     function activate(){if(expandStack)expandRequested();else if(notification.actions.some(a=>a.id==="default"))service.invoke(notification,"default");else detailsRequested();}

@@ -113,10 +113,29 @@ def subject_source(value):
 
 
 def save_subject(source,destination,overwrite=False):
-    from gi.repository import Gio
     src=subject_source(source);dst=Path(destination).expanduser().absolute()
     if dst.suffix.lower()!='.png':raise ValueError('Save the transparent image as PNG')
-    Gio.File.new_for_path(str(src)).copy(Gio.File.new_for_path(str(dst)),Gio.FileCopyFlags.OVERWRITE if overwrite is True else Gio.FileCopyFlags.NONE,None,None,None)
+    # Copy privately before publishing. A failed export must not truncate the
+    # existing destination merely because overwrite was confirmed.
+    from file_jobs import move_exact, sync_directory
+    fd,name=tempfile.mkstemp(prefix='.lumen-export-',dir=dst.parent)
+    staged=Path(name)
+    try:
+        with os.fdopen(fd,'wb') as stream:
+            with src.open('rb') as original:
+                import shutil
+                shutil.copyfileobj(original,stream)
+            stream.flush();os.fsync(stream.fileno())
+        if overwrite is True:
+            os.replace(staged,dst)
+        else:
+            try:move_exact(staged,dst)
+            except FileExistsError as exc:
+                from gi.repository import GLib
+                raise GLib.Error('Destination exists; confirm replacement before saving') from exc
+        sync_directory(dst.parent)
+    finally:
+        staged.unlink(missing_ok=True)
     return dict(message='Saved '+str(dst))
 
 

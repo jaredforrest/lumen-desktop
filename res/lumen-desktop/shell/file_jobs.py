@@ -1,5 +1,7 @@
 """Window-independent, no-overwrite file jobs and native personal Trash recovery."""
 import configparser
+import copy
+import hashlib
 import errno
 import json
 import os
@@ -43,6 +45,33 @@ def move_exact(src, dst):
     if libc.renameat2(-100, os.fsencode(src), -100, os.fsencode(dst), 1):
         code = ctypes.get_errno()
         raise OSError(code, os.strerror(code), str(dst))
+
+
+def sync_directory(directory):
+    fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def sync_tree(root):
+    """Commit copied file metadata and directory entries before deleting sources."""
+    if root.is_symlink():
+        return
+    if root.is_dir():
+        for directory, dirs, files in os.walk(root, topdown=False, followlinks=False):
+            for name in files:
+                item = Path(directory) / name
+                if not item.is_symlink():
+                    fd = os.open(item, os.O_RDONLY | os.O_NOFOLLOW)
+                    try: os.fsync(fd)
+                    finally: os.close(fd)
+            sync_directory(directory)
+    else:
+        fd = os.open(root, os.O_RDONLY | os.O_NOFOLLOW)
+        try: os.fsync(fd)
+        finally: os.close(fd)
 
 
 def trash_root():
@@ -123,7 +152,7 @@ class Jobs:
 
     def state(self):
         with self.lock:
-            return dict(jobs=[dict(j) for j in list(self.jobs.values())[-40:]], canUndo=bool(self.undo), historyWarning=self.journal_warning)
+            return dict(jobs=copy.deepcopy(list(self.jobs.values())[-40:]), canUndo=bool(self.undo), historyWarning=self.journal_warning)
 
     def update(self, ident, **fields):
         with self.lock:
@@ -142,10 +171,18 @@ class Jobs:
         return self.state()
 
     def start(self, data):
+        if not isinstance(data, dict):
+            raise ValueError('File operation must be an object')
+        request_id = data.get('requestId')
+        if request_id is not None and (not isinstance(request_id, str) or not 1 <= len(request_id) <= 128 or any(ord(c) < 33 or ord(c) > 126 for c in request_id)):
+            raise ValueError('Request ID must contain 1 to 128 printable characters without spaces')
+        raw_paths = data.get('paths', [])
+        if not isinstance(raw_paths, list):
+            raise ValueError('Selected paths must be a list')
         action = data.get('operation')
         if action not in ('copy', 'move', 'trash', 'restore', 'undo'):
             raise ValueError('Unknown file operation')
-        paths = list(dict.fromkeys(str(local_path(p)) for p in data.get('paths', [])))
+        paths = list(dict.fromkeys(str(local_path(p)) for p in raw_paths))
         if action != 'undo' and not paths:
             raise ValueError('Select at least one item')
         if len(paths) > 5000:
@@ -158,13 +195,23 @@ class Jobs:
                 raise ValueError('The destination is not a folder')
         if data.get('conflict', 'skip') not in ('skip', 'keep-both'):
             raise ValueError('Choose Skip or Keep Both; replacement is not supported')
+        # A retransmission may arrive after the caller timed out or the service
+        # restarted. Return the original outcome instead of mutating twice.
+        payload = dict(operation=action, paths=paths, destination=data.get('destination'), conflict=data.get('conflict', 'skip'))
+        fingerprint = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
         ident = uuid.uuid4().hex
         with self.lock:
+            if request_id is not None:
+                existing = next((job for job in self.jobs.values() if job.get('requestId') == request_id), None)
+                if existing is not None:
+                    if existing.get('requestFingerprint') != fingerprint:
+                        raise ValueError('Request ID was already used for a different operation')
+                    return dict(job=existing['id'], **self.state())
             # Serialize mutations while allowing all browsing/preview requests to proceed.
             if any(j['state'] in ('running', 'cancelling') for j in self.jobs.values()):
                 raise ValueError('Wait for the current file operation or cancel it first')
             self.tokens[ident] = threading.Event()
-            self.jobs[ident] = dict(id=ident, operation=action, state='running', total=len(paths),
+            self.jobs[ident] = dict(id=ident, requestId=request_id, requestFingerprint=fingerprint, operation=action, state='running', total=len(paths),
                 completed=0, bytes=0, current='', errors=[], selected='', started=time.time(), sources=paths, destination=data.get('destination',''))
             try:self.persist()
             except OSError:
@@ -229,6 +276,9 @@ class Jobs:
         if moving:
             try:
                 move_exact(src, dst)
+                sync_directory(dst.parent)
+                if src.parent != dst.parent:
+                    sync_directory(src.parent)
                 return dst
             except OSError as exc:
                 if exc.errno != errno.EXDEV:
@@ -241,7 +291,10 @@ class Jobs:
             self.check(ident)
             if before != snapshot(src):
                 raise ValueError('Source changed during copying; source was kept and partial output discarded')
+            if moving:
+                sync_tree(partial)
             move_exact(partial, dst)
+            sync_directory(dst.parent)
             if moving:
                 # Publishing the complete destination precedes any removal of source.
                 if before != snapshot(src):

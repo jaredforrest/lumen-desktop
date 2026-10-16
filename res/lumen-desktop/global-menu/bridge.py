@@ -25,9 +25,24 @@ def focused(node):
             return result
 
 
-def clean(layout):
+def clean(layout, depth=0, remaining=None):
+    if remaining is None:
+        remaining = [4096, set()]
+    if depth > 32 or remaining[0] <= 0:
+        raise ValueError('Menu exceeds supported bounds')
+    remaining[0] -= 1
+    if not isinstance(layout, (list, tuple)) or len(layout) != 3:
+        raise ValueError('Invalid menu node')
     ident, props, children = layout
-    return {'id': int(ident), 'label': str(props.get('label', '')),
+    if not isinstance(props, dict) or not isinstance(children, (list, tuple)):
+        raise ValueError('Invalid menu properties or children')
+    if not isinstance(ident, int) or isinstance(ident, (bool, dbus.Boolean)) or not -(2**31) <= ident < 2**31 or int(ident) in remaining[1]:
+        raise ValueError('Invalid or duplicate menu identity')
+    remaining[1].add(int(ident))
+    for key in ('enabled', 'visible'):
+        if key in props and not isinstance(props[key], (bool, dbus.Boolean)):
+            raise ValueError('Invalid menu availability')
+    return {'id': int(ident), 'label': str(props.get('label', ''))[:4096],
             'enabled': bool(props.get('enabled', True)),
             'visible': bool(props.get('visible', True)),
             'separator': props.get('type') == 'separator',
@@ -35,7 +50,7 @@ def clean(layout):
             'checked': int(props.get('toggle-state', 0)) == 1,
             'shortcut': ' / '.join('+'.join(str(k) for k in seq) for seq in props.get('shortcut', [])),
             'submenu': props.get('children-display') == 'submenu',
-            'children': [clean(c) for c in children]}
+            'children': [clean(c, depth + 1, remaining) for c in children]}
 
 
 def lookup(node, ident):
@@ -45,6 +60,18 @@ def lookup(node, ident):
         return node
     for child in node['children']:
         result = lookup(child, ident)
+        if result:
+            return result
+
+
+def actionable(node, ident):
+    """An action inherits availability from every enclosing menu."""
+    if not node or not node['enabled'] or not node['visible'] or node['separator']:
+        return None
+    if node['id'] == ident:
+        return node
+    for child in node['children']:
+        result = actionable(child, ident)
         if result:
             return result
 
@@ -205,7 +232,7 @@ class Bridge(dbus.service.Object):
                     self.last_refresh = time.monotonic()
                     self.publish()
                     return
-                except dbus.DBusException:
+                except (dbus.DBusException, ValueError, TypeError, RecursionError):
                     self.held_token = ''
         if win and token != self.held_token:
             self.held_token = ''
@@ -215,8 +242,8 @@ class Bridge(dbus.service.Object):
             try:
                 _, layout = self.proxy(item).GetLayout(0, -1, dbus.Array([], signature='s'), timeout=2)
                 menu = clean(layout)
-            except dbus.DBusException as ex:
-                error = ex.get_dbus_name()
+            except (dbus.DBusException, ValueError, TypeError, RecursionError) as ex:
+                error = ex.get_dbus_name() if isinstance(ex, dbus.DBusException) else 'Invalid menu layout'
         self.state = {'token': token, 'title': win.get('name', '') if win else '',
                       'supported': menu is not None, 'menu': menu, 'error': error,
                       'windowId': win['id'] if win else 0, 'outputName': self.output_name,
@@ -261,7 +288,7 @@ class Bridge(dbus.service.Object):
     def Open(self, token, ident):
         try:
             item = self.guarded(token, read_only=True)
-            node = lookup(self.state['menu'], int(ident))
+            node = actionable(self.state['menu'], int(ident))
             if not node or not node['enabled'] or not node['visible'] or not node['submenu']:
                 return False
             self.proxy(item).AboutToShow(int(ident), timeout=2)
@@ -276,7 +303,7 @@ class Bridge(dbus.service.Object):
             item = self.guarded(token)
             self.refresh()
             item = self.guarded(token)
-            node = lookup(self.state['menu'], int(ident))
+            node = actionable(self.state['menu'], int(ident))
             if not node or not node['enabled'] or not node['visible'] or node['submenu'] or node['separator']:
                 return False
             self.proxy(item).Event(int(ident), 'clicked', dbus.Int32(0, variant_level=1), dbus.UInt32(0), timeout=2)

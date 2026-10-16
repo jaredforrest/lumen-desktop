@@ -66,12 +66,15 @@ try:
  ipc('seat seat0 cursor set 20 16');ipc('seat seat0 cursor press button1');ipc('seat seat0 cursor set 110 16');ipc('seat seat0 cursor release button1');assert any(v['name']=='Frame Test' for v in leaves())
  ipc('output HEADLESS-1 resolution 2560x1800 scale 2');call('grim',str(out/'native-frame-2x.png'));assert_buttons(out/'native-frame-2x.png',next(v for v in leaves() if v['name']=='Frame Test'),2)
  ipc('output HEADLESS-1 resolution 1280x900 scale 1')
- # Green fills while preserving the controls; a second click restores placement.
+ # Green enters real fullscreen; Fill remains a separate reversible operation.
  original = next(n for n in leaves() if n['name']=='Frame Test')
- click(60,16);filled=next(n for n in leaves() if n['name']=='Frame Test')
+ click(60,16);full=next(n for n in leaves() if n['name']=='Frame Test')
+ assert full['fullscreen_mode']!=0,full
+ ipc('[title="^Frame Test$"] lumen_window fullscreen')
+ ipc('[title="^Frame Test$"] lumen_window fill');filled=next(n for n in leaves() if n['name']=='Frame Test')
  assert filled['fullscreen_mode']==0 and filled['deco_rect']['height']==32, filled
  assert filled['type']=='floating_con', filled
- r=filled['deco_rect'];click(r['x']+60,r['y']+16)
+ ipc('[title="^Frame Test$"] lumen_window fill')
  restored=next(n for n in leaves() if n['name']=='Frame Test')
  assert restored['type']==original['type'] and restored['rect']==original['rect'], (original,restored)
  click(40,16);n=next(n for n in leaves() if n['name']=='Frame Test');assert n['scratchpad_state']!='none',n
@@ -80,7 +83,7 @@ try:
  assert restored['type']==original['type'] and restored['rect']==original['rect'], (original,restored)
  n=next(n for n in leaves() if n['name']=='Frame Test');(out/'restored.json').write_text(json.dumps(n,indent=2));call('grim',str(out/'restored.png'));r=n['deco_rect'];click(r['x']+20,r['y']+16)
  wait(lambda:not any(n['name']=='Frame Test' for n in leaves()))
- print('PASS: native title bar is 32px; close, minimise/restore placement and reversible fill work.')
+ print('PASS: native title bar is 32px; close, minimise/restore placement fullscreen and reversible fill work.')
  launch(['foot','--title=Floating Frame Test','sh','-c','sleep 600'],'floating-foot.log');wait(lambda:any(n['name']=='Floating Frame Test' for n in leaves()))
  ipc('[title="^Floating Frame Test$"] floating enable, resize set width 500 px height 320 px, move position 150 px 170 px')
  before=next(n for n in leaves() if n['name']=='Floating Frame Test')
@@ -100,7 +103,20 @@ try:
  ipc('[title="^Tiled A$"] lumen_window minimize');ipc('[title="^Tiled A$"] scratchpad show')
  after={n['name']:n['rect'] for n in leaves()}
  assert before==after,(before,after)
+ # Hiding is independent of minimisation, including when both apply.
+ ipc('[title="^Tiled A$"] lumen_window minimize')
+ ipc('[title="^Tiled [AB]$"] lumen_window hide')
+ hidden={n['name']:n for n in leaves()}
+ assert hidden['Tiled A']['lumen_state']['minimised'] and hidden['Tiled A']['lumen_state']['hidden'],hidden
+ assert not hidden['Tiled B']['lumen_state']['minimised'] and hidden['Tiled B']['lumen_state']['hidden'],hidden
+ ipc('[title="^Tiled [AB]$"] lumen_window unhide')
+ shown={n['name']:n for n in leaves()}
+ assert shown['Tiled A']['scratchpad_state']!='none' and shown['Tiled A']['lumen_state']['minimised'],shown
+ assert shown['Tiled B']['scratchpad_state']=='none' and not shown['Tiled B']['lumen_state']['hidden'],shown
+ ipc('[title="^Tiled A$"] scratchpad show')
+ assert {n['name']:n['rect'] for n in leaves()}==before
  ipc('[title="^Tiled [AB]$"] lumen_window close');wait(lambda:not leaves())
+ print('PASS: hide/unhide keeps independent minimisation and original placements.')
  print('PASS: minimizing one tiled sibling restores both placements.')
 
 

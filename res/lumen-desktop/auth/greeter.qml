@@ -42,12 +42,12 @@ ShellRoot {
             }
         }
         function onAuthFailure(message) {
-            root.pending = ""; root.busy = false; root.responseReady = false;
+            root.pending = ""; root.busy = false; root.responseReady = false; root.echoResponse = false;
             root.prompt = "Enter Password";
             root.errorMessage = "Password not recognised. Try again.";
         }
         function onError(error) {
-            root.pending = ""; root.busy = false; root.responseReady = false;
+            root.pending = ""; root.busy = false; root.responseReady = false; root.echoResponse = false;
             root.errorMessage = "Unable to sign in. Please try again.";
         }
         function onReadyToLaunch() {

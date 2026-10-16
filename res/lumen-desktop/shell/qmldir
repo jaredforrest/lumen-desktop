@@ -65,3 +65,7 @@ SessionOptions 1.0 SessionOptions.qml
 HelpWindow 1.0 HelpWindow.qml
 DesktopSpinBox 1.0 DesktopSpinBox.qml
 RemoteDesktopWindow 1.0 RemoteDesktopWindow.qml
+
+ClipboardState 1.0 ClipboardState.qml
+
+AppSwitcher 1.0 AppSwitcher.qml

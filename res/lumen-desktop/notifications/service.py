@@ -137,7 +137,7 @@ class Server(dbus.service.Object):
         self.tick_source = GLib.timeout_add(250, self.tick)
 
     def save(self):
-        rows = [{k: v for k, v in row.items() if k not in ('sender', 'actions', 'banner', 'deadline', 'bannerDeadline', 'active', 'held', 'heldBy')}
+        rows = [{k: v for k, v in row.items() if k not in ('sender', 'actions', 'banner', 'deadline', 'bannerDeadline', 'active', 'held', 'heldBy', 'delivery')}
                 for row in self.rows if not row['transient']]
         data = {'version': 1, 'nextId': self.next_id, 'dnd': self.dnd, 'rows': rows}
         temp = self.file.with_suffix('.tmp')
@@ -264,7 +264,7 @@ class Server(dbus.service.Object):
                    summary=str(summary)[:1024], body=str(body)[:8192], icon=icon, image=self.image(hints, ident),
                    actions=[{'id': str(actions[i])[:256], 'label': str(actions[i+1])[:256]} for i in range(0, min(len(actions)-1, 32), 2)],
                    urgency=urgency, resident=bool(hints.get('resident', False)), transient=transient,
-                   timestamp=int(time.time()*1000), active=True, sender=str(sender), unread=True,
+                   timestamp=int(time.time()*1000), delivery=str(time.monotonic_ns()), active=True, sender=str(sender), unread=True,
                    banner=not self.dnd, deadline=deadline, bannerDeadline=now+banner_duration if banner_duration else 0)
         policy=self.policies.get(row['desktop'] or row['app'],'banners')
         if policy!='banners':row['banner']=False
@@ -307,8 +307,17 @@ class Server(dbus.service.Object):
     @dbus.service.method(UI, in_signature='s', out_signature='', sender_keyword='sender')
     def Command(self, encoded, sender=None):
         data = json.loads(encoded)
+        if not isinstance(data, dict):
+            raise ValueError('Notification command must be an object')
         action = data.get('action')
-        row = self.find(data.get('id', 0))
+        if action not in ('hold', 'dnd', 'policy', 'seen', 'dismiss', 'clear', 'hide', 'invoke'):
+            raise ValueError('Unknown notification command')
+        if 'enabled' in data and type(data['enabled']) is not bool:
+            raise ValueError('Notification enabled state must be boolean')
+        ident = data.get('id', 0)
+        if type(ident) is not int or not 0 <= ident <= MAX_ID:
+            raise ValueError('Invalid notification identity')
+        row = self.find(ident)
         if action == 'hold' and row:
             if data.get('enabled') and row['bannerDeadline']:
                 row['heldBy'] = str(sender)
@@ -361,6 +370,9 @@ class Server(dbus.service.Object):
         elif action == 'hide' and row:
             row['banner'] = False
         elif action == 'invoke' and row and row['active']:
+            # A replacement keeps the protocol ID but owns a new action set.
+            if 'delivery' in data and data['delivery'] != row.get('delivery'):
+                return
             key = str(data.get('key', 'default'))
             if key in [a['id'] for a in row['actions']] and self.bus.name_has_owner(row['sender']):
                 self.ActionInvoked(row['id'], key)

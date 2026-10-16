@@ -119,21 +119,24 @@
  	} title_bar;
  
  	struct {
-@@ -131,6 +142,7 @@
+@@ -131,6 +142,8 @@
  	// Both hidden and visible scratchpad containers have scratchpad=true.
  	// Hidden scratchpad containers have a NULL parent.
  	bool scratchpad;
-+ struct sway_lumen_placement *lumen_minimized, *lumen_filled;
++ struct sway_lumen_placement *lumen_minimized, *lumen_filled, *lumen_hidden;
++ bool lumen_app_hidden;
  
  	// Stores last output size and position for adjusting coordinates of
  	// scratchpad windows.
-@@ -149,6 +161,10 @@
+@@ -149,6 +161,12 @@
  struct sway_container *container_create(struct sway_view *view);
  
  void container_destroy(struct sway_container *con);
 +bool container_lumen_action_enabled(struct sway_container *con, int action);
 +void container_lumen_minimize(struct sway_container *con);
 +void container_lumen_fill(struct sway_container *con);
++void container_lumen_hide(struct sway_container *con);
++void container_lumen_unhide(struct sway_container *con);
 +void container_lumen_placement_free(struct sway_lumen_placement *placement);
  
  void container_begin_destroy(struct sway_container *con);
@@ -194,12 +197,13 @@
  
  		int alloc_width = MIN((int) node->width,
  			width - h_padding - config->titlebar_h_padding);
-@@ -452,6 +476,8 @@
+@@ -452,6 +476,9 @@
  				"which is still referenced by transactions")) {
  		return;
  	}
 + container_lumen_placement_free(con->lumen_minimized);
 + container_lumen_placement_free(con->lumen_filled);
++ container_lumen_placement_free(con->lumen_hidden);
  	free(con->title);
  	free(con->formatted_title);
  	free(con->title_format);
@@ -273,8 +277,8 @@
 +			if (traffic >= 0 && cont->node.id == e->traffic_id && traffic == e->traffic_action) {
 +				if (traffic == 0) view_close(cont->view);
 +				else if (traffic == 1) container_lumen_minimize(cont);
-+                else if (modifiers & WLR_MODIFIER_ALT) container_set_fullscreen(cont, FULLSCREEN_WORKSPACE);
-+                else container_lumen_fill(cont);
++                else if (modifiers & WLR_MODIFIER_ALT) container_lumen_fill(cont);
++                else container_set_fullscreen(cont, FULLSCREEN_WORKSPACE);
 +				transaction_commit_dirty();
 +			}
 +			return;
@@ -326,7 +330,7 @@
  #include "list.h"
  #include "log.h"
  #include "util.h"
-@@ -96,6 +98,115 @@
+@@ -96,6 +98,136 @@
  	con->transform = box;
  }
  
@@ -365,7 +369,7 @@
 + return con->node.id == *(uint64_t *)data && !con->node.destroying && !con->view;
 +}
 +
-+static void lumen_restore(struct sway_container *con, struct sway_lumen_placement *p) {
++static void lumen_restore(struct sway_container *con, struct sway_lumen_placement *p, bool focus) {
 + struct sway_workspace *ws = workspace_by_name(p->workspace);
 + if (!ws) {
 +  struct sway_workspace *focused = seat_get_focused_workspace(input_manager_current_seat());
@@ -410,7 +414,28 @@
 + arrange_workspace(ws);
 + node_set_dirty(&con->node);
 + if (con->view && con->view->foreign_toplevel) wlr_foreign_toplevel_handle_v1_set_minimized(con->view->foreign_toplevel, false);
-+ seat_set_focus(input_manager_current_seat(), &con->node);
++ if (focus) seat_set_focus(input_manager_current_seat(), &con->node);
++}
++
++void container_lumen_hide(struct sway_container *con) {
++ if (!container_lumen_action_enabled(con, 0) || con->lumen_app_hidden) return;
++ if (!con->scratchpad) {
++  con->lumen_hidden = lumen_save(con);
++  if (!con->lumen_hidden) return;
++  root_scratchpad_add_container(con, NULL);
++ }
++ con->lumen_app_hidden = true;
++ node_set_dirty(&con->node);
++}
++
++void container_lumen_unhide(struct sway_container *con) {
++ if (!con || !con->lumen_app_hidden) return;
++ con->lumen_app_hidden = false;
++ if (con->lumen_hidden) {
++  struct sway_lumen_placement *p = con->lumen_hidden; con->lumen_hidden = NULL;
++  lumen_restore(con, p, false); container_lumen_placement_free(p);
++ }
++ node_set_dirty(&con->node);
 +}
 +
 +void container_lumen_minimize(struct sway_container *con) {
@@ -427,7 +452,7 @@
 + if (con->pending.fullscreen_mode != FULLSCREEN_NONE) { container_fullscreen_disable(con); return; }
 + if (con->lumen_filled) {
 +  struct sway_lumen_placement *p = con->lumen_filled; con->lumen_filled = NULL;
-+  lumen_restore(con, p); container_lumen_placement_free(p); return;
++  lumen_restore(con, p, true); container_lumen_placement_free(p); return;
 + }
 + con->lumen_filled = lumen_save(con);
 + if (!con->lumen_filled) return;
@@ -442,13 +467,17 @@
  void root_scratchpad_add_container(struct sway_container *con, struct sway_workspace *ws) {
  	if (!sway_assert(!con->scratchpad, "Container is already in scratchpad")) {
  		return;
-@@ -155,6 +266,10 @@
+@@ -155,6 +266,14 @@
  }
  
  void root_scratchpad_show(struct sway_container *con) {
++ if (con->lumen_app_hidden) {
++  container_lumen_unhide(con);
++  if (!con->scratchpad) { seat_set_focus(input_manager_current_seat(), &con->node); return; }
++ }
 + if (con->lumen_minimized) {
 +  struct sway_lumen_placement *p = con->lumen_minimized; con->lumen_minimized = NULL;
-+  lumen_restore(con, p); container_lumen_placement_free(p); return;
++  lumen_restore(con, p, true); container_lumen_placement_free(p); return;
 + }
  	struct sway_seat *seat = input_manager_current_seat();
  	struct sway_workspace *new_ws = seat_get_focused_workspace(seat);
@@ -465,14 +494,14 @@
  sway_cmd cmd_shortcuts_inhibitor;
 --- a/sway/commands.c
 +++ b/sway/commands.c
-@@ -113,6 +113,7 @@
- /* Runtime-only commands. Keep alphabetized */
- static const struct cmd_handler command_handlers[] = {
- 	{ "allow_tearing", cmd_allow_tearing },
+@@ -122,6 +122,7 @@
+ 	{ "inhibit_idle", cmd_inhibit_idle },
+ 	{ "kill", cmd_kill },
+ 	{ "layout", cmd_layout },
 + { "lumen_window", cmd_lumen_window },
- 	{ "border", cmd_border },
- 	{ "create_output", cmd_create_output },
- 	{ "exit", cmd_exit },
+ 	{ "mark", cmd_mark },
+ 	{ "max_render_time", cmd_max_render_time },
+ 	{ "move", cmd_move },
 --- a/sway/commands/scratchpad.c
 +++ b/sway/commands/scratchpad.c
 @@ -7,6 +7,8 @@
@@ -484,7 +513,7 @@
  
  static void scratchpad_toggle_auto(void) {
  	struct sway_seat *seat = input_manager_current_seat();
-@@ -130,3 +132,18 @@
+@@ -130,3 +132,20 @@
  
  	return cmd_results_new(CMD_SUCCESS, NULL);
  }
@@ -495,11 +524,33 @@
 + struct sway_container *con = config->handler_context.container;
 + if (!con || !con->view) return cmd_results_new(CMD_INVALID, "Select an application window");
 + if (strcmp(argv[0], "close") == 0) view_close(con->view);
++ else if (strcmp(argv[0], "hide") == 0) container_lumen_hide(con);
++ else if (strcmp(argv[0], "unhide") == 0) container_lumen_unhide(con);
 + else if (strcmp(argv[0], "minimize") == 0) container_lumen_minimize(con);
 + else if (strcmp(argv[0], "fill") == 0) container_lumen_fill(con);
 + else if (strcmp(argv[0], "fullscreen") == 0) container_set_fullscreen(con,
 +  con->pending.fullscreen_mode == FULLSCREEN_NONE ? FULLSCREEN_WORKSPACE : FULLSCREEN_NONE);
-+ else return cmd_results_new(CMD_INVALID, "Expected close, minimize, fill or fullscreen");
++ else return cmd_results_new(CMD_INVALID, "Expected close, minimize, fill, fullscreen, hide or unhide");
 + transaction_commit_dirty();
 + return cmd_results_new(CMD_SUCCESS, NULL);
 +}
+--- a/sway/ipc-json.c
++++ b/sway/ipc-json.c
+@@ -740,6 +740,17 @@
+ 	// sway doesn't track if window was resized in scratchpad, so we can't use "changed"
+ 	json_object_object_add(object, "scratchpad_state",
+ 			json_object_new_string(!c->scratchpad ? "none" : "fresh"));
++	json_object *lumen_state = json_object_new_object();
++	json_object_object_add(lumen_state, "minimised",
++		json_object_new_boolean(c->lumen_minimized != NULL));
++	json_object_object_add(lumen_state, "filled",
++		json_object_new_boolean(c->lumen_filled != NULL));
++	json_object_object_add(lumen_state, "hidden", json_object_new_boolean(c->lumen_app_hidden));
++	struct sway_lumen_placement *saved = c->lumen_hidden ? c->lumen_hidden : c->lumen_minimized;
++	json_object_object_add(lumen_state, "restore_workspace", saved ? json_object_new_string(saved->workspace) : NULL);
++	json_object_object_add(lumen_state, "version", json_object_new_int(1));
++	json_object_object_add(object, "lumen_state", lumen_state);
++
+ 
+ 	struct sway_node *parent = node_get_parent(&c->node);
+ 	struct wlr_box parent_box = {0, 0, 0, 0};

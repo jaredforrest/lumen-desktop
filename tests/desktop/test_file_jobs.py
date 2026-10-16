@@ -79,4 +79,78 @@ class FileJobs(unittest.TestCase):
         for bad in ['https://x/a','file://remote/a','file:///tmp/a%00x','/tmp/a']:
             with self.assertRaises(ValueError):paths_from_uris(bad)
 
+class FileJobRequests(unittest.TestCase):
+    setUp=FileJobs.setUp
+    tearDown=FileJobs.tearDown
+    wait=FileJobs.wait
+    runjob=FileJobs.runjob
+    def test_duplicate_request_returns_original_without_second_copy(self):
+        item=self.src/'item';item.write_text('content')
+        request=dict(operation='copy',paths=[str(item)],destination=str(self.dst),conflict='keep-both',requestId='fixture-copy-1')
+        first=self.jobs.start(request);self.wait(first['job'])
+        second=self.jobs.start(request)
+        self.assertEqual(first['job'],second['job'])
+        self.assertEqual([p.name for p in self.dst.iterdir()],['item'])
+        with self.assertRaisesRegex(ValueError,'different operation'):
+            self.jobs.start({**request,'conflict':'skip'})
+
+    def test_request_receipt_survives_service_restart(self):
+        journal=self.root/'journal.json';self.jobs=Jobs(journal)
+        item=self.src/'item';item.write_text('content')
+        request=dict(operation='move',paths=[str(item)],destination=str(self.dst),requestId='fixture-move-1')
+        ident=self.jobs.start(request)['job'];self.wait(ident)
+        restarted=Jobs(journal)
+        self.assertEqual(restarted.start(request)['job'],ident)
+        self.assertEqual((self.dst/'item').read_text(),'content')
+
+    def test_unknown_outcome_is_not_automatically_retried(self):
+        import json
+        journal=self.root/'journal.json';self.jobs=Jobs(journal)
+        item=self.src/'item';item.write_text('content')
+        request=dict(operation='copy',paths=[str(item)],destination=str(self.dst),requestId='fixture-interrupted-1')
+        ident=self.jobs.start(request)['job'];self.wait(ident)
+        rows=json.loads(journal.read_text());rows[0]['state']='running';journal.write_text(json.dumps(rows))
+        restarted=Jobs(journal);reply=restarted.start(request)
+        self.assertEqual(reply['job'],ident)
+        self.assertEqual(reply['jobs'][0]['state'],'interrupted')
+        self.assertEqual(len(list(self.dst.iterdir())),1)
+
+    def test_cross_device_flush_failure_keeps_source_and_complete_destination(self):
+        from unittest.mock import patch
+        import file_jobs
+        with tempfile.TemporaryDirectory(dir='/dev/shm',prefix='files-flush-') as external:
+            target=Path(external);item=self.src/'item';item.write_text('source content')
+            original=file_jobs.sync_directory
+            def failed(directory):
+                if Path(directory)==target:raise OSError('simulated destination durability failure')
+                return original(directory)
+            with patch.object(file_jobs,'sync_directory',side_effect=failed):
+                result=self.runjob('move',[item],destination=target)
+            self.assertEqual(result['state'],'partial')
+            self.assertEqual(item.read_text(),'source content')
+            self.assertEqual((target/'item').read_text(),'source content')
+            self.assertFalse(list(target.glob('.lumen-copy-*')))
+
+    def test_cross_device_source_mutation_discards_staging_and_keeps_source(self):
+        with tempfile.TemporaryDirectory(dir='/dev/shm',prefix='files-race-') as external:
+            item=self.src/'item';item.write_text('before')
+            original=self.jobs.copy
+            def changed(ident,src,dst):
+                original(ident,src,dst);src.write_text('newer source')
+            self.jobs.copy=changed
+            result=self.runjob('move',[item],destination=Path(external))
+            self.assertEqual(result['state'],'partial')
+            self.assertEqual(item.read_text(),'newer source')
+            self.assertEqual(list(Path(external).iterdir()),[])
+
+    def test_snapshot_cannot_mutate_operation_history(self):
+        item=self.src/'item';item.write_text('content');self.runjob('copy',[item])
+        self.jobs.state()['jobs'][0]['errors'].append('injected')
+        self.assertEqual(self.jobs.state()['jobs'][0]['errors'],[])
+
+    def test_reject_invalid_request_envelopes_before_mutation(self):
+        for request in ([],dict(operation='copy',paths='not-a-list'),dict(operation='copy',requestId='bad id'),dict(operation='copy',requestId=7)):
+            with self.assertRaises(ValueError):self.jobs.start(request)
+        self.assertEqual(self.jobs.state()['jobs'],[])
+
 if __name__=='__main__':unittest.main()

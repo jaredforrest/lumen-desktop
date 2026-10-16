@@ -41,7 +41,8 @@ class ContextTests(unittest.TestCase):
     def test_view_preferences_survive_restart_and_reject_bad_modes(self):
         with tempfile.TemporaryDirectory() as tmp,patch.dict(os.environ,{'XDG_STATE_HOME':tmp}):
             handle(dict(action='save-preferences',preferences=dict(view='columns',sort='modified',descending=True)))
-            handle(dict(action='save-preferences',preferences=dict(view='malformed',sort='bad')))
+            with self.assertRaises(ValueError):
+                handle(dict(action='save-preferences',preferences=dict(view='malformed',sort='bad')))
             self.assertEqual(handle(dict(action='preferences'))['preferences'],dict(view='columns',sort='modified',descending=True))
 
     def test_get_info_reports_link_without_following_it(self):

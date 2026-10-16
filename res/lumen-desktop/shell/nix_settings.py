@@ -27,8 +27,8 @@ def read_settings():
     return json.loads(file.read_text())
 
 
-def set_section(section, value):
-    result = subprocess.run(['lumen-nix-settings', 'set', section, json.dumps(value, ensure_ascii=False)],
+def set_section(section, value, *, merge=False):
+    result = subprocess.run(['lumen-nix-settings', 'patch' if merge else 'set', section, json.dumps(value, ensure_ascii=False)],
                             capture_output=True, text=True, timeout=3600)
     if result.returncode:
         try: message = json.loads(result.stdout)['error']
@@ -81,6 +81,15 @@ def serialize(values):
             + encode(values) + '\n')
 
 
+def merge_section(current, patch):
+    """Merge under the transaction lock; stale readers cannot erase sibling keys."""
+    if not isinstance(current, dict) or not isinstance(patch, dict):
+        raise ValueError('Preference patches must be objects')
+    if any(key not in current for key in patch):
+        raise ValueError('Unsupported preference key')
+    return {**current, **patch}
+
+
 def rebuild_system(candidate):
     """Build the sole authoritative repository at its current clean commit."""
     if subprocess.run(['pgrep','-x','resize2fs'],capture_output=True).returncode==0:
@@ -92,7 +101,7 @@ def rebuild_system(candidate):
     return Path(json.loads(result.stdout)['system'])
 
 
-def git_transaction(section, value, application):
+def git_transaction(section, value, application, merge=False):
     # Immutable applied settings can be read during activation without the edit lock.
     if section is None:return read_settings()
     source=Path(os.environ['LUMEN_NIX_SETTINGS_SOURCE'])
@@ -111,7 +120,7 @@ def git_transaction(section, value, application):
         if application is not None:
             if section!='applicationPreferences' or application not in values[section]:raise ValueError('Unsupported application preferences')
             values[section][application]=value
-        else:values[section]=value
+        else:values[section]=merge_section(values[section],value) if merge else value
         fd,name=tempfile.mkstemp(prefix='.desktop-settings-',suffix='.nix',dir=source.parent)
         candidate=Path(name);committed=None;system=None;replaced=False;candidate_bytes=None
         try:
@@ -149,9 +158,9 @@ def git_transaction(section, value, application):
         return json.loads((bundle/'settings.json').read_text())
 
 
-def transaction(section=None, value=None, application=None):
+def transaction(section=None, value=None, application=None, *, merge=False):
     if os.environ.get("LUMEN_NIX_SETTINGS_DEPLOY"):
-        return git_transaction(section,value,application)
+        return git_transaction(section,value,application,merge)
     source = Path(os.environ['LUMEN_NIX_SETTINGS_SOURCE'])
     with (runtime() / 'transaction.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
@@ -175,7 +184,7 @@ def transaction(section=None, value=None, application=None):
             if section!='applicationPreferences' or application not in values[section]:
                 raise ValueError('Unsupported application preferences')
             values[section][application]=value
-        else:values[section]=value
+        else:values[section]=merge_section(values[section],value) if merge else value
         fd,name=tempfile.mkstemp(prefix='.desktop-settings-',suffix='.nix',dir=source.parent)
         candidate=Path(name)
         try:
@@ -207,6 +216,7 @@ if __name__ == '__main__':
     try:
         command=sys.argv[1] if len(sys.argv)>1 else 'read'
         if command=='set':result=transaction(sys.argv[2],json.loads(sys.argv[3]))
+        elif command=='patch':result=transaction(sys.argv[2],json.loads(sys.argv[3]),merge=True)
         elif command=='set-application':result=transaction('applicationPreferences',json.loads(sys.argv[3]),application=sys.argv[2])
         elif command=='sync':result=transaction()
         elif command=='apply':

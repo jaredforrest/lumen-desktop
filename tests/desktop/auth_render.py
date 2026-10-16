@@ -50,6 +50,7 @@ def exact(conn,n):
         data+=b
     return data
 def serve():
+    session_count=0
     listener=socket.socket(socket.AF_UNIX);listener.bind(str(runtime/'greetd.sock'));listener.listen()
     with listener.accept()[0] as conn:
         try:
@@ -57,7 +58,9 @@ def serve():
                 request=json.loads(exact(conn,struct.unpack('<I',exact(conn,4))[0]));kind=request['type']
                 # Keep only request types and launch command, never responses.
                 requests.append({'type':kind,'cmd':request.get('cmd')})
-                if kind=='create_session':reply=dict(type='auth_message',auth_message_type='secret',auth_message='Password:')
+                if kind=='create_session':
+                    session_count+=1
+                    reply=dict(type='auth_message',auth_message_type='visible' if session_count==1 else 'secret',auth_message='Fixture challenge:')
                 elif kind=='post_auth_message_response':
                     reply=dict(type='success') if request.get('response')=='fixture-password' else dict(type='error',error_type='auth_error',description='Incorrect password')
                 else:reply=dict(type='success')
@@ -68,11 +71,16 @@ try:
     launch(['sway','--unsupported-gpu','-c',str(conf)],'sway');wait(lambda:list(runtime.glob('sway-ipc*.sock')))
     env['SWAYSOCK']=str(next(runtime.glob('sway-ipc*.sock')));env['WAYLAND_DISPLAY']=next(x.name for x in runtime.glob('wayland-*') if not x.name.endswith('.lock'))
     thread=threading.Thread(target=serve,daemon=True);thread.start();wait(lambda:(runtime/'greetd.sock').exists());env['GREETD_SOCK']=str(runtime/'greetd.sock')
-    greeter=launch(['quickshell','-p',str(assets/'auth/greeter.qml')],'greeter');time.sleep(2)
+    greeterfile=assets/'auth/greeter.qml'
+    text=greeterfile.read_text();end=text.rfind('}')
+    greeterfile.write_text(text[:end]+'IpcHandler {target:"fixture";function passwordMasked():bool{return !root.echoResponse && !root.responseReady;}}'+text[end:])
+    greeter=launch(['quickshell','-p',str(greeterfile)],'greeter');time.sleep(2)
     assert greeter.poll() is None,(out/'greeter.log').read_text()
     call('grim',str(out/'login.png'))
     call('wtype','-s','300','wrong-password','-k','Return','-s','100');wait(lambda:len(requests)>=2);time.sleep(.5)
     assert not any(r['type']=='start_session' for r in requests)
+    assert call('quickshell','-p',str(greeterfile),'ipc','call','fixture','passwordMasked')=='true'
+    checks.append('visible challenge failure resets password masking')
     call('grim',str(out/'login-error.png'));checks.append('incorrect greetd response rejected')
     call('wtype','-s','300','fixture-password','-k','Return','-s','100');wait(lambda:any(r['type']=='start_session' for r in requests));wait(lambda:greeter.poll() is not None)
     assert [r['cmd'] for r in requests if r['type']=='start_session']==[['/bin/true']]
@@ -88,6 +96,15 @@ PanelWindow {
  AuthView { id:view; anchors.fill:parent }
  IpcHandler { target:"preview"
   function power(): void { view.openPowerMenu(); }
+  function secretRetention(): bool {
+   function walk(item){let result=[item];for(const child of item.children || [])result=result.concat(walk(child));return result;}
+   const field=walk(view).find(n=>n.objectName==="password");
+   field.text="synthetic";view.busy=true;let cleared=field.text.length===0;view.busy=false;
+   field.text="synthetic";view.echoResponse=true;cleared=cleared && field.text.length===0;
+   field.text="synthetic";view.echoResponse=false;cleared=cleared && field.text.length===0;
+   field.text="synthetic";view.visible=false;cleared=cleared && field.text.length===0;view.visible=true;
+   return cleared;
+  }
   function bounds(): string {
    function walk(item){let result=[item];for(const child of item.children || [])result=result.concat(walk(child));return result;}
    const field=walk(view).find(n=>n.objectName==="password");const position=field.mapToItem(view,0,0);
@@ -96,6 +113,8 @@ PanelWindow {
  }
 }''')
     proc=launch(['quickshell','-p',str(preview)],'preview');time.sleep(1);assert proc.poll() is None
+    assert call('quickshell','-p',str(preview),'ipc','call','preview','secretRetention')=='true'
+    checks.append('authentication view clears responses across busy masking and visibility transitions')
     call('grim',str(out/'lock-preview.png'))
     # Same view means both modes must render the same pixels at the same time.
     from PIL import Image,ImageChops

@@ -23,7 +23,7 @@ Item {
     property int openId: -1
     signal opened()
     readonly property string python: Quickshell.env("GLOBAL_MENU_PYTHON") || "python3"
-    readonly property string helper: Qt.resolvedUrl("search.py").toString().replace(/^file:\/\//, "")
+    property string helper: Qt.resolvedUrl("search.py").toString().replace(/^file:\/\//, "")
     function send(action, data) {
         if (!available) return -1;
         const id=++sequence;
@@ -31,11 +31,14 @@ Item {
         return id;
     }
     function search(text) {
-        query=text;files=[];more=false;error="";searchId=-1;searching=text.trim().length>0;
-        debounce.restart();
+        query=text;files=[];more=false;error="";searchId=-1;searching=active && text.trim().length>0;
+        indexRefresh.stop();
+        requestPreview("");
+        if(searching)debounce.restart();else debounce.stop();
     }
     function requestPreview(path) {
-        previewPath=path;preview={};previewId=-1;previewDelay.restart();
+        previewPath=path;preview={};previewId=-1;
+        if(active && path)previewDelay.restart();else previewDelay.stop();
     }
     function open(path, parent) {
         if(opening || !available)return;
@@ -44,39 +47,43 @@ Item {
     function refresh() { if(available)send("refresh"); }
     onActiveChanged: {
         if(active && !transport.running)transport.running=true;
-        if(!active){previewPath="";preview={};previewId=-1;}
+        if(active && available && query.trim()) {searching=true;debounce.restart();}
+        if(!active){debounce.stop();indexRefresh.stop();previewDelay.stop();reconnect.stop();searchId=-1;previewId=-1;previewPath="";preview={};files=[];more=false;searching=false;}
     }
     Timer {id:debounce;interval:140;onTriggered: {
-        if(root.available && root.active)root.searchId=root.send("search",{query:root.query});
+        if(root.available && root.active && root.query.trim())root.searchId=root.send("search",{query:root.query});
     }}
     Timer {id:previewDelay;interval:160;onTriggered: {
-        if(root.available && root.previewPath)root.previewId=root.send("preview",{path:root.previewPath});
+        if(root.available && root.active && root.previewPath)root.previewId=root.send("preview",{path:root.previewPath});
     }}
     Timer {id:indexRefresh;interval:400;onTriggered: {
-        if(root.active && root.query.trim())root.searchId=root.send("search",{query:root.query});
+        if(root.available && root.active && root.query.trim())root.searchId=root.send("search",{query:root.query});
     }}
+    function receive(line) {
+            try {
+                const data=typeof line === "string" ? JSON.parse(line) : line;
+                if(data.event==="ready" || data.event==="index") {
+                    if(data.event==="ready"){root.available=true;debounce.restart();}
+                    root.scanning=data.scanning;root.indexed=data.count;root.limited=data.limited;root.unreadable=data.unreadable;
+                    if(root.active && root.query.trim())indexRefresh.restart();
+                } else if(root.active && root.searchId>0 && data.id===root.searchId) {
+                    root.searchId=-1;root.searching=false;root.error=data.error || "";root.files=data.results || [];root.more=data.more || false;
+                } else if(root.active && root.previewId>0 && data.id===root.previewId) {
+                    root.previewId=-1;root.preview=data.error?{type:"generic",text:data.error}:data;
+                } else if(root.openId>0 && data.id===root.openId) {
+                    root.openId=-1;root.opening=false;root.error=data.error || "";if(data.opened)root.opened();
+                }
+            } catch(e){root.error="Unable to read file search results";}
+    }
     Process {
         id:transport
         command:[root.python,root.helper]
         stdinEnabled:true
         stdout:SplitParser {onRead:line=>{
-            try {
-                const data=JSON.parse(line);
-                if(data.event==="ready" || data.event==="index") {
-                    if(data.event==="ready"){root.available=true;debounce.restart();}
-                    root.scanning=data.scanning;root.indexed=data.count;root.limited=data.limited;root.unreadable=data.unreadable;
-                    if(root.active && root.query.trim())indexRefresh.restart();
-                } else if(data.id===root.searchId) {
-                    root.searching=false;root.error=data.error || "";root.files=data.results || [];root.more=data.more || false;
-                } else if(data.id===root.previewId) {
-                    root.preview=data.error?{type:"generic",text:data.error}:data;
-                } else if(data.id===root.openId) {
-                    root.opening=false;root.error=data.error || "";if(data.opened)root.opened();
-                }
-            } catch(e){root.error="Unable to read file search results";}
+            root.receive(line);
         }}
         onExited:(code,status)=>{
-            root.available=false;root.searching=false;root.opening=false;
+            root.available=false;root.searchId=-1;root.previewId=-1;root.openId=-1;root.searching=false;root.opening=false;root.preview={};
             if(root.active){root.error="File search disconnected. Reconnecting…";reconnect.restart();}
         }
     }

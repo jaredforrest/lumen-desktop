@@ -37,6 +37,7 @@ Item {
     property int historyIndex:-1
     property var preview:({})
     property int sequence:0
+    readonly property string requestSession: Date.now().toString(36)+"-"+Math.random().toString(36).slice(2)
     property int currentId:0
     property int previewId:0
     property string nextSelection:""
@@ -56,6 +57,7 @@ Item {
     signal applicationsReady(var applications)
     function send(action,data) {
         const id=++sequence;
+        if(["job-start","clipboard-paste","drop"].includes(action))data=Object.assign({requestId:requestSession+"-"+id},data || {});
         const line=JSON.stringify(Object.assign({id:id,action:action},data || {}))+"\n";
         if(ready)transport.write(line);else {queued=queued.concat([line]);if(!transport.running)transport.running=true;}
         return id;

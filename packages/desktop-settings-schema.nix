@@ -20,6 +20,7 @@ let
             mode = mkOption { type = types.enum [ "auto" "light" "dark" ]; default = "auto"; };
             accent = mkOption { type = types.enum [ "blue" "purple" "pink" "red" "orange" "yellow" "green" "graphite" ]; default = "blue"; };
             iconAppearance = mkOption { type = types.enum [ "default" "auto" "dark" ]; default = "auto"; };
+            switchToAppSpace = mkOption { type = types.bool; default = true; };
             dockMagnification = mkOption { type = types.bool; default = true; };
             scrollbars = mkOption { type = types.enum [ "auto" "always" ]; default = "auto"; };
             reduceTransparency = mkOption { type = types.bool; default = false; };

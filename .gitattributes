@@ -1,0 +1,3 @@
+
+# Unified patch context includes its marker before the original source tabs.
+*.patch whitespace=-blank-at-eol,-space-before-tab

@@ -27,7 +27,7 @@ Item {
     }
     function command(data) {if(available)transport.write(JSON.stringify(data)+"\n");}
     function seen(){if(rows.some(r=>r.unread || r.banner))command({action:"seen"});}
-    function invoke(row,key){shell.claimPopup("");actionTimer.data={action:"invoke",id:row.id,key:key};actionTimer.restart();}
+    function invoke(row,key){shell.claimPopup("");actionTimer.data={action:"invoke",id:row.id,key:key,delivery:row.delivery};actionTimer.restart();}
     Timer {id:actionTimer;property var data;interval:80;onTriggered:root.command(data)}
     Process {
         id:transport

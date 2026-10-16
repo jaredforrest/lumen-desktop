@@ -27,6 +27,18 @@ class NixSettingsTest(unittest.TestCase):
         os.environ.clear(); os.environ.update(self.environment)
         self.directory.cleanup()
 
+    def test_patch_preserves_sibling_preferences(self):
+        settings.transaction('appearance', {'accent':'green','mode':'dark'})
+        values=settings.transaction('appearance', {'reduceMotion':True,'switchToAppSpace':False},merge=True)
+        self.assertEqual(values['appearance']['accent'],'green')
+        self.assertEqual(values['appearance']['mode'],'dark')
+        self.assertTrue(values['appearance']['reduceMotion'])
+        self.assertFalse(values['appearance']['switchToAppSpace'])
+        original=self.source.read_bytes()
+        with self.assertRaises(ValueError):settings.transaction('appearance',{'unexpected':True},merge=True)
+        self.assertEqual(self.source.read_bytes(),original)
+        with self.assertRaises(ValueError):settings.transaction('appearance',[],merge=True)
+
     def test_invalid_value_preserves_source_and_active_bundle(self):
         settings.transaction()
         original = self.source.read_bytes()

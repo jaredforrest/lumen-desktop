@@ -4,7 +4,7 @@ import Quickshell
 import Quickshell.Io
 Singleton {
     id: root
-    property var preferences: ({mode:"auto",accent:"blue",iconAppearance:"auto",dockMagnification:true,reduceMotion:false})
+    property var preferences: ({mode:"auto",accent:"blue",iconAppearance:"auto",switchToAppSpace:true,dockMagnification:true,reduceMotion:false})
     property string font: "Interlude Variable"
     property var colors: ({background:"#f2f2f4",surface:"#ffffff",field:"#e5e5e8",text:"#202023",muted:"#6b6b70",border:"#c8c8ce",hover:"#dedee3",accent:"#007aff",selectedText:"#ffffff"})
     readonly property color backgroundTone: colors.background

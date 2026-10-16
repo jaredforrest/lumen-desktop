@@ -91,16 +91,21 @@ def handle(data):
             if not isinstance(prefs,dict):prefs={}
             if action=='save-preferences':
                 incoming=data.get('preferences',{})
-                for key,values in {'view':['grid','list','columns','gallery'],'sort':['name','modified','size','kind'],'descending':[True,False]}.items():
-                    if incoming.get(key) in values:prefs[key]=incoming[key]
+                allowed={'view':['grid','list','columns','gallery'],'sort':['name','modified','size','kind'],'descending':[True,False]}
+                if not isinstance(incoming,dict) or any(key not in allowed for key in incoming):
+                    raise ValueError('Unknown file preference')
+                for key,value in incoming.items():
+                    if value not in allowed[key] or (key=='descending' and type(value) is not bool):
+                        raise ValueError('Invalid file preference: '+key)
+                prefs.update(incoming)
                 fd,temp=tempfile.mkstemp(dir=file.parent)
                 with os.fdopen(fd,'w') as stream:json.dump(prefs,stream);stream.flush();os.fsync(stream.fileno())
                 os.replace(temp,file)
             return dict(preferences=prefs)
     if action=='column-list':return listing(data)
     if action in ('job-start', 'job-status', 'job-cancel'):return job_request(data)
-    if action=='clipboard-paste':return job_request(dict(file_clipboard.read(), action='job-start', destination=data['destination'], conflict=data.get('conflict','skip')))
-    if action=='drop':return job_request(dict(action='job-start',operation='copy',paths=file_clipboard.paths_from_uris(data['uris']),destination=data['destination']))
+    if action=='clipboard-paste':return job_request(dict(file_clipboard.read(), action='job-start', destination=data['destination'], conflict=data.get('conflict','skip'),requestId=data.get('requestId')))
+    if action=='drop':return job_request(dict(action='job-start',operation='copy',paths=file_clipboard.paths_from_uris(data['uris']),destination=data['destination'],requestId=data.get('requestId')))
     if action=='clipboard-write':return file_clipboard.write(data['paths'], data['operation'])
     if action=='clipboard-read':return file_clipboard.read()
     if action=='volumes':

@@ -23,14 +23,14 @@ def write(path,text):
 def run(*args):
     return subprocess.run(args,check=False,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode
 
-DEFAULTS={'mode':'auto','accent':'blue','iconAppearance':'auto','dockMagnification':True,'reduceMotion':False,'reduceTransparency':False,'scrollbars':'auto'}
+DEFAULTS={'mode':'auto','accent':'blue','iconAppearance':'auto','switchToAppSpace':True,'dockMagnification':True,'reduceMotion':False,'reduceTransparency':False,'scrollbars':'auto'}
 ACCENTS={'blue':('#007aff','#0a84ff'),'purple':('#a855c7','#bf5af2'),'pink':('#d94382','#ff6482'),'red':('#df3038','#ff453a'),'orange':('#b65c00','#ff9f0a'),'yellow':('#947500','#ffd60a'),'green':('#248a3d','#30d158'),'graphite':('#707078','#98989f')}
 
 def valid(key,value):
     return (key=='scrollbars' and value in ('auto','always') or key=='mode' and value in ('auto','light','dark') or
             key=='iconAppearance' and value in ('default','auto','dark') or
             key=='accent' and isinstance(value,str) and value in ACCENTS or
-            key in ('dockMagnification','reduceMotion','reduceTransparency') and type(value) is bool)
+            key in ('switchToAppSpace','dockMagnification','reduceMotion','reduceTransparency') and type(value) is bool)
 
 def preferences(state):
     sys.path.insert(0, str(HERE.parent/'shell'))
@@ -64,7 +64,7 @@ def main():
             if key not in DEFAULTS or not valid(key,value):raise ValueError('Unsupported preference or value')
             prefs[key]=value
             from nix_settings import set_section
-            prefs=set_section('appearance',prefs)['appearance']
+            prefs=set_section('appearance',{key:value},merge=True)['appearance']
         now=dt.datetime.fromisoformat(a.at) if a.at else dt.datetime.now(ZONE)
         if now.tzinfo is None:now=now.replace(tzinfo=ZONE)
         solar,times=schedule(now);source=a.mode or prefs['mode'];mode=solar if source=='auto' else source

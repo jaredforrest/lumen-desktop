@@ -24,17 +24,14 @@ Column {
         MediaControl {x:155;width:145;height:130;onExpandRequested:root.panelRequested("Now Playing")}
         ControlTile {x:155;y:140;width:145;height:60;label:"Displays";subtitle:"Settings";symbol:"screen";unavailable:false;onClicked:root.shell.openSettings("Displays")}
         ControlTile {y:210;width:145;height:60;label:"Appearance";subtitle:"Settings";symbol:"contrast";unavailable:false;onClicked:root.shell.openSettings("Appearance")}
-        ControlTile {x:155;y:210;width:145;height:60;label:"Focus";symbol:"moon";unavailable:!root.shell.notifications.available;active:root.shell.notifications.dnd;subtitle:active?"Do Not Disturb":"Off";onClicked:root.shell.notifications.command({action:"dnd"})}
+        ControlTile {x:155;y:210;width:145;height:60;label:"Focus";toggle:true;symbol:"moon";unavailable:!root.shell.notifications.available;active:root.shell.notifications.dnd;subtitle:active?"Do Not Disturb":"Off";onClicked:root.shell.notifications.command({action:"dnd"})}
         PanelSurface {y:280;width:300;height:62;radius:24
             BrightnessControl {x:16;y:12;width:parent.width-32}
         }
         PanelSurface {y:352;width:300;height:62;radius:24
             SoundControl {x:16;y:12;width:parent.width-32;shell:root.shell;compact:true}
         }
-        Rectangle {y:424;width:160;height:26;anchors.horizontalCenter:parent.horizontalCenter;radius:13;color:Theme.colors.background
-            PanelLabel {anchors.centerIn:parent;text:"System Settings…";font.pixelSize:11}
-            MouseArea {anchors.fill:parent;onClicked:root.settingsRequested()}
-        }
+        DialogButton {y:424;width:160;height:26;anchors.horizontalCenter:parent.horizontalCenter;text:"System Settings…";onClicked:root.settingsRequested()}
     }
     PanelLabel {visible:root.kind==="Controls" && text!=="";width:parent.width;wrapMode:Text.WordWrap;text:root.shell.systemState.error;color:Theme.colors.muted}
     PanelSurface {
@@ -58,11 +55,7 @@ Column {
             PanelLabel {visible:root.shell.audioState.outputs.length===0;text:"No output devices";color:Theme.colors.muted}
             ControlRow { width:parent.width;text:root.shell.audioState.muted?"Unmute":"Mute";enabled:root.shell.audioState.available;onClicked:root.shell.audioState.toggleMute() }
 
-            Rectangle {
-                width:parent.width;height:25;radius:6;color:settingsMouse.containsMouse?Theme.colors.hover:"transparent"
-                PanelLabel { x:6;anchors.verticalCenter:parent.verticalCenter;text:root.kind==="Sound"?"Sound Settings…":"System Settings…" }
-                MouseArea { id:settingsMouse;anchors.fill:parent;hoverEnabled:true;onClicked:{root.settingsRequested();} }
-            }
+            ControlRow {width:parent.width;height:25;text:"Sound Settings…";onClicked:root.settingsRequested()}
         }
     }
     NotificationPanel {id:datePanel;visible:root.kind==="Date";width:parent.width;shell:root.shell;today:root.today}

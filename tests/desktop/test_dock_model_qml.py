@@ -34,9 +34,14 @@ Timer {
  console.log("PASS dynamic Dock identity, deduplication, working pins and terminal tail");
  } catch(e){console.error("FAIL "+e)}Qt.quit();}
 }''')
-            env=dict(os.environ,QT_QPA_PLATFORM='offscreen',XDG_CONFIG_HOME=str(root/'config'),XDG_CACHE_HOME=str(root/'cache'))
+            runtime=root/'runtime';runtime.mkdir(mode=0o700)
+            home=root/'home';home.mkdir()
+            env=dict(os.environ,HOME=str(home),XDG_RUNTIME_DIR=str(runtime),QT_QPA_PLATFORM='offscreen',QT_QPA_PLATFORMTHEME='',QT_QUICK_BACKEND='software',XDG_DATA_HOME=str(root/'data'),XDG_CONFIG_HOME=str(root/'config'),XDG_CACHE_HOME=str(root/'cache'))
             env.pop('WAYLAND_DISPLAY',None)
-            run=subprocess.run(['quickshell','-p',str(root)],env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=10)
+            try:
+                run=subprocess.run(['quickshell','-p',str(root)],env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=10)
+            except subprocess.TimeoutExpired as exc:
+                self.fail('Quickshell fixture timed out: '+repr(exc.stdout))
             self.assertEqual(run.returncode,0,run.stdout)
             self.assertIn('PASS dynamic Dock',run.stdout)
             self.assertNotIn('FAIL ',run.stdout)

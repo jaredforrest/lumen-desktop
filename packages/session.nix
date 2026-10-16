@@ -1,4 +1,4 @@
-{ pkgs, settingsPackage, user ? "user", displayName ? user, homeDirectory ? "/home/${user}", timeZone ? "UTC", swayPackage ? pkgs.sway, rofiPackage ? pkgs.rofi, assets ? ../res/lumen-desktop, emojiFamily ? "Noto Color Emoji" }:
+{ pkgs, settingsPackage, user ? "user", displayName ? user, homeDirectory ? "/home/${user}", timeZone ? "UTC", swayPackage ? pkgs.sway, rofiPackage ? pkgs.rofi, assets ? ../res/lumen-desktop, emojiFamily ? "Noto Color Emoji", clipboardRetentionSeconds ? 3600, clipboardMaxItems ? 100 }:
 let
   lib = pkgs.lib;
   desktopTimeZone = timeZone;
@@ -29,6 +29,24 @@ let
       export PATH=${lib.makeBinPath [ pkgs.sway ]}:"$PATH"
       exec ${pkgs.python3}/bin/python ${assets}/focus-window.py "$@"
     '';
+    clipboardHistory = pkgs.writeShellApplication {
+      name = "lumen-clipboard-history";
+      runtimeInputs = [ pkgs.wl-clipboard pkgs.systemd pkgs.coreutils ];
+      text = ''
+        LUMEN_CLIPBOARD_COMMAND="$(readlink -f -- "$0")"
+        export LUMEN_CLIPBOARD_COMMAND
+        export LUMEN_CLIPBOARD_RETENTION_SECONDS=${toString clipboardRetentionSeconds}
+        export LUMEN_CLIPBOARD_MAX_ITEMS=${toString clipboardMaxItems}
+        exec ${pkgs.python3}/bin/python3 ${assets}/runtime/clipboard_history.py "$@"
+      '';
+    };
+    desktopState = pkgs.writeShellApplication {
+      name = "lumen-desktop-state";
+      runtimeInputs = [ pkgs.sway ];
+      text = ''
+        exec ${pkgs.python3}/bin/python3 ${assets}/runtime/state.py "$@"
+      '';
+    };
     launchApp = pkgs.writeShellApplication {
       name = "lumen-launch-app";
       runtimeInputs = [ pkgs.python3 pkgs.systemd ];
@@ -41,7 +59,7 @@ let
       # Desktop entries launched through Rofi inherit this service's PATH.
       # Entries such as ChatGPT use `env` from coreutils in their Exec command.
       runtimeInputs = [ pkgs.remmina pkgs.fontconfig pkgs.hyprpicker personalServices pkgs.rembg pkgs.whisper-cpp pkgs.pipewire (pkgs.tesseract.override { enableLanguages = [ "eng" ]; }) (pkgs.aspellWithDicts (d: [ d.en ])) pkgs.wordnet pkgs.espeak-ng pkgs.wtype pkgs.poppler-utils pkgs.ffmpeg-headless pkgs.util-linux fileClipboard pkgs.wl-clipboard pkgs.glib pkgs.udisks2 launchApp pkgs.ddcutil pkgs.blueman pkgs.coreutils pkgs.jq pkgs.sway focusWindow pkgs.quickshell pkgs.foot pkgs.wireplumber pkgs.pavucontrol
-        auth.lock pkgs.swaylock pkgs.xdg-utils pkgs.trash-cli appearance nixSettings rofiPackage ];
+        clipboardHistory desktopState auth.lock pkgs.swaylock pkgs.xdg-utils pkgs.trash-cli appearance nixSettings rofiPackage ];
       text = ''
         # The systemd service does not inherit the interactive login PATH.
         # Desktop entries may name installed commands without absolute paths.
@@ -112,6 +130,11 @@ let
     };
     desktopAction = pkgs.writeShellScriptBin "lumen-desktop-action" ''
       case "$1" in
+        window-next) exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop cycleWindow next ;;
+        window-previous) exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop cycleWindow previous ;;
+        app-switcher) exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop appSwitcher next ;;
+        app-switcher-reverse) exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop appSwitcher previous ;;
+        app-switcher-commit) exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop appSwitcher commit ;;
         overview) exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop overview false ;;
         app-windows) exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop overview true ;;
         text-tools) exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop textTools ;;
@@ -119,6 +142,7 @@ let
         notifications-open) exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop notificationCentre open ;;
         notifications-close) exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop notificationCentre close ;;
         notifications-toggle) exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop notificationCentre toggle ;;
+        controls) exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop menu Controls ;;
         dock) exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop focusDock ;;
         *) exit 2 ;;
       esac
@@ -139,4 +163,4 @@ let
     settingsLauncher = pkgs.writeShellScriptBin "lumen-system-settings" ''
       exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop settings ""
     '';
-in { inherit nixSettings appearance qtTheme qtTheme5 palette menuRuntime personalServices fileClipboard displayLayout fileOperations focusWindow launchApp shellLauncher audioKey notifications menuCommand desktopDoctor desktopAction appLauncher filesLauncher remoteDesktopLauncher calendarLauncher settingsLauncher; }
+in { inherit nixSettings appearance qtTheme qtTheme5 palette menuRuntime personalServices fileClipboard displayLayout fileOperations focusWindow desktopState clipboardHistory launchApp shellLauncher audioKey notifications menuCommand desktopDoctor desktopAction appLauncher filesLauncher remoteDesktopLauncher calendarLauncher settingsLauncher; }
