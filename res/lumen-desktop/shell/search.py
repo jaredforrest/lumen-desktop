@@ -25,7 +25,7 @@ def normalize(value):
     return ''.join(c for c in unicodedata.normalize('NFKD', value).casefold() if not unicodedata.combining(c))
 
 def configured_roots():
-    override = os.environ.get('LUMEN_SPOTLIGHT_ROOTS')
+    override = os.environ.get('LUMEN_SEARCH_ROOTS')
     names = json.loads(override) if override else [str(Path.home()/n) for n in ('Desktop', 'Documents', 'Downloads', 'Pictures', 'Music', 'Videos', 'data')]
     roots = []
     for name in names:

@@ -47,7 +47,7 @@ let
         # The systemd service does not inherit the interactive login PATH.
         # Desktop entries may name installed commands without absolute paths.
         export PATH="$PATH:/etc/profiles/per-user/${user}/bin:/run/current-system/sw/bin:/run/wrappers/bin"
-        export LUMEN_SPOTLIGHT_ROOTS=${lib.escapeShellArg (builtins.toJSON (map (name: "${homeDirectory}/${name}") [ "Desktop" "Documents" "Downloads" "Pictures" "Music" "Videos" "data" ]))}
+        export LUMEN_SEARCH_ROOTS=${lib.escapeShellArg (builtins.toJSON (map (name: "${homeDirectory}/${name}") [ "Desktop" "Documents" "Downloads" "Pictures" "Music" "Videos" "data" ]))}
         export LUMEN_NOTIFICATION_HELPER=${assets}/notifications/service.py
         export LUMEN_LAUNCH_SCOPES=1
         export LUMEN_NATIVE_WINDOW_CONTROLS=0
