@@ -43,7 +43,7 @@
             case "$test" in
               *test_nix_settings.py|*test_app_launch_qml.py|*test_dock_model_qml.py) continue ;;
             esac
-            dbus-run-session -- ${python}/bin/python3 "$test"
+            dbus-run-session --config-file=${pkgs.dbus}/share/dbus-1/session.conf -- ${python}/bin/python3 "$test"
           done
           touch $out
         '';
