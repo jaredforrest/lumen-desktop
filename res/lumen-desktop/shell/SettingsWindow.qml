@@ -231,7 +231,7 @@ FloatingWindow {
                 }
                 Column {
                     visible:root.page==="General";width:parent.width;spacing:14
-                    Image {source:"reference-icons/settings.png";width:70;height:70;sourceSize:Qt.size(140,140)}
+                    Image {source:"reference-icons/settings.svg";width:70;height:70;sourceSize:Qt.size(140,140)}
                     PanelLabel {text:root.service.system.system || "System information unavailable";width:parent.width;wrapMode:Text.WordWrap;font.pixelSize:18;font.weight:Font.DemiBold}
                     PanelLabel {text:"Desktop · "+(root.service.system.desktop || "Wayland");width:parent.width;wrapMode:Text.WordWrap}
                 }
