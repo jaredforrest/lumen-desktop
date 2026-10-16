@@ -12,13 +12,10 @@ Item {
     property bool busy: false
     onBusyChanged: if (!busy) Qt.callLater(() => password.forceActiveFocus())
     property bool echoResponse: false
-    property bool showSessionOptions: false
-    property string selectedSession: "Sway"
     property date now: new Date()
     readonly property real unit: Math.max(0.65, Math.min(1.6, height / 900))
     signal submitted(string response)
     signal powerRequested(string action)
-    signal sessionSelected(string session)
     Timer { interval: 1000; running: true; repeat: true; onTriggered: view.now = new Date() }
     function openPowerMenu() { powerPopup.open(); }
     component PowerIcon: Canvas {
@@ -165,29 +162,6 @@ Item {
                         color: parent.hovered || parent.activeFocus ? "#467eabce" : "transparent"
                     }
                     onClicked: { powerPopup.close(); view.powerRequested(modelData.action); }
-                }
-            }
-            Rectangle {
-                visible: view.showSessionOptions; width: parent.width - 16 * view.unit
-                x: 8 * view.unit; height: 1; color: "#30ffffff"
-            }
-            Repeater {
-                model: view.showSessionOptions ? ["Sway", "Hyprland"] : []
-                Button {
-                    required property string modelData
-                    width: parent.width; height: 30 * view.unit
-                    text: (view.selectedSession === modelData ? "✓  " : "    ") + modelData
-                    Accessible.name: modelData + " desktop session"
-                    contentItem: Text {
-                        text: parent.text; color: "#dce5ed"
-                        font.family: "Interlude Variable"; font.pixelSize: Math.round(13 * view.unit)
-                        verticalAlignment: Text.AlignVCenter; leftPadding: 10 * view.unit
-                    }
-                    background: Rectangle {
-                        radius: 7 * view.unit
-                        color: parent.hovered || parent.activeFocus ? "#467eabce" : "transparent"
-                    }
-                    onClicked: { view.sessionSelected(modelData); powerPopup.close(); }
                 }
             }
         }

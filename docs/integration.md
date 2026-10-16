@@ -12,7 +12,7 @@ services.lumen-desktop = {
 };
 ```
 
-This module expects existing Home Manager, Sway and Waybar configuration. It does not partition disks, declare persistence or manage secrets. Keep those policies in the host repository. The host must preserve the runtime state directories it wants retained across reboots.
+This module expects existing Home Manager and Sway configuration. It does not partition disks, declare persistence or manage secrets. Keep those policies in the host repository. The host must preserve the runtime state directories it wants retained across reboots.
 
 The default shell package is suitable for package/build development. A host-specific session can be constructed through `lib.mkSession` with explicit `pkgs`, `settingsPackage`, `user`, `homeDirectory`, `timeZone`, `swayPackage` and `rofiPackage`. Its returned attributes include the shell launcher and service commands.
 
@@ -28,7 +28,9 @@ immutable derivation shared by the shell, launcher, greeter and lock screen.
 The consumer installs/licences fonts and controls fontconfig. The character-viewer
 package separately accepts `fontPackage`, `fontFile` and `fontFamily`.
 
-Account services, Bluetooth UI, accessibility bus, greeter and Hyprland integration
+Account services, Bluetooth UI, accessibility bus, and greeter integration
 are disabled by default under `services.lumen-desktop.integrations`. Set the
 corresponding `enable` flag explicitly. `replaceExistingShell` explicitly opts in
 to disabling competing bar/notification services.
+
+The supported session uses Sway/SwayFX as compositor and Lumen as shell and notification provider. The basic compositor package is retained for isolated headless tests; it is not a second installed desktop session.

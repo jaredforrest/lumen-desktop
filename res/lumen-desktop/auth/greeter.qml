@@ -12,7 +12,6 @@ ShellRoot {
     property bool busy: false
     property bool responseReady: false
     property bool echoResponse: false
-    property string selectedSession: "Sway"
     Component.onCompleted: Quickshell.watchFiles = false
     function submit(response) {
         if (busy) return;
@@ -52,9 +51,9 @@ ShellRoot {
             root.errorMessage = "Unable to sign in. Please try again.";
         }
         function onReadyToLaunch() {
-            Greetd.launch(root.selectedSession === "Hyprland"
-                ? [Quickshell.env("LUMEN_AUTH_HYPRLAND") || "Hyprland"]
-                : [Quickshell.env("LUMEN_AUTH_SESSION") || "sway", "--unsupported-gpu"]);
+            const command = [Quickshell.env("LUMEN_AUTH_SESSION") || "sway"];
+            if (Quickshell.env("LUMEN_AUTH_UNSUPPORTED_GPU") === "1") command.push("--unsupported-gpu");
+            Greetd.launch(command);
         }
     }
     Process {
@@ -75,9 +74,6 @@ ShellRoot {
                 prompt: root.prompt
                 busy: root.busy
                 echoResponse: root.echoResponse
-                showSessionOptions: true
-                selectedSession: root.selectedSession
-                onSessionSelected: session => root.selectedSession = session
                 onSubmitted: response => root.submit(response)
                 onPowerRequested: action => {
                     if (!["suspend", "reboot", "poweroff"].includes(action)) return;

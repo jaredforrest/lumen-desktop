@@ -54,7 +54,7 @@ let
       export LUMEN_AUTH_NAME=${lib.escapeShellArg displayName}
       export LUMEN_AUTH_USER=${lib.escapeShellArg user}
       export LUMEN_AUTH_SESSION=${swayPackage}/bin/sway
-      export LUMEN_AUTH_HYPRLAND=${pkgs.hyprland}/bin/Hyprland
+      export LUMEN_AUTH_UNSUPPORTED_GPU=${if allowUnsupportedGpu then "1" else "0"}
       ${lib.optionalString allowUnsupportedGpu "export SWAY_UNSUPPORTED_GPU=1"}
       export XDG_CURRENT_DESKTOP=sway
       # A compositor startup failure falls back to the existing password greeter.

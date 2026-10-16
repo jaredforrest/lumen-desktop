@@ -26,7 +26,6 @@ in {
         greeterExtraConfig = lib.mkOption { type = lib.types.lines; default = ""; };
         allowUnsupportedGpu = lib.mkOption { type = lib.types.bool; default = false; };
       };
-      hyprland.enable = lib.mkEnableOption "Hyprland session integration";
       calendar.enable = lib.mkEnableOption "calendar account services";
       bluetooth.enable = lib.mkEnableOption "Bluetooth UI integration";
       accessibility.enable = lib.mkEnableOption "desktop accessibility bus";
@@ -59,30 +58,13 @@ in {
       rofiPackage = config.programs.rofi.package;
     };
     inherit (session) nixSettings appearance qtTheme qtTheme5 palette menuRuntime personalServices fileClipboard displayLayout fileOperations focusWindow launchApp shellLauncher audioKey notifications menuCommand desktopDoctor desktopAction appLauncher filesLauncher remoteDesktopLauncher calendarLauncher settingsLauncher;
-    hypr = "${pkgs.hyprland}/bin/hyprctl";
-    lock = "${auth.lock}/bin/lumen-lock";
-    baseBar = builtins.head config.programs.waybar.settings;
-    logout = pkgs.writeShellScript "hyprland-confirm-logout" ''
-      choice=$(printf 'Cancel\nLog out\n' | ${config.programs.rofi.package}/bin/rofi -dmenu -p "Session")
-      if [ "$choice" = "Log out" ]; then ${hypr} dispatch exit; fi
-    '';
-    sessionService = description: command: lib.mkIf cfg.integrations.hyprland.enable {
-      Unit = {
-        Description = description;
-        PartOf = [ "hyprland-session.target" ];
-        After = [ "hyprland-session.target" ];
-      };
-      Service = { ExecStart = command; Restart = "on-failure"; };
-      Install.WantedBy = [ "hyprland-session.target" ];
-    };
   in {
     # Own the theme declaratively, rather than keeping temporary config links.
-    wayland.windowManager.sway.extraConfig = lib.mkAfter (builtins.readFile ../res/lumen-desktop/first-pass.conf + ''
+    wayland.windowManager.sway.extraConfig = lib.mkAfter (builtins.readFile ../res/lumen-desktop/sway.conf + ''
       # libinput exposes three-finger swipes; two-finger edge gestures are not available in Sway.
       bindgesture swipe:3:left exec ${desktopAction}/bin/lumen-desktop-action notifications-open
       bindgesture swipe:3:right exec ${desktopAction}/bin/lumen-desktop-action notifications-close
     '');
-    programs.waybar.style = lib.mkDefault ("${assets}/bar.css");
     wayland.windowManager.sway.config.menu = lib.mkForce "${appLauncher}/bin/lumen-app-launcher";
     programs.rofi.theme = lib.mkForce "${config.xdg.stateHome}/lumen-desktop/launcher.rasi";
     programs.rofi.settings.display-drun = lib.mkForce "⌕";
@@ -177,7 +159,7 @@ in {
     home.sessionVariables.QT_QPA_PLATFORMTHEME = "gnome";
     systemd.user.sessionVariables.QT_QPA_PLATFORMTHEME = "gnome";
     home.packages = [ remoteDesktopLauncher auth.lock calendarLauncher personalServices qtTheme qtTheme5 desktopDoctor menuCommand desktopAction launchApp notifications audioKey pkgs.trash-cli filesLauncher settingsLauncher pkgs.ddcutil pkgs.foot pkgs.quickshell shellLauncher appearance nixSettings appLauncher ];
-    # Keep Waybar available as a manual fallback, but do not run two shell bars.
+    # Consumers explicitly opt in to replacing competing bar services.
     programs.waybar.systemd.enable = lib.mkIf cfg.integrations.replaceExistingShell (lib.mkForce false);
     wayland.windowManager.sway.config.output."*".bg = lib.mkDefault "${assets}/shell/wallpaper.png fill";
     services.mako.enable = lib.mkIf cfg.integrations.replaceExistingShell (lib.mkForce false);
@@ -194,7 +176,7 @@ in {
       lumen-nix-settings = {
         Unit = { Description = "Build authoritative desktop Nix settings"; PartOf = [ "graphical-session.target" ]; Before = [ "lumen-desktop-shell.service" "lumen-display-layout.service" "lumen-appearance.service" ]; };
         Service = { Type = "oneshot"; ExecStart = "${nixSettings}/bin/lumen-nix-settings sync"; RemainAfterExit = true; };
-        Install.WantedBy = [ "sway-session.target" "hyprland-session.target" ];
+        Install.WantedBy = [ "sway-session.target" ];
       };
       lumen-display-layout = {
         Unit = { Description = "Apply Nix monitor layouts"; PartOf = [ "sway-session.target" ]; After = [ "sway-session.target" "lumen-nix-settings.service" ]; Requires = [ "lumen-nix-settings.service" ]; };
@@ -204,7 +186,7 @@ in {
       lumen-file-operations = {
         Unit = { Description = "Files background file operations"; PartOf = [ "graphical-session.target" ]; };
         Service = { ExecStart = "${fileOperations}/bin/lumen-file-operations"; Restart = "on-failure"; UMask = "0077"; TimeoutStopSec = 120; };
-        Install.WantedBy = [ "sway-session.target" "hyprland-session.target" ];
+        Install.WantedBy = [ "sway-session.target" ];
       };
       lumen-notifications = {
         Unit = { Description = "Desktop notification service and history"; PartOf = [ "graphical-session.target" ]; After = [ "lumen-nix-settings.service" ]; Requires = [ "lumen-nix-settings.service" ]; };
@@ -218,7 +200,7 @@ in {
           RestartSec = 2;
           UMask = "0077";
         };
-        Install.WantedBy = [ "sway-session.target" "hyprland-session.target" ];
+        Install.WantedBy = [ "sway-session.target" ];
       };
       lumen-desktop-shell = {
         Unit = {
@@ -233,96 +215,7 @@ in {
           Restart = "on-failure";
           RestartSec = 2;
         };
-        Install.WantedBy = [ "sway-session.target" "hyprland-session.target" ];
-      };
-      hyprland-wallpaper = sessionService "Hyprland wallpaper"
-        "${pkgs.swaybg}/bin/swaybg -i ${assets}/shell/wallpaper.png -m fill";
-      hyprland-polkit = sessionService "Hyprland authentication agent"
-        "${pkgs.polkit_gnome}/libexec/polkit-gnome-authentication-agent-1";
-      hyprland-clipboard = sessionService "Hyprland persistent clipboard"
-        "${pkgs.wl-clip-persist}/bin/wl-clip-persist --clipboard regular";
-
-    };
-
-    wayland.windowManager.hyprland = lib.mkIf cfg.integrations.hyprland.enable {
-      configType = "hyprlang";
-      enable = true;
-      # NixOS supplies the compositor and matching screen-sharing portal.
-      package = null;
-      portalPackage = null;
-      systemd.enable = true;
-      settings = {
-        exec-shutdown = "${pkgs.systemd}/bin/systemctl --user stop hyprland-session.target";
-        general = {
-          gaps_in = 4;
-          gaps_out = 12;
-          border_size = 1;
-          "col.active_border" = "rgba(7aa2d6cc)";
-          "col.inactive_border" = "rgba(42444b99)";
-          layout = "dwindle";
-          resize_on_border = true;
-        };
-        decoration = {
-          rounding = 12;
-          active_opacity = 1.0;
-          inactive_opacity = 1.0;
-          shadow = { enabled = true; range = 18; render_power = 3; color = "rgba(00000035)"; };
-          blur = { enabled = true; size = 4; passes = 2; vibrancy = 0.12; };
-        };
-        animations = {
-          enabled = true;
-          bezier = [ "gentle,0.22,1,0.36,1" ];
-          animation = [
-            "windows,1,3,gentle,slide"
-            "windowsIn,1,3,gentle,popin 96%"
-            "windowsOut,1,2,gentle,popin 98%"
-            "fade,1,2,gentle"
-            "workspaces,1,3.5,gentle,slide"
-            "border,1,2,gentle"
-          ];
-        };
-        dwindle = { pseudotile = true; preserve_split = true; };
-        misc = { disable_hyprland_logo = true; disable_splash_rendering = true; force_default_wallpaper = 0; };
-        layerrule = [ "blur,lumen-menu" "ignorezero,lumen-menu" "blur,lumen-dock" "ignorezero,lumen-dock" ];
-        bind = [
-          "SUPER, Return, exec, ${pkgs.foot}/bin/foot"
-          "SUPER, P, exec, ${appLauncher}/bin/lumen-app-launcher"
-          "SUPER SHIFT, Q, killactive,"
-          "SUPER SHIFT, E, exec, ${logout}"
-          "SUPER CTRL, L, exec, ${lock}"
-          "SUPER CTRL, Q, exec, ${lock}"
-          "SUPER, F, fullscreen, 0"
-          "SUPER SHIFT, SPACE, togglefloating,"
-          "SUPER, V, togglesplit,"
-          "SUPER, M, exec, ${audioKey}/bin/lumen-audio-key mute"
-          "SUPER SHIFT, M, exec, ${pkgs.wireplumber}/bin/wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"
-          "SUPER, N, exec, ${notifications}/bin/lumen-notifications dnd"
-          "SUPER, C, exec, ${baseBar."custom/clock".on-click}"
-          "SUPER SHIFT, B, exec, ${pkgs.rofi-bluetooth}/bin/rofi-bluetooth"
-          "SUPER, minus, togglespecialworkspace, scratchpad"
-          "SUPER SHIFT, minus, movetoworkspace, special:scratchpad"
-        ] ++ lib.concatLists (lib.imap0 (i: key:
-          let direction = builtins.elemAt [ "l" "d" "u" "r" ] i;
-              arrow = builtins.elemAt [ "left" "down" "up" "right" ] i;
-          in [
-            "SUPER, ${key}, movefocus, ${direction}"
-            "SUPER, ${arrow}, movefocus, ${direction}"
-            "SUPER SHIFT, ${key}, movewindow, ${direction}"
-            "SUPER SHIFT, ${arrow}, movewindow, ${direction}"
-          ]) [ "H" "J" "K" "L" ])
-          ++ lib.concatMap (i: let key = if i == 10 then "0" else toString i; in [
-            "SUPER, ${key}, workspace, ${toString i}"
-            "SUPER SHIFT, ${key}, movetoworkspace, ${toString i}"
-          ]) (lib.range 1 10);
-        bindm = [ "SUPER, mouse:272, movewindow" "SUPER, mouse:273, resizewindow" ];
-        bindel = [
-          ", XF86AudioRaiseVolume, exec, ${audioKey}/bin/lumen-audio-key up"
-          ", XF86AudioLowerVolume, exec, ${audioKey}/bin/lumen-audio-key down"
-        ];
-        bindl = [
-          ", XF86AudioMute, exec, ${audioKey}/bin/lumen-audio-key mute"
-          ", XF86AudioPlay, exec, ${pkgs.playerctl}/bin/playerctl play-pause"
-        ];
+        Install.WantedBy = [ "sway-session.target" ];
       };
     };
   };

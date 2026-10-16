@@ -75,7 +75,7 @@ try:
     assert not any(r['type']=='start_session' for r in requests)
     call('grim',str(out/'login-error.png'));checks.append('incorrect greetd response rejected')
     call('wtype','-s','300','fixture-password','-k','Return','-s','100');wait(lambda:any(r['type']=='start_session' for r in requests));wait(lambda:greeter.poll() is not None)
-    assert [r['cmd'] for r in requests if r['type']=='start_session']==[['/bin/true','--unsupported-gpu']]
+    assert [r['cmd'] for r in requests if r['type']=='start_session']==[['/bin/true']]
     checks.append('correct greetd response launches configured session')
     env.pop('GREETD_SOCK',None)
     preview=assets/'auth/preview.qml';preview.write_text('''import QtQuick
