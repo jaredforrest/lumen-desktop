@@ -38,7 +38,7 @@ def set_section(section, value):
 
 
 def build(source):
-    result = subprocess.run(['/run/current-system/sw/bin/nix', 'build', '--file', os.environ['LUMEN_NIX_SETTINGS_BUILDER'],
+    result = subprocess.run([(shutil.which('nix') or 'nix'), 'build', '--file', os.environ['LUMEN_NIX_SETTINGS_BUILDER'],
                              '--argstr', 'source', str(source), '--no-link', '--json'],
                             capture_output=True, text=True, timeout=90)
     if result.returncode:
