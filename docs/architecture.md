@@ -38,3 +38,17 @@ ownership of host policy.
 Personal or licensed artwork and fonts belong in the consumer repository. Public
 assets remain redistributable defaults. Tests evaluate the module with a deliberately
 different host policy and verify it is preserved and optional services stay off.
+
+## Decoration and icon contracts
+
+Every window has one decoration owner. Sway draws the title bar for clients using
+server decorations. Clients with their own header (including portal file dialogs)
+retain it; do not force `border normal` onto every client. Desktop-owned QML
+windows integrate their controls into their toolbar and opt out of an outer title
+bar. Toolkit button placement, typography and colour share desktop defaults.
+Content/header geometry must be inspected as well as counting window controls.
+
+Calendar icons are live templates: `reference-icons/calendar.svg` and its dark
+variant contain only a blank background. AppIcon draws the weekday and day once.
+Consumer overrides must follow that contract rather than embed another calendar
+or a pre-rendered date.

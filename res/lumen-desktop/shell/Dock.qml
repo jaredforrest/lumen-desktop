@@ -14,6 +14,17 @@ PanelWindow {
     function leaveKeyboard(){keyboardMode=false;hovered=-1;if(shell.popupOwner==="dock:"+outputName)shell.claimPopup("");}
     Connections {target:shell;function onRequestDockFocus(name){if(name===dock.outputName){shell.claimPopup("dock:"+dock.outputName);dock.keyboardMode=true;dock.hovered=dock.keyboardIndex;keyboard.focus=true;}}}
     property real pointerSlot: -1
+    function trackPointer(x, y) {
+        keyboardMode = false;
+        const position = (x - 12) / slot;
+        if (y < 0 || y >= 100 || position < 0 || position >= shell.referenceDock.length) {
+            hovered = -1; pointerSlot = -1;
+            return;
+        }
+        hovered = Math.floor(position);
+        pointerSlot = position - 0.5;
+    }
+    function clearPointer() { if (!keyboardMode) { hovered = -1; pointerSlot = -1; } }
     readonly property real artworkScale: iconSize/68
     property var contextEntry: null
     property real contextX: 0
@@ -55,13 +66,13 @@ PanelWindow {
             else if(event.key===Qt.Key_Up || event.key===Qt.Key_Menu){const item=shell.referenceDock[dock.keyboardIndex];if(item.entry){dock.keyboardMode=false;dock.contextEntry=item.entry;dock.contextX=((dock.screen?dock.screen.width:1440)-dock.width)/2+12+(dock.keyboardIndex+0.5)*dock.slot;}event.accepted=true;}
         }
     }
-    // Only the shelf and hovered icons receive input; empty space passes through.
-    mask: Region { x:0; y:dock.hovered>=0 ? 0 : 54; width:dock.width; height:dock.hovered>=0 ? 128 : 74 }
+    // Keep the shelf/icon hit region stable while moving between neighbours.
+    mask: Region { x:0; y:28; width:dock.width; height:100 }
     // In Sway only, sample our installed wallpaper to soften its detail under
     // the shelf. This is wallpaper-only blur, not blur of other applications.
     Item {
         anchors.bottom: parent.bottom; width:parent.width; height:74
-        visible: !Theme.preferences.reduceTransparency && !Theme.compositorEffects && Quickshell.env("HYPRLAND_INSTANCE_SIGNATURE") === ""
+        visible: !Theme.preferences.reduceTransparency && !Theme.compositorEffects
         Image { id:backdrop; width:(dock.screen?dock.screen.width:1440); height:(dock.screen?dock.screen.height:1000); source:Qt.resolvedUrl("wallpaper.png"); fillMode:Image.PreserveAspectCrop; visible:false }
         ShaderEffectSource { id:slice; sourceItem:backdrop; sourceRect:Qt.rect(((dock.screen?dock.screen.width:1440)-dock.width)/2,(dock.screen?dock.screen.height:1000)-81,dock.width,74); width:dock.width; height:74; visible:false }
         Rectangle { id:roundedMask; width:dock.width; height:74; radius:22; layer.enabled:true; visible:false }
@@ -100,21 +111,33 @@ PanelWindow {
                     width:tip.implicitWidth+20; height:26; radius:7; color:Theme.colors.background; border.color:Theme.colors.border
                     Text { id:tip; anchors.centerIn:parent; text:shell.dockLabel(tile.modelData); color:Theme.colors.text; font.family:Theme.font; font.pixelSize:13 }
                 }
-                MouseArea {
-                    x:0; y:-26; width:parent.width; height:parent.height+26; hoverEnabled:true; acceptedButtons:Qt.LeftButton|Qt.RightButton
-                    onEntered:{dock.hovered=tile.index;dock.pointerSlot=tile.index;}
-                    onPositionChanged:mouse=>dock.pointerSlot=tile.index+mouse.x/width-0.5
-                    onExited:if(dock.hovered===tile.index) dock.hovered=-1
-                    onClicked: mouse => {
-                        if(mouse.button===Qt.RightButton) {if (tile.modelData.entry) {dock.contextEntry=tile.modelData.entry;dock.contextX=((dock.screen?dock.screen.width:1440)-dock.width)/2+tile.x+dock.slot/2;} else shell.activateDock(tile.modelData,false,dock.outputName);}
-                        else shell.activateDock(tile.modelData,!!(mouse.modifiers & Qt.ShiftModifier),dock.outputName);
-                    }
-                }
                 Accessible.role:Accessible.Button; Accessible.name:shell.dockLabel(modelData)
                 Accessible.onPressAction:shell.activateDock(modelData,false,dock.outputName)
             }
         }
     }
+    // A single stable hit area avoids pointer-grab and region transitions between tiles.
+    MouseArea {
+        id: pointerArea
+        x: 0; y: 28; width: dock.width; height: 100
+        hoverEnabled: true; acceptedButtons: Qt.LeftButton | Qt.RightButton
+        onEntered: dock.trackPointer(mouseX, mouseY)
+        onPositionChanged: mouse => dock.trackPointer(mouse.x, mouse.y)
+        onExited: dock.clearPointer()
+        onCanceled: dock.clearPointer()
+        onReleased: if (!containsMouse) dock.clearPointer()
+        onClicked: mouse => {
+            dock.trackPointer(mouse.x, mouse.y);
+            if (dock.hovered < 0) return;
+            const index = dock.hovered;
+            const item = shell.referenceDock[index];
+            if (mouse.button === Qt.RightButton && item.entry) {
+                dock.contextEntry = item.entry;
+                dock.contextX = ((dock.screen ? dock.screen.width : 1440) - dock.width) / 2 + 12 + (index + 0.5) * dock.slot;
+            } else shell.activateDock(item, !!(mouse.modifiers & Qt.ShiftModifier), dock.outputName);
+        }
+    }
+
     PanelWindow {
         screen:dock.screen; visible:dock.contextEntry!==null
         anchors {top:true;bottom:true;left:true;right:true}

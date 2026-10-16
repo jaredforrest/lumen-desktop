@@ -26,6 +26,9 @@ jobs:
           nix build .#compositor --no-link --option abort-on-warn true
           nix build .#compositor-basic --out-link artifacts/compositor --option abort-on-warn true
           nix develop --command desktop-test-python tests/desktop/smoke_installed.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/shell
+      - run: |
+          nix build .#test-pointer --out-link artifacts/pointer --option abort-on-warn true
+          PATH="$PWD/artifacts/shell-package/bin:$PATH" nix develop --command desktop-test-python tests/desktop/interaction_regression.py --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/interactions
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -33,3 +36,4 @@ jobs:
           path: |
             artifacts/backends
             artifacts/shell
+            artifacts/interactions

@@ -33,6 +33,7 @@
         character-viewer = import ./res/character-viewer { inherit pkgs; };
         localsend = import ./packages/localsend-desktop-style.nix { inherit pkgs; };
         test-runtime = runtime;
+        test-pointer = import ./tests/desktop/pointer_driver.nix { inherit pkgs; };
         inherit (office) wordcraft gridcraft deckcraft;
         profile-bridge = profileBridge;
         prism = import ./packages/prism-nix-profile.nix { inherit pkgs profileBridge; };
