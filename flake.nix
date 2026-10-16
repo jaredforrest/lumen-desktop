@@ -10,6 +10,9 @@
       settings = import ./packages/settings-adapter.nix { inherit pkgs; };
       session = import ./packages/session.nix { inherit pkgs; settingsPackage = settings; };
       runtime = import ./tests/desktop/runtime.nix { inherit pkgs; };
+      privateBus = pkgs.writeShellScriptBin "dbus-run-session" ''
+        exec ${pkgs.dbus}/bin/dbus-run-session --config-file=${pkgs.dbus}/share/dbus-1/session.conf "$@"
+      '';
       python = pkgs.python3.withPackages (p: [ p.pygobject3 p.dbus-python p.astral p.icalendar p.recurring-ical-events p.pillow ]);
     in {
       nixosModules.default = import ./modules/desktop.nix;
@@ -33,7 +36,7 @@
           touch $out
         '';
         backend-units = pkgs.runCommand "lumen-backend-units" {
-          nativeBuildInputs = [ python pkgs.dbus pkgs.git pkgs.glib pkgs.procps pkgs.coreutils pkgs.util-linux ];
+          nativeBuildInputs = [ privateBus python pkgs.dbus pkgs.git pkgs.glib pkgs.procps pkgs.coreutils pkgs.util-linux ];
         } ''
           export HOME=$TMPDIR/home
           mkdir -p "$HOME"
@@ -43,7 +46,7 @@
             case "$test" in
               *test_nix_settings.py|*test_app_launch_qml.py|*test_dock_model_qml.py) continue ;;
             esac
-            dbus-run-session --config-file=${pkgs.dbus}/share/dbus-1/session.conf -- ${python}/bin/python3 "$test"
+            dbus-run-session -- ${python}/bin/python3 "$test"
           done
           touch $out
         '';
