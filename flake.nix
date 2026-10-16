@@ -28,6 +28,7 @@
         shell = session.shellLauncher;
         settings-adapter = settings;
         compositor = import ./packages/sway-window-controls.nix { pkgs = compositorPkgs; effects = true; };
+        compositor-basic = import ./packages/sway-window-controls.nix { pkgs = compositorPkgs; effects = false; };
         character-viewer = import ./res/character-viewer { inherit pkgs; };
         localsend = import ./packages/localsend-desktop-style.nix { inherit pkgs; };
         test-runtime = runtime;

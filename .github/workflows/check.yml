@@ -22,8 +22,9 @@ jobs:
       - run: nix develop --command desktop-test-python tests/desktop/run_backend_tests.py --output artifacts/backends
       - run: |
           mkdir -p artifacts
-          nix build .#compositor --out-link artifacts/compositor --option abort-on-warn true
-          nix develop --command desktop-test-python tests/desktop/smoke_installed.py --sway "$PWD/artifacts/compositor/bin/sway" --effects --output artifacts/shell
+          nix build .#compositor --no-link --option abort-on-warn true
+          nix build .#compositor-basic --out-link artifacts/compositor --option abort-on-warn true
+          nix develop --command desktop-test-python tests/desktop/smoke_installed.py --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/shell
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -14,3 +14,5 @@ Render tests use a nested headless compositor. Build the shell, compositor and t
 Do not treat a successful backend suite as visual certification. Keep render captures, capability checks, physical-device tests and actual deployment evidence distinct. Preserve warnings in test logs. Nix evaluations abort on warnings; inspect compiler logs before accepting a build.
 
 Auth changes require isolated lock/greeter tests. File operations require cancellation/overwrite coverage. Host settings changes require the settings transaction tests. Never bypass a consumer's deployment or boot checks.
+
+Hosted CI builds both compositor variants and renders the shell through the basic compositor with Pixman. The effects compositor requires a DRM render node; its visual effects are checked on suitable local hardware rather than a GPU-less hosted runner.
