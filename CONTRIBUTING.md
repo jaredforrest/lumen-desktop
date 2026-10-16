@@ -16,3 +16,5 @@ Do not treat a successful backend suite as visual certification. Keep render cap
 Auth changes require isolated lock/greeter tests. File operations require cancellation/overwrite coverage. Host settings changes require the settings transaction tests. Never bypass a consumer's deployment or boot checks.
 
 Hosted CI builds both compositor variants and renders the shell through the basic compositor with Pixman. The effects compositor requires a DRM render node; its visual effects are checked on suitable local hardware rather than a GPU-less hosted runner.
+
+The development shell contains the test tools and standalone settings evaluator, rather than the entire desktop application closure. Build `.#shell` explicitly for rendering tests and pass its launcher with `--launcher`.

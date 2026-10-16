@@ -58,7 +58,7 @@
         '';
       };
       devShells.${system}.default = pkgs.mkShell {
-        packages = [ privateBus runtime settings session.shellLauncher pkgs.nix pkgs.git pkgs.dbus pkgs.quickshell pkgs.sway pkgs.grim pkgs.wtype pkgs.gitleaks ];
+        packages = [ privateBus runtime settings pkgs.nix pkgs.git pkgs.dbus pkgs.quickshell pkgs.sway pkgs.grim pkgs.wtype pkgs.gitleaks ];
         shellHook = ''
           export PYTHONDONTWRITEBYTECODE=1
           export LUMEN_TEST_SETTINGS_COMMAND=${settings}/bin/lumen-nix-settings
