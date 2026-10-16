@@ -5,20 +5,20 @@ PanelSurface {
     id: root
     required property string kind
     signal closeRequested()
-    property bool files:kind==="Files"
-    property string page:files?"Home":"Appearance"
+    property bool isFiles:kind==="Files"
+    property string page:isFiles?"Home":"Appearance"
     property var files:[]
     property bool listMode:false
     property int selectedFile:-1
-    readonly property int sidebarWidth:files?200:220
+    readonly property int sidebarWidth:isFiles?200:220
     readonly property int contentX:sidebarWidth+24
-    width:files?880:790;height:files?550:610;radius:22
-    color:files?Theme.content:Theme.colors.background
+    width:isFiles?880:790;height:isFiles?550:610;radius:22
+    color:isFiles?Theme.content:Theme.colors.background
     scale:parent?Math.min(1,(parent.width-32)/width,(parent.height-Theme.barHeight-110)/height):1
     onKindChanged:{page=kind==="Files"?"Home":"Appearance";selectedFile=-1;}
     Process {
         command:[Quickshell.env("GLOBAL_MENU_PYTHON"),"-c","import os,json; print(json.dumps(sorted([{'name':e.name,'directory':e.is_dir()} for e in os.scandir(os.path.expanduser('~')) if not e.name.startswith('.')],key=lambda e:(not e['directory'],e['name'].lower()))[:60]))"]
-        running:root.files
+        running:root.isFiles
         stdout:StdioCollector {onStreamFinished:{try{root.files=JSON.parse(text);}catch(e){root.files=[];}}}
     }
     Rectangle {x:8;y:8;width:root.sidebarWidth;height:parent.height-16;radius:16;color:Theme.sidebar}
@@ -36,26 +36,26 @@ PanelSurface {
         }
     }
     Column {
-        x:16;y:root.files?65:56;width:root.sidebarWidth-16;spacing:3
+        x:16;y:root.isFiles?65:56;width:root.sidebarWidth-16;spacing:3
         Rectangle {
-            visible:!root.files;width:parent.width;height:28;radius:7;color:Theme.colors.background
+            visible:!root.isFiles;width:parent.width;height:28;radius:7;color:Theme.colors.background
             SystemGlyph {x:8;anchors.verticalCenter:parent.verticalCenter;name:"search";width:14;height:14;ink:Theme.colors.muted}
             PanelLabel {x:29;anchors.verticalCenter:parent.verticalCenter;text:"Search";color:Theme.colors.muted}
         }
         Item {width:1;height:8}
-        PanelLabel {x:8;text:root.files?"Favourites":"System Settings";font.pixelSize:11;font.weight:Font.DemiBold;color:Theme.colors.muted;height:22}
+        PanelLabel {x:8;text:root.isFiles?"Favourites":"System Settings";font.pixelSize:11;font.weight:Font.DemiBold;color:Theme.colors.muted;height:22}
         Repeater {
             model:root.files?["Recents","Applications","Desktop","Documents","Downloads","Home"]:["Wi-Fi","Bluetooth","Network","General","Appearance","Accessibility","Control Centre","Desktop & Dock","Displays","Sound","Notifications"]
             Rectangle {
                 required property string modelData
                 required property int index
-                property bool connected:root.files?modelData==="Home":["Appearance","General","Sound"].includes(modelData)
+                property bool connected:root.isFiles?modelData==="Home":["Appearance","General","Sound"].includes(modelData)
                 width:root.sidebarWidth-16;height:30;radius:6;color:root.page===modelData?Theme.colors.accent:"transparent"
                 Rectangle {
                     x:8;anchors.verticalCenter:parent.verticalCenter;width:20;height:20;radius:5
-                    color:root.files?"transparent":["#007aff","#007aff","#007aff","#8e8e93","#56565b","#007aff","#8e8e93","#007aff","#007aff","#ff3b30","#ff3b30"][parent.index]
+                    color:root.isFiles?"transparent":["#007aff","#007aff","#007aff","#8e8e93","#56565b","#007aff","#8e8e93","#007aff","#007aff","#ff3b30","#ff3b30"][parent.index]
                     opacity:parent.connected?1:0.55
-                    SystemGlyph {anchors.centerIn:parent;width:root.files?17:14;height:width;name:root.files?["clock","grid","screen","document","download","home"][index]:["wifi","bluetooth","network","gear","contrast","person","list","screen","sun","speaker","bell"][index];ink:root.files?(root.page===modelData?Theme.colors.selectedText:Theme.colors.accent):"white"}
+                    SystemGlyph {anchors.centerIn:parent;width:root.isFiles?17:14;height:width;name:root.isFiles?["clock","grid","screen","document","download","home"][index]:["wifi","bluetooth","network","gear","contrast","person","list","screen","sun","speaker","bell"][index];ink:root.isFiles?(root.page===modelData?Theme.colors.selectedText:Theme.colors.accent):"white"}
                 }
                 PanelLabel {x:35;anchors.verticalCenter:parent.verticalCenter;text:modelData;color:root.page===modelData?Theme.colors.selectedText:Theme.colors.text;opacity:parent.connected?1:0.55}
                 MouseArea {anchors.fill:parent;enabled:parent.connected;onClicked:root.page=parent.modelData}
@@ -73,7 +73,7 @@ PanelSurface {
         }
         PanelLabel {x:72;anchors.verticalCenter:parent.verticalCenter;width:parent.width-230;text:root.page;font.pixelSize:15;font.weight:Font.DemiBold}
         Rectangle {
-            visible:root.files;anchors.right:parent.right;y:4;width:142;height:28;radius:14;color:Theme.colors.background
+            visible:root.isFiles;anchors.right:parent.right;y:4;width:142;height:28;radius:14;color:Theme.colors.background
             Row {anchors.centerIn:parent;spacing:10
                 Repeater {model:["grid","list","more","search"]
                     Item {required property string modelData;width:22;height:22
@@ -85,7 +85,7 @@ PanelSurface {
         }
     }
     GridView {
-        id:fileGrid;visible:root.files && !root.listMode
+        id:fileGrid;visible:root.isFiles && !root.listMode
         x:root.contentX;y:72;width:parent.width-x-16;height:parent.height-y-45
         cellWidth:112;cellHeight:108;clip:true;model:root.files
         delegate:Item {
@@ -101,7 +101,7 @@ PanelSurface {
         }
     }
     ListView {
-        id:fileList;visible:root.files && root.listMode
+        id:fileList;visible:root.isFiles && root.listMode
         x:root.contentX;y:72;width:parent.width-x-22;height:parent.height-y-45;clip:true;model:root.files
         delegate:Rectangle {
             required property var modelData
@@ -114,7 +114,7 @@ PanelSurface {
         }
     }
     Column {
-        visible:!root.files;x:root.contentX;y:76;width:parent.width-x-24;spacing:18
+        visible:!root.isFiles;x:root.contentX;y:76;width:parent.width-x-24;spacing:18
         PanelLabel {text:root.page;font.pixelSize:24;font.weight:Font.DemiBold}
         Rectangle {
             visible:root.page==="Appearance";width:parent.width;height:151;radius:12;color:Theme.colors.surface;border.color:Theme.hairline
@@ -164,7 +164,7 @@ PanelSurface {
     Item {
         x:root.contentX;y:parent.height-34;width:parent.width-x-22;height:24
         Rectangle {width:parent.width;height:1;color:Theme.hairline}
-        PanelLabel {anchors.verticalCenter:parent.verticalCenter;text:root.files?"Home  ›  "+root.files.length+" items":"Settings preview";font.pixelSize:10;color:Theme.colors.muted}
-        PanelLabel {anchors.right:parent.right;anchors.verticalCenter:parent.verticalCenter;text:root.files?"Read-only preview":"Controls not connected";font.pixelSize:10;color:Theme.colors.muted}
+        PanelLabel {anchors.verticalCenter:parent.verticalCenter;text:root.isFiles?"Home  ›  "+root.files.length+" items":"Settings preview";font.pixelSize:10;color:Theme.colors.muted}
+        PanelLabel {anchors.right:parent.right;anchors.verticalCenter:parent.verticalCenter;text:root.isFiles?"Read-only preview":"Controls not connected";font.pixelSize:10;color:Theme.colors.muted}
     }
 }
