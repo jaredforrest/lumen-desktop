@@ -29,6 +29,7 @@ env=dict(os.environ)
 for key in ('PATH','GLOBAL_MENU_PYTHON','GLOBAL_MENU_BRIDGE','QT_PLUGIN_PATH','QML_IMPORT_PATH','QT_QPA_PLATFORMTHEME','QT_LINUX_ACCESSIBILITY_ALWAYS_ON'):
     if key in installed:env[key]=installed[key]
 env.update(XDG_RUNTIME_DIR=str(runtime),XDG_CONFIG_HOME=str(run/'config'),XDG_STATE_HOME=str(run/'state'),XDG_CACHE_HOME=str(run/'cache'),XDG_DATA_HOME=str(run/'data'),WLR_BACKENDS='headless',WLR_RENDERER='gles2' if args.effects else 'pixman',WLR_RENDERER_ALLOW_SOFTWARE='1',WLR_LIBINPUT_NO_DEVICES='1',QT_QPA_PLATFORM='wayland',GDK_BACKEND='wayland',LUMEN_FILE_SERVICE='0',LUMEN_LAUNCH_SCOPES='0',GLOBAL_MENU_ENABLED='0')
+if not args.effects:env['QT_QUICK_BACKEND']='software'
 for key in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK'):env.pop(key,None)
 docs=run/'Documents';docs.mkdir();(docs/'example.txt').write_text('US English preview fixture')
 env['LUMEN_SEARCH_ROOTS']=json.dumps([str(docs)])
