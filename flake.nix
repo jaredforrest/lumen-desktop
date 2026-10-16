@@ -39,11 +39,8 @@
       };
       checks.${system} = {
         asset-overrides = let
-          icons = pkgs.runCommand "test-consumer-icons" {} ''
-            mkdir -p "$out"
-            echo '<svg xmlns="http://www.w3.org/2000/svg"><title>Consumer override</title></svg>' > "$out/files.svg"
-          '';
-          mark = pkgs.writeText "test-consumer-mark.svg" '<svg xmlns="http://www.w3.org/2000/svg"><title>Consumer mark</title></svg>';
+          icons = ./tests/project/fixtures/icons;
+          mark = ./tests/project/fixtures/mark.svg;
           wallpaper = ./res/lumen-desktop/shell/wallpaper.png;
           assets = import ./packages/assets.nix { inherit pkgs icons wallpaper; brandMark = mark; };
         in pkgs.runCommand "lumen-asset-overrides" {} ''
