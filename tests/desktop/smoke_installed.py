@@ -97,7 +97,9 @@ try:
   press_control(0);wait(lambda:not json.loads(ipc('settingsStatus'))['visible'])
   print('PASS owned Settings header buttons and Dock activation restore placement',flush=True)
 
- key('-k','Escape');ipc('menu','Controls');time.sleep(.5);call('grim',str(run/'controls.png'));key('-k','Escape')
+ key('-k','Escape');ipc('menu','Controls');wait(lambda:json.loads(ipc('layout'))[0]['menu']=='Controls')
+ assert json.loads(ipc('layout'))[0]['scrollY']==0,'Control Centre retained the previous panel scroll offset'
+ time.sleep(.5);call('grim',str(run/'controls.png'));key('-k','Escape')
  ipc('menu','Launcher');time.sleep(.5);call('grim',str(run/'search.png'));key('-k','Escape')
  ipc('settings','Internet Accounts');wait(lambda:json.loads(ipc('settingsStatus'))['page']=='Internet Accounts');call('grim',str(run/'calendar-accounts.png'));key('-k','Escape')
  # A high-frequency background makes accidental full-screen blur observable.
