@@ -1,5 +1,5 @@
 .pragma library
-// Functional launch slots; unassigned slots are omitted by the model.
+// Functional launch slots.
 var items = [
   {
     "key": "files",
@@ -212,12 +212,12 @@ var items = [
     "bottom": 13
   },
   {
-    "key": "iphone",
-    "name": "iPhone Mirroring",
-    "appId": "iphone-mirror",
+    "key": "phone",
+    "name": "Phone Link",
+    "appId": "phone-mirror",
     "center": 1588,
     "action": null,
-    "image": "iphone.svg",
+    "image": "phone.svg",
     "canvas": 62,
     "bottom": 16
   },
