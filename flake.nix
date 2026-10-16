@@ -33,7 +33,7 @@
           touch $out
         '';
         backend-units = pkgs.runCommand "lumen-backend-units" {
-          nativeBuildInputs = [ python pkgs.dbus ];
+          nativeBuildInputs = [ python pkgs.dbus pkgs.git pkgs.glib pkgs.procps pkgs.coreutils pkgs.util-linux ];
         } ''
           export HOME=$TMPDIR/home
           mkdir -p "$HOME"
