@@ -1,13 +1,13 @@
 { pkgs }:
 let
   source = pkgs.writeText "desktop-defaults.nix" "{}";
-  defaults = ../config/application-profiles.nix;
+  defaults = pkgs.writeText "standalone-app-defaults.json" (builtins.toJSON (import ../config/application-profiles.nix));
   schema = ./desktop-settings-schema.nix;
   builder = pkgs.writeText "desktop-settings-builder.nix" ''
     { source }:
     let pkgs = import ${pkgs.path} { system = "${pkgs.stdenv.hostPlatform.system}"; };
     in pkgs.writeTextDir "settings.json" (builtins.toJSON (import ${schema} {
-      inherit (pkgs) lib; defaults = import ${defaults}; values = import (builtins.toPath source);
+      inherit (pkgs) lib; defaults = builtins.fromJSON (builtins.readFile ${defaults}); values = import (builtins.toPath source);
     }))
   '';
 in pkgs.writeShellApplication {

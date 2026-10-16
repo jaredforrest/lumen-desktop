@@ -60,6 +60,7 @@
         packages = [ privateBus runtime settings session.shellLauncher pkgs.nix pkgs.git pkgs.dbus pkgs.quickshell pkgs.sway pkgs.grim pkgs.wtype pkgs.gitleaks ];
         shellHook = ''
           export PYTHONDONTWRITEBYTECODE=1
+          export LUMEN_TEST_SETTINGS_COMMAND=${settings}/bin/lumen-nix-settings
           echo "Lumen development shell. See CONTRIBUTING.md for isolated test commands."
         '';
       };
