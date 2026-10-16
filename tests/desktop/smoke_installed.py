@@ -54,7 +54,7 @@ def ipc(method,*values):return call('quickshell','-p',str(assets),'ipc','call','
 def state():return json.loads(ipc('filesStatus'))
 def key(*values):call('wtype','-s','150',*values)
 try:
- conf=run/'sway.conf';conf.write_text('output HEADLESS-1 resolution 1440x1000\nxwayland disable\nfor_window [app_id="org.quickshell"] floating enable, border none\n')
+ conf=run/'sway.conf';conf.write_text('output HEADLESS-1 resolution 1440x1000\nxwayland disable\nfor_window [app_id="org.quickshell"] floating enable\n')
  if args.effects:
   with conf.open('a') as stream:stream.write('corner_radius 12\nshadows enable\nshadow_blur_radius 28\nanimation_duration_ms 0\nblur enable\nblur_xray disable\nlayer_effects "lumen-dock" "blur enable; corner_radius 22"\nlayer_effects "lumen-menu-popup" "blur enable; blur_ignore_transparent enable"\n')
  launch([args.sway,'--unsupported-gpu','-c',str(conf)],'sway');wait(lambda:list(runtime.glob('sway-ipc*.sock')))
@@ -143,6 +143,14 @@ try:
    checks.append(view+' spring-open/drop without further pointer movement; source retained')
  log=(run/'shell.log').read_text()
  assert not any(s in log for s in ('Failed to load configuration','ReferenceError:','TypeError:')),log
+ sway_log=(run/'sway.log').read_text()
+ assert 'Unknown/invalid command' not in sway_log,sway_log
+ if args.effects:
+  from PIL import ImageStat
+  for capture,area in (('files.png',(470,260,1000,700)),('controls.png',(1130,100,1420,450))):
+   mean=ImageStat.Stat(Image.open(run/capture).convert('RGB').crop(area)).mean
+   assert sum(mean)/3 > 60,(capture,mean,'incomplete headless rendering')
+  checks.append('Effects captures contain rendered window and popup interiors')
  (run/'result.json').write_text(json.dumps(dict(passed=True,assets=str(assets),checks=checks),indent=2))
  print(run/'result.json')
 finally:
