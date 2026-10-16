@@ -38,6 +38,23 @@
         prism = import ./packages/prism-nix-profile.nix { inherit pkgs profileBridge; };
       };
       checks.${system} = {
+        asset-overrides = let
+          icons = pkgs.runCommand "test-consumer-icons" {} ''
+            mkdir -p "$out"
+            echo '<svg xmlns="http://www.w3.org/2000/svg"><title>Consumer override</title></svg>' > "$out/files.svg"
+          '';
+          mark = pkgs.writeText "test-consumer-mark.svg" '<svg xmlns="http://www.w3.org/2000/svg"><title>Consumer mark</title></svg>';
+          wallpaper = ./res/lumen-desktop/shell/wallpaper.png;
+          assets = import ./packages/assets.nix { inherit pkgs icons wallpaper; brandMark = mark; };
+        in pkgs.runCommand "lumen-asset-overrides" {} ''
+          cmp ${icons}/files.svg ${assets}/shell/reference-icons/files.svg
+          cmp ${mark} ${assets}/shell/icons/lumen.svg
+          cmp ${wallpaper} ${assets}/shell/wallpaper.png
+          test -s ${assets}/shell/reference-icons/calendar.svg
+          test -s ${assets}/auth/lock.qml
+          touch "$out"
+        '';
+        consumer-boundary = assert import ./tests/project/boundary.nix { inherit nixpkgs system; }; pkgs.writeText "lumen-consumer-boundary" "passed";
         source-contracts = pkgs.runCommand "lumen-source-contracts" { nativeBuildInputs = [ pkgs.python3 ]; } ''
           python3 ${./tests/project/source_contracts.py} ${self}
           touch $out

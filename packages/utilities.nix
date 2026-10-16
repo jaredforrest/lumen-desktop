@@ -1,6 +1,5 @@
-{ pkgs, rofiPackage ? pkgs.rofi }:
-let characterViewer = import ../res/character-viewer { inherit pkgs; };
-in pkgs.writeShellApplication {
+{ pkgs, rofiPackage ? pkgs.rofi, characterViewer ? import ../res/character-viewer { inherit pkgs; } }:
+ pkgs.writeShellApplication {
   name = "lumen-utilities";
   runtimeInputs = [ pkgs.python3 pkgs.sway rofiPackage characterViewer
     pkgs.wl-clipboard pkgs.grim pkgs.slurp pkgs.satty pkgs.wf-recorder

@@ -186,7 +186,7 @@ def main():
         #panel button:focus { box-shadow: inset 0 0 0 1px ACCENT; }
         #panel .emoji, #panel .character { min-width: 36px; min-height: 37px; }
         #panel .character label { font-family: "FONT", sans-serif; font-size: 23px; }
-        #panel .emoji label { font-family: "Noto Color Emoji", "Noto Color Emoji"; font-size: 25px; }
+        #panel .emoji label { font-family: "EMOJI_FAMILY", "Noto Color Emoji"; font-size: 25px; }
         #panel entry { background: SEARCH; color: FOREGROUND; border: 1px solid BORDER; border-radius: 7px; box-shadow: none; min-height: 28px; padding: 0 8px; }
         #panel entry:focus { border-color: ACCENT; }
         #panel .heading { color: MUTED; font-size: 12px; font-weight: 600; }
@@ -197,7 +197,7 @@ def main():
         #panel .sidebar button { padding: 7px 8px; }
         #panel .sidebar button:checked { background: ACCENT; color: white; }
         #panel .details { border-left: 1px solid BORDER; padding: 12px; }
-        #panel .preview { font-family: "Noto Color Emoji", sans-serif; font-size: 64px; }
+        #panel .preview { font-family: "EMOJI_FAMILY", sans-serif; font-size: 64px; }
         #panel .text-preview { font-family: "FONT", sans-serif; font-size: 56px; }
         #panel .detail-name { font-weight: 600; }
         #panel .action { background: SEARCH; border: 1px solid BORDER; padding: 5px 8px; }
@@ -206,7 +206,7 @@ def main():
         #character-options * { font-family: "FONT", sans-serif; font-size: 12px; }
         #character-options button { background: transparent; color: FOREGROUND; border: 0; box-shadow: none; padding: 5px; border-radius: 5px; }
         #character-options button:hover, #character-options button:focus { background: HOVER; }
-        #character-options .emoji label { font-family: "Noto Color Emoji", "Noto Color Emoji"; font-size: 25px; }
+        #character-options .emoji label { font-family: "EMOJI_FAMILY", "Noto Color Emoji"; font-size: 25px; }
         #character-options .emoji { min-width: 32px; min-height: 34px; padding: 0; }
         tooltip { background: BACKGROUND; color: FOREGROUND; border: 1px solid BORDER; border-radius: 6px; }
         tooltip label { font-family: "FONT", sans-serif; font-size: 11px; }
@@ -235,6 +235,8 @@ def main():
                                'HOVER':'hover','SEARCH':'field','MUTED':'muted','ACCENT':'accent'}.items():
                 rendered = rendered.replace(token, colors[key])
             rendered = rendered.replace('FONT', appearance['font'])
+            family = os.environ.get('LUMEN_EMOJI_FONT_FAMILY', 'Noto Color Emoji').replace('\\', '\\\\').replace(chr(34), '\\'+chr(34))
+            rendered = rendered.replace('EMOJI_FAMILY', family)
             css.load_from_data(rendered.encode())
             Gtk.Settings.get_default().set_property('gtk-theme-name', 'WhiteSur-Dark' if appearance.get('mode') == 'dark' else 'WhiteSur-Light')
             Gtk.Settings.get_default().set_property('gtk-application-prefer-dark-theme', appearance.get('mode') == 'dark')

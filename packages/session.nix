@@ -1,14 +1,13 @@
-{ pkgs, settingsPackage, user ? "user", displayName ? user, homeDirectory ? "/home/${user}", timeZone ? "UTC", swayPackage ? pkgs.sway, rofiPackage ? pkgs.rofi }:
+{ pkgs, settingsPackage, user ? "user", displayName ? user, homeDirectory ? "/home/${user}", timeZone ? "UTC", swayPackage ? pkgs.sway, rofiPackage ? pkgs.rofi, assets ? ../res/lumen-desktop, emojiFamily ? "Noto Color Emoji" }:
 let
   lib = pkgs.lib;
-  assets = ../res/lumen-desktop;
   desktopTimeZone = timeZone;
-  auth = import ./lumen-auth.nix { inherit pkgs user displayName; swayPackage = swayPackage; };
+  auth = import ./lumen-auth.nix { inherit pkgs user displayName assets; swayPackage = swayPackage; };
     nixSettings = settingsPackage;
     appearance = import ../packages/lumen-appearance.nix { inherit pkgs nixSettings; };
     qtTheme = import ../packages/lumen-qt-theme.nix { inherit pkgs; };
     qtTheme5 = import ../packages/lumen-qt-theme.nix { inherit pkgs; qt6 = false; };
-    palette = builtins.fromJSON (builtins.readFile (assets + /appearance/palette.json));
+    palette = builtins.fromJSON (builtins.readFile ../res/lumen-desktop/appearance/palette.json);
     menuRuntime = import ../packages/global-menu-runtime.nix { inherit pkgs; };
     personalServices = import ../packages/lumen-personal-services.nix { inherit pkgs; timeZone = desktopTimeZone; };
     fileClipboard = import ../packages/file-clipboard.nix { inherit pkgs; };
@@ -106,6 +105,7 @@ let
       name = "lumen-desktop-doctor";
       runtimeInputs = [ pkgs.python3 pkgs.systemd pkgs.fontconfig pkgs.glib ];
       text = ''
+        export LUMEN_EMOJI_FONT_FAMILY=${lib.escapeShellArg emojiFamily}
         export GSETTINGS_SCHEMA_DIR=${pkgs.glib.getSchemaPath pkgs.gsettings-desktop-schemas}
         exec python3 ${assets}/doctor.py "$@"
       '';

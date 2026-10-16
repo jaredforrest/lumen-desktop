@@ -1,7 +1,6 @@
-{ pkgs }:
+{ pkgs, fontPackage ? pkgs.noto-fonts-color-emoji, fontFile ? "${fontPackage}/share/fonts/noto/NotoColorEmoji.ttf", fontFamily ? "Noto Color Emoji" }:
 let
   python = pkgs.python3.withPackages (p: [ p.pygobject3 ]);
-  font = pkgs.noto-fonts-color-emoji;
 in pkgs.stdenv.mkDerivation {
   pname = "lumen-character-viewer";
   version = "1.0";
@@ -25,6 +24,7 @@ in pkgs.stdenv.mkDerivation {
       --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.sway pkgs.wtype pkgs.wl-clipboard pkgs.libnotify ]} \
       --set GDK_BACKEND wayland \
       --set CHARACTER_VIEWER_FONTCONFIG ${pkgs.fontconfig.lib}/lib/libfontconfig.so.1 \
-      --set CHARACTER_VIEWER_FONT ${font}/share/fonts/noto/NotoColorEmoji.ttf
+      --set LUMEN_EMOJI_FONT_FAMILY ${pkgs.lib.escapeShellArg fontFamily} \
+      --set CHARACTER_VIEWER_FONT ${fontFile}
   '';
 }

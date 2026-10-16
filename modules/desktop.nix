@@ -1,56 +1,56 @@
-# A second desktop session, with Sway retained as the default and fallback.
+# Desktop mechanisms and opt-in session integrations. Host policy belongs to consumers.
 { config, pkgs, lib, ... }:
 let
   cfg = config.services.lumen-desktop;
   desktopUser = cfg.user;
   settingsPackage = cfg.settingsPackage;
   hostSwayPackage = config.programs.sway.package;
-  assets = ../res/lumen-desktop;
+  assets = import ../packages/assets.nix { inherit pkgs; inherit (cfg.appearance) icons wallpaper brandMark; };
   desktopTimeZone = config.time.timeZone;
-  auth = import ../packages/lumen-auth.nix { inherit pkgs lib; user = desktopUser; displayName = cfg.displayName; swayPackage = config.programs.sway.package; };
-  bitwardenPackage = cfg.bitwardenPackage;
+  auth = import ../packages/lumen-auth.nix { inherit pkgs lib assets; inherit (cfg.integrations.greeter) greeterExtraConfig allowUnsupportedGpu; user = desktopUser; displayName = cfg.displayName; swayPackage = config.programs.sway.package; };
 in {
   options.services.lumen-desktop = {
     enable = lib.mkEnableOption "Lumen desktop session";
     user = lib.mkOption { type = lib.types.str; description = "Desktop login user."; };
     displayName = lib.mkOption { type = lib.types.str; default = cfg.user; description = "Name shown by the greeter and lock screen."; };
     settingsPackage = lib.mkOption { type = lib.types.package; description = "Host settings command implementing the settings JSON contract."; };
-    bitwardenPackage = lib.mkOption { type = lib.types.package; default = pkgs.bitwarden-desktop; };
+    appearance = {
+      icons = lib.mkOption { type = lib.types.nullOr lib.types.path; default = null; description = "Optional icon directory; supplied by the consumer, never bundled by this module."; };
+      brandMark = lib.mkOption { type = lib.types.nullOr lib.types.path; default = null; };
+      wallpaper = lib.mkOption { type = lib.types.path; default = ../res/lumen-desktop/shell/wallpaper.png; };
+      emojiFamily = lib.mkOption { type = lib.types.str; default = "Noto Color Emoji"; };
+    };
+    integrations = {
+      greeter = {
+        enable = lib.mkEnableOption "Lumen greetd greeter";
+        greeterExtraConfig = lib.mkOption { type = lib.types.lines; default = ""; };
+        allowUnsupportedGpu = lib.mkOption { type = lib.types.bool; default = false; };
+      };
+      hyprland.enable = lib.mkEnableOption "Hyprland session integration";
+      calendar.enable = lib.mkEnableOption "calendar account services";
+      bluetooth.enable = lib.mkEnableOption "Bluetooth UI integration";
+      accessibility.enable = lib.mkEnableOption "desktop accessibility bus";
+      replaceExistingShell = lib.mkEnableOption "replacement of existing bar and notification services";
+    };
   };
   config = lib.mkIf cfg.enable {
-  # HDD-backed swap is a last resort; reclaim file cache before swapping apps.
-  boot.kernel.sysctl."vm.swappiness" = 0;
-  programs.hyprland.enable = true;
-  environment.etc."polkit-1/actions/com.bitwarden.Bitwarden.policy".source =
-    "${bitwardenPackage}/share/polkit-1/actions/com.bitwarden.Bitwarden.policy";
-  # The user-profile Sway binary can bypass the NixOS wrapper's extraOptions.
-  # Acknowledge NVIDIA in the login environment for every Sway launch route.
-  environment.sessionVariables.SWAY_UNSUPPORTED_GPU =
-    lib.mkIf (builtins.elem "nvidia" config.services.xserver.videoDrivers) "true";
-  hardware.i2c.enable = true;
-  services.gnome.at-spi2-core.enable = true;
-  services.gnome.gnome-online-accounts.enable = true;
-  services.gnome.evolution-data-server.enable = true;
-  environment.systemPackages = [ pkgs.gnome-online-accounts-gtk auth.activateLogin ];
-  # Preserve active-seat DDC access when device change events retrigger udev.
-  services.udev.packages = [ (pkgs.writeTextDir "lib/udev/rules.d/69-desktop-ddc.rules" ''
-    ACTION=="add|change", SUBSYSTEM=="i2c-dev", KERNEL=="i2c-[0-9]*", TAG+="uaccess"
-  '') ];
-  services.blueman.enable = true;
-  services.greetd.settings.default_session.command = lib.mkForce
-    "${auth.greeter}/bin/lumen-greeter";
-  # Restarting the greeter can terminate the active desktop. Activate it next boot.
-  systemd.services.greetd.restartIfChanged = false;
-  systemd.services.greetd.stopIfChanged = false;
-  xdg.portal.config.hyprland = {
-    default = [ "hyprland" "gtk" ];
-    "org.freedesktop.impl.portal.FileChooser" = [ "gtk" ];
-  };
+  services.gnome.at-spi2-core.enable = lib.mkIf cfg.integrations.accessibility.enable true;
+  services.gnome.gnome-online-accounts.enable = lib.mkIf cfg.integrations.calendar.enable true;
+  services.gnome.evolution-data-server.enable = lib.mkIf cfg.integrations.calendar.enable true;
+  environment.systemPackages = lib.optionals cfg.integrations.calendar.enable [ pkgs.gnome-online-accounts-gtk ]
+    ++ lib.optionals cfg.integrations.greeter.enable [ auth.activateLogin ];
+  services.blueman.enable = lib.mkIf cfg.integrations.bluetooth.enable true;
+  services.greetd.settings.default_session.command = lib.mkIf cfg.integrations.greeter.enable
+    (lib.mkDefault "${auth.greeter}/bin/lumen-greeter");
+  # Never interrupt an active session when changing greeter packaging.
+  systemd.services.greetd.restartIfChanged = lib.mkIf cfg.integrations.greeter.enable false;
+  systemd.services.greetd.stopIfChanged = lib.mkIf cfg.integrations.greeter.enable false;
 
   home-manager.users.${desktopUser} = { config, lib, ... }:
   let
     session = import ../packages/session.nix {
-      inherit pkgs settingsPackage;
+      inherit pkgs settingsPackage assets;
+      emojiFamily = cfg.appearance.emojiFamily;
       user = config.home.username;
       displayName = cfg.displayName;
       homeDirectory = config.home.homeDirectory;
@@ -66,13 +66,6 @@ in {
       choice=$(printf 'Cancel\nLog out\n' | ${config.programs.rofi.package}/bin/rofi -dmenu -p "Session")
       if [ "$choice" = "Log out" ]; then ${hypr} dispatch exit; fi
     '';
-    idle = pkgs.writeShellScript "hyprland-idle" ''
-      exec ${pkgs.swayidle}/bin/swayidle -w \
-        timeout 1440 '${lock}' \
-        timeout 1470 '${hypr} dispatch dpms off' \
-        resume '${hypr} dispatch dpms on' \
-        before-sleep '${lock}' lock '${lock}'
-    '';
     sessionService = description: command: {
       Unit = {
         Description = description;
@@ -84,17 +77,17 @@ in {
     };
   in {
     # Own the theme declaratively, rather than keeping temporary config links.
-    wayland.windowManager.sway.extraConfig = lib.mkAfter (builtins.readFile (assets + /first-pass.conf) + ''
+    wayland.windowManager.sway.extraConfig = lib.mkAfter (builtins.readFile ../res/lumen-desktop/first-pass.conf + ''
       # libinput exposes three-finger swipes; two-finger edge gestures are not available in Sway.
       bindgesture swipe:3:left exec ${desktopAction}/bin/lumen-desktop-action notifications-open
       bindgesture swipe:3:right exec ${desktopAction}/bin/lumen-desktop-action notifications-close
     '');
-    programs.waybar.style = lib.mkForce (assets + /bar.css);
+    programs.waybar.style = lib.mkDefault ("${assets}/bar.css");
     wayland.windowManager.sway.config.menu = lib.mkForce "${appLauncher}/bin/lumen-app-launcher";
     programs.rofi.theme = lib.mkForce "${config.xdg.stateHome}/lumen-desktop/launcher.rasi";
     programs.rofi.settings.display-drun = lib.mkForce "⌕";
     programs.rofi.settings.drun-display-format = lib.mkForce "{name}";
-    gtk.theme = { name = lib.mkForce "WhiteSur-Light"; package = lib.mkForce pkgs.whitesur-gtk-theme; };
+    gtk.theme = { name = lib.mkDefault "WhiteSur-Light"; package = lib.mkDefault pkgs.whitesur-gtk-theme; };
     gtk.gtk4.theme = config.gtk.theme;
     gtk.font = { name = "Interlude Variable"; size = 10; };
     # GTK reads both its own settings and the desktop portal's GSettings value.
@@ -104,12 +97,12 @@ in {
     dconf.settings."org/gnome/desktop/interface".toolkit-accessibility = true;
     dconf.settings."org/gnome/desktop/interface".font-name = "Interlude Variable 10";
     dconf.settings."org/gnome/desktop/interface".document-font-name = "Interlude Variable 10";
-    dconf.settings."org/gnome/desktop/interface".color-scheme = lib.mkForce "default";
+    dconf.settings."org/gnome/desktop/interface".color-scheme = lib.mkDefault "default";
     home.activation.lumenAppearance = lib.hm.dag.entryAfter [ "dconfSettings" ] ''
       $DRY_RUN_CMD ${appearance}/bin/lumen-appearance
     '';
     systemd.user.services.lumen-appearance = {
-      Unit = { Description = "London sunrise/sunset desktop appearance"; After = [ "graphical-session.target" ]; PartOf = [ "graphical-session.target" ]; };
+      Unit = { Description = "Scheduled desktop appearance"; After = [ "graphical-session.target" ]; PartOf = [ "graphical-session.target" ]; };
       Service = { Type = "oneshot"; ExecStart = "${appearance}/bin/lumen-appearance"; };
     };
     systemd.user.timers.lumen-appearance = {
@@ -135,33 +128,18 @@ in {
       Timer = { OnActiveSec = "2min"; OnUnitInactiveSec = "15min"; RandomizedDelaySec = "30s"; };
       Install.WantedBy = [ "graphical-session.target" ];
     };
-    # Use the same persisted personal folders in application save dialogs,
-    # Files and Search. Do not create additional transient Public/Templates.
-    xdg.userDirs = {
-      setSessionVariables = true;
-      enable = true;
-      createDirectories = true;
-      desktop = "${config.home.homeDirectory}/Desktop";
-      documents = "${config.home.homeDirectory}/Documents";
-      download = "${config.home.homeDirectory}/Downloads";
-      pictures = "${config.home.homeDirectory}/Pictures";
-      music = "${config.home.homeDirectory}/Music";
-      videos = "${config.home.homeDirectory}/Videos";
-      publicShare = null;
-      templates = null;
-    };
     xdg.desktopEntries.lumen-files = {
       name = "Files"; genericName = "File browser";
       exec = "${filesLauncher}/bin/lumen-files %U";
       mimeType = [ "inode/directory" ];
-      icon = "${assets}/shell/reference-icons/files.png";
+      icon = "${assets}/shell/reference-icons/files.svg";
       terminal = false; categories = [ "System" "FileManager" ];
     };
     xdg.desktopEntries.lumen-system-settings = {
       name = "System Settings";
       genericName = "Desktop preferences";
       exec = "${settingsLauncher}/bin/lumen-system-settings";
-      icon = "${assets}/shell/reference-icons/settings.png";
+      icon = "${assets}/shell/reference-icons/settings.svg";
       terminal = false;
       categories = [ "Settings" ];
     };
@@ -175,11 +153,11 @@ in {
     xdg.desktopEntries.lumen-calendar-app = {
       name = "Calendar";
       exec = "${calendarLauncher}/bin/lumen-calendar-app";
-      icon = "${assets}/shell/reference-icons/calendar.png";
+      icon = "${assets}/shell/reference-icons/calendar.svg";
       categories = [ "Office" "Calendar" ];
       terminal = false;
     };
-    xdg.configFile."foot/foot.ini".source = assets + /foot.ini;
+    xdg.configFile."foot/foot.ini".source = "${assets}/foot.ini";
     wayland.windowManager.sway.config.keybindings = lib.mkOptionDefault ({
       "Mod4+Tab" = "exec ${desktopAction}/bin/lumen-desktop-action overview";
       "Mod4+grave" = "exec ${desktopAction}/bin/lumen-desktop-action app-windows";
@@ -200,9 +178,9 @@ in {
     systemd.user.sessionVariables.QT_QPA_PLATFORMTHEME = "gnome";
     home.packages = [ remoteDesktopLauncher auth.lock calendarLauncher personalServices qtTheme qtTheme5 desktopDoctor menuCommand desktopAction launchApp notifications audioKey pkgs.trash-cli filesLauncher settingsLauncher pkgs.ddcutil pkgs.foot pkgs.quickshell shellLauncher appearance nixSettings appLauncher ];
     # Keep Waybar available as a manual fallback, but do not run two shell bars.
-    programs.waybar.systemd.enable = lib.mkForce false;
-    wayland.windowManager.sway.config.output."*".bg = lib.mkForce "${assets}/lumen-night.png fill";
-    services.mako.enable = lib.mkForce false;
+    programs.waybar.systemd.enable = lib.mkIf cfg.integrations.replaceExistingShell (lib.mkForce false);
+    wayland.windowManager.sway.config.output."*".bg = lib.mkDefault "${assets}/shell/wallpaper.png fill";
+    services.mako.enable = lib.mkIf cfg.integrations.replaceExistingShell (lib.mkForce false);
     xdg.dataFile."dbus-1/services/org.freedesktop.Notifications.service".text = ''
       [D-BUS Service]
       Name=org.freedesktop.Notifications
@@ -257,18 +235,16 @@ in {
         };
         Install.WantedBy = [ "sway-session.target" "hyprland-session.target" ];
       };
-      hyprland-idle = sessionService "Hyprland idle lock and display power" idle;
       hyprland-wallpaper = sessionService "Hyprland wallpaper"
-        "${pkgs.swaybg}/bin/swaybg -i ${assets}/lumen-night.png -m fill";
+        "${pkgs.swaybg}/bin/swaybg -i ${assets}/shell/wallpaper.png -m fill";
       hyprland-polkit = sessionService "Hyprland authentication agent"
         "${pkgs.polkit_gnome}/libexec/polkit-gnome-authentication-agent-1";
       hyprland-clipboard = sessionService "Hyprland persistent clipboard"
         "${pkgs.wl-clip-persist}/bin/wl-clip-persist --clipboard regular";
-      hyprland-clipboard-history = sessionService "Hyprland clipboard history"
-        "${pkgs.wl-clipboard}/bin/wl-paste --watch ${pkgs.cliphist}/bin/cliphist -max-items 12 store";
+
     };
 
-    wayland.windowManager.hyprland = {
+    wayland.windowManager.hyprland = lib.mkIf cfg.integrations.hyprland.enable {
       configType = "hyprlang";
       enable = true;
       # NixOS supplies the compositor and matching screen-sharing portal.
@@ -277,16 +253,6 @@ in {
       systemd.enable = true;
       settings = {
         exec-shutdown = "${pkgs.systemd}/bin/systemctl --user stop hyprland-session.target";
-        monitor = [ ",preferred,auto,1" ];
-        env = [ "XCURSOR_SIZE,48" ];
-        input = {
-          kb_layout = "gb,gb";
-          kb_variant = ",intl";
-          kb_options = "grp:alt_space_toggle,grp_led:scroll,caps:swapescape";
-          numlock_by_default = true;
-          follow_mouse = 1;
-          touchpad.natural_scroll = true;
-        };
         general = {
           gaps_in = 4;
           gaps_out = 12;

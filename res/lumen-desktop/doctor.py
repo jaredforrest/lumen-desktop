@@ -37,7 +37,7 @@ def report():
     for item in ('.local/state/lumen-desktop/operations','.local/state/lumen-desktop/notifications','.local/share/Trash','data'):
         backing=persistence_backing(Path.home()/item)
         add('Persistence: '+item,backing is not None,'same backing directory on '+backing if backing else 'not verified')
-    for pattern,label,expected in (('emoji','Emoji font','Noto Color Emoji'),('Interlude Variable','Interface font','Interlude')):
+    for pattern,label,expected in (('emoji','Emoji font',os.environ.get('LUMEN_EMOJI_FONT_FAMILY','Noto Color Emoji')),('Interlude Variable','Interface font','Interlude')):
         code,name=command('fc-match','--format=%{family}',pattern)
         add(label,code==0 and expected in name,name)
     code,scheme=command('gsettings','get','org.gnome.desktop.interface','color-scheme')

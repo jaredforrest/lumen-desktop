@@ -1,9 +1,9 @@
-{ pkgs, lib ? pkgs.lib, swayPackage ? pkgs.sway, user ? "user", displayName ? user }:
+{ pkgs, lib ? pkgs.lib, swayPackage ? pkgs.sway, user ? "user", displayName ? user, assets ? ../res/lumen-desktop, greeterExtraConfig ? "", allowUnsupportedGpu ? false }:
 let
-  assets = pkgs.runCommand "lumen-auth-assets" {} ''
+  authAssets = pkgs.runCommand "lumen-auth-assets" {} ''
     mkdir -p $out
-    cp ${../res/lumen-desktop/auth}/*.qml $out/
-    ln -s ${../res/lumen-desktop/shell/wallpaper.png} $out/wallpaper.png
+    cp ${assets}/auth/*.qml $out/
+    ln -s ${assets}/shell/wallpaper.png $out/wallpaper.png
   '';
   fontConfig = pkgs.makeFontsConf {
     fontDirectories = [
@@ -20,11 +20,11 @@ let
       # Serialize startup, then return only once the compositor confirms coverage.
       exec 9>"$XDG_RUNTIME_DIR/lumen-lock-startup"
       flock 9
-      if ! quickshell --no-duplicate --daemonize --path ${assets}/lock.qml 9>&-; then
+      if ! quickshell --no-duplicate --daemonize --path ${authAssets}/lock.qml 9>&-; then
         exec swaylock -f
       fi
       for _ in {1..100}; do
-        if [[ $(quickshell --path ${assets}/lock.qml ipc call auth secure 2>/dev/null) == true ]]; then
+        if [[ $(quickshell --path ${authAssets}/lock.qml ipc call auth secure 2>/dev/null) == true ]]; then
           exit 0
         fi
         sleep 0.05
@@ -35,7 +35,7 @@ let
   };
   greeterClient = pkgs.writeShellScript "lumen-greeter-client" ''
     export FONTCONFIG_FILE=${fontConfig}
-    if ${pkgs.quickshell}/bin/quickshell --path ${assets}/greeter.qml; then
+    if ${pkgs.quickshell}/bin/quickshell --path ${authAssets}/greeter.qml; then
       touch "$LUMEN_AUTH_SUCCESS"
     fi
     ${swayPackage}/bin/swaymsg exit
@@ -43,9 +43,7 @@ let
   swayConfig = pkgs.writeText "lumen-greeter-sway.conf" ''
     xwayland disable
     output * bg #080b0f solid_color
-    input * xkb_layout gb
-    input * xkb_options caps:swapescape
-    input * xkb_numlock enabled
+    ${greeterExtraConfig}
     seat * hide_cursor 3000
     exec ${greeterClient}
   '';
@@ -57,15 +55,14 @@ let
       export LUMEN_AUTH_USER=${lib.escapeShellArg user}
       export LUMEN_AUTH_SESSION=${swayPackage}/bin/sway
       export LUMEN_AUTH_HYPRLAND=${pkgs.hyprland}/bin/Hyprland
-      export SWAY_UNSUPPORTED_GPU=1
+      ${lib.optionalString allowUnsupportedGpu "export SWAY_UNSUPPORTED_GPU=1"}
       export XDG_CURRENT_DESKTOP=sway
-      # Use the known working compositor, including its NVIDIA acknowledgement.
       # A compositor startup failure falls back to the existing password greeter.
       LUMEN_AUTH_SUCCESS=$(mktemp)
       export LUMEN_AUTH_SUCCESS
       rm "$LUMEN_AUTH_SUCCESS"
       trap 'rm -f "$LUMEN_AUTH_SUCCESS"' EXIT
-      ${swayPackage}/bin/sway --unsupported-gpu --config ${swayConfig} || true
+      ${swayPackage}/bin/sway ${lib.optionalString allowUnsupportedGpu "--unsupported-gpu"} --config ${swayConfig} || true
       if [[ -f "$LUMEN_AUTH_SUCCESS" ]]; then exit 0; fi
       exec ${pkgs.tuigreet}/bin/tuigreet --time --remember --asterisks --cmd ${swayPackage}/bin/sway
     '';
@@ -95,4 +92,4 @@ let
       fi
     '';
   };
-in { inherit lock greeter assets fontConfig activateLogin; }
+in { inherit lock greeter fontConfig activateLogin; assets = authAssets; }

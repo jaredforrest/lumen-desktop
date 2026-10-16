@@ -22,5 +22,9 @@ for p in root.rglob('*'):
     if p.suffix=='.nix':
         for path in re.findall(r'(?:import|callPackage)\s+(\.{1,2}/[\w./-]+)',text):
             if not (p.parent/path).exists():errors.append('Missing Nix import: '+relative+' -> '+path)
+module = (root/'modules/desktop.nix').read_text()
+for host_policy in ['boot.kernel', 'swapDevices', 'hardware.i2c', 'services.udev', 'environment.persistence', 'xdg.userDirs', 'kb_layout', 'max-items']:
+    if host_policy in module: errors.append('Host policy in desktop module: '+host_policy)
+if 'lumen-night.png' in module: errors.append('Removed wallpaper referenced by desktop module')
 assert not errors,'\n'.join(errors)
 print('PASS: neutral source, Python syntax, local Nix imports and publication boundary')
