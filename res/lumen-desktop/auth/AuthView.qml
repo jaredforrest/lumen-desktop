@@ -10,11 +10,12 @@ Item {
     property string errorMessage: ""
     property string prompt: "Enter Password"
     property bool busy: false
-    onBusyChanged: {if(busy && password)password.clear();else Qt.callLater(() => password.forceActiveFocus());}
+    onBusyChanged: {if(busy && password){password.clear();passwordVisible=false;}else Qt.callLater(() => password.forceActiveFocus());}
+    property alias passwordVisible: visibilityToggle.checked
     property bool echoResponse: false
-    onEchoResponseChanged:if(password)password.clear()
-    onPromptChanged:if(password)password.clear()
-    onVisibleChanged:if(!visible && password)password.clear()
+    onEchoResponseChanged:if(password){password.clear();passwordVisible=false;}
+    onPromptChanged:if(password){password.clear();passwordVisible=false;}
+    onVisibleChanged:if(!visible && password){password.clear();passwordVisible=false;}
     property date now: new Date()
     readonly property real unit: Math.max(0.65, Math.min(1.6, height / 900))
     signal submitted(string response)
@@ -31,11 +32,12 @@ Item {
             c.beginPath(); c.moveTo(12, 3); c.lineTo(12, 12); c.stroke();
         }
     }
-    function clear() { password.clear(); password.forceActiveFocus(); }
+    function clear() { password.clear();passwordVisible=false;password.forceActiveFocus(); }
     function submit() {
         if (view.busy || !password.text.length) return;
         const response = password.text;
         password.clear();
+        passwordVisible=false;
         view.submitted(response);
     }
     Image { anchors.fill: parent; source: Qt.resolvedUrl("wallpaper.png"); fillMode: Image.PreserveAspectCrop; asynchronous: false }
@@ -109,7 +111,7 @@ Item {
                 font.family: "Interlude Variable"; font.pixelSize: 14 * view.unit
                 color: "white"; placeholderTextColor: "#e5e5e5"
                 placeholderText: view.busy ? "Please wait…" : view.prompt
-                echoMode: view.echoResponse ? TextInput.Normal : TextInput.Password
+                echoMode: view.echoResponse || view.passwordVisible ? TextInput.Normal : TextInput.Password
                 passwordCharacter: "●"; selectByMouse: true
                 enabled: !view.busy; background: Item {}
                 onAccepted: view.submit()
@@ -127,6 +129,18 @@ Item {
                 onClicked: view.submit()
                 Accessible.name: "Continue"
             }
+        }
+        CheckBox {
+            id: visibilityToggle
+            objectName: "passwordVisibility"
+            anchors.horizontalCenter: parent.horizontalCenter
+            visible: !view.echoResponse
+            enabled: !view.busy
+            checked: false
+            text: "Show password"
+            contentItem: Text { text: visibilityToggle.text; color: "white"; font: visibilityToggle.font; verticalAlignment: Text.AlignVCenter; leftPadding: visibilityToggle.indicator.width + visibilityToggle.spacing }
+            font.family: "Interlude Variable"; font.pixelSize: 12 * view.unit
+            Accessible.name: "Show password"
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter

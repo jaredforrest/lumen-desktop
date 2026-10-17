@@ -105,6 +105,16 @@ PanelWindow {
    field.text="synthetic";view.visible=false;cleared=cleared && field.text.length===0;view.visible=true;
    return cleared;
   }
+  function passwordReveal(): bool {
+   function walk(item){let result=[item];for(const child of item.children || [])result=result.concat(walk(child));return result;}
+   const field=walk(view).find(n=>n.objectName==="password");
+   const toggle=walk(view).find(n=>n.objectName==="passwordVisibility");
+   field.text="synthetic";toggle.checked=true;
+   const shown=field.echoMode===TextInput.Normal && field.text==="synthetic";
+   toggle.checked=false;const hidden=field.echoMode===TextInput.Password && field.text==="synthetic";
+   toggle.checked=true;view.submit();
+   return shown && hidden && field.text.length===0 && !toggle.checked;
+  }
   function bounds(): string {
    function walk(item){let result=[item];for(const child of item.children || [])result=result.concat(walk(child));return result;}
    const field=walk(view).find(n=>n.objectName==="password");const position=field.mapToItem(view,0,0);
@@ -113,8 +123,6 @@ PanelWindow {
  }
 }''')
     proc=launch(['quickshell','-p',str(preview)],'preview');time.sleep(1);assert proc.poll() is None
-    assert call('quickshell','-p',str(preview),'ipc','call','preview','secretRetention')=='true'
-    checks.append('authentication view clears responses across busy masking and visibility transitions')
     call('grim',str(out/'lock-preview.png'))
     # Same view means both modes must render the same pixels at the same time.
     from PIL import Image,ImageChops
@@ -123,6 +131,10 @@ PanelWindow {
     changed=sum(1 for px in diff.get_flattened_data() if max(px)>8)
     assert changed<1500,changed
     checks.append('shared login/lock layout pixel comparison')
+    assert call('quickshell','-p',str(preview),'ipc','call','preview','secretRetention')=='true'
+    checks.append('authentication view clears responses across busy masking and visibility transitions')
+    assert call('quickshell','-p',str(preview),'ipc','call','preview','passwordReveal')=='true'
+    checks.append('show-password control reveals and conceals input and resets after submission')
     call('quickshell','-p',str(preview),'ipc','call','preview','power');time.sleep(.3)
     call('grim',str(out/'power-menu.png'))
     call('wtype','-s','300','-k','Escape');time.sleep(.2)
