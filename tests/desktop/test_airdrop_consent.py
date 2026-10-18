@@ -36,6 +36,10 @@ class ConsentTests(unittest.TestCase):
         self.assertLess(len(argv[argv.index("-mesg") + 1]), 200)
         self.assertEqual(run.call_args.kwargs["input"], "Decline\nAccept\n")
 
+    def test_link_target_is_shown_before_consent(self):
+        self.assertIn("https://example.com/article", consent.summary(
+            {"sender": "iPhone", "items": ["https://example.com/article"]}))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -27,6 +27,13 @@ def summary(request):
     if count > 3:
         names.append(f"and {count - 3} more")
     if not names:
+        items = request.get("items")
+        items = items if isinstance(items, list) else []
+        names = [label(item) for item in items[:3]]
+        names = [name for name in names if name]
+        if len(items) > 3:
+            names.append(f"and {len(items) - 3} more")
+    if not names:
         names = ["a shared item"]
     return f"{sender} wants to send {', '.join(names)}"
 

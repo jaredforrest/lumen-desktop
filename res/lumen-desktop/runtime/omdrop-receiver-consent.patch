@@ -11,7 +11,7 @@
  logging.basicConfig(level=logging.DEBUG, stream=sys.stdout,
                      format='%(asctime)s %(levelname)s %(name)s: %(message)s')
  
-@@ -977,6 +981,37 @@
+@@ -977,6 +981,39 @@
              # so an Upload that never passed an Ask has nothing vouching for it.
              self._contacts_ok = True
  
@@ -30,6 +30,7 @@
 +                            'sender': ask.get('SenderComputerName'),
 +                            'files': [{'name': f.get('FileName')} for f in files
 +                                      if isinstance(f, dict)],
++                            'items': [i for i in items[:4] if isinstance(i, str)],
 +                        }),
 +                        text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
 +                        timeout=50, check=False,
@@ -39,7 +40,8 @@
 +                    pass
 +            if not approved:
 +                logging.info('ask declined by desktop user or unavailable UI')
-+                self.send_response(403)
++                # An iPhone user decline returned 401 on /Ask in the paired test.
++                self.send_response(401)
 +                self.send_header('Content-Length', '0')
 +                self.end_headers()
 +                return
