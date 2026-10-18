@@ -41,6 +41,17 @@ class SendUiTests(unittest.TestCase):
         ):
             self.assertIsNone(ui.select_peer())
 
+    def test_batch_uses_one_transfer_and_preserves_each_path(self):
+        paths = [Path("/tmp/first file.txt"), Path("/tmp/second.pdf")]
+        self.assertEqual(
+            ui.send_command(paths, "c6:6b:14:cd:8a:63"),
+            ["iphone-airdrop", "send-files", "c6:6b:14:cd:8a:63", *map(str, paths)],
+        )
+        self.assertEqual(
+            ui.send_command(paths[:1], "c6:6b:14:cd:8a:63"),
+            ["iphone-airdrop", "send", str(paths[0]), "c6:6b:14:cd:8a:63"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -112,8 +112,14 @@ def select_peer():
     return found[rows.index(choice.stdout.strip())][0]
 
 
-def send(path, address):
-    transfer = subprocess.Popen(["iphone-airdrop", "send", str(path), address],
+def send_command(paths, address):
+    if len(paths) == 1:
+        return ["iphone-airdrop", "send", str(paths[0]), address]
+    return ["iphone-airdrop", "send-files", address, *map(str, paths)]
+
+
+def send(paths, address):
+    transfer = subprocess.Popen(send_command(paths, address),
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 text=True, start_new_session=True)
     progress = subprocess.Popen(["zenity", "--progress", "--pulsate", "--auto-close",
@@ -169,8 +175,9 @@ def send(path, address):
 
 
 def main(argv):
-    if len(argv) != 2 or not Path(argv[1]).is_file():
-        message("error", "Select one file in Files before sending by AirDrop.")
+    paths = [Path(item) for item in argv[1:]]
+    if not paths or not all(path.is_file() for path in paths):
+        message("error", "Select one or more files in Files before sending by AirDrop.")
         return 2
     runtime = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
     lock_fd = os.open(runtime / "lumen-airdrop-send.lock", os.O_CREAT | os.O_RDWR, 0o600)
@@ -181,7 +188,7 @@ def main(argv):
         return 0
     try:
         address = select_peer()
-        return send(Path(argv[1]), address) if address else 1
+        return send(paths, address) if address else 1
     except (OSError, subprocess.TimeoutExpired) as exc:
         message("error", f"AirDrop could not start: {exc}")
         return 1
