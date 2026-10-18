@@ -1,4 +1,4 @@
-"""Send one Files item by AirDrop with peer choice, progress and cancellation."""
+"""Send selected Files items by AirDrop with peer choice and cancellation."""
 
 import fcntl
 import os
