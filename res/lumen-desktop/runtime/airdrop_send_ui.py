@@ -19,10 +19,10 @@ def peers(output):
     for line in output.splitlines():
         match = PEER.match(line)
         if match:
-            mac, name = match.groups()
+            address, name = match.groups()
             if name in (None, "(no response)", "(anonymous)"):
                 name = "Nearby device"
-            found.append((mac.lower(), " ".join(name.split())[:80]))
+            found.append((address.lower(), " ".join(name.split())[:80]))
     return found
 
 
@@ -45,7 +45,7 @@ def select_peer():
     else:
         message("warning", "No AirDrop device is nearby. Check the iPhone's AirDrop setting and try again.")
         return None
-    rows = [f"{name}  ·  {mac}" for mac, name in found]
+    rows = [f"{name}  ·  {address}" for address, name in found]
     choice = subprocess.run(["rofi", "-no-config", "-dmenu", "-no-custom", "-p", "AirDrop to"],
                             input="\n".join(rows) + "\n", text=True, capture_output=True,
                             timeout=60, check=False)
@@ -54,8 +54,8 @@ def select_peer():
     return found[rows.index(choice.stdout.strip())][0]
 
 
-def send(path, mac):
-    transfer = subprocess.Popen(["iphone-airdrop", "send", str(path), mac],
+def send(path, address):
+    transfer = subprocess.Popen(["iphone-airdrop", "send", str(path), address],
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 text=True, start_new_session=True)
     progress = subprocess.Popen(["zenity", "--progress", "--pulsate", "--auto-close",
@@ -115,8 +115,8 @@ def main(argv):
         message("error", "Select one file in Files before sending by AirDrop.")
         return 2
     try:
-        mac = select_peer()
-        return send(Path(argv[1]), mac) if mac else 1
+        address = select_peer()
+        return send(Path(argv[1]), address) if address else 1
     except (OSError, subprocess.TimeoutExpired) as exc:
         message("error", f"AirDrop could not start: {exc}")
         return 1
