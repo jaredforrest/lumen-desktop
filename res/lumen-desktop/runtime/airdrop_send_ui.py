@@ -1,9 +1,11 @@
 """Send one Files item by AirDrop with peer choice, progress and cancellation."""
 
+import fcntl
 import os
 from pathlib import Path
 import queue
 import re
+import selectors
 import signal
 import subprocess
 import sys
@@ -32,17 +34,73 @@ def message(kind, text):
                    check=False)
 
 
+def lookup_peers(lookup_command=None, progress_command=None):
+    # A named peer can answer well before the 30-second BLE wake window ends.
+    # Stream rows so the picker does not wait for every silent nearby device.
+    progress = subprocess.Popen(progress_command or
+                                ["zenity", "--progress", "--pulsate", "--auto-close",
+                                 "--title=AirDrop", "--text=Finding nearby devices…",
+                                 "--percentage=5"], stdin=subprocess.PIPE,
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                text=True)
+    lookup = subprocess.Popen(lookup_command or ["iphone-airdrop", "peers", "--stream"],
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                              text=True, bufsize=1, start_new_session=True)
+    found = []
+    first_seen = None
+    deadline = time.monotonic() + 34
+    selector = selectors.DefaultSelector()
+    fd = lookup.stdout.fileno()
+    os.set_blocking(fd, False)
+    selector.register(fd, selectors.EVENT_READ)
+    buffered = b""
+    try:
+        while time.monotonic() < deadline:
+            if progress.poll() is not None:
+                return None
+            events = selector.select(timeout=0.2)
+            eof = False
+            for _, _ in events:
+                chunk = os.read(fd, 4096)
+                if not chunk:
+                    eof = True
+                    break
+                buffered += chunk
+                while b"\n" in buffered:
+                    line, buffered = buffered.split(b"\n", 1)
+                    for item in peers(line.decode("utf-8", "replace")):
+                        if item not in found:
+                            found.append(item)
+                            first_seen = first_seen or time.monotonic()
+            if eof and buffered:
+                for item in peers(buffered.decode("utf-8", "replace")):
+                    if item not in found:
+                        found.append(item)
+                        first_seen = first_seen or time.monotonic()
+            if first_seen and time.monotonic() - first_seen >= 1.5:
+                break
+            if eof or (lookup.poll() is not None and not events):
+                break
+    finally:
+        selector.close()
+        if lookup.poll() is None:
+            os.killpg(lookup.pid, signal.SIGTERM)
+            try:
+                lookup.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                os.killpg(lookup.pid, signal.SIGKILL)
+                lookup.wait()
+        lookup.stdout.close()
+        if progress.poll() is None:
+            progress.terminate()
+        progress.wait()
+        progress.stdin.close()
+    return found
+
+
 def select_peer():
-    last = ""
-    for _ in range(3):
-        result = subprocess.run(["iphone-airdrop", "peers"], text=True,
-                                capture_output=True, timeout=45, check=False)
-        last = result.stderr or result.stdout
-        found = peers(result.stdout)
-        if found:
-            break
-        time.sleep(2)
-    else:
+    found = lookup_peers()
+    if not found:
         message("warning", "No AirDrop device is nearby. Check the iPhone's AirDrop setting and try again.")
         return None
     rows = [f"{name}  ·  {address}" for address, name in found]
@@ -114,12 +172,21 @@ def main(argv):
     if len(argv) != 2 or not Path(argv[1]).is_file():
         message("error", "Select one file in Files before sending by AirDrop.")
         return 2
+    runtime = Path(os.environ.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}"))
+    lock_fd = os.open(runtime / "lumen-airdrop-send.lock", os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        os.close(lock_fd)
+        return 0
     try:
         address = select_peer()
         return send(Path(argv[1]), address) if address else 1
     except (OSError, subprocess.TimeoutExpired) as exc:
         message("error", f"AirDrop could not start: {exc}")
         return 1
+    finally:
+        os.close(lock_fd)
 
 
 if __name__ == "__main__":
