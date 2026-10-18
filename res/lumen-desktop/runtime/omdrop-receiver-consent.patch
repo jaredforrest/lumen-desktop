@@ -1,0 +1,51 @@
+--- a/bin/airdrop-serve.py
++++ b/bin/airdrop-serve.py
+@@ -161,6 +161,10 @@
+     args.max_receive_percent if args.max_receive_percent is not None
+     else _cfg.get('max_receive_percent', DEFAULT_MAX_RECEIVE_PERCENT))
+ 
++# A separate desktop process decides each transfer. No session means decline.
++CONSENT_COMMAND = os.environ.get('LUMEN_AIRDROP_CONSENT_COMMAND')
++CONSENT_LOCK = threading.Lock()
++
+ logging.basicConfig(level=logging.DEBUG, stream=sys.stdout,
+                     format='%(asctime)s %(levelname)s %(name)s: %(message)s')
+ 
+@@ -977,6 +981,37 @@
+             # so an Upload that never passed an Ask has nothing vouching for it.
+             self._contacts_ok = True
+ 
++        # Do not answer /Ask or write link items until the desktop user accepts.
++        # Limit concurrent dialogs; a missing UI, timeout or error fails closed.
++        if not CONSENT_LOCK.acquire(blocking=False):
++            self.reject(503, 'another AirDrop decision is in progress')
++            return
++        try:
++            approved = False
++            if CONSENT_COMMAND:
++                try:
++                    decision = subprocess.run(
++                        [CONSENT_COMMAND],
++                        input=json.dumps({
++                            'sender': ask.get('SenderComputerName'),
++                            'files': [{'name': f.get('FileName')} for f in files
++                                      if isinstance(f, dict)],
++                        }),
++                        text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
++                        timeout=50, check=False,
++                    )
++                    approved = decision.returncode == 0 and decision.stdout.strip() == 'accept'
++                except (OSError, subprocess.TimeoutExpired):
++                    pass
++            if not approved:
++                logging.info('ask declined by desktop user or unavailable UI')
++                self.send_response(403)
++                self.send_header('Content-Length', '0')
++                self.end_headers()
++                return
++        finally:
++            CONSENT_LOCK.release()
++
+         # A `links` transfer is Ask-only: with SUPPORTS_URL (0x01) advertised,
+         # iOS puts the URL straight into Items and sends no /Upload at all, so
+         # accepting the Ask IS the transfer. Store it, or the link is lost.
