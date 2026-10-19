@@ -21,3 +21,5 @@ Status order and clock formatting: [presentation contract and tests](docs/status
 Saved portal decisions: [provider contract, scope and acceptance](docs/portal-permissions.md).
 
 Interface text sizing: [scope, layout contract and tests](docs/text-sizing.md).
+
+Per-device input preferences: [supported capabilities, identity scope and tests](docs/input-preferences.md).

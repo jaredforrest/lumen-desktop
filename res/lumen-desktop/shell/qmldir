@@ -109,3 +109,6 @@ ClockSettings 1.0 ClockSettings.qml
 WindowPairPicker 1.0 WindowPairPicker.qml
 PortalPermissionState 1.0 PortalPermissionState.qml
 PortalPermissionsPane 1.0 PortalPermissionsPane.qml
+
+InputSettingsState 1.0 InputSettingsState.qml
+InputSettingsPane 1.0 InputSettingsPane.qml

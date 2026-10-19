@@ -108,6 +108,32 @@ let
         }; };
         default = {};
       };
+      inputs = mkOption {
+        type = types.addCheck (types.attrsOf (types.submodule {
+          options = let
+            optional = type: mkOption { type = types.nullOr type; default = null; };
+            fields = {
+              repeat_rate = optional (types.ints.between 0 60);
+              repeat_delay = optional (types.ints.between 100 2000);
+              pointer_accel = optional (types.addCheck types.number (v: v >= -1 && v <= 1));
+              scroll_factor = optional (types.addCheck types.number (v: v >= 0.1 && v <= 5));
+              natural_scroll = optional types.bool;
+              left_handed = optional types.bool;
+              tap = optional types.bool;
+              dwt = optional types.bool;
+            };
+          in {
+            identity = mkOption { type = types.submodule { options = {
+              identifier = mkOption { type = types.strMatching "[0-9]+:[0-9]+:[A-Za-z0-9_.:+()-]+"; };
+              name = mkOption { type = types.str; };
+              type = mkOption { type = types.enum [ "keyboard" "pointer" "touchpad" ]; };
+            }; }; };
+            values = mkOption { type = types.submodule { options = fields; }; default = {}; };
+            baseline = mkOption { type = types.submodule { options = fields; }; default = {}; };
+          };
+        })) (profiles: lib.all (key: key == builtins.hashString "sha256" (builtins.toJSON profiles.${key}.identity)) (builtins.attrNames profiles));
+        default = {};
+      };
       displays = mkOption {
         type = types.attrsOf (types.submodule {
           options = {
@@ -154,4 +180,14 @@ in let
   # Submodule list merges validate their members individually. Enforce the
   # collection invariant on the fully evaluated result as well.
   distinctFolders = lib.length folders == lib.length (lib.unique (map (folder: folder.path) folders));
-in if !distinctFolders then throw "Dock folder paths must be distinct" else result
+  inputFields = kind: if kind == "keyboard" then [ "repeat_rate" "repeat_delay" ]
+    else [ "pointer_accel" "scroll_factor" "natural_scroll" "left_handed" ] ++ lib.optionals (kind == "touchpad") [ "tap" "dwt" ];
+  validInputs = lib.all (key: let
+    profile = result.inputs.${key};
+    active = builtins.filter (field: profile.values.${field} != null) (builtins.attrNames profile.values);
+  in key == builtins.hashString "sha256" (builtins.toJSON profile.identity)
+    && lib.all (field: builtins.elem field (inputFields profile.identity.type) && profile.baseline.${field} != null) active
+  ) (builtins.attrNames result.inputs);
+in if !distinctFolders then throw "Dock folder paths must be distinct"
+  else if !validInputs then throw "Input profile keys, device option scope and previous values must match their identities"
+  else result

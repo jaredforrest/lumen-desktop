@@ -104,7 +104,7 @@ in {
       swayPackage = hostSwayPackage;
       rofiPackage = config.programs.rofi.package;
     };
-    inherit (session) hotCorners spaces networkLocations quickshell nixSettings appearance qtTheme qtTheme5 palette menuRuntime personalServices fileClipboard displayLayout fileOperations focusWindow desktopState clipboardHistory launchApp shellLauncher audioKey mediaKey notifications menuCommand desktopDoctor desktopAction appLauncher filesLauncher remoteDesktopLauncher calendarLauncher settingsLauncher;
+    inherit (session) hotCorners spaces inputPreferences networkLocations quickshell nixSettings appearance qtTheme qtTheme5 palette menuRuntime personalServices fileClipboard displayLayout fileOperations focusWindow desktopState clipboardHistory launchApp shellLauncher audioKey mediaKey notifications menuCommand desktopDoctor desktopAction appLauncher filesLauncher remoteDesktopLauncher calendarLauncher settingsLauncher;
     desktopKeybindings = {
       "Mod4+Tab" = "exec ${desktopAction}/bin/lumen-desktop-action app-switcher";
       "Mod4+Shift+Tab" = "exec ${desktopAction}/bin/lumen-desktop-action app-switcher-reverse";
@@ -280,6 +280,11 @@ in {
       lumen-nix-settings = {
         Unit = { Description = "Build authoritative desktop Nix settings"; PartOf = [ "graphical-session.target" ]; Before = [ "lumen-desktop-shell.service" "lumen-display-layout.service" "lumen-appearance.service" ]; };
         Service = { Type = "oneshot"; ExecStart = "${nixSettings}/bin/lumen-nix-settings sync"; RemainAfterExit = true; };
+        Install.WantedBy = [ "sway-session.target" ];
+      };
+      lumen-input-preferences = {
+        Unit = { Description = "Apply saved per-device input preferences"; PartOf = [ "sway-session.target" ]; After = [ "sway-session.target" "lumen-nix-settings.service" ]; Requires = [ "lumen-nix-settings.service" ]; };
+        Service = { ExecStart = "${inputPreferences}/bin/lumen-input-preferences"; Restart = "on-failure"; RestartSec = 3; UMask = "0077"; };
         Install.WantedBy = [ "sway-session.target" ];
       };
       lumen-display-layout = {

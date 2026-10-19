@@ -42,6 +42,25 @@ class NixSettingsTest(unittest.TestCase):
             with self.assertRaises(ValueError):settings.transaction('appearance',{'textScale':invalid},merge=True)
         self.assertEqual(settings.transaction('appearance',{'accent':'green'},merge=True)['appearance']['textScale'],1.5)
 
+    def test_device_preferences_have_closed_typed_values(self):
+        profile={'identity':{'identifier':'2:2:Fixture_Mouse','name':'Fixture Mouse','type':'pointer'},'values':{'natural_scroll':True,'pointer_accel':0.2},'baseline':{'natural_scroll':False,'pointer_accel':0.0}}
+        import hashlib
+        key=hashlib.sha256(json.dumps(profile['identity'],sort_keys=True,separators=(',',':')).encode()).hexdigest()
+        result=settings.transaction('inputs',{key:profile})
+        self.assertIs(result['inputs'][key]['values']['natural_scroll'],True)
+        import copy
+        for option,value in (('natural_scroll',1),('pointer_accel',2),('scroll_factor',0),('repeat_rate',1.5),('events','disabled')):
+            invalid=copy.deepcopy(profile);invalid['values'][option]=value
+            with self.assertRaises(ValueError):settings.transaction('inputs',{key:invalid})
+        with self.assertRaises(ValueError):settings.transaction('inputs',{'unmatched-key':profile})
+        invalid=copy.deepcopy(profile);invalid['baseline']={}
+        with self.assertRaises(ValueError):settings.transaction('inputs',{key:invalid})
+        invalid=copy.deepcopy(profile);invalid['values']['tap']=True;invalid['baseline']['tap']=False
+        with self.assertRaises(ValueError):settings.transaction('inputs',{key:invalid})
+        invalid=copy.deepcopy(profile);invalid['identity']['identifier']='type:pointer'
+        with self.assertRaises(ValueError):settings.transaction('inputs',{key:invalid})
+        self.assertIs(settings.transaction('appearance',{'accent':'green'},merge=True)['inputs'][key]['baseline']['natural_scroll'],False)
+
     def test_patch_preserves_sibling_preferences(self):
         settings.transaction('appearance', {'accent':'green','mode':'dark'})
         values=settings.transaction('appearance', {'reduceMotion':True,'switchToAppSpace':False},merge=True)

@@ -26,6 +26,13 @@ let
         exec ${pkgs.python3}/bin/python3 ${assets}/runtime/spaces.py "$@"
       '';
     };
+    inputPreferences = pkgs.writeShellApplication {
+      name = "lumen-input-preferences";
+      runtimeInputs = [ nixSettings ];
+      text = ''
+        exec ${pkgs.python3}/bin/python3 ${assets}/shell/input_settings.py watch
+      '';
+    };
     displayLayout = pkgs.writeShellApplication {
       name = "lumen-display-layout";
       runtimeInputs = [ pkgs.sway nixSettings ];
@@ -217,4 +224,4 @@ let
     settingsLauncher = pkgs.writeShellScriptBin "lumen-system-settings" ''
       exec ${shellIpc}/bin/lumen-shell-ipc call desktop settings ""
     '';
-in { inherit hotCorners spaces networkLocations quickshell nixSettings appearance qtTheme qtTheme5 palette menuRuntime personalServices fileClipboard displayLayout fileOperations focusWindow dockDrop applicationControl applicationLifecycle fileAlias desktopState shellIpc clipboardHistory launchApp shellLauncher audioKey mediaKey notifications menuCommand desktopDoctor desktopAction appLauncher filesLauncher remoteDesktopLauncher calendarLauncher settingsLauncher; }
+in { inherit hotCorners spaces inputPreferences networkLocations quickshell nixSettings appearance qtTheme qtTheme5 palette menuRuntime personalServices fileClipboard displayLayout fileOperations focusWindow dockDrop applicationControl applicationLifecycle fileAlias desktopState shellIpc clipboardHistory launchApp shellLauncher audioKey mediaKey notifications menuCommand desktopDoctor desktopAction appLauncher filesLauncher remoteDesktopLauncher calendarLauncher settingsLauncher; }

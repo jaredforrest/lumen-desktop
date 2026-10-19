@@ -18,6 +18,7 @@ let
   defaultHome = c.home-manager.users.test-user { config = {}; lib = nixpkgs.lib; };
   optedInHome = optedIn.home-manager.users.test-user { config = {}; lib = nixpkgs.lib; };
 in
+assert (defaultHome.wayland.windowManager.sway.config.input or {}) == {};
 assert c.boot.kernel.sysctl."vm.swappiness" == 73;
 assert !c.hardware.i2c.enable;
 assert !c.programs.hyprland.enable;
