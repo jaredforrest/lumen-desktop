@@ -273,10 +273,10 @@ PanelWindow {
         WlrLayershell.keyboardFocus:WlrKeyboardFocus.Exclusive
         MouseArea {anchors.fill:parent;onClicked:{dock.contextEntry=null;dock.contextAlias=null;}}
         Item {anchors.fill:parent;focus:true
-            Shortcut {sequence:"Escape";onActivated:dock.closeContext()}
-            Shortcut {sequence:"Down";onActivated:dock.stepContext(1)}
-            Shortcut {sequence:"Up";onActivated:dock.stepContext(-1)}
-            Shortcut {sequence:"Return";onActivated:if(dock.contextSelection)dock.activateContext(dock.contextSelection.row,dock.contextSelection)}
+            Shortcut {sequence:"Escape";enabled:dock.contextEntry!==null || dock.contextAlias!==null;onActivated:dock.closeContext()}
+            Shortcut {sequence:"Down";enabled:dock.contextEntry!==null || dock.contextAlias!==null;onActivated:dock.stepContext(1)}
+            Shortcut {sequence:"Up";enabled:dock.contextEntry!==null || dock.contextAlias!==null;onActivated:dock.stepContext(-1)}
+            Shortcut {sequence:"Return";enabled:dock.contextEntry!==null || dock.contextAlias!==null;onActivated:if(dock.contextSelection)dock.activateContext(dock.contextSelection.row,dock.contextSelection)}
         }
         PanelSurface {
             id:contextPanel
