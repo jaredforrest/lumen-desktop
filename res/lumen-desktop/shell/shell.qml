@@ -62,6 +62,8 @@ ShellRoot {
     function openCalendar(){calendarWindow.open();}
     function openCalendarAt(day,event){calendarWindow.openAt(day,event);}
     function openSettings(page) { claimPopup("");settingsWindow.openPage(page);focusOwnedWindow("System Settings"); }
+    property alias vpn:vpnState
+    VpnState {id:vpnState}
     SettingsState {id:settingsState;active:settingsWindow.visible}
     SettingsWindow {id:settingsWindow;shell:root;service:settingsState}
     function openFiles(path) {claimPopup("");filesWindow.openPath(path);}

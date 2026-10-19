@@ -27,6 +27,7 @@ Column {
             }
         }
     }
+    ControlRow {visible:!root.editing;width:parent.width;text:"VPN & Private Network";detail:root.shell.vpn.mullvad.state==="connected"?"Mullvad connected · "+(root.shell.vpn.tailscale.online?"Tailscale connected":"Tailscale off"):root.shell.vpn.tailscale.online?"Tailscale connected · Mullvad off":"Both disconnected";onClicked:root.panelRequested("VPN")}
     Column {visible:root.editing;width:parent.width;spacing:5
         PanelLabel {text:"Edit controls";font.weight:Font.DemiBold}
         Repeater {model:root.preferences.order

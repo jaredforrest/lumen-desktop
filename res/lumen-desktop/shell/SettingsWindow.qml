@@ -27,6 +27,7 @@ FloatingWindow {
     readonly property var pages:[
         {name:"Wi-Fi",icon:"wifi",color:"#007aff",terms:"wireless network internet"},
         {name:"Bluetooth",icon:"bluetooth",color:"#007aff",terms:"devices pairing"},
+        {name:"VPN",icon:"network",color:"#007aff",terms:"mullvad tailscale private network exit node"},
         {name:"General",icon:"gear",color:"#8e8e93",terms:"about system version operating"},
         {name:"Privacy & Security",icon:"gear",color:"#8e8e93",terms:"passwords bitwarden encryption secure boot"},
         {name:"Appearance",icon:"contrast",color:"#56565b",terms:"light dark auto theme accent colour sunset icons"},
@@ -343,6 +344,7 @@ FloatingWindow {
                     active:root.visible && ["Wi-Fi","Bluetooth"].includes(root.page)
                     sourceComponent:Component {ConnectivityPanel {width:body.width;kind:root.page;controls:root.shell.systemState;embedded:true}}
                 }
+                Loader {width:parent.width;height:item?item.implicitHeight:0;active:root.visible && root.page==="VPN";sourceComponent:Component {VpnPanel {width:body.width;service:root.shell.vpn}}}
                 Column {
                     visible:root.page==="Search";width:parent.width;spacing:12
                     PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:"Search applications, personal folders and ~/data.";font.pixelSize:14}

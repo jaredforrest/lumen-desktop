@@ -16,7 +16,7 @@ PanelWindow {
     property string displayName: usesBridge ? shell.nameForAppId(exported.state.appName,exported.state.title) : shell.activeName
     property bool filesFocused:usesBridge ? exported.state.appName==="org.quickshell" && exported.state.title.startsWith("Files") : !!shell.active && shell.active.title.startsWith("Files")
     property bool desktopFocused: usesBridge ? exported.state.windowId === 0 : !shell.active
-    property bool special: ["Wi-Fi","Bluetooth","Sound","Controls","Focus","Date","Calendar","Now Playing","Files","Settings","Launcher"].includes(menu)
+    property bool special: ["Wi-Fi","Bluetooth","VPN","Sound","Controls","Focus","Date","Calendar","Now Playing","Files","Settings","Launcher"].includes(menu)
     FontMetrics {id:headingMetrics;font.family:Theme.font;font.pixelSize:13}
     readonly property var menuHeadings: {
         if(exported.state.supported && exported.state.menu)return exported.state.menu.children.filter(n=>n.visible).map(n=>({label:exported.label(n.label),exportId:n.id,enabled:n.enabled}));
@@ -27,6 +27,7 @@ PanelWindow {
         if(width<640)result.push({label:"Sound",action:"status:Sound"});
         if(width<720 && shell.notifications.dnd)result.push({label:"Focus",action:"status:Focus"});
         if(width<800)result.push({label:"Search",action:"apps"});
+        if(width<860)result.push({label:"VPN",action:"status:VPN"});
         return result;
     }
     readonly property real menuBudget:Math.max(0,statusIcons.x-28)
@@ -87,7 +88,7 @@ PanelWindow {
         shell.claimPopup("bar:"+bar.outputName);
         menuX=x; menu=closing?"":name;
     }
-    onMenuChanged: {if(["Wi-Fi","Bluetooth","Sound","Controls","Focus","Date","Calendar","Now Playing"].includes(menu)){menuFade.stop();systemMenu=menu;systemViewport.contentY=0;}else menuFade.restart();builtinIndex=-1;Qt.callLater(()=>{if(bar && popupContents && bar.menu && bar.menu!=="Launcher")popupContents.forceActiveFocus();});if(menu==="" && shell.popupOwner==="bar:"+bar.outputName)shell.popupOwner="";}
+    onMenuChanged: {if(["Wi-Fi","Bluetooth","VPN","Sound","Controls","Focus","Date","Calendar","Now Playing"].includes(menu)){menuFade.stop();systemMenu=menu;systemViewport.contentY=0;}else menuFade.restart();builtinIndex=-1;Qt.callLater(()=>{if(bar && popupContents && bar.menu && bar.menu!=="Launcher")popupContents.forceActiveFocus();});if(menu==="" && shell.popupOwner==="bar:"+bar.outputName)shell.popupOwner="";}
     Connections {target:shell; function onDismissPopups(owner) {if(owner!=="bar:"+bar.outputName)bar.menu="";} }
     Connections { target: shell; function onRequestMenu(name, outputName) { if(outputName!==bar.outputName)return; bar.toggle(name,["Date","Calendar","Sound","Controls"].includes(name)?bar.width-380:16); } }
     anchors { top: true; left: true; right: true }
@@ -116,6 +117,9 @@ PanelWindow {
         MenuButton {visible:bar.width>=640; text: ""; iconName: shell.volume.includes("MUTED") ? "muted" : "sound"; onClicked: bar.toggle("Sound", bar.width-370) }
         MenuButton {visible:bar.width>=720 && shell.notifications.dnd;text:"";iconName:"moon";onClicked:bar.toggle("Controls",bar.width-340)}
         MenuButton {visible:bar.width>=800; text: ""; iconName: "search"; onClicked: shell.launchApps() }
+        MenuButton {visible:bar.width>=860;text:"";iconName:"network";selected:bar.menu==="VPN";Accessible.name:"VPN status: "+(shell.vpn.mullvad.state==="connected"?"Mullvad connected, ":"Mullvad disconnected, ")+(shell.vpn.tailscale.online?"Tailscale connected":"Tailscale disconnected");onClicked:bar.toggle("VPN",bar.width-350)
+            Rectangle {width:6;height:6;radius:3;anchors.right:parent.right;anchors.bottom:parent.bottom;anchors.rightMargin:3;anchors.bottomMargin:3;color:shell.vpn.anyConnected?"#30b65c":Theme.colors.muted}
+        }
         MenuButton { text: ""; iconName: "controls"; onClicked: bar.toggle("Controls", bar.width-340) }
 
     }
@@ -146,7 +150,7 @@ PanelWindow {
             Keys.onReturnPressed:if(!bar.special && bar.builtinIndex>=0)bar.activateBuiltin(builtinItems.model[bar.builtinIndex])
         Flickable {
             id:systemViewport
-            visible:["Wi-Fi","Bluetooth","Sound","Controls","Focus","Date","Calendar","Now Playing"].includes(bar.systemMenu)
+            visible:["Wi-Fi","Bluetooth","VPN","Sound","Controls","Focus","Date","Calendar","Now Playing"].includes(bar.systemMenu)
             width:systemPanel.width;height:Math.min(systemPanel.height,Math.max(1,parent.height-Theme.barHeight-24))
             x:Math.max(8,parent.width-width-12);y:Theme.barHeight+10
             contentWidth:width;contentHeight:systemPanel.height;clip:true;boundsBehavior:Flickable.StopAtBounds

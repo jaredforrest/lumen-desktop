@@ -18,6 +18,8 @@ AppIcon 1.0 AppIcon.qml
 MenuCard 1.0 MenuCard.qml
 MediaControl 1.0 MediaControl.qml
 SystemState 1.0 SystemState.qml
+VpnState 1.0 VpnState.qml
+VpnPanel 1.0 VpnPanel.qml
 ControlRow 1.0 ControlRow.qml
 ConnectivityPanel 1.0 ConnectivityPanel.qml
 VolumeHud 1.0 VolumeHud.qml

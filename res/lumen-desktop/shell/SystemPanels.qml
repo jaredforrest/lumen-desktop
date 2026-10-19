@@ -63,6 +63,7 @@ Column {
     }
     NotificationPanel {id:datePanel;visible:root.kind==="Date";width:parent.width;shell:root.shell;today:root.today}
     ConnectivityPanel {visible:root.kind==="Wi-Fi" || root.kind==="Bluetooth";kind:root.kind;controls:root.shell.systemState;onBackRequested:root.panelRequested("Controls")}
+    VpnPanel {visible:root.kind==="VPN";width:parent.width;compact:true;service:root.shell.vpn;onBackRequested:root.panelRequested("Controls");onSettingsRequested:root.shell.openSettings("VPN")}
     CalendarCard {
         visible:root.kind==="Calendar"
         width:parent.width;today:root.today;compact:true;onOpenCalendar:root.shell.openCalendarAt(selected,null);onEventRequested:(event,day)=>root.shell.openCalendarAt(day,event)

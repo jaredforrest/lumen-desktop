@@ -121,6 +121,7 @@ try:
  key('-k','Escape');ipc('focusDock');time.sleep(.3);key('-k','End','-k','Return');wait(lambda:state()['path']=='trash:')
  call('grim',str(run/'files.png'))
  ipc('settings','Appearance');time.sleep(.5);call('grim',str(run/'settings.png'))
+ ipc('settings','VPN');wait(lambda:json.loads(ipc('settingsStatus'))['page']=='VPN');time.sleep(.5);call('grim',str(run/'vpn-settings.png'))
  if capabilities.get('native_window_actions') and args.click_pointer:
   def allnodes(node):
    yield node

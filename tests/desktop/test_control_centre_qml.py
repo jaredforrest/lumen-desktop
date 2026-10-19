@@ -23,7 +23,8 @@ ShellRoot {
  QtObject {id:notifications;property bool available:true;property bool dnd:false;property var focusState:({name:""})}
  QtObject {id:system;property var wifi:({available:false,state:""})}
  QtObject {id:audio;property bool available:false;property bool muted:false;property real volume:0;property var outputs:[]}
- QtObject {id:stub;property var notifications:notifications;property var systemState:system;property var audioState:audio}
+ QtObject {id:vpn;property var mullvad:({state:"disconnected"});property var tailscale:({online:false})}
+ QtObject {id:stub;property var notifications:notifications;property var systemState:system;property var audioState:audio;property var vpn:vpn}
  D.ControlCentre {id:editor;shell:stub;preferences:({order:["wifi","bluetooth","sharing","media","displays","appearance","focus","brightness","sound"],hidden:["wifi","bluetooth","sharing","media","brightness","sound"]})}
  Timer {interval:100;running:true;repeat:true;onTriggered:{
   try {
