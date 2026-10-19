@@ -1,0 +1,31 @@
+# Owned-control accessibility verification
+
+The private native AT-SPI fixture covers these bounded parts of semantic
+controls, keyboard input, focus restoration, reading order and assistive input:
+
+- Widget catalogue rows expose a named grouping and type-specific choice/action
+  names. Child order follows the visual form. Keyboard changes commit to the
+  same descriptor, and removing a row returns focus to Add Calendar.
+- Overview group actions accept Return, Space and the AT-SPI Action interface.
+  Pointer/Space press captures are consumed once and cancelled captures cleared;
+  assistive activation without a press captures the current target. Requests
+  retain the selected group, exact window/PID and revision. The native backend
+  still validates those facts; this protocol fixture records intent rather than
+  claiming native grouping execution. Closing the group dialog returns focus to
+  its opener, and hiding Overview closes its nested group dialog.
+- Session confirmation exposes a dialog role, action-specific name and a readable
+  waiting/final-confirmation description. Waiting is genuinely disabled through
+  AT-SPI enabled/sensitive state. Keyboard Cancel clears the pending session
+  request without a host action. The separate native session-end fixture verifies
+  actual application-owned dirty-document Save, Discard and Cancel.
+
+`tests/desktop/accessibility_protocol.py` runs a private activation-free session
+bus, explicitly launched private AT-SPI bus/registry, private runtime and native
+headless compositor. It records actual protocol trees, checks keyboard and
+assistive actions, and verifies the live accessibility socket is unchanged.
+The same fixture retains the existing complete-shell Settings and Files checks.
+
+This is not a claim about third-party application providers, a particular screen
+reader's spoken announcements, all assistive devices, or complete accessibility
+parity. Contrast, motion preferences, text enlargement and other owned surfaces
+have independent requirements and evidence.

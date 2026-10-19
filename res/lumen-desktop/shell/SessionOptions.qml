@@ -38,7 +38,7 @@ FloatingWindow {
   }
  }
  onVisibleChanged:if(!visible && !worker.running){authorizing=false;authorizationToken="";preflighting=false;if(lifecycle)lifecycle.sessionCommand("session_cancel","");}
- Rectangle {id:body;anchors.fill:parent;color:Theme.colors.background;radius:Theme.nativeWindowFrame?0:12
+ Rectangle {id:body;Accessible.role:Accessible.Dialog;Accessible.name:(root.labels[root.action] || "Session")+" confirmation";Accessible.description:root.preflight.phase==="waiting"?"Waiting for "+root.preflight.waiting+" to finish. Cancel keeps the session open.":root.preflight.phase==="ready"?"Applications have quit. Final confirmation is required.":"Session actions require explicit confirmation.";anchors.fill:parent;color:Theme.colors.background;radius:Theme.nativeWindowFrame?0:12
   MouseArea {width:parent.width;height:48;onPressed:body.Window.window.startSystemMove()}
   WindowControls {windowActive:body.Window.window?body.Window.window.active:false;windowName:"Session Options";canMinimize:false;canFullscreen:false;onTriggered:root.dismiss()}
   Column {x:24;y:62;width:parent.width-48;spacing:14
