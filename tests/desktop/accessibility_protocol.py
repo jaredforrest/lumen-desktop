@@ -29,7 +29,9 @@ env.update(QT_QPA_PLATFORM='wayland',QT_QPA_PLATFORMTHEME='generic',QT_QUICK_BAC
 for key in ('NO_AT_BRIDGE','GTK_A11Y','AT_SPI_BUS_ADDRESS','WAYLAND_DISPLAY','SWAYSOCK','DISPLAY'):env.pop(key,None)
 processes=[]
 def launch(command,name):
-    proc=sp.Popen(command,env=env,stdout=(out/name).open('w'),stderr=sp.STDOUT,start_new_session=True);processes.append(proc);return proc
+    with (out/name).open('w') as stream:
+        proc=sp.Popen(command,env=env,stdout=stream,stderr=sp.STDOUT,start_new_session=True)
+    processes.append(proc);return proc
 
 def wait(callback,description):
     end=time.monotonic()+20
