@@ -92,7 +92,7 @@ FloatingWindow {
             DialogButton {width:65;text:"Cancel";visible:desktopStrip.editing;onClicked:desktopStrip.cancel()}
         }
         DialogButton {x:parent.width-148;y:176;width:128;objectName:"window-groups-open";text:"Window Groups";Accessible.name:"Manage window groups";enabled:!!root.windowGroups && !desktopStrip.editing;onClicked:groupsDialog.open()}
-        Dialog {id:groupsDialog;title:"Window Groups";header:PanelLabel {text:"Window Groups";padding:12;font.weight:Font.DemiBold;color:Theme.colors.text}modal:true;anchors.centerIn:parent;width:Math.min(480,parent.width-32);closePolicy:Popup.CloseOnEscape
+        Dialog {id:groupsDialog;implicitWidth:480;title:"Window Groups";header:PanelLabel {text:"Window Groups";padding:12;font.weight:Font.DemiBold;color:Theme.colors.text}modal:true;anchors.centerIn:parent;width:Math.min(480,parent.width-32);closePolicy:Popup.CloseOnEscape
             background:Rectangle {radius:12;color:Theme.colors.background;border.color:Theme.outline}
             contentItem:Column {spacing:10
                 SettingsToggle {objectName:"window-groups-toggle";property var captured:null;width:parent.width;text:"Window Groups";onPressed:captured=root.captureGroupAction(checked?"off":"on",0);checked:!!root.windowGroups && root.windowGroups.enabled;enabled:!root.busy && !!root.windowGroups && !root.windowGroups.locked;onToggled:if(captured)root.send(captured)}
