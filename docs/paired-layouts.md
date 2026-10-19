@@ -9,7 +9,9 @@ Open the green-button layout menu and choose **Pair Full Screen on Left** or
 **Pair Full Screen on Right**, then select the other window. **Manage Paired
 Windows** offers replacement, side swapping, division reset and return to desktop.
 Drag the shared divider to change the ratio. Double-click it to reset the division;
-Escape cancels an unfinished divider drag. Client size constraints clamp ratios,
+Escape cancels an unfinished divider drag. Movement beyond the click slop
+invalidates double-click tracking, so quick successive drags cannot reset it.
+Client size constraints clamp ratios,
 and incompatible clients are rejected before placement changes.
 
 Returning either member to its desktop restores its saved reachable placement.

@@ -1,7 +1,7 @@
 """Native paired-full-output identity, divider and restore lifecycle in isolation."""
 import argparse,json,os,signal,subprocess as sp,tempfile,time,sys
 from pathlib import Path
-p=argparse.ArgumentParser();p.add_argument('--sway',required=True);p.add_argument('--pointer',required=True);p.add_argument('--keyboard',required=True);p.add_argument('--constraint-client',required=True);p.add_argument('--effects',action='store_true');p.add_argument('--output',type=Path,required=True);a=p.parse_args();a.output.mkdir(parents=True,exist_ok=False);processes=[]
+p=argparse.ArgumentParser();p.add_argument('--sway',required=True);p.add_argument('--pointer',required=True);p.add_argument('--keyboard',required=True);p.add_argument('--constraint-client',required=True);p.add_argument('--effects',action='store_true');p.add_argument('--divider-only',action='store_true');p.add_argument('--output',type=Path,required=True);a=p.parse_args();a.output.mkdir(parents=True,exist_ok=False);processes=[]
 def wait(fn):
  end=time.monotonic()+12
  while time.monotonic()<end:
@@ -69,6 +69,17 @@ with tempfile.TemporaryDirectory(prefix='lumen-pair-') as private:
   other=box(cc);begin_divider(aa);motion(180,0);button('r');assert ratio(aa)>.6 and box(cc)==other;changed=ratio(aa)
   begin_divider(aa);motion(-140,0);sp.run([a.keyboard,'-k','Escape'],env=env,check=True);button('r');assert abs(ratio(aa)-changed)<.01
   time.sleep(.35);begin_divider(aa);button('r');button('p');button('r');assert abs(ratio(aa)-.5)<.01
+  # One input-client burst keeps both presses within the double-click interval.
+  # A real drag must invalidate the first click, even when followed immediately.
+  parent=full_parent(aa);at(parent['rect']['x']+parent['rect']['width']*ratio(aa),parent['rect']['y']+200);motion(.1,0);time.sleep(.35)
+  started=time.monotonic();pointer.stdin.write('p\nm 100 0\nr\np\n');pointer.stdin.flush()
+  wait(lambda:ratio(aa)>.55);after_repress=ratio(aa);elapsed=time.monotonic()-started;assert elapsed<.3,elapsed
+  pointer.stdin.write('m 50 0\nr\n');pointer.stdin.flush();wait(lambda:ratio(aa)>after_repress+.02);after_second_drag=ratio(aa)
+  # A genuine stationary double-click still resets the division.
+  parent=full_parent(aa);at(parent['rect']['x']+parent['rect']['width']*ratio(aa),parent['rect']['y']+200);motion(.1,0);time.sleep(.35)
+  pointer.stdin.write('p\nr\np\nr\n');pointer.stdin.flush();wait(lambda:abs(ratio(aa)-.5)<.01)
+  if a.divider_only:
+   (a.output/'result.json').write_text(json.dumps({'passed':True,'rapid_press_observation_seconds':elapsed,'ratio_after_rapid_repress':after_repress,'ratio_after_second_drag':after_second_drag,'reset_ratio':ratio(aa),'checks':['physical divider drag','Escape restores ratio','quick drag then press starts another drag instead of resetting','stationary double-click resets division']},indent=2));print('PASS physical divider movement slop and genuine double-click reset');raise SystemExit(0)
   call('grim','-o','HEADLESS-1',str(a.output/'paired.png'))
   ipc('lumen_window show-desktop-on');ipc(f'lumen_pair swap {aa}');assert find(aa)['lumen_pair']['side']=='right' and find(bb)['lumen_pair']['side']=='left'
   ipc('lumen_window show-desktop-on');ipc(f'lumen_pair replace {aa} {cc}');assert find(aa)['lumen_pair']['partner']==cc;assert box(bb)==original[bb] and workspace(bb)==original_ws[bb]

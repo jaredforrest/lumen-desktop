@@ -31,7 +31,7 @@
 +#endif
 --- /dev/null
 +++ b/sway/tree/lumen_pair.c
-@@ -0,0 +1,400 @@
+@@ -0,0 +1,402 @@
 +/* Paired full-output placement. Client identity and restore state stay native. */
 +#include <errno.h>
 +#include <float.h>
@@ -69,6 +69,7 @@
 + struct lumen_pair_member members[2];
 + double ratio;
 + uint32_t last_click;
++ double last_click_x,last_click_y;
 +};
 +static struct wl_list pairs = {&pairs,&pairs};
 +static int changing;
@@ -371,10 +372,11 @@
 + }
 + return state;
 +}
-+struct resize_operation {struct sway_lumen_pair *pair;double original;};
++struct resize_operation {struct sway_lumen_pair *pair;double original,start_x,start_y;};
 +static const struct sway_seatop_impl resize_impl;
 +static void resize_motion(struct sway_seat *seat,uint32_t time) {
 + (void)time;struct resize_operation *op=seat->seatop_data;struct sway_container *parent=op->pair->parent;
++ if(fabs(seat->cursor->cursor->x-op->start_x)>4 || fabs(seat->cursor->cursor->y-op->start_y)>4)op->pair->last_click=0;
 + if(pair_ratio(op->pair,(seat->cursor->cursor->x-parent->pending.x)/parent->pending.width)) {
 +  arrange_container(parent);transaction_commit_dirty();
 + }
@@ -390,7 +392,7 @@
 +static const struct sway_seatop_impl resize_impl={.pointer_motion=resize_motion,.button=resize_button,.unref=resize_unref};
 +bool lumen_pair_cancel_resize(struct sway_seat *seat) {
 + if(seat->seatop_impl!=&resize_impl)return false;
-+ struct resize_operation *op=seat->seatop_data;pair_ratio(op->pair,op->original);arrange_container(op->pair->parent);seatop_begin_default(seat);transaction_commit_dirty();return true;
++ struct resize_operation *op=seat->seatop_data;op->pair->last_click=0;pair_ratio(op->pair,op->original);arrange_container(op->pair->parent);seatop_begin_default(seat);transaction_commit_dirty();return true;
 +}
 +bool lumen_pair_button(struct sway_seat *seat,uint32_t time,uint32_t button,enum wl_pointer_button_state state) {
 + if(button!=BTN_LEFT||state!=WL_POINTER_BUTTON_STATE_PRESSED||server.session_lock.lock||seat->cursor->active_constraint)return false;
@@ -401,10 +403,10 @@
 +    output_get_active_workspace(parent->pending.workspace->output)!=parent->pending.workspace)continue;
 +  double divider=parent->pending.x+parent->pending.width*pair->ratio;
 +  if(fabs(x-divider)>6||y<parent->pending.y||y>=parent->pending.y+parent->pending.height)continue;
-+  if(pair->last_click && time-pair->last_click<300){pair->last_click=0;pair_ratio(pair,.5);arrange_container(parent);transaction_commit_dirty();return true;}
-+  pair->last_click=time;
++  if(pair->last_click && time-pair->last_click<300 && fabs(x-pair->last_click_x)<=4 && fabs(y-pair->last_click_y)<=4){pair->last_click=0;pair_ratio(pair,.5);arrange_container(parent);transaction_commit_dirty();return true;}
++  pair->last_click=time;pair->last_click_x=x;pair->last_click_y=y;
 +  struct resize_operation *op=calloc(1,sizeof(*op));if(!op)return true;
-+  op->pair=pair;op->original=pair->ratio;seatop_end(seat);seat->seatop_impl=&resize_impl;seat->seatop_data=op;
++  op->pair=pair;op->original=pair->ratio;op->start_x=x;op->start_y=y;seatop_end(seat);seat->seatop_impl=&resize_impl;seat->seatop_data=op;
 +  wlr_seat_pointer_notify_clear_focus(seat->wlr_seat);return true;
 + }
 + return false;
