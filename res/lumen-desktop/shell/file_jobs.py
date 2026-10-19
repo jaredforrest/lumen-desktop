@@ -6,6 +6,7 @@ import errno
 import json
 import os
 from pathlib import Path
+import file_tags
 import shutil
 import socket
 import stat
@@ -229,6 +230,7 @@ class Jobs:
                     self.copy(ident, Path(entry.path), dst/entry.name)
             dst.chmod(stat.S_IMODE(info.st_mode))
             os.utime(dst, ns=(info.st_atime_ns, info.st_mtime_ns), follow_symlinks=False)
+            file_tags.copy_metadata(src,dst)
         elif stat.S_ISLNK(info.st_mode):
             dst.symlink_to(os.readlink(src))
         elif stat.S_ISREG(info.st_mode):
@@ -251,6 +253,7 @@ class Jobs:
                     os.fsync(out.fileno())
             dst.chmod(stat.S_IMODE(info.st_mode))
             os.utime(dst, ns=(info.st_atime_ns, info.st_mtime_ns), follow_symlinks=False)
+            file_tags.copy_metadata(src,dst)
         else:
             raise ValueError('Device files, sockets and pipes cannot be copied')
 

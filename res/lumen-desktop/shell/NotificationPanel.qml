@@ -7,20 +7,13 @@ Column {
     required property var shell
     required property date today
     property bool editingWidgets:false
-    property var preferences:({calendarVisible:true,calendarFirst:false,style:"month",reduceTransparency:false})
-    property string preferenceError:""
+    readonly property var widgetState:root.shell.widgets || fallback.item
+    readonly property var preferences:widgetState?widgetState.preferences:({calendarVisible:true,calendarFirst:false,style:"month",reduceTransparency:false,desktopVisible:false,desktopStyle:"month",desktopColor:"auto"})
+    readonly property string preferenceError:widgetState?widgetState.error:""
     width:344;spacing:14
+    Loader {id:fallback;active:!root.shell.widgets;sourceComponent:Component {WidgetState {}}}
     function status(){return {width:width,height:height,style:preferences.style,calendarVisible:preferences.calendarVisible,calendarFirst:preferences.calendarFirst,selected:calendar.iso(calendar.selected),followingToday:calendar.followingToday,events:calendar.events.length,busy:calendar.busy,preferenceError:preferenceError};}
-    function setPreference(key,value){const next=Object.assign({},preferences);next[key]=value;preferences=next;preferencesFile.setText(JSON.stringify(next));}
-    FileView {
-        id:preferencesFile
-        path:(Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME")+"/.local/state")+"/lumen-desktop/session/notification-centre.json"
-        printErrors:false;atomicWrites:true;watchChanges:true
-        onFileChanged:reload()
-        onLoaded:{try{const data=JSON.parse(text());root.preferences={calendarVisible:data.calendarVisible!==false,calendarFirst:data.calendarFirst===true,style:data.style==="agenda"?"agenda":"month",reduceTransparency:data.reduceTransparency===true};}catch(e){root.preferenceError="Widget preferences could not be read.";}}
-        onSaved:root.preferenceError=""
-        onSaveFailed:root.preferenceError="Widget changes could not be saved."
-    }
+    function setPreference(key,value){if(widgetState)widgetState.setPreference(key,value);}
     Column {id:before;visible:root.preferences.calendarFirst;width:parent.width}
     NotificationCentre {width:parent.width;service:root.shell.notifications;reduceTransparency:root.preferences.reduceTransparency || !!Theme.preferences.reduceTransparency;onVisibleChanged:if(visible)root.shell.notifications.seen()}
     Column {id:after;visible:!root.preferences.calendarFirst;width:parent.width}
@@ -41,6 +34,9 @@ Column {
             DesktopComboBox {width:parent.width;model:["Month and agenda","Agenda"];currentIndex:root.preferences.style==="agenda"?1:0;Accessible.name:"Calendar widget layout";onActivated:index=>root.setPreference("style",index===1?"agenda":"month")}
             ControlRow {width:parent.width;text:root.preferences.calendarFirst?"Move Calendar below notifications":"Move Calendar above notifications";onClicked:root.setPreference("calendarFirst",!root.preferences.calendarFirst)}
             SettingsToggle {width:parent.width;height:36;text:"Reduce transparency";checked:root.preferences.reduceTransparency;onClicked:root.setPreference("reduceTransparency",checked)}
+            SettingsToggle {width:parent.width;height:36;text:"Show Calendar on desktop";checked:root.preferences.desktopVisible;onClicked:root.setPreference("desktopVisible",checked)}
+            DesktopComboBox {width:parent.width;model:["Desktop: month and agenda","Desktop: compact agenda"];currentIndex:root.preferences.desktopStyle==="agenda"?1:0;Accessible.name:"Desktop widget size";onActivated:index=>root.setPreference("desktopStyle",index===1?"agenda":"month")}
+            DesktopComboBox {width:parent.width;model:["Automatic colour","Full colour","Monochrome"];currentIndex:["auto","color","monochrome"].indexOf(root.preferences.desktopColor);Accessible.name:"Desktop widget colour";onActivated:index=>root.setPreference("desktopColor",["auto","color","monochrome"][index])}
             ControlRow {width:parent.width;text:"Calendar accounts…";onClicked:root.shell.openSettings("Internet Accounts")}
         }
     }

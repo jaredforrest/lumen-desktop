@@ -21,12 +21,62 @@ let
             accent = mkOption { type = types.enum [ "blue" "purple" "pink" "red" "orange" "yellow" "green" "graphite" ]; default = "blue"; };
             iconAppearance = mkOption { type = types.enum [ "default" "auto" "dark" ]; default = "auto"; };
             switchToAppSpace = mkOption { type = types.bool; default = true; };
+            dockPosition = mkOption { type = types.enum [ "bottom" "left" "right" ]; default = "bottom"; };
+            dockAutoHide = mkOption { type = types.bool; default = false; };
+            dockSize = mkOption { type = types.ints.between 32 72; default = 48; };
+            dockFolders = mkOption {
+              type = types.addCheck (types.listOf (types.submodule { options = {
+                path = mkOption { type = types.addCheck (types.strMatching "/[^[:cntrl:]]*") (path: lib.stringLength path <= 4096); };
+                sort = mkOption { type = types.enum [ "name" "modified" "size" "type" ]; default = "modified"; };
+                descending = mkOption { type = types.bool; default = true; };
+                presentation = mkOption { type = types.enum [ "list" "grid" "auto" ]; default = "auto"; };
+              }; })) (folders: lib.length folders == lib.length (lib.unique (map (folder: folder.path) folders)));
+              default = [];
+            };
+            dockPins = mkOption {
+              type = types.nullOr (types.addCheck (types.listOf (types.strMatching "[-_.A-Za-z0-9]+")) (pins: lib.length pins == lib.length (lib.unique pins) && lib.all (pin: lib.stringLength pin <= 256) pins));
+              default = null;
+            };
+            dockRecentApps = mkOption { type = types.bool; default = true; };
+            dockIndicators = mkOption { type = types.bool; default = true; };
             dockMagnification = mkOption { type = types.bool; default = true; };
-            scrollbars = mkOption { type = types.enum [ "auto" "always" ]; default = "auto"; };
+            scrollbars = mkOption { type = types.enum [ "auto" "when_scrolling" "always" ]; default = "auto"; };
             reduceTransparency = mkOption { type = types.bool; default = false; };
+            increaseContrast = mkOption { type = types.bool; default = false; };
+            sidebarIconSize = mkOption { type = types.enum [ "small" "medium" "large" ]; default = "medium"; };
             reduceMotion = mkOption { type = types.bool; default = false; };
           };
         };
+        default = {};
+      };
+      windows = mkOption {
+        type = types.submodule { options = {
+          tileMargins = mkOption { type = types.bool; default = true; };
+          titlebarDoubleClick = mkOption { type = types.enum [ "fill" "minimize" "none" ]; default = "fill"; };
+        }; };
+        default = {};
+      };
+      controlCentre = mkOption {
+        type = types.submodule {
+          options = let
+            ids = [ "wifi" "bluetooth" "sharing" "media" "displays" "appearance" "focus" "brightness" "sound" ];
+            idList = types.listOf (types.enum ids);
+            unique = items: lib.length items == lib.length (lib.unique items);
+          in {
+            order = mkOption { type = types.addCheck idList (items: unique items && lib.length items == lib.length ids); default = ids; };
+            hidden = mkOption { type = types.addCheck idList unique; default = []; };
+          };
+        };
+        default = {};
+      };
+      search = mkOption {
+        type = types.submodule { options = {
+          queryHistory = mkOption { type = types.bool; default = false; };
+          disabledProviders = mkOption {
+            type = types.addCheck (types.listOf (types.enum [ "applications" "files" "actions" "clipboard" ])) (items: lib.length items == lib.length (lib.unique items));
+            default = [];
+          };
+        }; };
         default = {};
       };
       displays = mkOption {
@@ -62,10 +112,17 @@ let
       };
       notifications = mkOption {
         type = types.submodule { options = {
+          preview = mkOption { type = types.enum [ "always" "never" ]; default = "always"; };
           policies = mkOption { type = types.attrsOf (types.enum [ "banners" "silent" "off" ]); default = {}; };
         }; };
         default = {};
       };
     };
   };
-in (lib.evalModules { modules = [ schema { config = values; } ]; }).config
+in let
+  result = (lib.evalModules { modules = [ schema { config = values; } ]; }).config;
+  folders = result.appearance.dockFolders;
+  # Submodule list merges validate their members individually. Enforce the
+  # collection invariant on the fully evaluated result as well.
+  distinctFolders = lib.length folders == lib.length (lib.unique (map (folder: folder.path) folders));
+in if !distinctFolders then throw "Dock folder paths must be distinct" else result

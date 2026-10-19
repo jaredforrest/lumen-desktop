@@ -5,6 +5,7 @@ from gi.repository import Gio
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from file_jobs import remote as job_request, trash_items
 import file_clipboard
+import file_tags
 
 LIMIT = 5000
 
@@ -26,6 +27,9 @@ def listing(data):
     folder = path(data.get('path', str(Path.home())))
     rows, unreadable, scanned, limited = [], 0, 0, False
     query = str(data.get('query', '')).casefold()
+    tag_terms=[term[4:] for term in query.split() if term.startswith('tag:')]
+    if any(tag not in file_tags.IDS for tag in tag_terms):raise ValueError('Unknown colour tag; use red, orange, yellow, green, blue, purple or grey')
+    query=' '.join(term for term in query.split() if not term.startswith('tag:'))
     with os.scandir(folder) as entries:
         for entry in entries:
             scanned += 1
@@ -39,7 +43,9 @@ def listing(data):
             try:
                 info = entry.stat(follow_symlinks=False)
                 directory = entry.is_dir()
-                rows.append(dict(name=entry.name, path=entry.path, uri=Path(entry.path).as_uri(), directory=directory,
+                tags=file_tags.read(entry.path)
+                if not all(tag in [t["id"] for t in tags["tags"]] for tag in tag_terms):continue
+                rows.append(dict(identity={"device":info.st_dev,"inode":info.st_ino},tags=tags["tags"],tagsSupported=tags["supported"],tagsError=tags["error"],name=entry.name, path=entry.path, uri=Path(entry.path).as_uri(), directory=directory,
                                  link=entry.is_symlink(), size=info.st_size, mtime=info.st_mtime,
                                  kind="Folder" if directory else mimetypes.guess_type(entry.name)[0] or "Document"))
             except OSError:
@@ -54,7 +60,15 @@ def listing(data):
         raise ValueError("Unknown sort order")
     rows.sort(key=lambda r:r['name'].casefold())
     rows.sort(key=key, reverse=bool(data.get('descending')))
-    rows.sort(key=lambda r:not r['directory'])
+    folders_first=data.get('foldersFirst',True)
+    if type(folders_first) is not bool:raise ValueError('Folders-first must be a boolean')
+    if folders_first:rows.sort(key=lambda r:not r['directory'])
+    grouping=data.get('groupBy','none')
+    if grouping not in ('none','kind'):raise ValueError('Unknown grouping')
+    for row in rows:
+        kind=row['kind']
+        row['group']='Folders' if row['directory'] else 'Images' if kind.startswith('image/') else 'Audio' if kind.startswith('audio/') else 'Video' if kind.startswith('video/') else 'Documents'
+    if grouping=='kind':rows.sort(key=lambda r:(0 if r['directory'] and folders_first else 1,r['group']))
     return dict(path=str(folder), parent=str(folder.parent), rows=rows,
                 limited=limited, unreadable=unreadable, writable=os.access(folder,os.W_OK),
                 breadcrumbs=[dict(name=p.name or '/', path=str(p)) for p in reversed([folder,*folder.parents])])
@@ -75,8 +89,10 @@ def copy_item(source,destination):
             for entry in entries:copy_item(Path(entry.path),destination/entry.name)
         destination.chmod(stat.S_IMODE(info.st_mode))
         os.utime(destination, ns=(info.st_atime_ns, info.st_mtime_ns), follow_symlinks=False)
+        file_tags.copy_metadata(source,destination)
     else:
         file(source).copy(file(destination),Gio.FileCopyFlags.NOFOLLOW_SYMLINKS,None,None,None)
+        if not source.is_symlink():file_tags.copy_metadata(source,destination)
 
 def handle(data):
     action=data.get('action')
@@ -91,11 +107,22 @@ def handle(data):
             if not isinstance(prefs,dict):prefs={}
             if action=='save-preferences':
                 incoming=data.get('preferences',{})
-                allowed={'view':['grid','list','columns','gallery'],'sort':['name','modified','size','kind'],'descending':[True,False]}
+                allowed={'view':['grid','list','columns','gallery'],'sort':['name','modified','size','kind'],'descending':[True,False],'hidden':[True,False],'foldersFirst':[True,False],'groupBy':['none','kind'],'favorites':None}
                 if not isinstance(incoming,dict) or any(key not in allowed for key in incoming):
                     raise ValueError('Unknown file preference')
                 for key,value in incoming.items():
-                    if value not in allowed[key] or (key=='descending' and type(value) is not bool):
+                    if key=='favorites':
+                        if value is not None:
+                            if not isinstance(value,list) or len(value)>32:raise ValueError('Choose at most 32 sidebar destinations')
+                            paths=[]
+                            for favorite in value:
+                                if not isinstance(favorite,dict) or set(favorite)!={'name','path'}:raise ValueError('Invalid sidebar destination')
+                                if not isinstance(favorite['name'],str) or not favorite['name'].strip() or len(favorite['name'])>64 or any(ord(c)<32 for c in favorite['name']):raise ValueError('Invalid sidebar name')
+                                if not isinstance(favorite['path'],str) or not favorite['path'].startswith('/') or any(ord(c)<32 for c in favorite['path']) or len(favorite['path'])>4096:raise ValueError('Sidebar destinations require an absolute local path')
+                                paths.append(favorite['path'])
+                            if len(paths)!=len(set(paths)):raise ValueError('Sidebar destinations must be distinct')
+                        continue
+                    if value not in allowed[key] or (key in ('descending','hidden','foldersFirst') and type(value) is not bool):
                         raise ValueError('Invalid file preference: '+key)
                 prefs.update(incoming)
                 fd,temp=tempfile.mkstemp(dir=file.parent)
@@ -121,18 +148,24 @@ def handle(data):
         device=mount.get_volume().get_identifier('unix-device')
         subprocess.run(['udisksctl','unmount','--block-device',device,'--no-user-interaction'],check=True,capture_output=True,timeout=20)
         return dict(ok=True)
-    if action in ('applications','open-with'):
+    if action in ('applications','open-with','set-default'):
         p=path(data['path']);mime=mimetypes.guess_type(p.name)[0] or 'application/octet-stream'
         applications=[a for a in Gio.AppInfo.get_all_for_type(mime) if a.should_show() and a.get_id()]
-        if action=='applications':return dict(applications=[dict(id=a.get_id(),name=a.get_display_name()) for a in applications])
+        default=Gio.AppInfo.get_default_for_type(mime,False)
+        if action=='applications':return dict(applications=[dict(id=a.get_id(),name=a.get_display_name(),default=bool(default and default.get_id()==a.get_id())) for a in applications])
         app=next((a for a in applications if a.get_id()==data.get('application')),None)
         if app is None:raise ValueError('This application is no longer available')
+        if action=='set-default':
+            if not app.set_as_default_for_type(mime):raise ValueError('The application could not become the default for this file type')
+            return dict(ok=True)
         filename=app.get_filename()
         subprocess.run((['lumen-launch-app','--'] if os.environ.get('LUMEN_LAUNCH_SCOPES')=='1' else []) + ['gio','launch',filename,p.as_uri()],check=True,timeout=12,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         return dict(ok=True)
     if action=='list':return listing(data)
     if action=='preview':return preview(data['path'], data.get('page',1))
     p=path(data['path'])
+    if action=='set-tags':
+        file_tags.write(p,data.get('tags'),data.get('identity'));return dict(ok=True,selected=str(p))
     if action=='info':
         import pwd,grp,datetime
         info=p.lstat()
@@ -141,7 +174,15 @@ def handle(data):
             except KeyError:return str(key)
         def date(stamp):return datetime.datetime.fromtimestamp(stamp).astimezone().strftime('%B %d, %Y at %H:%M:%S %Z')
         return dict(info=dict(name=p.name,location=str(p.parent),kind='Symbolic link' if p.is_symlink() else 'Folder' if p.is_dir() else mimetypes.guess_type(p.name)[0] or 'Document',size=str(info.st_size)+' bytes',modified=date(info.st_mtime),permissions=stat.filemode(info.st_mode),owner=identity(pwd.getpwuid,info.st_uid),group=identity(grp.getgrgid,info.st_gid),target=os.readlink(p) if p.is_symlink() else ''))
+    if action=='make-link':
+        p.lstat()
+        for i in range(1,10002):
+            target=p.with_name(p.name+' link'+(' '+str(i) if i>1 else ''))
+            try:target.symlink_to(str(p));return dict(ok=True,selected=str(target))
+            except FileExistsError:continue
+        raise FileExistsError('No available link name')
     if action=='open':
+        if p.is_symlink() and not p.exists():raise FileNotFoundError('This symbolic link no longer resolves. Use File Info to inspect its target or remove the link; the original file is not changed.')
         if not p.exists():raise FileNotFoundError("This item is no longer available")
         subprocess.run((['lumen-launch-app','--'] if os.environ.get('LUMEN_LAUNCH_SCOPES') == '1' else []) + ['xdg-open',p.as_uri()],check=True,timeout=12,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         return dict(ok=True)

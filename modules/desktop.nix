@@ -68,7 +68,7 @@ in {
       swayPackage = hostSwayPackage;
       rofiPackage = config.programs.rofi.package;
     };
-    inherit (session) nixSettings appearance qtTheme qtTheme5 palette menuRuntime personalServices fileClipboard displayLayout fileOperations focusWindow desktopState clipboardHistory launchApp shellLauncher audioKey notifications menuCommand desktopDoctor desktopAction appLauncher filesLauncher remoteDesktopLauncher calendarLauncher settingsLauncher;
+    inherit (session) nixSettings appearance qtTheme qtTheme5 palette menuRuntime personalServices fileClipboard displayLayout fileOperations focusWindow desktopState clipboardHistory launchApp shellLauncher audioKey mediaKey notifications menuCommand desktopDoctor desktopAction appLauncher filesLauncher remoteDesktopLauncher calendarLauncher settingsLauncher;
   in {
     # Own the theme declaratively, rather than keeping temporary config links.
     wayland.windowManager.sway.extraConfig = lib.mkAfter (builtins.readFile ../res/lumen-desktop/sway.conf + ''
@@ -162,6 +162,7 @@ in {
       "Mod4+Control+Shift+n" = "exec ${desktopAction}/bin/lumen-desktop-action notifications-toggle";
       "Mod4+Control+Shift+c" = "exec ${desktopAction}/bin/lumen-desktop-action controls";
       "Mod4+Control+Shift+f" = "exec ${hostSwayPackage}/bin/swaymsg lumen_window fill";
+      "Mod4+Control+l" = "exec ${desktopAction}/bin/lumen-desktop-action window-layout";
       "Mod4+Control+f" = "exec ${hostSwayPackage}/bin/swaymsg fullscreen toggle";
       "Mod4+grave" = "exec ${desktopAction}/bin/lumen-desktop-action window-next";
       "Mod4+Shift+grave" = "exec ${desktopAction}/bin/lumen-desktop-action window-previous";
@@ -171,9 +172,9 @@ in {
       "XF86AudioRaiseVolume" = "exec ${audioKey}/bin/lumen-audio-key up";
       "XF86AudioLowerVolume" = "exec ${audioKey}/bin/lumen-audio-key down";
       "XF86AudioMute" = "exec ${audioKey}/bin/lumen-audio-key mute";
-      "XF86AudioPlay" = "exec ${pkgs.playerctl}/bin/playerctl play-pause";
-      "XF86AudioNext" = "exec ${pkgs.playerctl}/bin/playerctl next";
-      "XF86AudioPrev" = "exec ${pkgs.playerctl}/bin/playerctl previous";
+      "XF86AudioPlay" = "exec ${mediaKey}/bin/lumen-media-key play-pause";
+      "XF86AudioNext" = "exec ${mediaKey}/bin/lumen-media-key next";
+      "XF86AudioPrev" = "exec ${mediaKey}/bin/lumen-media-key previous";
     } // builtins.listToAttrs (map (n: { name = "Mod4+Mod1+F${toString n}"; value = "exec ${menuCommand}/bin/lumen-menu-command slot ${toString n}"; }) (lib.range 1 12)));
     # Use HM's Qt plugin discovery, but let the patched adapter choose its style
     # dynamically. HM's gnome preset requires a static QT_STYLE_OVERRIDE.

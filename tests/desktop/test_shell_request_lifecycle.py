@@ -30,7 +30,7 @@ import Quickshell
 import "file:'''+str(assets)+'''" as D
 ShellRoot {
  D.SettingsState {id:settings;active:false}
- D.ClipboardState {id:clipboard;executable:"/run/current-system/sw/bin/true"}
+ D.ClipboardState {id:clipboard;executable:"'''+str(shutil.which('true'))+'''"}
  D.ControlTile {id:focus;toggle:true;active:true;label:"Focus";subtitle:"Do Not Disturb";unavailable:false}
  QtObject {id:notifications;property bool dnd:false;property bool available:true;property var expandedCards:({});function command(data){} function invoke(row,key){} function toggleExpanded(id){}}
  QtObject {id:audioState;property bool muted:false;property bool available:false}
@@ -70,6 +70,24 @@ ShellRoot {
   const selectedIdentity=launcher.selectedKey;
   stub.entries=[{id:"earlier",name:"Aardvark"},{id:"alpha",name:"Alpha"},{id:"beta",name:"Beta"}];
   check(launcher.current.id==="beta" && launcher.selectedKey===selectedIdentity,"Search refresh moved selection to another identity");
+  D.Theme.searchPreferences=({disabledProviders:["applications","files","actions","clipboard"]});
+  check(launcher.providerChoices.length===1 && launcher.providerChoices[0]==="All","Disabled providers remained navigable");
+  launcher.setProvider("Applications");check(launcher.provider==="All","Disabled provider accepted keyboard navigation");
+  check(launcher.results.length===0,"Disabled providers exposed stale results");
+  D.Theme.searchPreferences=({disabledProviders:[]});launcher.setProvider("Applications");
+  check(launcher.results.length===3,"Re-enabled provider did not return results");
+  clipboard.listWhenActive=false;clipboard.active=true;clipboard.refreshPending=false;
+  clipboard.receive(JSON.stringify({enabled:true}),"status",clipboard.revision);
+  check(!clipboard.refreshPending,"Status-only settings requested clipboard text");
+  clipboard.active=false;clipboard.listWhenActive=true;
+  D.Theme.searchPreferences=({disabledProviders:[],queryHistory:true});
+  const recent=launcher.children.find(child=>child.objectName==="search-history-state");
+  check(!!recent,"Search history state was not registered");recent.queries=["older query","oldest query"];
+  launcher.recallHistory(1);check(launcher.queryText==="older query","Previous query was not recalled");
+  launcher.recallHistory(1);check(launcher.queryText==="oldest query","Older query was not recalled");
+  launcher.recallHistory(-1);check(launcher.queryText==="older query","Forward history was not recalled");
+  D.Theme.searchPreferences=({disabledProviders:[],queryHistory:false});
+  check(recent.queries.length===0,"Disabled history retained visible query text");
   const oldTime=card.timeLabel;
   card.notification=({id:1,app:"Fixture",summary:"Replacement",body:"",timestamp:Date.now(),actions:[],desktop:"",icon:"",image:""});
   check(card.timeLabel==="now" && oldTime!==card.timeLabel,"Notification replacement retained stale age");
@@ -94,6 +112,8 @@ ShellRoot {
             environment = dict(os.environ)
             environment.update({k:installed[k] for k in ('PATH','QT_PLUGIN_PATH','QML_IMPORT_PATH','GLOBAL_MENU_PYTHON') if k in installed})
             environment.update(QT_QPA_PLATFORM='offscreen', QT_QPA_PLATFORMTHEME='', QT_QUICK_BACKEND='software', HOME=str(directory), XDG_RUNTIME_DIR=str(directory), XDG_STATE_HOME=str(directory/'state'), XDG_CONFIG_HOME=str(directory/'config'), XDG_DATA_HOME=str(directory/'data'), XDG_CACHE_HOME=str(directory/'cache'))
+            environment.update(QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
+            environment.pop('AT_SPI_BUS_ADDRESS',None)
             for key in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK'):
                 environment.pop(key, None)
             result = subprocess.run(['dbus-run-session','--','quickshell','-p',str(qml)], env=environment, capture_output=True, text=True, timeout=12)

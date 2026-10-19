@@ -8,7 +8,7 @@ PanelWindow {
     required property real outputWidth
     required property real outputHeight
     readonly property var service:shell.notifications
-    visible:service.available && !service.dnd && service.banners.length>0 && shell.popupOwner==="" && (service.bannerOutput===outputName || !Quickshell.screens.some(s=>s.name===service.bannerOutput) && Quickshell.screens[0].name===outputName)
+    visible:service.available && service.banners.length>0 && shell.popupOwner==="" && (service.bannerOutput===outputName || !Quickshell.screens.some(s=>s.name===service.bannerOutput) && Quickshell.screens[0].name===outputName)
     anchors {top:true;right:true}
     margins {top:Theme.barHeight+4;right:4}
     implicitWidth:Math.min(368,outputWidth)

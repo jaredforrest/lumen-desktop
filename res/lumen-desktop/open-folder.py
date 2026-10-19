@@ -40,16 +40,19 @@ def directory_path(value):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--quickshell", required=True)
-    parser.add_argument("--shell", required=True)
+    parser.add_argument("--quickshell")
+    parser.add_argument("--ipc-command")
+    parser.add_argument("--shell")
     parser.add_argument("folders", nargs="*")
     args = parser.parse_args(argv)
+    if not args.ipc_command and not (args.quickshell and args.shell):
+        parser.error("--ipc-command or --quickshell with --shell is required")
     try:
         # Validate all inputs first; a bad second URL must not partially launch.
         paths = [directory_path(value) for value in args.folders] or [""]
         for index, path in enumerate(paths):
             result = subprocess.run(
-                [args.quickshell, "-p", args.shell, "ipc", "call", "desktop",
+                ([args.ipc_command, "call", "desktop"] if args.ipc_command else [args.quickshell, "-p", args.shell, "ipc", "call", "desktop"]) + [
                  "files" if index == 0 else "filesNew", path],
                 timeout=10,
             )

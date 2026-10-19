@@ -112,6 +112,8 @@ ShellRoot {
   function notificationOpen():string {const top=find(panel,"notification-card");if(top.expandStack)throw Error("Stack remained collapsed");top.activate();if(!notifications.commands.some(x=>x.action==="invoke" && x.id===1))throw Error("Expanded alert did not open");return "PASS expanded notification opens selected item";}
  }
 }''')
+env.update(QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
+env.pop('AT_SPI_BUS_ADDRESS',None)
 procs=[]
 def launch(cmd,name):
  pr=sp.Popen(cmd,env=env,stdout=(run/(name+'.log')).open('w'),stderr=sp.STDOUT,start_new_session=True);procs.append(pr);return pr

@@ -10,18 +10,26 @@ parser.add_argument('--drag-pointer',type=Path,help='Optional test-only wlrctl f
 parser.add_argument('--sway',default='sway')
 parser.add_argument('--assets',type=Path)
 parser.add_argument('--effects',action='store_true')
+parser.add_argument('--desktop-widgets',action='store_true')
+parser.add_argument('--menu-only',action='store_true')
 parser.add_argument('--theme',choices=['light','dark'],default='light')
 parser.add_argument('--inside',action='store_true',help=argparse.SUPPRESS)
 args=parser.parse_args()
 if not args.inside:
-    raise SystemExit(sp.call(['dbus-run-session','--',sys.executable,__file__,*sys.argv[1:],'--inside']))
+    import shutil
+    private=tempfile.mkdtemp(prefix='lumen-ui-')
+    isolated=dict(os.environ,HOME=private,XDG_RUNTIME_DIR=private,QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
+    for key in ('CONFIG','STATE','CACHE','DATA'):isolated['XDG_'+key+'_HOME']=str(args.output.resolve()/key.lower())
+    for key in ('AT_SPI_BUS_ADDRESS','DBUS_SESSION_BUS_ADDRESS','SWAYSOCK','WAYLAND_DISPLAY','DISPLAY'):isolated.pop(key,None)
+    try:raise SystemExit(sp.call(['dbus-run-session','--',sys.executable,__file__,*sys.argv[1:],'--inside'],env=isolated))
+    finally:shutil.rmtree(private,ignore_errors=True)
 import shutil
 launcher=Path(shutil.which(args.launcher) or args.launcher)
 script=launcher.read_text();prefix,tail=re.split(r'\n[ \t]*exec quickshell ',script,maxsplit=1)
 assets=args.assets.resolve() if args.assets else Path(shlex.split(tail)[-1]).resolve()
 run=args.output.resolve();run.mkdir(parents=True,exist_ok=False)
 # Unix-domain socket paths have a short length limit, independent of output path.
-runtime=Path(tempfile.mkdtemp(prefix='lumen-ui-'))
+runtime=Path(os.environ['XDG_RUNTIME_DIR'])
 # Reuse only the pinned installed runtime exports; never run its final launcher.
 raw=sp.check_output(['bash','-c',prefix+'\nexec env -0'],stderr=sp.DEVNULL)
 installed=dict(v.decode().split('=',1) for v in raw.split(b'\0') if b'=' in v)
@@ -29,8 +37,14 @@ env=dict(os.environ)
 for key in ('PATH','GLOBAL_MENU_PYTHON','GLOBAL_MENU_BRIDGE','QT_PLUGIN_PATH','QML_IMPORT_PATH','QT_QPA_PLATFORMTHEME','QT_LINUX_ACCESSIBILITY_ALWAYS_ON'):
     if key in installed:env[key]=installed[key]
 env.update(XDG_RUNTIME_DIR=str(runtime),XDG_CONFIG_HOME=str(run/'config'),XDG_STATE_HOME=str(run/'state'),XDG_CACHE_HOME=str(run/'cache'),XDG_DATA_HOME=str(run/'data'),WLR_BACKENDS='headless',WLR_RENDERER='gles2' if args.effects else 'pixman',WLR_RENDERER_ALLOW_SOFTWARE='1',WLR_LIBINPUT_NO_DEVICES='1',QT_QPA_PLATFORM='wayland',GDK_BACKEND='wayland',LUMEN_FILE_SERVICE='0',LUMEN_LAUNCH_SCOPES='0',GLOBAL_MENU_ENABLED='0')
+env.update(QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
+env.pop('AT_SPI_BUS_ADDRESS',None)
 if not args.effects:env['QT_QUICK_BACKEND']='software'
 for key in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK'):env.pop(key,None)
+if args.desktop_widgets:
+    widget_file=Path(env['XDG_STATE_HOME'])/'lumen-desktop/session/notification-centre.json'
+    widget_file.parent.mkdir(parents=True,exist_ok=True)
+    widget_file.write_text(json.dumps(dict(desktopVisible=True,desktopStyle='agenda',desktopColor='monochrome',positions={'HEADLESS-1':{'x':0.1,'y':0.2}})))
 docs=run/'Documents';docs.mkdir();(docs/'example.txt').write_text('US English preview fixture')
 env['LUMEN_SEARCH_ROOTS']=json.dumps([str(docs)])
 # Opening Date must not activate the real user's Online Accounts via D-Bus.
@@ -68,6 +82,32 @@ try:
  appearance=run/'appearance.json';appearance.write_text(json.dumps({'font':palettes['font'],'palette':palettes[args.theme],'preferences':{'mode':args.theme,'reduceMotion':True}}))
  env['LUMEN_APPEARANCE_STATE']=str(appearance)
  launch(['quickshell','-p',str(assets)],'shell');wait(lambda:json.loads(ipc('status')))
+ if args.menu_only:
+  layouts=[]
+  for width in (1080,720,480):
+   call('swaymsg',f'output HEADLESS-1 resolution {width}x1000')
+   wait(lambda:json.loads(ipc('menuLayoutStatus'))[0]['width']==width)
+   layout=json.loads(ipc('menuLayoutStatus'))[0];assert layout['menuEnd']<=layout['statusStart']-4,layout
+   if width<=720:assert layout['overflow']>0,layout
+   if layout['overflow']:
+    ipc('menu','Overflow');wait(lambda:json.loads(ipc('layout'))[0]['menu']=='Overflow')
+    key('-k','Down');wait(lambda:json.loads(ipc('layout'))[0]['selectedIndex']>=0)
+    time.sleep(.3);call('grim',str(run/f'menu-overflow-{width}.png'))
+    key('-k','Return');wait(lambda:json.loads(ipc('layout'))[0]['menu']!='Overflow')
+    key('-k','Escape')
+   layouts.append(layout)
+  log=(run/'shell.log').read_text();assert not any(v in log for v in ('Failed to load configuration','ReferenceError:','TypeError:','Unable to assign')),log
+  (run/'result.json').write_text(json.dumps(dict(passed=True,checks=['1080/720/480 no menu-status collision','hidden menus and status actions in overflow','real keyboard selection, activation and dismissal'],layouts=layouts),indent=2))
+  print(run/'result.json');raise SystemExit(0)
+
+ if args.desktop_widgets:
+  wait(lambda:json.loads(ipc('desktopWidgetStatus'))['outputs'])
+  widget_state=json.loads(ipc('desktopWidgetStatus'));assert not widget_state['error'],widget_state
+  assert any(w['visible'] and w['widgetWidth']>100 and w['widgetHeight']>100 and w['monochrome'] for w in widget_state['outputs']),widget_state
+  (run/'desktop-widgets.json').write_text(json.dumps(widget_state,indent=2))
+  time.sleep(.5)
+  call('grim',str(run/'desktop-widgets.png'))
+
  ipc('files',str(docs));wait(lambda:state()['count']==1 and not state()['busy'])
  for number,view in ((1,'grid'),(2,'list'),(3,'columns'),(4,'gallery')):
   key('-M','ctrl','-k',str(number),'-m','ctrl');wait(lambda:state()['view']==view)
@@ -141,6 +181,10 @@ try:
    assert state()['path']==str(folder/'Target')
    assert payload.read_bytes()==(folder/'Target/payload.txt').read_bytes()
    checks.append(view+' spring-open/drop without further pointer movement; source retained')
+ if args.desktop_widgets:
+  call('swaymsg','[app_id="org.quickshell"] move scratchpad')
+  time.sleep(.5)
+  call('grim',str(run/'desktop-widgets-painted.png'))
  log=(run/'shell.log').read_text()
  assert not any(s in log for s in ('Failed to load configuration','ReferenceError:','TypeError:')),log
  sway_log=(run/'sway.log').read_text()

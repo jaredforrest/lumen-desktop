@@ -16,6 +16,7 @@ import unicodedata
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from file_preview import preview as shared_preview
 from file_watch import Watcher
+import file_tags
 import shlex
 
 SKIP = {'node_modules', 'vendor', 'target', 'build', 'dist', '__pycache__', 'venv', 'Cache', 'Code Cache', 'GPUCache', 'component_crx_cache', 'blob_storage'}
@@ -55,6 +56,8 @@ class Index:
         with self.connect() as db:
             db.execute('PRAGMA journal_mode=WAL')
             db.execute('CREATE TABLE IF NOT EXISTS files(path TEXT PRIMARY KEY, name TEXT, norm TEXT, basename TEXT, folder INTEGER, size INTEGER, mtime REAL, generation INTEGER)')
+            if 'tags' not in {row[1] for row in db.execute('PRAGMA table_info(files)')}:
+                db.execute("ALTER TABLE files ADD COLUMN tags TEXT NOT NULL DEFAULT ''")
             # A changed scope must not expose stale rows from a previous scope.
             db.execute('CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT)')
             scope = json.dumps([str(r) for r in roots])
@@ -100,7 +103,7 @@ class Index:
                                 if folder and entry.name in SKIP:continue
                                 if not folder and not entry.is_file(follow_symlinks=False):continue
                                 info=entry.stat(follow_symlinks=False);p=str(Path(entry.path).absolute());seen.add(p)
-                                db.execute('INSERT OR REPLACE INTO files VALUES (?,?,?,?,?,?,?,?)',(p,entry.name,normalize(p),normalize(entry.name),int(folder),info.st_size,info.st_mtime,time.time_ns()))
+                                db.execute('INSERT OR REPLACE INTO files VALUES (?,?,?,?,?,?,?,?,?)',(p,entry.name,normalize(p),normalize(entry.name),int(folder),info.st_size,info.st_mtime,time.time_ns(),file_tags.index_text(p)))
                                 visited+=1
                                 if folder and p not in existing:stack.append(Path(p))
                         if len(self.watched)<8192:self.watched.add(str(directory))
@@ -163,12 +166,12 @@ class Index:
                                     unreadable += 1
                                     continue
                                 path = str(Path(entry.path).absolute())
-                                batch.append((path, entry.name, normalize(path), normalize(entry.name), int(folder), info.st_size, info.st_mtime, generation))
+                                batch.append((path, entry.name, normalize(path), normalize(entry.name), int(folder), info.st_size, info.st_mtime, generation, file_tags.index_text(path)))
                                 count += 1
                                 if folder:
                                     stack.append(Path(path))
                                 if len(batch) >= 500:
-                                    db.executemany('INSERT OR REPLACE INTO files VALUES (?,?,?,?,?,?,?,?)', batch)
+                                    db.executemany('INSERT OR REPLACE INTO files VALUES (?,?,?,?,?,?,?,?,?)', batch)
                                     db.commit()
                                     batch.clear()
                                     self.count = count
@@ -182,7 +185,7 @@ class Index:
                         break
                 if self.closed.is_set():
                     return
-                db.executemany('INSERT OR REPLACE INTO files VALUES (?,?,?,?,?,?,?,?)', batch)
+                db.executemany('INSERT OR REPLACE INTO files VALUES (?,?,?,?,?,?,?,?,?)', batch)
                 # Do not discard rows beyond an interrupted or capped traversal.
                 if not limited:
                     db.execute('DELETE FROM files WHERE generation != ?', (generation,))
@@ -212,7 +215,9 @@ class Index:
         terms=shlex.split(query[:256])
         kind=next((t[5:].lower() for t in terms if t.startswith('kind:')), '')
         extension=next((t[4:].lower().lstrip('.') for t in terms if t.startswith('ext:')), '')
-        prefixes=('kind:','ext:','in:','since:','before:')
+        prefixes=('kind:','ext:','in:','since:','before:','tag:')
+        tags=[t[4:].casefold() for t in terms if t.startswith('tag:')]
+        if any(tag not in file_tags.IDS for tag in tags):raise ValueError('Unknown colour tag')
         words=normalize(' '.join(t for t in terms if not t.startswith(prefixes))).split()[:8]
         folder_query=next((t[3:] for t in terms if t.startswith('in:')), '')
         dates={key:next((t[len(key)+1:] for t in terms if t.startswith(key+':')), '') for key in ('since','before')}
@@ -221,7 +226,7 @@ class Index:
             if value:
                 try:boundaries[key]=datetime.datetime.combine(datetime.date.fromisoformat(value),datetime.time()).timestamp()
                 except ValueError:raise ValueError(key+' requires YYYY-MM-DD')
-        if (kind or extension or folder_query or boundaries) and not words:words=['']
+        if (kind or extension or folder_query or boundaries or tags) and not words:words=['']
         if not words:
             return {'results': [], 'more': False}
         patterns = ['%'+w.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')+'%' for w in words]
@@ -234,6 +239,9 @@ class Index:
         if folder_query:
             sql += " AND substr(norm,1,length(norm)-length(basename)) LIKE ? ESCAPE '\\'"
             patterns.append('%'+normalize(folder_query).replace('\\','\\\\').replace('%','\\%').replace('_','\\_')+'%')
+        for tag in tags:
+            sql += ' AND instr(tags,?)>0'
+            patterns.append('|'+tag+'|')
         for key,value in boundaries.items():
             sql += ' AND mtime'+('>=' if key=='since' else '<')+'?'
             patterns.append(value)

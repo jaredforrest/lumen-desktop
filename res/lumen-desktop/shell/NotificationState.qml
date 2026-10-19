@@ -6,6 +6,7 @@ Item {
     required property var shell
     property bool available: false
     property bool dnd: false
+    property var focusState: ({profiles:[],active:"",name:"",until:0,scheduled:false})
     property var policies:({})
     readonly property var applications:{
         let apps=Object.keys(policies).map(k=>({key:k,name:k}));
@@ -36,7 +37,7 @@ Item {
         stdout:SplitParser {onRead:line=>{
             try{const state=JSON.parse(line);if(state.error){root.error=state.error;return;}
                 const old=root.rows.length?root.rows[0]:null;
-                root.available=state.ready;root.dnd=state.dnd;root.policies=state.policies || {};root.rows=state.rows;root.error="";
+                root.available=state.ready;root.dnd=state.dnd;root.focusState=state.focus || {profiles:[],active:"",name:"",until:0,scheduled:false};root.policies=state.policies || {};root.rows=state.rows;root.error="";
                 if(state.rows.length && state.rows[0].banner && (!old || old.id!==state.rows[0].id || old.timestamp!==state.rows[0].timestamp))root.bannerOutput=root.shell.preferredOutput();
                 if(Object.values(root.shell.bars).some(b=>b && b.menu==="Date"))root.seen();
             }catch(e){root.error="Unable to read notifications";}

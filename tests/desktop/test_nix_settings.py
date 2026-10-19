@@ -39,6 +39,41 @@ class NixSettingsTest(unittest.TestCase):
         self.assertEqual(self.source.read_bytes(),original)
         with self.assertRaises(ValueError):settings.transaction('appearance',[],merge=True)
 
+    def test_accessibility_and_dock_preferences_have_closed_types(self):
+        values=settings.transaction('appearance', {'increaseContrast':True,'scrollbars':'when_scrolling','sidebarIconSize':'large','dockPins':['brave-browser','org.gnome.Evince'],'dockRecentApps':False,'dockIndicators':False,'dockFolders':[{'path':'/example','sort':'name','descending':False,'presentation':'grid'}],'dockPosition':'left','dockAutoHide':True,'dockSize':32})
+        self.assertTrue(values['appearance']['increaseContrast'])
+        self.assertEqual(values['appearance']['sidebarIconSize'],'large')
+        original=self.source.read_bytes()
+        for patch in ({'increaseContrast':1},{'sidebarIconSize':'huge'},{'dockPins':['one','one']},{'dockPins':['../escape']},{'dockPins':['x'*257]},{'dockIndicators':'yes'},{'dockFolders':[{'path':'relative'}]},{'dockFolders':[{'path':'/newline\npath'}]},{'dockFolders':[{'path':'/tab\tpath'}]},{'dockFolders':[{'path':'/same'},{'path':'/same'}]},{'dockPosition':'top'},{'dockSize':31},{'dockAutoHide':1}):
+            with self.subTest(patch=patch),self.assertRaises(ValueError):settings.transaction('appearance',patch,merge=True)
+            self.assertEqual(self.source.read_bytes(),original)
+        self.assertEqual(settings.transaction('appearance',{'dockPins':None},merge=True)['appearance']['dockPins'],None)
+
+    def test_search_provider_preferences_reject_unknown_duplicate_ids(self):
+        values=settings.transaction('search',{'disabledProviders':['files','clipboard']})
+        self.assertEqual(values['search']['disabledProviders'],['files','clipboard'])
+        original=self.source.read_bytes()
+        for value in (['unknown'],['files','files'],'files',[False]):
+            with self.subTest(value=value),self.assertRaises(ValueError):settings.transaction('search',{'disabledProviders':value},merge=True)
+            self.assertEqual(self.source.read_bytes(),original)
+
+    def test_control_layout_and_notification_privacy_are_typed(self):
+        order=['wifi','bluetooth','sharing','media','displays','appearance','focus','brightness','sound']
+        self.assertEqual(settings.transaction('controlCentre',{'order':list(reversed(order)),'hidden':['media']})['controlCentre']['hidden'],['media'])
+        self.assertEqual(settings.transaction('notifications',{'preview':'never'},merge=True)['notifications']['preview'],'never')
+        original=self.source.read_bytes()
+        for section,value in [('controlCentre',{'order':['wifi']}),('controlCentre',{'hidden':['wifi','wifi']}),('controlCentre',{'hidden':['unknown']}),('notifications',{'preview':'when-unlocked'})]:
+            with self.subTest(value=value),self.assertRaises(ValueError):settings.transaction(section,value,merge=True)
+            self.assertEqual(self.source.read_bytes(),original)
+
+    def test_window_preferences_are_typed(self):
+        values=settings.transaction('windows',{'tileMargins':False,'titlebarDoubleClick':'minimize'})
+        self.assertEqual(values['windows'],{'tileMargins':False,'titlebarDoubleClick':'minimize'})
+        original=self.source.read_bytes()
+        for value in ({'tileMargins':1},{'titlebarDoubleClick':'zoom'}):
+            with self.subTest(value=value),self.assertRaises(ValueError):settings.transaction('windows',value,merge=True)
+            self.assertEqual(self.source.read_bytes(),original)
+
     def test_invalid_value_preserves_source_and_active_bundle(self):
         settings.transaction()
         original = self.source.read_bytes()

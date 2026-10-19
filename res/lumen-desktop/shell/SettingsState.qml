@@ -10,19 +10,26 @@ Item {
     property string error:""
     property string warning:""
     property var preferences:Theme.preferences
+    property var windowsPreferences:Theme.windowsPreferences
+    property var notificationsPreferences:Theme.notificationsPreferences
+    property var searchPreferences:Theme.searchPreferences
     property var appearance:({})
     property var system:({})
     function refresh() {if(!worker.running){worker.command=["lumen-appearance","--settings"];worker.running=true;}}
-    function setPreference(key,value) {
+    function setWindowPreference(key,value){queue("windows",key,value);}
+    function setNotificationPreference(key,value){queue("notifications",key,value);}
+    function setSearchPreference(key,value){queue("search",key,value);}
+    function setPreference(key,value){queue("appearance",key,value);}
+    function queue(section,key,value) {
         // Coalesce only pending edits to the same key; never discard a busy edit.
-        let edits=pending.filter(edit=>edit.key!==key);
-        edits.push({key:key,value:value});pending=edits;
+        let edits=pending.filter(edit=>edit.key!==key || edit.section!==section);
+        edits.push({section:section,key:key,value:value});pending=edits;
         drain();
     }
     function drain() {
         if(worker.running || pending.length===0)return;
         const edit=pending[0];pending=pending.slice(1);
-        error="";warning="";worker.command=["lumen-appearance","--set",edit.key,JSON.stringify(edit.value)];worker.running=true;
+        error="";warning="";worker.command=["lumen-appearance",edit.section==="search"?"--set-search":edit.section==="notifications"?"--set-notifications":edit.section==="windows"?"--set-windows":"--set",edit.key,JSON.stringify(edit.value)];worker.running=true;
     }
     onActiveChanged:if(active)refresh()
     Process {
@@ -33,7 +40,7 @@ Item {
             try{
                 const data=JSON.parse(text);worker.received=true;
                 if(data.error){root.error=data.error;return;}
-                root.preferences=data.preferences;root.appearance=data.appearance;root.system=data.system;
+                root.preferences=data.preferences;root.searchPreferences=data.searchPreferences || ({disabledProviders:[]});root.notificationsPreferences=data.notificationsPreferences || ({preview:"always"});root.windowsPreferences=data.windowsPreferences || ({tileMargins:true,titlebarDoubleClick:"fill"});root.appearance=data.appearance;root.system=data.system;
                 root.available=true;root.error="";root.warning=data.warning || "";
             }catch(e){root.error="Unable to read desktop preferences";}
         }}

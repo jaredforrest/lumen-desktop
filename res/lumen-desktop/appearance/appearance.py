@@ -1,13 +1,14 @@
 """Offline, London solar appearance; shared palette for desktop surfaces."""
+import re
 import argparse,datetime as dt,json,os,subprocess,tempfile,fcntl,contextlib,sys
 from pathlib import Path
 from zoneinfo import ZoneInfo
-from astral import Observer
-from astral.sun import sun
 HERE=Path(__file__).resolve().parent
 ZONE=ZoneInfo('Europe/London')
 
 def schedule(now):
+    from astral import Observer
+    from astral.sun import sun
     now=now.astimezone(ZONE)
     times=sun(Observer(51.5074,-0.1278),date=now.date(),tzinfo=ZONE)
     mode='light' if times['sunrise']<=now<times['sunset'] else 'dark'
@@ -23,14 +24,52 @@ def write(path,text):
 def run(*args):
     return subprocess.run(args,check=False,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode
 
-DEFAULTS={'mode':'auto','accent':'blue','iconAppearance':'auto','switchToAppSpace':True,'dockMagnification':True,'reduceMotion':False,'reduceTransparency':False,'scrollbars':'auto'}
+DEFAULTS={'mode':'auto','accent':'blue','iconAppearance':'auto','switchToAppSpace':True,'dockMagnification':True,'reduceMotion':False,'reduceTransparency':False,'scrollbars':'auto','increaseContrast':False,'sidebarIconSize':'medium','dockPins':None,'dockRecentApps':True,'dockIndicators':True,'dockFolders':[],'dockPosition':'bottom','dockAutoHide':False,'dockSize':48}
 ACCENTS={'blue':('#007aff','#0a84ff'),'purple':('#a855c7','#bf5af2'),'pink':('#d94382','#ff6482'),'red':('#df3038','#ff453a'),'orange':('#b65c00','#ff9f0a'),'yellow':('#947500','#ffd60a'),'green':('#248a3d','#30d158'),'graphite':('#707078','#98989f')}
 
 def valid(key,value):
-    return (key=='scrollbars' and value in ('auto','always') or key=='mode' and value in ('auto','light','dark') or
+    if key=='dockFolders':
+        if not isinstance(value,list):return False
+        paths=[]
+        for folder in value:
+            if not isinstance(folder,dict) or not set(folder).issubset({'path','sort','descending','presentation'}):return False
+            path=folder.get('path')
+            if not isinstance(path,str) or not path.startswith('/') or len(path.encode('utf-8'))>4096 or any(ord(c)<32 for c in path):return False
+            if folder.get('sort','modified') not in ('name','modified','size','type') or type(folder.get('descending',True)) is not bool or folder.get('presentation','auto') not in ('list','grid','auto'):return False
+            paths.append(path)
+        return len(paths)==len(set(paths))
+    if key=='dockPosition':return value in ('bottom','left','right')
+    if key=='dockSize':return type(value) is int and 32<=value<=72
+    if key=='dockPins':
+        return value is None or (isinstance(value,list) and all(isinstance(item,str) and re.fullmatch(r'[-_.A-Za-z0-9]{1,256}',item) for item in value) and len(set(value))==len(value))
+    return (key=='scrollbars' and value in ('auto','when_scrolling','always') or key=='mode' and value in ('auto','light','dark') or
             key=='iconAppearance' and value in ('default','auto','dark') or
+            key=='sidebarIconSize' and value in ('small','medium','large') or
             key=='accent' and isinstance(value,str) and value in ACCENTS or
-            key in ('switchToAppSpace','dockMagnification','reduceMotion','reduceTransparency') and type(value) is bool)
+            key in ('switchToAppSpace','dockMagnification','reduceMotion','reduceTransparency','increaseContrast','dockRecentApps','dockIndicators','dockAutoHide') and type(value) is bool)
+
+def resolve_palette(palettes,mode,prefs):
+    """Semantic foregrounds and boundaries shared by all owned surfaces."""
+    colors=dict(palettes[mode])
+    colors['accent']=ACCENTS[prefs['accent']][mode=='dark']
+    if prefs['accent'] in ('orange','yellow','green','graphite') and mode=='dark':colors['selectedText']='#161618'
+    if prefs.get('increaseContrast',False):
+        colors.update(text='#ffffff' if mode=='dark' else '#000000',
+                      muted='#e0e0e0' if mode=='dark' else '#393939',
+                      border='#a8a8ac' if mode=='dark' else '#626266')
+    return colors
+
+def valid_windows(key,value):
+    return key=='tileMargins' and type(value) is bool or key=='titlebarDoubleClick' and value in ('fill','minimize','none')
+
+CONTROL_IDS=('wifi','bluetooth','sharing','media','displays','appearance','focus','brightness','sound')
+def valid_control(key,value):
+    return key in ('order','hidden') and isinstance(value,list) and all(isinstance(item,str) and item in CONTROL_IDS for item in value) and len(value)==len(set(value)) and (key=='hidden' or len(value)==len(CONTROL_IDS))
+
+SEARCH_PROVIDERS=('applications','files','actions','clipboard')
+def valid_search(key,value):
+    if key=='queryHistory':return type(value) is bool
+    return key=='disabledProviders' and isinstance(value,list) and all(isinstance(item,str) and item in SEARCH_PROVIDERS for item in value) and len(value)==len(set(value))
 
 def preferences(state):
     sys.path.insert(0, str(HERE.parent/'shell'))
@@ -50,7 +89,7 @@ def main():
     p.add_argument('--mode',choices=['auto','light','dark'])
     p.add_argument('--at');p.add_argument('--print',action='store_true',dest='print_only')
     p.add_argument('--state-dir',type=Path);p.add_argument('--no-desktop',action='store_true')
-    p.add_argument('--settings',action='store_true');p.add_argument('--set',nargs=2,metavar=('KEY','JSON_VALUE'))
+    p.add_argument('--settings',action='store_true');p.add_argument('--set',nargs=2,metavar=('KEY','JSON_VALUE'));p.add_argument('--set-search',nargs=2,metavar=('KEY','JSON_VALUE'));p.add_argument('--set-notifications',nargs=2,metavar=('KEY','JSON_VALUE'));p.add_argument('--set-control-centre',nargs=2,metavar=('KEY','JSON_VALUE'));p.add_argument('--set-windows',nargs=2,metavar=('KEY','JSON_VALUE'))
     a=p.parse_args()
     state=a.state_dir or Path(os.environ.get('XDG_STATE_HOME',str(Path.home()/'.local/state')))/'lumen-desktop'
     state.mkdir(parents=True,exist_ok=True)
@@ -58,6 +97,38 @@ def main():
     with (state/'.appearance.lock').open('a') as lock:
         fcntl.flock(lock,fcntl.LOCK_EX)
         prefs=preferences(state)
+        from nix_settings import read_settings
+        window_prefs=read_settings().get('windows',{'tileMargins':True,'titlebarDoubleClick':'fill'})
+        if a.set_windows:
+            key,raw=a.set_windows
+            value=json.loads(raw)
+            if not valid_windows(key,value):raise ValueError('Unsupported window preference or value')
+            from nix_settings import set_section
+            window_prefs=set_section('windows',{key:value},merge=True)['windows']
+        search_prefs=read_settings().get('search',{'disabledProviders':[]})
+        control_prefs=read_settings().get('controlCentre',{'order':list(CONTROL_IDS),'hidden':[]})
+        if a.set_control_centre:
+            key,raw=a.set_control_centre
+            value=json.loads(raw)
+            if not valid_control(key,value):raise ValueError('Unsupported control layout preference or value')
+            from nix_settings import set_section
+            control_prefs=set_section('controlCentre',{key:value},merge=True)['controlCentre']
+        notification_prefs=read_settings().get('notifications',{'preview':'always','policies':{}})
+        if a.set_notifications:
+            key,raw=a.set_notifications
+            value=json.loads(raw)
+            if key!='preview' or value not in ('always','never'):raise ValueError('Unsupported notification preference or value')
+            from nix_settings import set_section
+            notification_prefs=set_section('notifications',{key:value},merge=True)['notifications']
+        if a.set_search:
+            key,raw=a.set_search
+            value=json.loads(raw)
+            if not valid_search(key,value):raise ValueError('Unsupported search preference or value')
+            from nix_settings import set_section
+            search_prefs=set_section('search',{key:value},merge=True)['search']
+            if key=='queryHistory' and value is False:
+                from search_history import handle
+                handle({'action':'clear'})
         if a.set:
             key,raw=a.set
             value=json.loads(raw)
@@ -68,13 +139,11 @@ def main():
         now=dt.datetime.fromisoformat(a.at) if a.at else dt.datetime.now(ZONE)
         if now.tzinfo is None:now=now.replace(tzinfo=ZONE)
         solar,times=schedule(now);source=a.mode or prefs['mode'];mode=solar if source=='auto' else source
-        palettes=json.loads((HERE/'palette.json').read_text());colors=dict(palettes[mode])
-        colors['accent']=ACCENTS[prefs['accent']][mode=='dark']
-        if prefs['accent'] in ('orange','yellow','green','graphite') and mode=='dark':colors['selectedText']='#161618'
-        data={'mode':mode,'source':source,'location':'London','timezone':'Europe/London','font':palettes['font'],'palette':colors,'preferences':prefs,**times}
+        palettes=json.loads((HERE/'palette.json').read_text());colors=resolve_palette(palettes,mode,prefs)
+        data={'mode':mode,'source':source,'location':'London','timezone':'Europe/London','font':palettes['font'],'palette':colors,'preferences':prefs,'searchPreferences':search_prefs,'notificationsPreferences':notification_prefs,'controlCentrePreferences':control_prefs,'windowsPreferences':window_prefs,**times}
         if a.print_only:print(json.dumps(data));return
-        if a.settings and not a.set:
-            print(json.dumps({'preferences':prefs,'appearance':data,'system':system_info()}));return
+        if a.settings and not (a.set or a.set_search or a.set_notifications or a.set_control_centre or a.set_windows):
+            print(json.dumps({'preferences':prefs,'searchPreferences':search_prefs,'notificationsPreferences':notification_prefs,'controlCentrePreferences':control_prefs,'windowsPreferences':window_prefs,'appearance':data,'system':system_info()}));return
         previous={}
         try:previous=json.loads((state/'appearance.json').read_text())
         except (OSError,ValueError):pass
@@ -87,6 +156,7 @@ def main():
             native_frame=False
             compositor_effects=False
             unified_headers=False
+            placement_preferences=False
             if os.environ.get('SWAYSOCK'):
                 try:
                     version=subprocess.run(['swaymsg','-t','get_version','-r'],capture_output=True,text=True,timeout=3,check=True)
@@ -94,6 +164,7 @@ def main():
                     native_frame=capabilities.get('native_window_controls',False)
                     compositor_effects=capabilities.get('compositor_effects',False)
                     unified_headers=capabilities.get('native_window_actions',False)
+                    placement_preferences=capabilities.get('window_placement_preferences',False)
                 except (OSError,ValueError,subprocess.SubprocessError):pass
             layout=':' if native_frame else 'close,minimize,maximize:'
             if run('gsettings','set','org.gnome.desktop.wm.preferences','button-layout',layout):
@@ -103,6 +174,10 @@ def main():
                     foreground=colors['text'] if state=='focused' else colors['muted']
                     if run('swaymsg','client.'+state,colors['border'],colors['background'],foreground,colors['accent'],colors['border']):
                         warnings.append('Could not update window-frame colours')
+            if a.set_windows and not placement_preferences:warnings.append('Window placement preferences require the updated compositor at next login')
+            if placement_preferences:
+                for command in ('lumen_window margins '+('enable' if window_prefs['tileMargins'] else 'disable'), 'lumen_window titlebar-action '+window_prefs['titlebarDoubleClick']):
+                    if run('swaymsg',command):warnings.append('Could not apply window placement preference')
             if unified_headers:
                 if run('swaymsg','[app_id="org.quickshell" title="^(Files.*|System Settings|Calendar|Text Tools|Window Overview|Quick Look|File Info|Desktop Help|Session Options|Remote Desktop)$"] border pixel 0'):
                     warnings.append('Could not apply unified app headers')
@@ -118,7 +193,7 @@ def main():
                     if run('swaymsg',command):warnings.append('Could not apply compositor appearance: '+command.split()[0])
             for key,value in [('color-scheme','prefer-'+mode),('gtk-theme','WhiteSur-Dark' if mode=='dark' else 'WhiteSur-Light')]:
                 if run('gsettings','set','org.gnome.desktop.interface',key,value):warnings.append('Could not update application '+key)
-        if a.set:print(json.dumps({'preferences':prefs,'appearance':data,'system':system_info(),'warning':'; '.join(warnings)}))
+        if a.set or a.set_search or a.set_notifications or a.set_control_centre or a.set_windows:print(json.dumps({'preferences':prefs,'searchPreferences':search_prefs,'notificationsPreferences':notification_prefs,'controlCentrePreferences':control_prefs,'windowsPreferences':window_prefs,'appearance':data,'system':system_info(),'warning':'; '.join(warnings)}))
         elif previous.get('mode')!=mode:print('Appearance:',mode,'London sunset:',times['sunset'])
 if __name__=='__main__':
     try:main()

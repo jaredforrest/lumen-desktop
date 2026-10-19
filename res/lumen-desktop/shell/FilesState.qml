@@ -17,18 +17,25 @@ Item {
     property string warning:""
     property bool writable:false
     property bool hidden:false
+    property var favorites:null
+    property bool foldersFirst:true
+    property string groupBy:"none"
     property string sort:"name"
     property string viewMode:"grid"
     property bool preferencesLoaded:false
     property var columns:[]
     property var columnRequests:({})
-    function savePreferences(){if(preferencesLoaded)send("save-preferences",{preferences:{view:viewMode,sort:sort,descending:descending}});}
+    function savePreferences(){if(preferencesLoaded)send("save-preferences",{preferences:{view:viewMode,sort:sort,descending:descending,hidden:hidden,foldersFirst:foldersFirst,groupBy:groupBy,favorites:favorites}});}
     function loadColumns(){
         columnRequests={};columns=[];if(viewMode!=="columns" || path==="trash:")return;
         const ancestors=breadcrumbs.slice(-3);columns=ancestors.map(c=>({path:c.path,name:c.name,rows:[]}));
-        let requests={};ancestors.forEach((c,i)=>{requests[send("column-list",{path:c.path,hidden:hidden,sort:sort,descending:descending})]=i;});columnRequests=requests;
+        let requests={};ancestors.forEach((c,i)=>{requests[send("column-list",{path:c.path,hidden:hidden,sort:sort,descending:descending,foldersFirst:foldersFirst,groupBy:groupBy})]=i;});columnRequests=requests;
     }
     onViewModeChanged:{savePreferences();loadColumns();}
+    onFavoritesChanged:savePreferences()
+    onFoldersFirstChanged:savePreferences()
+    onGroupByChanged:savePreferences()
+    onHiddenChanged:savePreferences()
     onSortChanged:savePreferences()
     onDescendingChanged:savePreferences()
     property bool descending:false
@@ -54,7 +61,9 @@ Item {
     property string requestedPath:""
     property int requestedHistory:-1
     signal selectedPath(string path)
-    signal applicationsReady(var applications)
+    signal applicationsReady(var applications,string path)
+    property int applicationRequestId:0
+    property string applicationRequestPath:""
     function send(action,data) {
         const id=++sequence;
         if(["job-start","clipboard-paste","drop"].includes(action))data=Object.assign({requestId:requestSession+"-"+id},data || {});
@@ -65,14 +74,15 @@ Item {
     function navigate(value,index,preserveError) {
         busy=true;if(!preserveError)error="";requestedPath=value || path;
         requestedHistory=index===undefined?-1:index;
-        currentId=send("list",{path:requestedPath,query:query,hidden:hidden,sort:sort,descending:descending});
+        currentId=send("list",{path:requestedPath,query:query,hidden:hidden,sort:sort,descending:descending,foldersFirst:foldersFirst,groupBy:groupBy});
     }
     function refresh(){if(busy){pendingRefresh=true;return;}navigate(path,historyIndex,true);}
     function back(delta){const i=historyIndex+delta;if(i>=0 && i<history.length){query="";navigate(history[i],i);}}
     function act(action,data) {
         error="";
         if(["copy","move","trash","restore"].includes(action)){startJob(action,data.paths || [data.path],data.destination);return;}
-        if(["applications","open-with","eject","open"].includes(action)){send(action,data);return;}
+        if(action==="applications"){applicationRequestPath=data.path;applicationRequestId=send(action,data);return;}
+        if(["open-with","set-default","eject","open"].includes(action)){send(action,data);return;}
         busy=true;currentId=send(action,data);
     }
     function startJob(operation,paths,destination,conflict){error="";send("job-start",{operation:operation,paths:paths || [],destination:destination || path,conflict:conflict || "skip"});}
@@ -105,13 +115,13 @@ Item {
             try {
                 const data=JSON.parse(line);
                 if(data.action==="info"){root.informationReady(data.info || {error:data.error});return;}
-                if(data.action==="preferences"){const p=data.preferences || {};root.viewMode=p.view || "grid";root.sort=p.sort || "name";root.descending=!!p.descending;root.preferencesLoaded=true;root.refresh();return;}
+                if(data.action==="preferences"){const p=data.preferences || {};root.viewMode=p.view || "grid";root.sort=p.sort || "name";root.descending=!!p.descending;root.hidden=!!p.hidden;root.foldersFirst=p.foldersFirst!==false;root.groupBy=p.groupBy || "none";root.favorites=p.favorites===undefined?null:p.favorites;root.preferencesLoaded=true;root.refresh();return;}
                 if(data.action==="save-preferences")return;
                 if(data.action==="column-list"){if(data.id in root.columnRequests){const columns=root.columns.slice();const i=root.columnRequests[data.id];columns[i]=Object.assign({},columns[i],{rows:data.rows || [],error:data.error || ""});root.columns=columns;}return;}
                 if(data.event==="changed"){watchRefresh.restart();return;}
                 if(data.jobs){root.acceptJobs(data);return;}
                 if(data.action==="volumes"){root.volumes=data.volumes || [];return;}
-                if(data.action==="applications"){if(data.error)root.error=data.error;else root.applicationsReady(data.applications);return;}
+                if(data.action==="applications"){if(data.id!==root.applicationRequestId)return;root.applicationRequestId=0;if(data.error)root.error=data.error;else root.applicationsReady(data.applications,root.applicationRequestPath);return;}
                 if(data.id===root.previewId){root.preview=data.error?{type:"generic",text:data.error}:data;return;}
                 if(data.id!==root.currentId){if(data.error)root.error=data.error;return;}
                 root.busy=false;

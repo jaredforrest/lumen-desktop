@@ -1,6 +1,9 @@
 { pkgs, nixSettings }:
 let
-  settingsModule = pkgs.writeTextDir "nix_settings.py" (builtins.readFile ../res/lumen-desktop/shell/nix_settings.py);
+  settingsModule = pkgs.linkFarm "appearance-settings-runtime" [
+    { name = "nix_settings.py"; path = ../res/lumen-desktop/shell/nix_settings.py; }
+    { name = "search_history.py"; path = ../res/lumen-desktop/shell/search_history.py; }
+  ];
   python=pkgs.python3.withPackages (p: [ p.astral ]);
 in pkgs.writeShellApplication {
   name = "lumen-appearance";

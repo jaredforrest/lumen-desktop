@@ -1,0 +1,39 @@
+import QtQuick
+import Quickshell
+import Quickshell.Io
+Item {
+    id:root
+    objectName:"search-history-state"
+    property bool active:false
+    property bool enabled:Theme.searchPreferences.queryHistory===true
+    property var queries:[]
+    property string error:""
+    property var pending:[]
+    property bool busy:worker.running || pending.length>0
+    function request(action,query) {
+        if(action==="record" && !enabled)return;
+        pending=pending.concat([{action:action,query:query || ""}]);drain();
+    }
+    function drain(){if(worker.running || !pending.length)return;worker.request=pending[0];pending=pending.slice(1);worker.running=true;}
+    function clear(){queries=[];request("clear");}
+    onActiveChanged:if(active)request("list");else queries=[]
+    onEnabledChanged:{queries=[];request("list");}
+    Process {
+        id:worker
+        property var request:({})
+        property string response:""
+        command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("search_history.py").toString().replace(/^file:\/\//,"")]
+        stdinEnabled:true
+        onStarted:{response="";write(JSON.stringify(request)+"\n");}
+        stdout:StdioCollector {onStreamFinished:worker.response=text}
+        onExited:(code,status)=>{
+            try {
+                const data=JSON.parse(response);
+                if(code!==0 || data.error)throw new Error(data.error || "History service failed");
+                if(!Array.isArray(data.queries) || data.queries.some(q=>typeof q!=="string"))throw new Error("Invalid query history");
+                root.error="";root.queries=root.active && root.enabled && data.enabled?data.queries:[];
+            }catch(error){root.error="Search history is unavailable: "+error;root.queries=[];}
+            Qt.callLater(root.drain);
+        }
+    }
+}

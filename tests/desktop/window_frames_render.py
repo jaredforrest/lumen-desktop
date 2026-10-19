@@ -4,6 +4,7 @@ from pathlib import Path
 parser=argparse.ArgumentParser()
 parser.add_argument('--sway',required=True)
 parser.add_argument('--output',type=Path,required=True)
+parser.add_argument('--pointer-tool',default=os.environ.get('LUMEN_TEST_POINTER'))
 parser.add_argument('--inside',action='store_true')
 parser.add_argument('--effects',action='store_true')
 a=parser.parse_args();out=a.output.resolve()
@@ -11,9 +12,11 @@ if not a.inside:
  out.mkdir(parents=True,exist_ok=False)
  env=dict(os.environ);env.pop('DBUS_SESSION_BUS_ADDRESS',None)
  env['XDG_RUNTIME_DIR']=tempfile.mkdtemp(prefix='sway-frame-')
+ env.update(QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
+ env.pop('AT_SPI_BUS_ADDRESS',None)
  try:raise SystemExit(sp.call(['dbus-run-session','--',sys.executable,__file__,*sys.argv[1:],'--inside'],env=env))
  finally:shutil.rmtree(env['XDG_RUNTIME_DIR'],ignore_errors=True)
-env=dict(os.environ,GSETTINGS_BACKEND='keyfile',GTK_THEME='WhiteSur-Light',WLR_BACKENDS='headless',WLR_RENDERER='gles2' if a.effects else 'pixman',WLR_RENDERER_ALLOW_SOFTWARE='1',WLR_LIBINPUT_NO_DEVICES='1',GDK_BACKEND='wayland',QT_QPA_PLATFORM='wayland')
+env=dict(os.environ,GSETTINGS_BACKEND='keyfile',GTK_THEME='WhiteSur-Light',WLR_BACKENDS='headless',WLR_RENDERER='gles2' if a.effects else 'pixman',WLR_RENDERER_ALLOW_SOFTWARE='1',WLR_LIBINPUT_NO_DEVICES='1',GDK_BACKEND='wayland',QT_QPA_PLATFORM='wayland',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
 for k in ['SWAYSOCK','WAYLAND_DISPLAY','DISPLAY']:env.pop(k,None)
 for k in ['CONFIG','STATE','CACHE','DATA']:env['XDG_'+k+'_HOME']=str(out/('test-'+k.lower()))
 appearance=Path(shutil.which('lumen-appearance')).read_text()
@@ -59,6 +62,7 @@ try:
  wait(lambda:list(Path(env['XDG_RUNTIME_DIR']).glob('sway-ipc.*.sock')))
  env['SWAYSOCK']=str(next(Path(env['XDG_RUNTIME_DIR']).glob('sway-ipc.*.sock')))
  assert json.loads(call('swaymsg','-t','get_version','-r'))['native_window_controls']
+ ipc('lumen_window margins disable')
  env['WAYLAND_DISPLAY']=next(x.name for x in Path(env['XDG_RUNTIME_DIR']).glob('wayland-*') if not x.name.endswith('.lock'))
  launch(['foot','--title=Frame Test','sh','-c','sleep 600'],'foot.log');wait(lambda:any(n['name']=='Frame Test' for n in leaves()))
  n=next(n for n in leaves() if n['name']=='Frame Test');assert n['deco_rect']['height']==32,n
@@ -68,6 +72,68 @@ try:
  ipc('output HEADLESS-1 resolution 1280x900 scale 1')
  # Green enters real fullscreen; Fill remains a separate reversible operation.
  original = next(n for n in leaves() if n['name']=='Frame Test')
+ # Native layouts are explicit and idempotent; every transition retains the original placement.
+ layout_boxes={'left':(0,0,640,900),'right':(640,0,640,900),'top':(0,0,1280,450),'bottom':(0,450,1280,450),
+  'top-left':(0,0,640,450),'top-right':(640,0,640,450),'bottom-left':(0,450,640,450),'bottom-right':(640,450,640,450)}
+ for action,box in layout_boxes.items():
+  ipc('[title="^Frame Test$"] lumen_window '+action)
+  placed=next(n for n in leaves() if n['name']=='Frame Test')
+  outer=dict(placed['rect']);outer['y']-=placed['deco_rect']['height'];outer['height']+=placed['deco_rect']['height']
+  assert tuple(outer[k] for k in ('x','y','width','height'))==box,(action,outer)
+  ipc('[title="^Frame Test$"] lumen_window '+action)
+  assert next(n for n in leaves() if n['name']=='Frame Test')['rect']==placed['rect']
+ ipc('[title="^Frame Test$"] lumen_window restore')
+ assert next(n for n in leaves() if n['name']=='Frame Test')['rect']==original['rect']
+ ipc('[title="^Frame Test$"] lumen_window restore')
+ assert next(n for n in leaves() if n['name']=='Frame Test')['rect']==original['rect']
+ ticklog=out/'layout-events.jsonl'
+ subscriber=launch(['swaymsg','-r','-m','-t','subscribe','["tick"]'],'layout-events.jsonl')
+ time.sleep(.2)
+ assert a.pointer_tool, 'A real virtual pointer is required for the green hover regression'
+ pointer=sp.Popen([a.pointer_tool,'pointer','move','0','0'],env=env,stdin=sp.PIPE,text=True,start_new_session=True);procs.append(pointer)
+ time.sleep(.2);ipc('seat seat0 cursor set 200 100')
+ pointer.stdin.write('m -140 -84\n');pointer.stdin.flush()
+ time.sleep(.3)
+ ticks=[json.loads(line) for line in ticklog.read_text().splitlines() if line.startswith('{')]
+ payloads=[]
+ for event in ticks:
+  try:payloads.append(json.loads(event.get('payload','')))
+  except (ValueError,TypeError):pass
+ assert any(p.get('lumen_layout')==1 and p.get('id')==original['id'] for p in payloads),ticks
+ ipc('seat seat0 cursor set 200 100')
+ print('PASS: native half/quarter layouts are idempotent, original placement restores, green hover emits scoped event.')
+ ipc('lumen_window margins enable')
+ ipc('[title="^Frame Test$"] lumen_window left')
+ margined=next(n for n in leaves() if n['name']=='Frame Test')
+ assert margined['rect']['x']==8 and margined['rect']['width']==628,margined['rect']
+ ipc('[title="^Frame Test$"] lumen_window restore')
+ ipc('lumen_window margins disable')
+ ipc('seat seat0 cursor set 110 16')
+ pointer.stdin.write('m 0 0\np\nr\np\nr\n');pointer.stdin.flush();time.sleep(.3)
+ assert next(n for n in leaves() if n['name']=='Frame Test')['lumen_state']['filled']
+ ipc('[title="^Frame Test$"] lumen_window restore')
+ print('PASS: optional layout margins and native titlebar double-click Fill work.')
+ # Exercise the real menu with the pointer stationary on its trigger, then crossing the gap.
+ menu_fixture=out/'layout-menu-fixture.qml'
+ menu_assets=Path(__file__).resolve().parents[2]/'res/lumen-desktop/shell'
+ menu_fixture.write_text('import QtQuick\nimport Quickshell\nimport Quickshell.Io\nimport "file:'+str(menu_assets)+'" as D\nShellRoot {\n QtObject {id:stub;property string popupOwner:"";signal dismissPopups(string owner);function claimPopup(owner){popupOwner=owner;dismissPopups(owner);}}\n D.WindowLayoutMenu {id:menu;shell:stub}\n IpcHandler {target:"fixture";function status():string{return JSON.stringify({visible:menu.visible,target:menu.target,supported:menu.supported});}}\n}\n')
+ menu_process=launch(['quickshell','-p',str(menu_fixture)],'layout-menu.log')
+ def menu_status():return json.loads(call('quickshell','-p',str(menu_fixture),'ipc','call','fixture','status'))
+ wait(lambda:menu_status().get('supported'))
+ ipc('seat seat0 cursor set 200 100')
+ pointer.stdin.write('m -140 -84\n');pointer.stdin.flush()
+ wait(lambda:menu_status()['visible'])
+ time.sleep(.7)
+ assert menu_status()['visible'], 'Hover menu closed while pointer remained on green'
+ pointer.stdin.write('m 30 54\n');pointer.stdin.flush();time.sleep(.5)
+ assert menu_status()['visible'], 'Hover menu closed while pointer crossed into its rows'
+ call('grim',str(out/'layout-menu.png'))
+ pointer.stdin.write('p\nr\n');pointer.stdin.flush()
+ wait(lambda:next(n for n in leaves() if n['name']=='Frame Test')['lumen_state']['filled'])
+ assert not menu_status()['visible']
+ ipc('[title="^Frame Test$"] lumen_window restore')
+ os.killpg(menu_process.pid,signal.SIGTERM);menu_process.wait(timeout=5)
+ print('PASS: real green menu stays open at trigger and across pointer gap; captured-window Fill commits.')
  click(60,16);full=next(n for n in leaves() if n['name']=='Frame Test')
  assert full['fullscreen_mode']!=0,full
  ipc('[title="^Frame Test$"] lumen_window fullscreen')
@@ -95,6 +161,13 @@ try:
  assert next(n for n in leaves() if n['name']=='Floating Frame Test')['deco_rect']['height']==32
  ipc('[title="^Floating Frame Test$"] lumen_window fill')
  assert next(n for n in leaves() if n['name']=='Floating Frame Test')['rect']==before['rect']
+ ipc('[title="^Floating Frame Test$"] lumen_window minimize')
+ ipc('output HEADLESS-1 resolution 640x480 scale 1')
+ ipc('[title="^Floating Frame Test$"] scratchpad show')
+ limited=next(n for n in leaves() if n['name']=='Floating Frame Test')['rect']
+ assert limited['x']>=0 and limited['y']>=0 and limited['x']+limited['width']<=640 and limited['y']+limited['height']<=480,limited
+ ipc('output HEADLESS-1 resolution 1280x900 scale 1')
+ print('PASS: restore constrains floating placement to a resized surviving work area.')
  ipc('[title="^Floating Frame Test$"] lumen_window close');wait(lambda:not leaves())
  print('PASS: floating minimize/fill restore geometry after a workspace change.')
  launch(['foot','--title=Tiled A','sh','-c','sleep 600'],'tile-a.log');wait(lambda:any(n['name']=='Tiled A' for n in leaves()))

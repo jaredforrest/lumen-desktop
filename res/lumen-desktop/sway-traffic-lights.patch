@@ -128,13 +128,17 @@
  
  	// Stores last output size and position for adjusting coordinates of
  	// scratchpad windows.
-@@ -149,6 +161,12 @@
+@@ -149,6 +161,16 @@
  struct sway_container *container_create(struct sway_view *view);
  
  void container_destroy(struct sway_container *con);
 +bool container_lumen_action_enabled(struct sway_container *con, int action);
 +void container_lumen_minimize(struct sway_container *con);
 +void container_lumen_fill(struct sway_container *con);
++void container_lumen_restore(struct sway_container *con);
++bool container_lumen_configure(const char *setting, const char *value);
++void container_lumen_titlebar_action(struct sway_container *con);
++void container_lumen_tile(struct sway_container *con, int column, int row, int columns, int rows);
 +void container_lumen_hide(struct sway_container *con);
 +void container_lumen_unhide(struct sway_container *con);
 +void container_lumen_placement_free(struct sway_lumen_placement *placement);
@@ -218,22 +222,25 @@
  void floating_calculate_constraints(int *min_width, int *max_width,
 --- a/sway/input/seatop_default.c
 +++ b/sway/input/seatop_default.c
-@@ -14,6 +14,8 @@
+@@ -14,6 +14,10 @@
  #include "sway/server.h"
  #include "sway/scene_descriptor.h"
  #include "sway/tree/view.h"
 +#include "sway/tree/root.h"
 +#include "sway/sway_text_node.h"
++#include "sway/ipc-server.h"
++#include <stdio.h>
  #include "sway/tree/workspace.h"
  #include "log.h"
  #include "util.h"
-@@ -26,6 +28,9 @@
+@@ -26,6 +28,10 @@
  	uint32_t pressed_buttons[SWAY_CURSOR_PRESSED_BUTTONS_CAP];
  	size_t pressed_button_count;
  	struct gesture_tracker gestures;
 +	bool traffic_armed;
 +	uint64_t traffic_id;
 +	int traffic_action;
++	uint64_t layout_hover_id;
  };
  
  /*-----------------------------------------\
@@ -257,7 +264,7 @@
  static void handle_button(struct sway_seat *seat, uint32_t time_msec,
  		struct wlr_input_device *device, uint32_t button,
  		enum wl_pointer_button_state state) {
-@@ -363,6 +381,29 @@
+@@ -363,6 +381,40 @@
  	bool mod_resize_btn_pressed = mod_pressed && button == mod_resize_btn;
  	bool titlebar_left_btn_pressed = on_titlebar && button == BTN_LEFT;
  
@@ -284,10 +291,21 @@
 +			return;
 +		}
 +	}
++ if (titlebar_left_btn_pressed && !mod_pressed && state == WL_POINTER_BUTTON_STATE_PRESSED && cont && traffic < 0) {
++  double dx = cursor->cursor->x - cursor->lumen_titlebar_x;
++  double dy = cursor->cursor->y - cursor->lumen_titlebar_y;
++  bool twice = cursor->lumen_titlebar_id == cont->node.id && cursor->lumen_titlebar_time != 0 &&
++   time_msec - cursor->lumen_titlebar_time <= 400 && dx * dx + dy * dy <= 25;
++  cursor->lumen_titlebar_id = cont->node.id;
++  cursor->lumen_titlebar_time = twice ? 0 : time_msec;
++  cursor->lumen_titlebar_x = cursor->cursor->x;
++  cursor->lumen_titlebar_y = cursor->cursor->y;
++  if (twice) { container_lumen_titlebar_action(cont); transaction_commit_dirty(); return; }
++ }
  	// Handle mouse bindings
  	if (trigger_pointer_button_binding(seat, device, button, state, modifiers,
  			on_titlebar, on_border, on_contents, on_workspace)) {
-@@ -607,6 +648,13 @@
+@@ -607,6 +648,21 @@
  	double sx, sy;
  	struct sway_node *node = node_at_coords(seat,
  			cursor->cursor->x, cursor->cursor->y, &surface, &sx, &sy);
@@ -297,17 +315,27 @@
 +	}
 +	struct sway_container *hover_con = node && node->type == N_CONTAINER ? node->sway_container : NULL;
 +	int hovered = surface ? -1 : traffic_hit(hover_con, cursor);
++ uint64_t layout_id = hovered == 2 && container_lumen_action_enabled(hover_con, 2) ? hover_con->node.id : 0;
++ if (layout_id != e->layout_hover_id) {
++  char payload[256];
++  snprintf(payload, sizeof(payload), "{\"lumen_layout\":1,\"id\":%llu,\"x\":%.0f,\"y\":%.0f}",
++   (unsigned long long)layout_id, cursor->cursor->x, cursor->cursor->y);
++  ipc_event_tick(payload);
++  e->layout_hover_id = layout_id;
++ }
 +	if (hovered >= 0) for (int i = 0; i < 3; i++) sway_traffic_node_hover(hover_con->title_bar.traffic[i], container_lumen_action_enabled(hover_con, i));
  
  	if (config->focus_follows_mouse != FOLLOWS_NO) {
  		check_focus_follows_mouse(seat, e, node);
 --- a/sway/ipc-json.c
 +++ b/sway/ipc-json.c
-@@ -229,6 +229,8 @@
+@@ -229,6 +229,10 @@
  	sscanf(SWAY_VERSION, "%d.%d.%d", &major, &minor, &patch);
  
  	json_object_object_add(version, "human_readable", json_object_new_string(SWAY_VERSION));
 +	json_object_object_add(version, "native_window_controls", json_object_new_boolean(true));
++	json_object_object_add(version, "window_placement_preferences", json_object_new_boolean(true));
++	json_object_object_add(version, "native_window_layouts", json_object_new_boolean(true));
 + json_object_object_add(version, "native_window_actions", json_object_new_boolean(true));
  	json_object_object_add(version, "variant", json_object_new_string("sway"));
  	json_object_object_add(version, "major", json_object_new_int(major));
@@ -330,7 +358,7 @@
  #include "list.h"
  #include "log.h"
  #include "util.h"
-@@ -96,6 +98,136 @@
+@@ -96,6 +98,200 @@
  	con->transform = box;
  }
  
@@ -376,6 +404,7 @@
 +  if (!focused) return;
 +  ws = workspace_create(focused->output, p->workspace);
 + }
++ if (ws->width <= 0 || ws->height <= 0) arrange_workspace(ws);
 + struct sway_container *parent = p->parent_id ? root_find_container(lumen_parent_matches, &p->parent_id) : NULL;
 + if (parent && parent->pending.workspace != ws) parent = NULL;
 + if (con->scratchpad) root_scratchpad_remove_container(con);
@@ -411,6 +440,15 @@
 + con->pending.x = p->box.x; con->pending.y = p->box.y;
 + con->pending.width = p->box.width; con->pending.height = p->box.height;
 + con->pending.border = p->border;
++ if (p->floating) {
++  // Restore onto the surviving work area when an output was removed or resized.
++  if (con->pending.width > ws->width) con->pending.width = ws->width;
++  if (con->pending.height > ws->height) con->pending.height = ws->height;
++  if (con->pending.x < ws->x) con->pending.x = ws->x;
++  if (con->pending.y < ws->y) con->pending.y = ws->y;
++  if (con->pending.x + con->pending.width > ws->x + ws->width) con->pending.x = ws->x + ws->width - con->pending.width;
++  if (con->pending.y + con->pending.height > ws->y + ws->height) con->pending.y = ws->y + ws->height - con->pending.height;
++ }
 + arrange_workspace(ws);
 + node_set_dirty(&con->node);
 + if (con->view && con->view->foreign_toplevel) wlr_foreign_toplevel_handle_v1_set_minimized(con->view->foreign_toplevel, false);
@@ -445,6 +483,60 @@
 + if (!con->lumen_minimized) return;
 + root_scratchpad_add_container(con, NULL);
 + if (con->view->foreign_toplevel) wlr_foreign_toplevel_handle_v1_set_minimized(con->view->foreign_toplevel, true);
++}
++
++static bool lumen_tile_margins = true;
++static int lumen_titlebar_action = 1;
++
++bool container_lumen_configure(const char *setting, const char *value) {
++ if (strcmp(setting, "margins") == 0) {
++  if (strcmp(value, "enable") != 0 && strcmp(value, "disable") != 0) return false;
++  lumen_tile_margins = strcmp(value, "enable") == 0; return true;
++ }
++ if (strcmp(setting, "titlebar-action") == 0) {
++  if (strcmp(value, "none") == 0) lumen_titlebar_action = 0;
++  else if (strcmp(value, "fill") == 0) lumen_titlebar_action = 1;
++  else if (strcmp(value, "minimize") == 0) lumen_titlebar_action = 2;
++  else return false;
++  return true;
++ }
++ return false;
++}
++
++void container_lumen_titlebar_action(struct sway_container *con) {
++ if (lumen_titlebar_action == 1) container_lumen_fill(con);
++ else if (lumen_titlebar_action == 2) container_lumen_minimize(con);
++}
++
++void container_lumen_restore(struct sway_container *con) {
++ if (!con || !con->lumen_filled) return;
++ struct sway_lumen_placement *p = con->lumen_filled;
++ con->lumen_filled = NULL;
++ if (con->pending.fullscreen_mode != FULLSCREEN_NONE) container_fullscreen_disable(con);
++ lumen_restore(con, p, true);
++ container_lumen_placement_free(p);
++}
++
++void container_lumen_tile(struct sway_container *con, int column, int row, int columns, int rows) {
++ if (!container_lumen_action_enabled(con, 2) || !con->pending.workspace || con->scratchpad) return;
++ if (columns < 1 || rows < 1 || column < 0 || row < 0 || column >= columns || row >= rows) return;
++ if (con->pending.fullscreen_mode != FULLSCREEN_NONE) container_fullscreen_disable(con);
++ if (!con->lumen_filled) con->lumen_filled = lumen_save(con);
++ if (!con->lumen_filled) return;
++ struct sway_workspace *ws = con->pending.workspace;
++ container_set_floating(con, true);
++ con->pending.border = con->lumen_filled->border;
++ int gap = lumen_tile_margins && ws->width > 64 && ws->height > 64 ? 8 : 0;
++ int left = gap + (ws->width - gap) * column / columns;
++ int right = gap + (ws->width - gap) * (column + 1) / columns - gap;
++ int top = gap + (ws->height - gap) * row / rows;
++ int bottom = gap + (ws->height - gap) * (row + 1) / rows - gap;
++ con->pending.x = ws->x + left;
++ con->pending.y = ws->y + top;
++ con->pending.width = right - left;
++ con->pending.height = bottom - top;
++ arrange_workspace(ws);
++ node_set_dirty(&con->node);
 +}
 +
 +void container_lumen_fill(struct sway_container *con) {
@@ -513,12 +605,16 @@
  
  static void scratchpad_toggle_auto(void) {
  	struct sway_seat *seat = input_manager_current_seat();
-@@ -130,3 +132,20 @@
+@@ -130,3 +132,33 @@
  
  	return cmd_results_new(CMD_SUCCESS, NULL);
  }
 +
 +struct cmd_results *cmd_lumen_window(int argc, char **argv) {
++ if (argc == 2) {
++  if (container_lumen_configure(argv[0], argv[1])) return cmd_results_new(CMD_SUCCESS, NULL);
++  return cmd_results_new(CMD_INVALID, "Invalid layout configuration");
++ }
 + struct cmd_results *error = checkarg(argc, "lumen_window", EXPECTED_EQUAL_TO, 1);
 + if (error) return error;
 + struct sway_container *con = config->handler_context.container;
@@ -528,9 +624,18 @@
 + else if (strcmp(argv[0], "unhide") == 0) container_lumen_unhide(con);
 + else if (strcmp(argv[0], "minimize") == 0) container_lumen_minimize(con);
 + else if (strcmp(argv[0], "fill") == 0) container_lumen_fill(con);
++ else if (strcmp(argv[0], "restore") == 0) container_lumen_restore(con);
++ else if (strcmp(argv[0], "left") == 0) container_lumen_tile(con, 0, 0, 2, 1);
++ else if (strcmp(argv[0], "right") == 0) container_lumen_tile(con, 1, 0, 2, 1);
++ else if (strcmp(argv[0], "top") == 0) container_lumen_tile(con, 0, 0, 1, 2);
++ else if (strcmp(argv[0], "bottom") == 0) container_lumen_tile(con, 0, 1, 1, 2);
++ else if (strcmp(argv[0], "top-left") == 0) container_lumen_tile(con, 0, 0, 2, 2);
++ else if (strcmp(argv[0], "top-right") == 0) container_lumen_tile(con, 1, 0, 2, 2);
++ else if (strcmp(argv[0], "bottom-left") == 0) container_lumen_tile(con, 0, 1, 2, 2);
++ else if (strcmp(argv[0], "bottom-right") == 0) container_lumen_tile(con, 1, 1, 2, 2);
 + else if (strcmp(argv[0], "fullscreen") == 0) container_set_fullscreen(con,
 +  con->pending.fullscreen_mode == FULLSCREEN_NONE ? FULLSCREEN_WORKSPACE : FULLSCREEN_NONE);
-+ else return cmd_results_new(CMD_INVALID, "Expected close, minimize, fill, fullscreen, hide or unhide");
++ else return cmd_results_new(CMD_INVALID, "Expected close, minimize, fill, fullscreen, hide, unhide, restore or a layout direction");
 + transaction_commit_dirty();
 + return cmd_results_new(CMD_SUCCESS, NULL);
 +}
@@ -554,3 +659,30 @@
  
  	struct sway_node *parent = node_get_parent(&c->node);
  	struct wlr_box parent_box = {0, 0, 0, 0};
+--- a/include/sway/ipc-server.h
++++ b/include/sway/ipc-server.h
+@@ -23,2 +23,3 @@
+ void ipc_event_output(void);
++void ipc_event_tick(const char *payload);
+ 
+--- a/sway/ipc-server.c
++++ b/sway/ipc-server.c
+@@ -480,1 +480,1 @@
+-static void ipc_event_tick(const char *payload) {
++void ipc_event_tick(const char *payload) {
+--- a/sway/tree/view.c
++++ b/sway/tree/view.c
+@@ -1026,3 +1026,5 @@
+ void view_update_size(struct sway_view *view) {
+ 	struct sway_container *con = view->container;
++	// Explicit desktop placement owns the outer rectangle, including resize-increment clients.
++	if (con->lumen_filled) return;
+ 	con->pending.content_width = view->geometry.width;
+--- a/include/sway/input/cursor.h
++++ b/include/sway/input/cursor.h
+@@ -20,1 +20,5 @@
+ 	struct wlr_cursor *cursor;
++	uint64_t lumen_titlebar_id;
++	uint32_t lumen_titlebar_time;
++	double lumen_titlebar_x, lumen_titlebar_y;
++

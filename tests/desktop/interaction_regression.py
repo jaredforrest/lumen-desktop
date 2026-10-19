@@ -15,6 +15,8 @@ raw=sp.check_output(['bash','-c',prefix+'\nexec env -0'],stderr=sp.DEVNULL)
 env=dict(os.environ);env.update(dict(v.decode().split('=',1) for v in raw.split(b'\0') if b'=' in v))
 for k in ('CONFIG','STATE','CACHE','DATA'):env['XDG_'+k+'_HOME']=str(out/k.lower())
 env.update(WLR_BACKENDS='headless',WLR_RENDERER='pixman',WLR_LIBINPUT_NO_DEVICES='1',QT_QUICK_BACKEND='software',QT_QPA_PLATFORM='wayland',GDK_BACKEND='wayland',GTK_USE_PORTAL='0',GSETTINGS_BACKEND='memory',NO_AT_BRIDGE='1',QT_ACCESSIBILITY='0',XDG_CURRENT_DESKTOP='sway')
+env.update(QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
+env.pop('AT_SPI_BUS_ADDRESS',None)
 for k in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK'):env.pop(k,None)
 portal=out/'config/xdg-desktop-portal';portal.mkdir(parents=True,exist_ok=True);(portal/'portals.conf').write_text('[preferred]\ndefault=none\n')
 procs=[]

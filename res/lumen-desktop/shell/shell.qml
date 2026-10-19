@@ -15,6 +15,9 @@ ShellRoot {
     property var bars: ({})
     property string popupOwner: ""
     property alias exportedMenu: exported
+    property var widgetSurfaces:({})
+    property alias widgets:widgetState
+    WidgetState {id:widgetState}
     GlobalMenu { id:exported; shell:root; holdDisplay:root.popupOwner!=="" && root.popupOwner!=="exported" }
     property int focusEpoch:0
     function claimPopup(owner) { ++focusEpoch;popupOwner=owner; dismissPopups(owner); }
@@ -27,6 +30,16 @@ ShellRoot {
     function showMenu(name, outputName) { if(name==="Settings"){openSettings("");return;}if(name==="Files"){openFiles("");return;} requestMenu(name,outputName || preferredOutput()); }
     RemoteDesktopWindow {id:remoteDesktopWindow;shell:root}
     function openRemoteDesktop(){remoteDesktopWindow.show();focusOwnedWindow("Remote Desktop");}
+    WindowLayoutMenu {id:windowLayoutMenu;shell:root}
+    function openWindowLayout() {
+        const state=exported.latestState || exported.state;
+        const id=state.windowId;
+        if(!Number.isSafeInteger(id) || id<=0)return;
+        const output=Quickshell.screens.find(s=>s.name===preferredOutput()) || Quickshell.screens[0];
+        if(!output)return;
+        windowLayoutMenu.event(JSON.stringify({lumen_layout:1,id:id,x:output.x+Math.min(180,output.width/2),y:output.y+Theme.barHeight}));
+        windowLayoutMenu.open();
+    }
     SessionOptions {id:sessionOptions}
     HelpWindow {id:helpWindow;shell:root}
     function sessionAction(action){claimPopup("");sessionOptions.show(action);focusOwnedWindow("Session Options");}
@@ -78,7 +91,6 @@ ShellRoot {
     }
     function filesAction(action){claimPopup("");filesActionTimer.action=action;filesActionTimer.restart();}
     Timer {id:filesActionTimer;property string action;interval:100;onTriggered:filesWindow.dispatch(action)}
-    property var pins: ["brave-browser", "codex-desktop", "obsidian", "bitwarden", "foot", "writer", "calc", "impress", "org.gnome.Evince", "lumen-remote-desktop", "org.inkscape.Inkscape", "org.darktable.darktable", "audacity", "mpv", "com.github.xournalpp.xournalpp", "org.pulseaudio.pavucontrol"]
     property var windowCreationOrder:[]
     property var windows: ToplevelManager.toplevels.values
     onWindowsChanged:windowCreationOrder=SwitcherModel.creationOrder(windowCreationOrder,windows)
@@ -90,20 +102,31 @@ ShellRoot {
     property var active: ToplevelManager.activeToplevel
     property var activationHistory: []
     onActiveChanged: {
-        if (active) activationHistory=[active].concat(activationHistory.filter(w=>w!==active && windows.includes(w)));
+        if (active) {activationHistory=[active].concat(activationHistory.filter(w=>w!==active && windows.includes(w)));const recent=entryFor(active);if(recent)recentAppIds=[recent.id].concat(recentAppIds.filter(id=>!DockModel.sameEntry(id,recent.id))).slice(0,12);}
     }
     property var entries: DesktopEntries.applications.values
-    property var pinned: { const available = entries; return pins.map(id => available.find(e => e.id === id || e.id === id + ".desktop")).filter(e => e !== undefined); }
     property var runningExtras: {
         let result = [];
         for (const w of windows) {
             const e = entryFor(w);
-            if (e && !pins.includes(e.id) && !result.some(x => x.id === e.id)) result.push(e);
+            if (e && !result.some(x => x.id === e.id)) result.push(e);
         }
         return result;
     }
-    property var dockApps: pinned.concat(runningExtras)
-    property var referenceDock: DockModel.build(ReferenceDock.items, entries, dockApps)
+    property var dockApps: referenceDock.filter(item=>item.entry).map(item=>item.entry)
+    property var recentAppIds:[]
+    readonly property var recentApps:recentAppIds.map(id=>entries.find(entry=>DockModel.sameEntry(id,entry.id))).filter(Boolean)
+    readonly property bool dockPreferencesBusy:settingsState.busy
+    readonly property var configuredDockPins:DockModel.configuredPins(ReferenceDock.items,entries,Theme.preferences.dockPins)
+    property var referenceDock: DockModel.build(ReferenceDock.items, entries, runningExtras, Theme.preferences.dockPins, recentApps, Theme.preferences.dockRecentApps!==false,Theme.preferences.dockFolders)
+    function canConfigureDockEntry(entry){return !DockModel.sameEntry(entry.id,"lumen-files");}
+    function isDockPinned(entry){return configuredDockPins.some(id=>DockModel.sameEntry(id,entry.id));}
+    function updateDockPin(entry,action){if(!dockPreferencesBusy)settingsState.setPreference("dockPins",DockModel.updatePins(configuredDockPins,entry.id,action));}
+    function reorderDockPin(source,target){if(!dockPreferencesBusy)settingsState.setPreference("dockPins",DockModel.movePin(configuredDockPins,source.id,target.id));}
+    function updateFolderStack(path,patch){
+        const folders=Theme.preferences.dockFolders || [];
+        if(folders.some(folder=>folder.path===path))settingsState.setPreference("dockFolders",folders.map(folder=>folder.path===path?Object.assign({},folder,patch):folder));
+    }
     function dockWindows(item) { if(item.action==="calendar")return windows.filter(w=>w.appId==="org.quickshell" && w.title==="Calendar");if(item.action==="files")return windows.filter(w=>w.appId==="org.quickshell" && w.title.startsWith("Files"));if(item.action==="settings")return windows.filter(w=>w.appId==="org.quickshell" && w.title==="System Settings");return item.entry ? windowsFor(item.entry) : []; }
     function dockLabel(item) { return item.entry ? appLabel(item.entry) : item.name; }
     function activateDock(item, newWindow, outputName, modifiers) {
@@ -121,6 +144,7 @@ ShellRoot {
             }
         }
         if (item.entry) activate(item.entry, newWindow);
+        else if (item.action === "folder") downloadsStack.show(item.folder.path,outputName || preferredOutput(),item.folder);
         else if (item.key === "downloads") downloadsStack.show(Quickshell.env("HOME")+"/Downloads",outputName || preferredOutput());
         else if (item.key === "trash") openFiles("trash:");
         else if (item.action === "launcher") showMenu("Launcher",outputName);
@@ -156,7 +180,7 @@ ShellRoot {
     property alias systemState: controls
     SystemState {id:controls}
     property alias search: searchState
-    SearchState {id:searchState;active:Object.values(root.bars).some(b=>b && b.menu==="Launcher")}
+    SearchState {id:searchState;active:Object.values(root.bars).some(b=>b && b.menu==="Launcher") && !(Theme.searchPreferences.disabledProviders || []).includes("files")}
     property alias notifications:notificationState
     NotificationState {id:notificationState;shell:root}
     function entryFor(w) {
@@ -211,6 +235,7 @@ ShellRoot {
     readonly property var currentDate: clock.date
     SystemClock { id: clock; precision: SystemClock.Minutes }
     IpcHandler {
+        function windowLayout():void {root.openWindowLayout();}
         function remoteDesktop():void {root.openRemoteDesktop();}
         function calendar():void {root.openCalendar();}
         target: "desktop"
@@ -227,6 +252,8 @@ ShellRoot {
             if(action==="close" || (action==="toggle" && bar.menu==="Date")){if(bar.menu==="Date")bar.menu="";}
             else if(bar.menu!=="Date")root.showMenu("Date",name);
         }
+        function menuLayoutStatus():string {return JSON.stringify(Object.values(root.bars).map(b=>b.menuLayoutStatus()));}
+        function desktopWidgetStatus():string {return JSON.stringify({preferences:widgetState.preferences,error:widgetState.error,outputs:Object.values(root.widgetSurfaces).map(w=>({name:w.outputName,visible:w.visible,widgetWidth:w.widgetWidth,widgetHeight:w.widgetHeight,monochrome:w.monochrome}))});}
         function notificationStatus():string {return JSON.stringify({available:notificationState.available,dnd:notificationState.dnd,count:notificationState.history.length,banners:notificationState.banners.length,unread:notificationState.unread,output:notificationState.bannerOutput});}
         function toggleFocus():void {notificationState.command({action:"dnd"});}
         function searchStatus():string {return JSON.stringify({available:searchState.available,indexed:searchState.indexed,scanning:searchState.scanning,searching:searchState.searching,error:searchState.error,views:Object.values(root.bars).filter(b=>b && b.menu==="Launcher").map(b=>b.launcherStatus())});}
@@ -251,6 +278,7 @@ ShellRoot {
         model: Quickshell.screens
         Scope {
             required property var modelData
+            DesktopWidgets {screen:modelData;outputName:modelData.name;shell:root}
             MenuBar { screen: modelData; shell: root; clockDate: clock.date }
             Dock { screen: modelData; shell: root }
             NotificationBanners {screen:modelData;outputName:modelData.name;outputWidth:modelData.width;outputHeight:modelData.height;shell:root}

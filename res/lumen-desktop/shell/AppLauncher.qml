@@ -5,16 +5,25 @@ PanelSurface {
     id: root
     required property var shell
     signal closeRequested()
+    readonly property var disabledProviders: Theme.searchPreferences.disabledProviders || []
+    readonly property var providerChoices: ["All","Applications","Files","Actions","Clipboard"].filter(name=>name==="All" || !disabledProviders.includes(name.toLowerCase()))
+    function providerEnabled(name){return !disabledProviders.includes(name.toLowerCase());}
     property string provider: "All"
+    onDisabledProvidersChanged:{if(provider!=="All" && !providerEnabled(provider))setProvider("All");if(!providerEnabled("Files")){service.search("");service.requestPreview("");}}
     property bool gridMode: false
     property bool previewOpen: false
+    SearchHistoryState {id:queryHistory;active:root.visible}
+    property int historyIndex:-1
+    property string historyDraft:""
+    function recallHistory(delta){if(!queryHistory.enabled || !queryHistory.queries.length)return;if(historyIndex<0)historyDraft=search.text;historyIndex=Math.max(-1,Math.min(queryHistory.queries.length-1,historyIndex+delta));search.text=historyIndex<0?historyDraft:queryHistory.queries[historyIndex];search.cursorPosition=search.text.length;}
     property int selectedIndex: 0
+    readonly property string queryText:search.text
     property string selectedKey:""
     function resultKey(item){return item?item.kind+":"+(item.path || item.id)+":"+(item.token || ""):"";}
     onSelectedIndexChanged:selectedKey=resultKey(results[selectedIndex])
     readonly property var service: shell.search
     readonly property bool showingResults: provider==="Clipboard" || gridMode || search.text.trim().length>0 || provider==="Actions"
-    ClipboardState {id:clipboard;active:root.visible && root.provider==="Clipboard"}
+    ClipboardState {id:clipboard;active:root.visible && root.provider==="Clipboard" && root.providerEnabled("Clipboard")}
     readonly property bool splitPreview: previewOpen && width>=740
     readonly property var current: results[selectedIndex] || null
     readonly property var actions: [
@@ -33,9 +42,9 @@ PanelSurface {
     property var results: {
         const query=search.text.toLowerCase().trim(),words=query.split(/\s+/).filter(Boolean);
         const match=text=>words.every(w=>text.toLowerCase().includes(w));
-        let apps=shell.entries.filter(e=>!e.noDisplay && match(shell.appLabel(e)+" "+e.id+" "+(e.genericName || "")))
+        let apps=providerEnabled("Applications")?shell.entries.filter(e=>!e.noDisplay && match(shell.appLabel(e)+" "+e.id+" "+(e.genericName || "")))
             .sort((a,b)=>Number(shell.appLabel(b).toLowerCase().startsWith(query))-Number(shell.appLabel(a).toLowerCase().startsWith(query)) || shell.appLabel(a).localeCompare(shell.appLabel(b)))
-            .map(e=>({kind:"app",id:e.id,title:shell.appLabel(e),subtitle:e.genericName || "Application",entry:e}));
+            .map(e=>({kind:"app",id:e.id,title:shell.appLabel(e),subtitle:e.genericName || "Application",entry:e})):[];
         let menuRows=[];
         const exported=shell.exportedMenu;
         function collect(node,parents){
@@ -44,20 +53,20 @@ PanelSurface {
             if(!node.submenu && !node.separator && title && match(parts.join(" ")))menuRows.push({kind:"menu-command",id:node.id,token:exported.state.token,title:title,subtitle:parts.join(" › "),glyph:"list"});
             for(const child of node.children || [])collect(child,parts);
         }
-        if(exported.state.menu)for(const child of exported.state.menu.children)collect(child,[]);
-        let actionRows=actions.filter(a=>a.enabled && match(a.title+" "+a.subtitle)).map(a=>Object.assign({kind:"action"},a));
+        if(providerEnabled("Actions") && exported.state.menu)for(const child of exported.state.menu.children)collect(child,[]);
+        let actionRows=providerEnabled("Actions")?actions.filter(a=>a.enabled && match(a.title+" "+a.subtitle)).map(a=>Object.assign({kind:"action"},a)):[];
         if(provider==="Clipboard")return clipboard.entries.map(e=>({kind:"clipboard",id:e.id,title:e.text,subtitle:"Clipboard history · Select to copy",glyph:"document"}));
         if(provider==="Applications")return apps;
-        if(provider==="Files")return service.files;
+        if(provider==="Files")return providerEnabled("Files")?service.files:[];
         if(provider==="Actions")return actionRows.concat(menuRows);
         if(!query)return [];
-        return apps.slice(0,6).concat(service.files.slice(0,12),actionRows.slice(0,5),menuRows.slice(0,8));
+        return apps.slice(0,6).concat(providerEnabled("Files")?service.files.slice(0,12):[],actionRows.slice(0,5),menuRows.slice(0,8));
     }
     width:Math.min(previewOpen?920:660,parent ? parent.width-32 : 660)
     height:footer.y+footer.height+12
     radius:22
-    onVisibleChanged: if(visible) {
-        provider="All";search.text="";selectedIndex=0;gridMode=false;previewOpen=false;service.search("");search.forceActiveFocus();
+    onVisibleChanged: if(!visible){if(provider!=="Clipboard" && search.text.trim())queryHistory.request("record",search.text);}else {
+        provider="All";historyIndex=-1;historyDraft="";search.text="";selectedIndex=0;gridMode=false;previewOpen=false;service.search("");search.forceActiveFocus();
     }
     onCurrentChanged: if(visible && previewOpen)service.requestPreview(current && current.kind==="file"?current.path:"")
     onPreviewOpenChanged:if(visible)service.requestPreview(previewOpen && current && current.kind==="file"?current.path:"")
@@ -69,8 +78,8 @@ PanelSurface {
     }
     Connections {target:root.service;function onOpened(){if(root.visible)root.closeRequested();}}
     function status() {return {provider:provider,count:results.length,selected:selectedIndex,kind:current?current.kind:"",preview:previewOpen,previewType:service.preview.type || "",grid:gridMode};}
-    function setProvider(name) {provider=name;gridMode=false;selectedIndex=0;search.forceActiveFocus();if(name==="Clipboard"){previewOpen=false;clipboard.search(search.text);}else if(name==="Files" || name==="All")service.search(search.text);}
-    function cycleProvider() {const choices=["All","Applications","Files","Actions","Clipboard"];setProvider(choices[(choices.indexOf(provider)+1)%choices.length]);}
+    function setProvider(name) {if(!providerChoices.includes(name))return;provider=name;gridMode=false;selectedIndex=0;search.forceActiveFocus();if(name==="Clipboard"){previewOpen=false;clipboard.search(search.text);}else if(providerEnabled("Files") && (name==="Files" || name==="All"))service.search(search.text);}
+    function cycleProvider() {const choices=providerChoices;setProvider(choices[(choices.indexOf(provider)+1)%choices.length]);}
     function launchKey(key,parent){const index=results.findIndex(item=>resultKey(item)===key);if(index>=0)launch(index,parent);}
     function launch(index, parent) {
         if(index<0 || index>=results.length || service.opening)return;
@@ -121,10 +130,12 @@ PanelSurface {
         TextInput {
             id:search;x:60;anchors.verticalCenter:parent.verticalCenter;width:parent.width-84
             font.family:Theme.font;font.pixelSize:24;color:Theme.colors.text;selectionColor:Theme.colors.accent;clip:true
-            onTextChanged:{root.selectedIndex=0;if(root.visible){if(root.provider==="Clipboard")clipboard.search(text);else root.service.search(text);}}
+            onTextChanged:{root.selectedIndex=0;if(root.visible){if(root.provider==="Clipboard")clipboard.search(text);else if(root.providerEnabled("Files"))root.service.search(text);}}
             PanelLabel {visible:search.text.length===0;text:"Search";font.pixelSize:24;color:Theme.colors.muted}
             Keys.onPressed:event=>{
-                if((event.modifiers & Qt.ControlModifier) && event.key===Qt.Key_1){root.provider="Applications";root.gridMode=true;event.accepted=true;}
+                if((event.modifiers & Qt.AltModifier) && event.key===Qt.Key_Up){root.recallHistory(1);event.accepted=true;}
+                else if((event.modifiers & Qt.AltModifier) && event.key===Qt.Key_Down){root.recallHistory(-1);event.accepted=true;}
+                else if((event.modifiers & Qt.ControlModifier) && event.key===Qt.Key_1){if(root.providerEnabled("Applications")){root.provider="Applications";root.gridMode=true;}event.accepted=true;}
                 else if((event.modifiers & Qt.ControlModifier) && event.key===Qt.Key_2){root.setProvider("Files");event.accepted=true;}
                 else if((event.modifiers & Qt.ControlModifier) && event.key===Qt.Key_3){root.setProvider("Actions");event.accepted=true;}
                 else if((event.modifiers & Qt.ControlModifier) && event.key===Qt.Key_4){root.setProvider("Clipboard");event.accepted=true;}
@@ -145,7 +156,7 @@ PanelSurface {
         id:filters;y:searchArea.height;width:parent.width;height:40
         Row {x:16;spacing:3
             Repeater {
-                model:["All","Applications","Files","Actions","Clipboard"]
+                model:root.providerChoices
                 AbstractButton {
                     id:filterButton
                     required property string modelData
@@ -167,7 +178,7 @@ PanelSurface {
             Rectangle {
                 width:28;height:25;radius:6;color:root.gridMode?Theme.selection:"transparent"
                 SystemGlyph {anchors.centerIn:parent;name:root.gridMode?"list":"grid";width:16;height:16}
-                MouseArea {anchors.fill:parent;onClicked:{root.provider="Applications";root.gridMode=!root.gridMode;search.forceActiveFocus();}}
+                MouseArea {anchors.fill:parent;onClicked:{if(root.providerEnabled("Applications")){root.provider="Applications";root.gridMode=!root.gridMode;}search.forceActiveFocus();}}
                 Accessible.name:root.gridMode?"List view":"Application grid"
             }
         }

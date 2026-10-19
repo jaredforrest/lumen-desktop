@@ -25,6 +25,12 @@ let
         exec ${menuRuntime}/bin/global-menu-python ${assets}/shell/file_jobs.py
       '';
     };
+    dockDrop = pkgs.writeShellScriptBin "lumen-dock-drop" ''
+      if [ "''${LUMEN_LAUNCH_SCOPES:-}" = 1 ]; then
+        exec ${launchApp}/bin/lumen-launch-app -- ${menuRuntime}/bin/global-menu-python ${assets}/runtime/app_drop.py "$@"
+      fi
+      exec ${menuRuntime}/bin/global-menu-python ${assets}/runtime/app_drop.py "$@"
+    '';
     focusWindow = pkgs.writeShellScriptBin "lumen-focus-window" ''
       export PATH=${lib.makeBinPath [ pkgs.sway ]}:"$PATH"
       exec ${pkgs.python3}/bin/python ${assets}/focus-window.py "$@"
@@ -38,6 +44,13 @@ let
         export LUMEN_CLIPBOARD_RETENTION_SECONDS=${toString clipboardRetentionSeconds}
         export LUMEN_CLIPBOARD_MAX_ITEMS=${toString clipboardMaxItems}
         exec ${pkgs.python3}/bin/python3 ${assets}/runtime/clipboard_history.py "$@"
+      '';
+    };
+    shellIpc = pkgs.writeShellApplication {
+      name = "lumen-shell-ipc";
+      runtimeInputs = [ pkgs.systemd pkgs.quickshell ];
+      text = ''
+        exec ${pkgs.python3}/bin/python3 ${assets}/runtime/shell_ipc.py --systemctl ${pkgs.systemd}/bin/systemctl --quickshell ${pkgs.quickshell}/bin/quickshell -- "$@"
       '';
     };
     desktopState = pkgs.writeShellApplication {
@@ -59,7 +72,7 @@ let
       # Desktop entries launched through Rofi inherit this service's PATH.
       # Entries such as ChatGPT use `env` from coreutils in their Exec command.
       runtimeInputs = [ pkgs.remmina pkgs.fontconfig pkgs.hyprpicker personalServices pkgs.rembg pkgs.whisper-cpp pkgs.pipewire (pkgs.tesseract.override { enableLanguages = [ "eng" ]; }) (pkgs.aspellWithDicts (d: [ d.en ])) pkgs.wordnet pkgs.espeak-ng pkgs.wtype pkgs.poppler-utils pkgs.ffmpeg-headless pkgs.util-linux fileClipboard pkgs.wl-clipboard pkgs.glib pkgs.udisks2 launchApp pkgs.ddcutil pkgs.blueman pkgs.coreutils pkgs.jq pkgs.sway focusWindow pkgs.quickshell pkgs.foot pkgs.wireplumber pkgs.pavucontrol
-        clipboardHistory desktopState auth.lock pkgs.swaylock pkgs.xdg-utils pkgs.trash-cli appearance nixSettings rofiPackage ];
+        clipboardHistory desktopState shellIpc dockDrop auth.lock pkgs.swaylock pkgs.xdg-utils pkgs.trash-cli appearance nixSettings rofiPackage ];
       text = ''
         # The systemd service does not inherit the interactive login PATH.
         # Desktop entries may name installed commands without absolute paths.
@@ -104,12 +117,15 @@ let
     };
     audioKey = pkgs.writeShellScriptBin "lumen-audio-key" ''
       case "$1" in up|down|mute) ;; *) exit 2 ;; esac
-      if ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop audioKey "$1"; then exit 0; fi
+      if ${shellIpc}/bin/lumen-shell-ipc call desktop audioKey "$1"; then exit 0; fi
       case "$1" in
         up) exec ${pkgs.wireplumber}/bin/wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+ ;;
         down) exec ${pkgs.wireplumber}/bin/wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- ;;
         mute) exec ${pkgs.wireplumber}/bin/wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
       esac
+    '';
+    mediaKey = pkgs.writeShellScriptBin "lumen-media-key" ''
+      exec ${menuRuntime}/bin/global-menu-python ${assets}/runtime/media_key.py "$@"
     '';
     notifications = pkgs.writeShellScriptBin "lumen-notifications" ''
       export PATH=${nixSettings}/bin:$PATH
@@ -130,37 +146,38 @@ let
     };
     desktopAction = pkgs.writeShellScriptBin "lumen-desktop-action" ''
       case "$1" in
-        window-next) exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop cycleWindow next ;;
-        window-previous) exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop cycleWindow previous ;;
-        app-switcher) exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop appSwitcher next ;;
-        app-switcher-reverse) exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop appSwitcher previous ;;
-        app-switcher-commit) exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop appSwitcher commit ;;
-        overview) exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop overview false ;;
-        app-windows) exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop overview true ;;
-        text-tools) exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop textTools ;;
-        recognize-image) exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop recognizeImage "$2" ;;
-        notifications-open) exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop notificationCentre open ;;
-        notifications-close) exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop notificationCentre close ;;
-        notifications-toggle) exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop notificationCentre toggle ;;
-        controls) exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop menu Controls ;;
-        dock) exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop focusDock ;;
+        window-layout) exec ${shellIpc}/bin/lumen-shell-ipc call desktop windowLayout ;;
+        window-next) exec ${shellIpc}/bin/lumen-shell-ipc call desktop cycleWindow next ;;
+        window-previous) exec ${shellIpc}/bin/lumen-shell-ipc call desktop cycleWindow previous ;;
+        app-switcher) exec ${shellIpc}/bin/lumen-shell-ipc call desktop appSwitcher next ;;
+        app-switcher-reverse) exec ${shellIpc}/bin/lumen-shell-ipc call desktop appSwitcher previous ;;
+        app-switcher-commit) exec ${shellIpc}/bin/lumen-shell-ipc call desktop appSwitcher commit ;;
+        overview) exec ${shellIpc}/bin/lumen-shell-ipc call desktop overview false ;;
+        app-windows) exec ${shellIpc}/bin/lumen-shell-ipc call desktop overview true ;;
+        text-tools) exec ${shellIpc}/bin/lumen-shell-ipc call desktop textTools ;;
+        recognize-image) exec ${shellIpc}/bin/lumen-shell-ipc call desktop recognizeImage "$2" ;;
+        notifications-open) exec ${shellIpc}/bin/lumen-shell-ipc call desktop notificationCentre open ;;
+        notifications-close) exec ${shellIpc}/bin/lumen-shell-ipc call desktop notificationCentre close ;;
+        notifications-toggle) exec ${shellIpc}/bin/lumen-shell-ipc call desktop notificationCentre toggle ;;
+        controls) exec ${shellIpc}/bin/lumen-shell-ipc call desktop menu Controls ;;
+        dock) exec ${shellIpc}/bin/lumen-shell-ipc call desktop focusDock ;;
         *) exit 2 ;;
       esac
     '';
     appLauncher = pkgs.writeShellScriptBin "lumen-app-launcher" ''
-      ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop launcher \
+      ${shellIpc}/bin/lumen-shell-ipc call desktop launcher \
         || exec ${rofiPackage}/bin/rofi -show drun
     '';
     filesLauncher = pkgs.writeShellScriptBin "lumen-files" ''
-      exec ${pkgs.python3}/bin/python3 ${assets}/open-folder.py --quickshell ${pkgs.quickshell}/bin/quickshell --shell ${assets}/shell -- "$@"
+      exec ${pkgs.python3}/bin/python3 ${assets}/open-folder.py --ipc-command ${shellIpc}/bin/lumen-shell-ipc -- "$@"
     '';
     remoteDesktopLauncher = pkgs.writeShellScriptBin "lumen-remote-desktop" ''
-      exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop remoteDesktop
+      exec ${shellIpc}/bin/lumen-shell-ipc call desktop remoteDesktop
     '';
     calendarLauncher = pkgs.writeShellScriptBin "lumen-calendar-app" ''
-      exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop calendar
+      exec ${shellIpc}/bin/lumen-shell-ipc call desktop calendar
     '';
     settingsLauncher = pkgs.writeShellScriptBin "lumen-system-settings" ''
-      exec ${pkgs.quickshell}/bin/quickshell -p ${assets}/shell ipc call desktop settings ""
+      exec ${shellIpc}/bin/lumen-shell-ipc call desktop settings ""
     '';
-in { inherit nixSettings appearance qtTheme qtTheme5 palette menuRuntime personalServices fileClipboard displayLayout fileOperations focusWindow desktopState clipboardHistory launchApp shellLauncher audioKey notifications menuCommand desktopDoctor desktopAction appLauncher filesLauncher remoteDesktopLauncher calendarLauncher settingsLauncher; }
+in { inherit nixSettings appearance qtTheme qtTheme5 palette menuRuntime personalServices fileClipboard displayLayout fileOperations focusWindow dockDrop desktopState shellIpc clipboardHistory launchApp shellLauncher audioKey mediaKey notifications menuCommand desktopDoctor desktopAction appLauncher filesLauncher remoteDesktopLauncher calendarLauncher settingsLauncher; }

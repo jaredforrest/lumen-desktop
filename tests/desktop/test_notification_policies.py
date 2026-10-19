@@ -6,8 +6,8 @@ source=Path(__file__).resolve().parents[2]/'res/lumen-desktop/notifications/serv
 spec=importlib.util.spec_from_file_location('notifications',source);service=importlib.util.module_from_spec(spec);spec.loader.exec_module(service)
 preferences={'notifications':{'policies':{}}}
 service.read_settings=lambda:copy.deepcopy(preferences)
-def set_section(section,value):
- preferences[section]=copy.deepcopy(value);return copy.deepcopy(preferences)
+def set_section(section,value,**kwargs):
+ preferences[section].update(copy.deepcopy(value));return copy.deepcopy(preferences)
 service.set_section=set_section
 dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
 with tempfile.TemporaryDirectory() as t:

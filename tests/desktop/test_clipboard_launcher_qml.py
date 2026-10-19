@@ -71,6 +71,8 @@ ShellRoot {
             env=dict(os.environ)
             env.update({k:installed[k] for k in ('PATH','QT_PLUGIN_PATH','QML_IMPORT_PATH','GLOBAL_MENU_PYTHON') if k in installed})
             env.update(PATH=str(binary)+':'+env['PATH'],QT_QPA_PLATFORM='offscreen',QT_QPA_PLATFORMTHEME='',QT_QUICK_BACKEND='software',HOME=str(root),XDG_RUNTIME_DIR=str(root),XDG_STATE_HOME=str(root/'state'),XDG_CONFIG_HOME=str(root/'config'),XDG_DATA_HOME=str(root/'data'),XDG_CACHE_HOME=str(root/'cache'),CLIPBOARD_FIXTURE=str(root))
+            env.update(QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
+            env.pop('AT_SPI_BUS_ADDRESS',None)
             for key in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK'):
                 env.pop(key,None)
             result=subprocess.run(['dbus-run-session','--','quickshell','-p',str(qml)],env=env,text=True,capture_output=True,timeout=12)

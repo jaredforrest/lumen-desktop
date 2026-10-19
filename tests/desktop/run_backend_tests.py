@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 parser=argparse.ArgumentParser()
 parser.add_argument('--output',required=True,type=Path)
@@ -26,7 +27,11 @@ if calendar and not env.get('DESKTOP_TEST_PINNED_RUNTIME'):
     env.update(json.loads(raw))
 results=[]
 for test in sorted(Path(__file__).parent.glob('test_*.py')):
-    run=subprocess.run(['dbus-run-session','--',sys.executable,str(test)],env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=180)
+    with tempfile.TemporaryDirectory(prefix='lumen-backend-') as private:
+        test_env=dict(env,HOME=private,XDG_RUNTIME_DIR=private,QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
+        for key in ('CONFIG','STATE','CACHE','DATA'):test_env['XDG_'+key+'_HOME']=str(Path(private)/key.lower())
+        for key in ('AT_SPI_BUS_ADDRESS','SWAYSOCK','WAYLAND_DISPLAY','DISPLAY'):test_env.pop(key,None)
+        run=subprocess.run(['dbus-run-session','--',sys.executable,str(test)],env=test_env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=180)
     (a.output/(test.stem+'.log')).write_text(run.stdout)
     results.append(dict(test=test.name,passed=run.returncode==0))
     print(('PASS ' if run.returncode==0 else 'FAIL ')+test.name,flush=True)

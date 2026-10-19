@@ -53,3 +53,64 @@ interoperability, document fidelity of retained applications, service integratio
 or reference visual equivalence. Those require provider-specific and rendered
 session evidence. Existing applications retain their supported native document,
 security and permission semantics.
+
+
+## Supported owned appearance and layout controls
+
+The typed adapter now accepts `appearance.increaseContrast`,
+`appearance.sidebarIconSize` (`small`, `medium`, `large`) and the additional
+`when_scrolling` scrollbar mode. Increased contrast strengthens semantic text
+and boundaries and uses opaque materials. Sidebar sizes reflow the owned Files
+and Settings rows. These options do not rewrite retained applications.
+
+Dock preferences include unique desktop-entry IDs in `dockPins` (null restores
+the shipped defaults), `dockRecentApps`, `dockIndicators`, `dockPosition`,
+`dockAutoHide`, `dockSize` (32–72), and unique absolute `dockFolders` with typed
+sort/order/presentation options. `windows.tileMargins` and
+`windows.titlebarDoubleClick` apply only when the compositor advertises
+`window_placement_preferences`; the Settings response discloses when a new
+login is required. Preferred-content zoom is not advertised as Fill.
+
+`controlCentre.order` is a complete permutation of the registered control IDs;
+`controlCentre.hidden` is a unique subset. Unknown, duplicate or omitted order
+IDs are rejected. `notifications.preview` supports `always` and `never`;
+authenticated lock-dependent preview policy is not offered without lock-state
+authority. `search.disabledProviders` is a unique subset of applications, files,
+actions and clipboard. Disabling a Search provider excludes its results and
+navigation, but does not revoke independent clipboard collection consent.
+Settings offers explicit Clear and Disable Clipboard History actions.
+
+## Recent queries
+
+`search.queryHistory` defaults to false. When enabled, dismissing ordinary
+Search saves the nonempty query; Clipboard-category queries are excluded.
+Alt+Up and Alt+Down recall the last 20 distinct queries and return to the draft.
+Clear Search History removes saved terms; disabling history removes saved terms
+and refuses further collection. The history store is an owned private 0700
+directory with 0600 files, excludes control characters and overlong queries,
+and never sends query contents in process arguments. Clearing history does not
+clear the filename index or clipboard history.
+
+## Files views and metadata
+
+Files saves view, sort, descending order, folders-first, hidden-file visibility,
+kind grouping, and sidebar destinations as application defaults. Existing open
+windows keep their current view until refreshed or reopened. Kind grouping has
+visible sections in list view. Sidebar destinations can be added, reordered or
+removed without changing any underlying files. The destination context menu is
+also available through the Menu key or Shift+F10.
+
+Duplicate uses the normal no-overwrite copy job with keep-both naming. Make
+Symbolic Link is an explicitly labelled platform substitute: it records a path,
+shows a link badge, and does not automatically track a renamed target. A broken
+link produces a recoverable error with File Info guidance. Open With marks the
+current association and changes it only through the explicit Set Default action.
+Other opening paths continue to use the shared system association.
+
+Seven standard colour tags have stable IDs, labels and colours, stored in
+`user.lumen.tags.v1` metadata independently of file names. Multiple tags can be
+applied and searched using `tag:red tag:blue` in Files and Search. Unsupported
+metadata storage is disclosed. Links are not followed; the editor refuses an
+item replaced since it opened. Copies preserve tag metadata, and a destination
+that cannot preserve existing tags fails while retaining source data. Custom
+named tags and interoperability with other metadata formats remain unsupported.

@@ -37,6 +37,8 @@ Timer {interval:50;running:true
             runtime=root/'runtime';runtime.mkdir(mode=0o700)
             home=root/'home';home.mkdir()
             env=dict(os.environ,HOME=str(home),XDG_RUNTIME_DIR=str(runtime),QT_QPA_PLATFORM='offscreen',QT_QPA_PLATFORMTHEME='',QT_QUICK_BACKEND='software',XDG_DATA_HOME=str(root/'data'),XDG_CONFIG_HOME=str(root/'config'),XDG_CACHE_HOME=str(root/'cache'))
+            env.update(QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
+            env.pop('AT_SPI_BUS_ADDRESS',None)
             env.pop('WAYLAND_DISPLAY',None)
             try:
                 result=subprocess.run(['quickshell','-p',str(root)],env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=10)

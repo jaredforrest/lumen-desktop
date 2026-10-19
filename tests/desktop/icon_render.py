@@ -13,6 +13,8 @@ if not a.inside:
     outer_env=dict(os.environ,XDG_RUNTIME_DIR=str(private_runtime),XDG_CONFIG_HOME=str(output/'config'),XDG_STATE_HOME=str(output/'state'),XDG_CACHE_HOME=str(output/'cache'),XDG_DATA_HOME=str(output/'data'))
     for key in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK','DBUS_SESSION_BUS_ADDRESS'):outer_env.pop(key,None)
     try:
+        env.update(QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
+        env.pop('AT_SPI_BUS_ADDRESS',None)
         raise SystemExit(sp.call(['dbus-run-session','--',sys.executable,__file__,*sys.argv[1:],'--inside'],env=outer_env))
     finally:shutil.rmtree(private_runtime,ignore_errors=True)
 run=a.output.resolve()
@@ -23,6 +25,8 @@ raw=sp.check_output(['bash','-c',prefix+'\nexec env -0'],stderr=sp.DEVNULL)
 env=dict(os.environ)
 env.update(dict(v.decode().split('=',1) for v in raw.split(b'\0') if b'=' in v))
 env.update(XDG_RUNTIME_DIR=str(runtime),XDG_CONFIG_HOME=str(run/'config'),XDG_STATE_HOME=str(run/'state'),XDG_CACHE_HOME=str(run/'cache'),XDG_DATA_HOME=str(run/'data'),WLR_BACKENDS='headless',WLR_RENDERER='pixman',WLR_LIBINPUT_NO_DEVICES='1',QT_QPA_PLATFORM='wayland',GDK_BACKEND='wayland',LUMEN_FILE_SERVICE='0',LUMEN_LAUNCH_SCOPES='0',GLOBAL_MENU_ENABLED='0',LUMEN_SEARCH_ROOTS='[]',LUMEN_APPEARANCE_STATE=str(run/'appearance.json'))
+env.update(QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
+env.pop('AT_SPI_BUS_ADDRESS',None)
 for key in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK'):env.pop(key,None)
 procs=[]
 def call(*args):return sp.check_output(args,env=env,text=True,timeout=12)

@@ -8,30 +8,33 @@ Column {
     required property var shell
     required property date today
     property real notificationHeight:420
+    property string editingFocus: ""
+    readonly property var focusState:root.shell.notifications.focusState || ({profiles:[],active:"",name:"",until:0,scheduled:false})
     function dateStatus(){return datePanel.status();}
     signal settingsRequested()
     signal panelRequested(string name)
     property real maximumWidth:344
     width: kind==="Date" ? Math.min(344,maximumWidth) : Math.min(300,maximumWidth)
     spacing:12
-    Item {
-        visible:root.kind==="Controls";width:parent.width;height:450
-        Column {width:145;spacing:10
-            ControlTile {width:145;height:60;label:"Wi-Fi";symbol:"wifi";unavailable:!root.shell.systemState.wifi.available;active:root.shell.systemState.wifi.state==="COMPLETED";subtitle:active?"Connected":"Disconnected";onClicked:root.panelRequested("Wi-Fi")}
-            ControlTile {width:145;height:60;label:"Bluetooth";symbol:"bluetooth";unavailable:!Bluetooth.defaultAdapter;active:!!Bluetooth.defaultAdapter && Bluetooth.defaultAdapter.enabled;subtitle:active?"On":"Off";onClicked:root.panelRequested("Bluetooth")}
-            ControlTile {width:145;height:60;label:"Sharing";subtitle:"LocalSend";symbol:"share";unavailable:false;accessibleLabel:"Open LocalSend nearby sharing";onClicked:{root.shell.claimPopup("");AppLaunch.run(["localsend_app"]);}}
+    ControlCentre {visible:root.kind==="Controls";width:parent.width;shell:root.shell;onSettingsRequested:root.settingsRequested();onPanelRequested:name=>root.panelRequested(name)}
+    Column {visible:root.kind==="Focus" && root.editingFocus==="";width:parent.width;spacing:8
+        ControlRow {width:parent.width;text:"‹  Control Centre";onClicked:root.panelRequested("Controls")}
+        PanelLabel {text:"Focus";font.weight:Font.DemiBold}
+        PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:root.focusState.active?(root.focusState.name+(root.focusState.until?" · until "+Qt.formatTime(new Date(root.focusState.until*1000),"HH:mm"):root.focusState.scheduled?" · scheduled":" · until turned off")):"Off";color:Theme.colors.muted}
+        ControlRow {width:parent.width;text:"Off";onClicked:root.shell.notifications.command({action:"focus",profile:""})}
+        Repeater {model:root.focusState.profiles
+            delegate:Column {required property var modelData;width:parent.width;spacing:2
+                ControlRow {width:parent.width;text:(root.focusState.active===modelData.id?"✓  ":"")+modelData.name;onClicked:root.shell.notifications.command({action:"focus",profile:modelData.id})}
+                ControlRow {width:parent.width;text:"For one hour";onClicked:root.shell.notifications.command({action:"focus",profile:modelData.id,seconds:3600})}
+                ControlRow {width:parent.width;text:"Configure…";onClicked:root.editingFocus=modelData.id}
+            }
         }
-        MediaControl {x:155;width:145;height:130;onExpandRequested:root.panelRequested("Now Playing")}
-        ControlTile {x:155;y:140;width:145;height:60;label:"Displays";subtitle:"Settings";symbol:"screen";unavailable:false;onClicked:root.shell.openSettings("Displays")}
-        ControlTile {y:210;width:145;height:60;label:"Appearance";subtitle:"Settings";symbol:"contrast";unavailable:false;onClicked:root.shell.openSettings("Appearance")}
-        ControlTile {x:155;y:210;width:145;height:60;label:"Focus";toggle:true;symbol:"moon";unavailable:!root.shell.notifications.available;active:root.shell.notifications.dnd;subtitle:active?"Do Not Disturb":"Off";onClicked:root.shell.notifications.command({action:"dnd"})}
-        PanelSurface {y:280;width:300;height:62;radius:24
-            BrightnessControl {x:16;y:12;width:parent.width-32}
-        }
-        PanelSurface {y:352;width:300;height:62;radius:24
-            SoundControl {x:16;y:12;width:parent.width-32;shell:root.shell;compact:true}
-        }
-        DialogButton {y:424;width:160;height:26;anchors.horizontalCenter:parent.horizontalCenter;text:"System Settings…";onClicked:root.settingsRequested()}
+        ControlRow {width:parent.width;text:"Use schedules";onClicked:root.shell.notifications.command({action:"focus",profile:null})}
+        PanelLabel {width:parent.width;wrapMode:Text.WordWrap;color:Theme.colors.muted;text:"Focus silences banners except allowed apps. Notifications remain in Notification Centre."}
+    }
+    Column {visible:root.kind==="Focus" && root.editingFocus!=="";width:parent.width;spacing:8
+        ControlRow {width:parent.width;text:"‹  Focus";onClicked:root.editingFocus=""}
+        FocusProfileEditor {width:parent.width;service:root.shell.notifications;profileId:root.editingFocus}
     }
     PanelLabel {visible:root.kind==="Controls" && text!=="";width:parent.width;wrapMode:Text.WordWrap;text:root.shell.systemState.error;color:Theme.colors.muted}
     PanelSurface {

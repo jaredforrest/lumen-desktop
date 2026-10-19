@@ -36,6 +36,17 @@ class FileJobs(unittest.TestCase):
         self.assertEqual(self.runjob('copy',[self.src])['state'],'partial')
         self.assertEqual(self.runjob('copy',[self.src],conflict='keep-both')['state'],'complete')
         self.assertTrue((self.dst/'source copy 2').is_dir())
+    def test_duplicate_in_place_preserves_sources_and_existing_copies(self):
+        item=self.src/'report.txt';item.write_text('original')
+        occupied=self.src/'report copy 2.txt';occupied.write_text('keep existing copy')
+        folder=self.src/'folder';folder.mkdir();(folder/'nested').write_text('nested source')
+        job=self.runjob('copy',[item,folder],destination=self.src,conflict='keep-both')
+        self.assertEqual(job['state'],'complete')
+        self.assertEqual(item.read_text(),'original');self.assertEqual(occupied.read_text(),'keep existing copy')
+        self.assertEqual((self.src/'report copy 3.txt').read_text(),'original')
+        self.assertEqual((self.src/'folder copy 2/nested').read_text(),'nested source')
+        self.assertEqual((folder/'nested').read_text(),'nested source')
+
     def test_cancel_cleans_partial_and_preserves_source(self):
         (self.src/'a').write_bytes(b'x'*1024)
         entered=threading.Event();release=threading.Event();original=self.jobs.copy

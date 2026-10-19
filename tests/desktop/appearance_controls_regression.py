@@ -9,6 +9,8 @@ raw=sp.check_output(['bash','-c',prefix+'\nexec env -0']);installed=dict(x.decod
 env=dict(os.environ);env.update({k:installed[k] for k in ('PATH','QT_PLUGIN_PATH','QML_IMPORT_PATH','GLOBAL_MENU_PYTHON') if k in installed})
 runtime=Path(tempfile.mkdtemp(prefix='appearance-qa-'))
 env.update(HOME=str(run/'home'),XDG_RUNTIME_DIR=str(runtime),XDG_CONFIG_HOME=str(run/'config'),XDG_STATE_HOME=str(run/'state'),XDG_DATA_HOME=str(run/'data'),XDG_CACHE_HOME=str(run/'cache'),WLR_BACKENDS='headless',WLR_RENDERER='pixman',WLR_LIBINPUT_NO_DEVICES='1',QT_QPA_PLATFORM='wayland',GDK_BACKEND='wayland',GLOBAL_MENU_ENABLED='0',LUMEN_FILE_SERVICE='0',LUMEN_LAUNCH_SCOPES='0',LUMEN_NATIVE_WINDOW_CONTROLS='0',LUMEN_UNIFIED_OWNED_HEADERS='1',LUMEN_NATIVE_WINDOW_ACTIONS='0')
+env.update(QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
+env.pop('AT_SPI_BUS_ADDRESS',None)
 for k in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK'):env.pop(k,None)
 fontfile=sp.check_output(['fc-match','Interlude Variable','-f','%{file}'],text=True).strip()
 fontconfig=run/'fonts.conf';fontconfig.write_text('<fontconfig><include>/etc/fonts/fonts.conf</include><dir>'+str(Path(fontfile).parent)+'</dir></fontconfig>');env['FONTCONFIG_FILE']=str(fontconfig)

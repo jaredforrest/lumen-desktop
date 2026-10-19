@@ -29,6 +29,14 @@ FloatingWindow {
     property var tabs:[{path:Quickshell.env("HOME"),history:[],historyIndex:-1}]
     property int activeTab:0
     readonly property int tabHeight:tabs.length>1?30:0
+    property string tagsTarget:""
+    property var tagsIdentity:({})
+    property bool tagsSupported:false
+    property string tagsError:""
+    property string applicationsPath:""
+    property var selectedTags:[]
+    readonly property var colourTags:[{id:"red",label:"Red",color:"#e54b4b"},{id:"orange",label:"Orange",color:"#e79735"},{id:"yellow",label:"Yellow",color:"#d6b82f"},{id:"green",label:"Green",color:"#50a86b"},{id:"blue",label:"Blue",color:"#438ed6"},{id:"purple",label:"Purple",color:"#9b6ac6"},{id:"grey",label:"Grey",color:"#929298"}]
+    function editTags(){if(!current)return;tagsTarget=current.path;tagsIdentity=current.identity;tagsSupported=current.tagsSupported;tagsError=current.tagsError;selectedTags=(current.tags || []).map(tag=>tag.id);tagsEditor.open();}
     property var applications:[]
     property bool dragging:false
     property var information:({})
@@ -39,11 +47,17 @@ FloatingWindow {
     function saveTab(){const next=tabs.slice();next[activeTab]={path:service.path,history:service.history.slice(),historyIndex:service.historyIndex};tabs=next;}
     function switchTab(index){if(index===activeTab)return;saveTab();activeTab=index;service.history=tabs[index].history || [];service.historyIndex=tabs[index].historyIndex===undefined?-1:tabs[index].historyIndex;selectedPaths=[];filter.text="";service.query="";service.navigate(tabs[index].path,service.historyIndex);}
     function closeTab(){if(tabs.length<2){visible=false;return;}const next=tabs.slice();next.splice(activeTab,1);tabs=next;activeTab=Math.min(activeTab,tabs.length-1);service.history=tabs[activeTab].history || [];service.historyIndex=tabs[activeTab].historyIndex;selectedPaths=[];navigate(tabs[activeTab].path);}
+    function duplicateSelected(){if(service.writable && service.path!=="trash:" && selectedPaths.length && !service.working)service.startJob("copy",selectedPaths,service.path,"keep-both");}
     function selectedUris(){return selectedPaths.map(p=>"file://"+p.split("/").map(encodeURIComponent).join("/"));}
     function isSelected(index){return service.rows[index] && selectedPaths.includes(service.rows[index].path);}
     function selectAll(){selectedPaths=service.rows.map(r=>r.path);selected=service.rows.length?0:-1;}
     onVisibleChanged:service.active=visible
 
+    readonly property var defaultFavorites:[{name:"Home",path:Quickshell.env("HOME")},{name:"Desktop",path:Quickshell.env("HOME")+"/Desktop"},{name:"Documents",path:Quickshell.env("HOME")+"/Documents"},{name:"Downloads",path:Quickshell.env("HOME")+"/Downloads"},{name:"Pictures",path:Quickshell.env("HOME")+"/Pictures"},{name:"Music",path:Quickshell.env("HOME")+"/Music"},{name:"Videos",path:Quickshell.env("HOME")+"/Videos"},{name:"Data",path:Quickshell.env("HOME")+"/data"}]
+    readonly property var sidebarFavorites:service.favorites===null?defaultFavorites:service.favorites
+    property int sidebarEditIndex:-1
+    function editSidebar(action){let items=sidebarFavorites.slice();const index=sidebarEditIndex;if(index<0 || index>=items.length)return;if(action==="remove")items.splice(index,1);else {const target=index+(action==="up"?-1:1);if(target<0 || target>=items.length)return;const swap=items[index];items[index]=items[target];items[target]=swap;}service.favorites=items;sidebarActions.close();}
+    function addSidebar(){if(service.path==="trash:" || sidebarFavorites.some(item=>item.path===service.path) || sidebarFavorites.length>=32)return;service.favorites=sidebarFavorites.concat([{name:service.path.split("/").filter(Boolean).pop() || "Computer",path:service.path}]);}
     property bool previewOpen:false
     readonly property var current:service.rows[selected] || null
     readonly property int sidebarWidth:width<720?160:190
@@ -74,11 +88,15 @@ FloatingWindow {
         if(action==="open")openCurrent();
         else if(action==="copy" || action==="cut")stage(action==="cut"?"move":"copy");
         else if(action==="paste")service.paste();
+        else if(action==="duplicate")duplicateSelected();
         else if(action==="undo")service.undo();
         else if(action==="new-window")shell.newFilesWindow(service.path);
         else if(action==="new-tab")newTab();
         else if(["grid","list","columns","gallery"].includes(action))service.viewMode=action;
         else if(action==="info" && current)service.send("info",{path:current.path});
+        else if(action==="make-link" && current)service.act("make-link",{path:current.path});
+        else if(action==="tags")editTags();
+        else if(action==="view-options")viewOptions.open();
         else if(action==="preview")previewOpen=!previewOpen;
         else if(action==="hidden"){service.hidden=!service.hidden;service.refresh();}
         else if(action==="refresh")service.refresh();
@@ -128,7 +146,7 @@ FloatingWindow {
     Timer {id:previewDelay;interval:140;onTriggered:root.service.requestPreview(root.current?root.current.path:"")}
     Connections {target:root.service
         function onInformationReady(details){root.information=details;infoWindow.show(details);}
-        function onApplicationsReady(apps){root.applications=apps;openWith.open();}
+        function onApplicationsReady(apps,path){root.applications=apps;root.applicationsPath=path;openWith.open();}
         function onSelectedPath(path){
             if(path==="@preserve"){root.selectedPaths=root.selectedPaths.filter(p=>root.service.rows.some(r=>r.path===p));root.selected=root.service.rows.findIndex(r=>root.selectedPaths.includes(r.path));}
             else {root.selectedPaths=path?[path]:[];root.selected=root.service.rows.findIndex(r=>r.path===path);}
@@ -159,6 +177,7 @@ FloatingWindow {
             else if(ctrl && event.key===Qt.Key_X)root.stage("move");
             else if(ctrl && event.key===Qt.Key_V)root.service.paste();
             else if(ctrl && event.key===Qt.Key_1)root.service.viewMode="grid";
+            else if(ctrl && event.key===Qt.Key_D)root.duplicateSelected();
             else if(ctrl && event.key===Qt.Key_2)root.service.viewMode="list";
             else if(ctrl && event.key===Qt.Key_3)root.service.viewMode="columns";
             else if(ctrl && event.key===Qt.Key_4)root.service.viewMode="gallery";
@@ -195,20 +214,26 @@ FloatingWindow {
                 else if(win){if(win.visibility===Window.FullScreen)win.showNormal();else win.showFullScreen();}
             }
         }
-        Column {
-            x:12;y:66;width:root.sidebarWidth-24;spacing:3
-            PanelLabel {x:8;height:25;text:"Favourites";font.pixelSize:11;font.weight:Font.DemiBold;color:Theme.colors.muted}
+        ScrollView {id:favoritesScroll;x:12;y:66;width:root.sidebarWidth-24;height:parent.height-y-14;clip:true;ScrollBar.vertical:DesktopScrollBar {}
+          Column {width:favoritesScroll.availableWidth;spacing:3
+            Row {width:parent.width;height:25
+                PanelLabel {x:8;width:parent.width-28;height:25;text:"Favourites";font.pixelSize:11;font.weight:Font.DemiBold;color:Theme.colors.muted}
+                AbstractButton {width:25;height:23;Accessible.name:"Add current folder to Sidebar";enabled:root.service.path!=="trash:" && !root.sidebarFavorites.some(item=>item.path===root.service.path) && root.sidebarFavorites.length<32;onClicked:root.addSidebar();contentItem:PanelLabel {text:"+";horizontalAlignment:Text.AlignHCenter}background:Rectangle {radius:5;color:parent.hovered?Theme.colors.hover:"transparent"}}
+            }
             Repeater {
-                model:[{name:"Home",folder:"",icon:"home"},{name:"Desktop",folder:"Desktop",icon:"screen"},{name:"Documents",folder:"Documents",icon:"document"},{name:"Downloads",folder:"Downloads",icon:"download"},{name:"Pictures",folder:"Pictures",icon:"folder"},{name:"Music",folder:"Music",icon:"music"},{name:"Videos",folder:"Videos",icon:"folder"},{name:"Data",folder:"data",icon:"folder"}]
+                model:root.sidebarFavorites
                 AbstractButton {
                     required property var modelData
-                    width:parent.width;height:32;enabled:!root.service.busy
+                    required property int index
+                    width:parent.width;height:Math.max(32,Theme.sidebarIconSize+12);enabled:!root.service.busy
                     Accessible.name:modelData.name
-                    onClicked:root.navigate(Quickshell.env("HOME")+(modelData.folder?"/"+modelData.folder:""))
-                    background:Rectangle {radius:6;color:root.service.path===Quickshell.env("HOME")+(parent.modelData.folder?"/"+parent.modelData.folder:"")?Theme.selection:parent.hovered || parent.activeFocus?Theme.colors.hover:"transparent"}
+                    Keys.onPressed:event=>{if(event.key===Qt.Key_Menu || (event.key===Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))){root.sidebarEditIndex=index;sidebarActions.x=12;sidebarActions.y=Math.max(40,Math.min(root.height-sidebarActions.height-12,mapToItem(content,0,0).y));sidebarActions.open();event.accepted=true;}else event.accepted=false;}
+                    onClicked:root.navigate(modelData.path)
+                    background:Rectangle {radius:6;color:root.service.path===parent.modelData.path?Theme.selection:parent.hovered || parent.activeFocus?Theme.colors.hover:"transparent"}
                     contentItem:Item {
-                        SystemGlyph {x:8;anchors.verticalCenter:parent.verticalCenter;width:18;height:18;name:modelData.icon;ink:Theme.colors.accent}
-                        PanelLabel {x:34;width:parent.width-36;anchors.verticalCenter:parent.verticalCenter;text:modelData.name}
+                        SystemGlyph {x:8;anchors.verticalCenter:parent.verticalCenter;width:Theme.sidebarIconSize;height:width;name:modelData.path===Quickshell.env("HOME")?"home":"folder";ink:Theme.colors.accent}
+                        PanelLabel {x:Theme.sidebarIconSize+16;width:parent.width-x-2;anchors.verticalCenter:parent.verticalCenter;text:modelData.name;textFormat:Text.PlainText;elide:Text.ElideRight}
+                        MouseArea {anchors.fill:parent;acceptedButtons:Qt.RightButton;onClicked:event=>{root.sidebarEditIndex=index;sidebarActions.x=12;sidebarActions.y=Math.max(40,Math.min(root.height-sidebarActions.height-12,mapToItem(content,0,0).y));sidebarActions.open();}}
                     }
                 }
             }
@@ -222,6 +247,7 @@ FloatingWindow {
                     ControlRow {width:26;text:"⏏";enabled:modelData.eject;Accessible.name:"Eject "+modelData.name;onClicked:root.service.act("eject",{path:modelData.path})}
                 }
             }
+          }
         }
         Row {
             x:root.sidebarWidth+10;y:13;spacing:3
@@ -284,10 +310,53 @@ FloatingWindow {
             }
             DialogButton {width:70;height:26;visible:root.service.working;text:"Cancel";onClicked:root.service.cancelJob()}
         }
+        Popup {id:sidebarActions;width:175;height:124;modal:true;focus:true;padding:6
+            background:Rectangle {radius:8;color:Theme.colors.background;border.color:Theme.outline}
+            contentItem:Column {spacing:2
+                ControlRow {width:parent.width;text:"Move Up";enabled:root.sidebarEditIndex>0;onClicked:root.editSidebar("up")}
+                ControlRow {width:parent.width;text:"Move Down";enabled:root.sidebarEditIndex>=0 && root.sidebarEditIndex<root.sidebarFavorites.length-1;onClicked:root.editSidebar("down")}
+                ControlRow {width:parent.width;text:"Remove from Sidebar";onClicked:root.editSidebar("remove")}
+            }
+        }
+        Popup {id:tagsEditor;width:Math.min(330,root.width-40);height:Math.min(430,root.height-40);x:(root.width-width)/2;y:(root.height-height)/2;modal:true;focus:true;padding:16
+            background:Rectangle {radius:12;color:Theme.colors.background;border.color:Theme.outline}
+            contentItem:ScrollView {id:tagsEditorScroll;clip:true;ScrollBar.vertical:DesktopScrollBar {}
+              Column {width:tagsEditorScroll.availableWidth;spacing:7
+                PanelLabel {text:"Colour Tags";font.weight:Font.DemiBold}
+                PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:root.tagsError?root.tagsError:"Stored in file metadata; filter with tag:red or another colour. Links are not followed.";font.pixelSize:11;color:Theme.colors.muted}
+                Repeater {model:root.colourTags
+                    CheckBox {required property var modelData;text:modelData.label;checked:root.selectedTags.includes(modelData.id);enabled:root.tagsSupported;palette.windowText:Theme.colors.text
+                        onToggled:root.selectedTags=checked?root.selectedTags.concat([modelData.id]):root.selectedTags.filter(tag=>tag!==modelData.id)
+                        indicator:Rectangle {width:16;height:16;radius:8;color:parent.modelData.color;border.color:parent.checked?Theme.colors.text:"transparent";border.width:2}
+                        contentItem:PanelLabel {text:parent.text;leftPadding:24;verticalAlignment:Text.AlignVCenter}
+                    }
+                }
+                Row {spacing:8
+                    DialogButton {width:100;text:"Cancel";onClicked:tagsEditor.close()}
+                    DialogButton {width:100;text:"Apply";primary:true;enabled:root.tagsSupported;onClicked:{tagsEditor.close();root.service.act("set-tags",{path:root.tagsTarget,identity:root.tagsIdentity,tags:root.selectedTags});}}
+                }
+            } }
+        }
+        Popup {id:viewOptions;width:Math.min(340,root.width-40);height:Math.min(380,root.height-40);x:(root.width-width)/2;y:(root.height-height)/2;modal:true;focus:true;padding:16
+            background:Rectangle {radius:12;color:Theme.colors.background;border.color:Theme.outline}
+            contentItem:ScrollView {id:viewOptionsScroll;clip:true;ScrollBar.vertical:DesktopScrollBar {}
+              Column {width:viewOptionsScroll.availableWidth;spacing:10
+                PanelLabel {text:"View Options";font.weight:Font.DemiBold}
+                PanelLabel {width:parent.width;text:"Preferences are saved as defaults for Files windows.";wrapMode:Text.WordWrap;font.pixelSize:11;color:Theme.colors.muted}
+                DesktopComboBox {width:parent.width;model:["Name","Modified","Size","Kind"];currentIndex:["name","modified","size","kind"].indexOf(root.service.sort);Accessible.name:"Sort files";onActivated:index=>{root.service.sort=["name","modified","size","kind"][index];root.service.refresh();}}
+                SettingsToggle {width:parent.width;text:"Descending order";checked:root.service.descending;onClicked:{root.service.descending=checked;root.service.refresh();}}
+                SettingsToggle {width:parent.width;text:"Keep folders on top";checked:root.service.foldersFirst;onClicked:{root.service.foldersFirst=checked;root.service.refresh();}}
+                DesktopComboBox {width:parent.width;model:["No groups","Group by kind (list view)"];currentIndex:root.service.groupBy==="kind"?1:0;Accessible.name:"Group files";onActivated:index=>{root.service.groupBy=index===1?"kind":"none";if(index===1)root.service.viewMode="list";root.service.refresh();}}
+                DialogButton {width:100;text:"Done";onClicked:viewOptions.close()}
+            } }
+        }
         Popup {id:openWith;width:Math.min(360,root.width-40);height:Math.min(380,root.height-80);x:(root.width-width)/2;y:(root.height-height)/2;modal:true;focus:true;padding:12
             background:Rectangle {radius:12;color:Theme.colors.background;border.color:Theme.outline}
             contentItem:ListView {clip:true;model:root.applications;ScrollBar.vertical:DesktopScrollBar {}
-                delegate:ControlRow {required property var modelData;width:parent.width;text:modelData.name;onClicked:{openWith.close();if(root.current)root.service.act("open-with",{path:root.current.path,application:modelData.id});}}
+                delegate:Row {required property var modelData;width:ListView.view.width;height:38
+                    ControlRow {width:parent.width-100;text:modelData.name+(modelData.default?" (default)":"");onClicked:{openWith.close();if(root.applicationsPath)root.service.act("open-with",{path:root.applicationsPath,application:modelData.id});}}
+                    DialogButton {width:100;height:30;text:"Set Default";enabled:!modelData.default;Accessible.name:"Use "+modelData.name+" for this file type";onClicked:{openWith.close();if(root.applicationsPath)root.service.act("set-default",{path:root.applicationsPath,application:modelData.id});}}
+                }
                 PanelLabel {visible:root.applications.length===0;text:"No applications registered for this file";width:parent.width;wrapMode:Text.WordWrap}
             }
         }
@@ -295,7 +364,7 @@ FloatingWindow {
             placeholderTextColor:Theme.colors.muted;selectionColor:Theme.colors.accent;selectedTextColor:Theme.colors.selectedText
 
             id:filter;x:root.sidebarWidth+14;y:66+root.tabHeight;width:parent.width-x-14;height:30
-            placeholderText:"Filter this folder";font.family:Theme.font;font.pixelSize:12;color:Theme.colors.text;selectByMouse:true
+            placeholderText:"Filter folder or tag:red";font.family:Theme.font;font.pixelSize:12;color:Theme.colors.text;selectByMouse:true
             Accessible.name:"Filter this folder"
             background:Rectangle {radius:7;color:Theme.colors.background;border.color:filter.activeFocus?Theme.colors.accent:Theme.hairline}
             onTextEdited:filterDelay.restart()
@@ -334,6 +403,8 @@ FloatingWindow {
                 }
             }
             ListView {
+                section.property:root.service.groupBy==="kind"?"modelData.group":""
+                section.delegate:PanelLabel {required property string section;width:list.width;height:30;text:section;font.weight:Font.DemiBold;topPadding:8;leftPadding:8}
                 id:list;visible:root.listMode;anchors.top:headings.bottom;anchors.bottom:parent.bottom;width:parent.width;clip:true;model:root.service.rows
                 ScrollBar.vertical:DesktopScrollBar {}
                 delegate:Rectangle {
@@ -425,7 +496,7 @@ Accessible.name:modelData.name;Accessible.selected:root.isSelected(index);onClic
               ScrollBar.vertical:DesktopScrollBar {}
               Column {id:actionColumn;width:208
                 Repeater {id:actionRows
-                    model:[{label:"Open",action:"open",enabled:!!root.current},{label:"Open With…",action:"open-with",enabled:!!root.current && !root.current.directory},{label:"AirDrop…",action:"airdrop",enabled:root.selectedPaths.length>0 && root.selectedPaths.every(p=>root.service.rows.some(r=>r.path===p && !r.directory)) && root.service.path!=="trash:"},{label:"AirDrop Receiving…",action:"airdrop-receive",enabled:true},{separator:true,label:""},{label:"New Tab",action:"new-tab",enabled:true},{label:"New Window",action:"new-window",enabled:true},{label:"New Folder…",action:"mkdir",enabled:root.service.writable},{label:"Rename…",action:"rename",enabled:root.selectedPaths.length===1 && root.service.path!=="trash:"},{separator:true,label:""},{label:"Copy",action:"copy",enabled:!!root.current},{label:"Cut",action:"move",enabled:!!root.current},{label:"Paste",action:"paste",enabled:root.service.writable},{label:"Paste Keeping Both",action:"paste-both",enabled:root.service.writable},{label:"Undo Last Move",action:"undo",enabled:root.service.canUndo},{separator:true,label:""},{label:"Put Back",action:"restore",enabled:root.service.path==="trash:" && !!root.current},{label:"Move to Trash…",action:"trash",enabled:root.service.path!=="trash:" && !!root.current},{separator:true,label:""},{label:"Go to Folder…",action:"goto",enabled:true},{label:root.service.hidden?"Hide Hidden Files":"Show Hidden Files",action:"hidden",enabled:true},{label:"Refresh",action:"refresh",enabled:true}]
+                    model:[{label:"Open",action:"open",enabled:!!root.current},{label:"Open With…",action:"open-with",enabled:!!root.current && !root.current.directory},{label:"AirDrop…",action:"airdrop",enabled:root.selectedPaths.length>0 && root.selectedPaths.every(p=>root.service.rows.some(r=>r.path===p && !r.directory)) && root.service.path!=="trash:"},{label:"AirDrop Receiving…",action:"airdrop-receive",enabled:true},{separator:true,label:""},{label:"New Tab",action:"new-tab",enabled:true},{label:"New Window",action:"new-window",enabled:true},{label:"New Folder…",action:"mkdir",enabled:root.service.writable},{label:"Rename…",action:"rename",enabled:root.selectedPaths.length===1 && root.service.path!=="trash:"},{separator:true,label:""},{label:"Copy",action:"copy",enabled:!!root.current},{label:"Cut",action:"move",enabled:!!root.current},{label:"View Options…",action:"view-options",enabled:true},{label:"Colour Tags…",action:"tags",enabled:root.selectedPaths.length===1 && root.service.path!=="trash:"},{label:"Make Symbolic Link",action:"make-link",enabled:root.selectedPaths.length===1 && root.service.path!=="trash:" && root.service.writable},{label:"Duplicate",action:"duplicate",enabled:root.selectedPaths.length>0 && root.service.writable && root.service.path!=="trash:" && !root.service.working},{label:"Paste",action:"paste",enabled:root.service.writable},{label:"Paste Keeping Both",action:"paste-both",enabled:root.service.writable},{label:"Undo Last Move",action:"undo",enabled:root.service.canUndo},{separator:true,label:""},{label:"Put Back",action:"restore",enabled:root.service.path==="trash:" && !!root.current},{label:"Move to Trash…",action:"trash",enabled:root.service.path!=="trash:" && !!root.current},{separator:true,label:""},{label:"Go to Folder…",action:"goto",enabled:true},{label:root.service.hidden?"Hide Hidden Files":"Show Hidden Files",action:"hidden",enabled:true},{label:"Refresh",action:"refresh",enabled:true}]
                     ControlRow {
                         required property var modelData;width:208;height:modelData.separator?9:30;text:modelData.label;Rectangle {visible:!!modelData.separator;x:8;width:parent.width-16;height:1;anchors.verticalCenter:parent.verticalCenter;color:Theme.hairline}enabled:!modelData.separator && modelData.enabled && !root.service.busy
                         onClicked:{
@@ -439,6 +510,10 @@ Accessible.name:modelData.name;Accessible.selected:root.isSelected(index);onClic
                             else if(a==="open-with")root.service.act("applications",{path:root.current.path});
                             else if(a==="airdrop")AppLaunch.run(["lumen-airdrop-send"].concat(root.selectedPaths));
                             else if(a==="airdrop-receive")AppLaunch.run(["lumen-airdrop-receive"]);
+                            else if(a==="duplicate")root.duplicateSelected();
+                            else if(a==="make-link")root.service.act("make-link",{path:root.current.path});
+                            else if(a==="view-options")viewOptions.open();
+                            else if(a==="tags")root.editTags();
                             else if(a==="hidden"){root.service.hidden=!root.service.hidden;root.service.refresh();}
                             else if(a==="refresh")root.service.refresh();else root.dialogFor(a);
                         }

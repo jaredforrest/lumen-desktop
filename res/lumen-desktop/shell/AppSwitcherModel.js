@@ -2,7 +2,7 @@
 // Freeze application membership at invocation; preview never changes focus/MRU.
 function snapshot(windows, history, identity) {
     const ordered=history.filter(w=>windows.includes(w)).concat(windows.filter(w=>!history.includes(w)));
-    const seen={};
+    const seen=Object.create(null);
     return ordered.filter(w=>{
         const key=identity(w);
         if (!key || seen[key]) return false;

@@ -6,6 +6,8 @@ if not a.inside:
     out=a.output.resolve();out.mkdir(parents=True,exist_ok=False);runtime=Path(tempfile.mkdtemp(prefix='calendar-qa-'))
     env=dict(os.environ,XDG_RUNTIME_DIR=str(runtime),XDG_CONFIG_HOME=str(out/'config'),XDG_STATE_HOME=str(out/'state'),XDG_CACHE_HOME=str(out/'cache'),XDG_DATA_HOME=str(out/'data'))
     for key in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK','DBUS_SESSION_BUS_ADDRESS'):env.pop(key,None)
+    env.update(QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
+    env.pop('AT_SPI_BUS_ADDRESS',None)
     try:raise SystemExit(sp.call(['dbus-run-session','--',sys.executable,__file__,*sys.argv[1:],'--inside'],env=env))
     finally:shutil.rmtree(runtime,ignore_errors=True)
 run=a.output.resolve();runtime=Path(os.environ['XDG_RUNTIME_DIR']);assets=run/'source';shutil.copytree(a.assets.resolve(),assets)
@@ -13,6 +15,8 @@ prefix=re.split(r'\n[ \t]*exec quickshell ',Path(shutil.which('lumen-desktop-she
 raw=sp.check_output(['bash','-c',prefix+'\nexec env -0'],stderr=sp.DEVNULL)
 env=dict(os.environ);env.update(dict(v.decode().split('=',1) for v in raw.split(b'\0') if b'=' in v))
 env.update(WLR_BACKENDS='headless',WLR_RENDERER='pixman',WLR_LIBINPUT_NO_DEVICES='1',QT_QPA_PLATFORM='wayland',GDK_BACKEND='wayland',LUMEN_APPEARANCE_STATE=str(run/'appearance.json'))
+env.update(QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
+env.pop('AT_SPI_BUS_ADDRESS',None)
 for key in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK'):env.pop(key,None)
 (run/'bin').mkdir();env['PATH']=str(run/'bin')+':'+env['PATH']
 event=dict(accountGeneration='fixture-generation',id='fixture-event',title='Planning lunch',location='Local fixture',notes='First line\nSecond line',allDay=False,editStart='2026-10-08T12:00',editEnd='2026-10-08T13:00',calendarId='fixture',eventId='fixture-event',etag='etag',provider='Google',calendar='Personal',editable=True,recurring=False,date='2026-10-08',endDate='2026-10-08',startTime='12:00',endTime='13:00')

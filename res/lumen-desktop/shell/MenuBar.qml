@@ -3,6 +3,7 @@ import QtQuick.Controls
 import Quickshell
 import Quickshell.Wayland
 import "CalendarLogic.js" as CalendarLogic
+import "MenuLayout.js" as MenuLayout
 
 PanelWindow {
     id: bar
@@ -15,7 +16,23 @@ PanelWindow {
     property string displayName: usesBridge ? shell.nameForAppId(exported.state.appName,exported.state.title) : shell.activeName
     property bool filesFocused:usesBridge ? exported.state.appName==="org.quickshell" && exported.state.title.startsWith("Files") : !!shell.active && shell.active.title.startsWith("Files")
     property bool desktopFocused: usesBridge ? exported.state.windowId === 0 : !shell.active
-    property bool special: ["Wi-Fi","Bluetooth","Sound","Controls","Date","Calendar","Now Playing","Files","Settings","Launcher"].includes(menu)
+    property bool special: ["Wi-Fi","Bluetooth","Sound","Controls","Focus","Date","Calendar","Now Playing","Files","Settings","Launcher"].includes(menu)
+    FontMetrics {id:headingMetrics;font.family:Theme.font;font.pixelSize:13}
+    readonly property var menuHeadings: {
+        if(exported.state.supported && exported.state.menu)return exported.state.menu.children.filter(n=>n.visible).map(n=>({label:exported.label(n.label),exportId:n.id,enabled:n.enabled}));
+        return (desktopFocused || filesFocused?["File","Edit","View","Go","Window","Help"]:["Window"]).map(name=>({label:name,heading:name,enabled:true}));
+    }
+    readonly property var hiddenStatus: {
+        let result=[];
+        if(width<640)result.push({label:"Sound",action:"status:Sound"});
+        if(width<720 && shell.notifications.dnd)result.push({label:"Focus",action:"status:Focus"});
+        if(width<800)result.push({label:"Search",action:"apps"});
+        return result;
+    }
+    readonly property real menuBudget:Math.max(0,statusIcons.x-28)
+    readonly property int visibleHeadingCount:MenuLayout.fit(menuHeadings.map(n=>headingMetrics.advanceWidth(n.label)+20),menuBudget-brandButton.width-applicationButton.width,38,hiddenStatus.length>0)
+    readonly property var overflowItems:menuHeadings.slice(visibleHeadingCount).map(n=>({label:n.label,exportId:n.exportId,action:n.enabled?(n.heading?"heading:"+n.heading:"export-menu"):undefined})).concat(hiddenStatus)
+    function menuLayoutStatus(){return {width:width,menuEnd:headings.x+headings.width,statusStart:statusIcons.x,clockWidth:clockButton.width,visible:visibleHeadingCount,headings:menuHeadings.length,overflow:overflowItems.length,overflowLabels:overflowItems.map(n=>n.label)};}
     property int builtinIndex:-1
     function launcherStatus() {return launcherPanel.status();}
     function stepBuiltin(delta) {
@@ -28,6 +45,9 @@ PanelWindow {
     }
     function activateBuiltin(modelData) {
         const a=modelData.action;
+        if(a==="export-menu"){bar.menu="";exported.openMenu(modelData.exportId,Math.min(bar.menuX,bar.width-220),bar.screen);return;}
+        if(a && a.startsWith("heading:")){bar.menu=a.substring(8);return;}
+        if(a && a.startsWith("status:")){bar.menu=a.substring(7);return;}
         if(a && a.startsWith("files:"))shell.filesAction(a.substring(7));
         else if (modelData.win) shell.focusWindow(modelData.win);
         else if(a==="focus" && bar.selectedWindow) shell.focusWindow(bar.selectedWindow);
@@ -52,7 +72,7 @@ PanelWindow {
     property string menu: ""
     Component.onCompleted:{outputName=screen.name;shell.bars[outputName]=bar}
     Component.onDestruction:delete shell.bars[bar.outputName]
-    function exportX(id) {for(let i=0;i<exportedHeadings.count;i++){const b=exportedHeadings.itemAt(i);if(b.modelData.id===id)return b.mapToItem(bar.contentItem,0,0).x;}return 16;}
+    function exportX(id) {for(let i=0;i<exportedHeadings.count;i++){const b=exportedHeadings.itemAt(i);if(b.modelData.exportId===id)return b.mapToItem(bar.contentItem,0,0).x;}return 16;}
     function popupLayout() {
         const p=special?(menu==="Launcher"?launcherPanel:["Files","Settings"].includes(menu)?previewPanel:systemViewport):builtinPanel;
         return {screen:bar.outputName,menu:menu,selectedIndex:builtinIndex,width:dismiss.width,height:dismiss.height,x:p.x+p.width*(1-p.scale)/2*(p===previewPanel?1:0),y:p.y+p.height*(1-p.scale)/2*(p===previewPanel?1:0),panelWidth:p.width*p.scale,panelHeight:p.height*p.scale,contentHeight:systemPanel.height,scrollY:systemViewport.contentY,scale:systemViewport.scale,calendar:menu==="Date"?systemPanel.dateStatus():null};
@@ -67,7 +87,7 @@ PanelWindow {
         shell.claimPopup("bar:"+bar.outputName);
         menuX=x; menu=closing?"":name;
     }
-    onMenuChanged: {if(["Wi-Fi","Bluetooth","Sound","Controls","Date","Calendar","Now Playing"].includes(menu)){menuFade.stop();systemMenu=menu;systemViewport.contentY=0;}else menuFade.restart();builtinIndex=-1;Qt.callLater(()=>{if(bar && popupContents && bar.menu && bar.menu!=="Launcher")popupContents.forceActiveFocus();});if(menu==="" && shell.popupOwner==="bar:"+bar.outputName)shell.popupOwner="";}
+    onMenuChanged: {if(["Wi-Fi","Bluetooth","Sound","Controls","Focus","Date","Calendar","Now Playing"].includes(menu)){menuFade.stop();systemMenu=menu;systemViewport.contentY=0;}else menuFade.restart();builtinIndex=-1;Qt.callLater(()=>{if(bar && popupContents && bar.menu && bar.menu!=="Launcher")popupContents.forceActiveFocus();});if(menu==="" && shell.popupOwner==="bar:"+bar.outputName)shell.popupOwner="";}
     Connections {target:shell; function onDismissPopups(owner) {if(owner!=="bar:"+bar.outputName)bar.menu="";} }
     Connections { target: shell; function onRequestMenu(name, outputName) { if(outputName!==bar.outputName)return; bar.toggle(name,["Date","Calendar","Sound","Controls"].includes(name)?bar.width-380:16); } }
     anchors { top: true; left: true; right: true }
@@ -77,39 +97,31 @@ PanelWindow {
     WlrLayershell.namespace: "lumen-menu"
     Rectangle { anchors.fill: parent; color: "transparent" }
     Row {
-        x: 16; anchors.verticalCenter: parent.verticalCenter; spacing: 0
-        MenuButton { text: ""; iconName: "lumen"; strong: true; selected:bar.menu==="Desktop"; onClicked: bar.toggle("Desktop", parent.x+x) }
-        MenuButton { text: bar.menu !== "" ? bar.menuAppName : bar.displayName; strong: true; selected:bar.menu==="Application"; onClicked: {bar.selectedWindow=shell.active;bar.toggle("Application", parent.x+x);} }
+        id:headings;x:16;anchors.verticalCenter:parent.verticalCenter;spacing:0
+        MenuButton {id:brandButton;text:"";iconName:"lumen";strong:true;selected:bar.menu==="Desktop";onClicked:bar.toggle("Desktop",mapToItem(bar.contentItem,0,0).x)}
+        MenuButton {id:applicationButton;width:Math.min(implicitWidth,Math.max(60,Math.min(160,bar.menuBudget*0.4)));text:bar.menu!==""?bar.menuAppName:bar.displayName;strong:true;selected:bar.menu==="Application";onClicked:{bar.selectedWindow=shell.active;bar.toggle("Application",mapToItem(bar.contentItem,0,0).x);}}
         Repeater {
-            id:exportedHeadings
-            model: exported.state.supported && exported.state.menu ? exported.state.menu.children.filter(n=>n.visible) : []
-            MenuButton {
-                required property var modelData
-                text: exported.label(modelData.label)
-                enabled: modelData.enabled
-                selected:exported.path.length>0 && exported.path[0]===modelData.id && exported.output===bar.screen
-                onEntered:if(exported.path.length && exported.path[0]!==modelData.id)exported.openMenu(modelData.id,mapToItem(bar.contentItem,0,0).x,bar.screen)
-                onClicked: { bar.menu=""; exported.openMenu(modelData.id, mapToItem(bar.contentItem,0,0).x,bar.screen); }
+            id:exportedHeadings;model:bar.menuHeadings.slice(0,bar.visibleHeadingCount)
+            MenuButton {required property var modelData;text:modelData.label;enabled:modelData.enabled
+                selected:modelData.heading?bar.menu===modelData.heading:exported.path.length>0 && exported.path[0]===modelData.exportId && exported.output===bar.screen
+                onEntered:if(modelData.exportId!==undefined && exported.path.length && exported.path[0]!==modelData.exportId)exported.openMenu(modelData.exportId,mapToItem(bar.contentItem,0,0).x,bar.screen)
+                onClicked:{bar.selectedWindow=shell.active;if(modelData.heading)bar.toggle(modelData.heading,mapToItem(bar.contentItem,0,0).x);else{bar.menu="";exported.openMenu(modelData.exportId,mapToItem(bar.contentItem,0,0).x,bar.screen);}}
             }
         }
-        MenuButton { visible: !exported.state.supported && (bar.desktopFocused || bar.filesFocused); text: "File"; selected:bar.menu==="File"; onClicked: {bar.selectedWindow=shell.active;bar.toggle("File", parent.x+x);} }
-        MenuButton { visible: !exported.state.supported && (bar.desktopFocused || bar.filesFocused); text: "Edit"; selected:bar.menu==="Edit"; onClicked: bar.toggle("Edit", parent.x+x) }
-        MenuButton { visible: !exported.state.supported && (bar.desktopFocused || bar.filesFocused); text: "View"; selected:bar.menu==="View"; onClicked: {bar.selectedWindow=shell.active;bar.toggle("View", parent.x+x);} }
-        MenuButton { visible: !exported.state.supported && (bar.desktopFocused || bar.filesFocused); text: "Go"; selected:bar.menu==="Go"; onClicked: bar.toggle("Go", parent.x+x) }
-        MenuButton { visible: !exported.state.supported; text: "Window"; selected:bar.menu==="Window"; onClicked: bar.toggle("Window", parent.x+x) }
-        MenuButton { visible: !exported.state.supported && (bar.desktopFocused || bar.filesFocused); text: "Help"; selected:bar.menu==="Help"; onClicked: bar.toggle("Help", parent.x+x) }
+        MenuButton {visible:bar.overflowItems.length>0;text:"»";selected:bar.menu==="Overflow";Accessible.name:"More menus and status controls";onClicked:{bar.selectedWindow=shell.active;bar.toggle("Overflow",mapToItem(bar.contentItem,0,0).x);}}
     }
     Row {
+        id:statusIcons
         anchors.right: parent.right; anchors.rightMargin: clockButton.width+12; anchors.verticalCenter: parent.verticalCenter; spacing: 0
-        MenuButton { text: ""; iconName: shell.volume.includes("MUTED") ? "muted" : "sound"; onClicked: bar.toggle("Sound", bar.width-370) }
-        MenuButton {visible:shell.notifications.dnd;text:"";iconName:"moon";onClicked:bar.toggle("Controls",bar.width-340)}
-        MenuButton { text: ""; iconName: "search"; onClicked: shell.launchApps() }
+        MenuButton {visible:bar.width>=640; text: ""; iconName: shell.volume.includes("MUTED") ? "muted" : "sound"; onClicked: bar.toggle("Sound", bar.width-370) }
+        MenuButton {visible:bar.width>=720 && shell.notifications.dnd;text:"";iconName:"moon";onClicked:bar.toggle("Controls",bar.width-340)}
+        MenuButton {visible:bar.width>=800; text: ""; iconName: "search"; onClicked: shell.launchApps() }
         MenuButton { text: ""; iconName: "controls"; onClicked: bar.toggle("Controls", bar.width-340) }
 
     }
     MenuButton {
         anchors.right: parent.right; anchors.rightMargin: 12; anchors.verticalCenter: parent.verticalCenter
-        id:clockButton; textSize: 13; selected:bar.menu==="Date"
+        id:clockButton;width:Math.min(implicitWidth,Math.max(80,bar.width*0.35)); textSize: 13; selected:bar.menu==="Date"
         text: Qt.formatDateTime(bar.clockDate,CalendarLogic.clockDatePattern(Qt.locale(),Locale.LongFormat))+"  "+Qt.formatTime(bar.clockDate,Qt.locale().timeFormat(Locale.ShortFormat))
         onClicked: bar.toggle("Date", bar.width-370)
     }
@@ -134,7 +146,7 @@ PanelWindow {
             Keys.onReturnPressed:if(!bar.special && bar.builtinIndex>=0)bar.activateBuiltin(builtinItems.model[bar.builtinIndex])
         Flickable {
             id:systemViewport
-            visible:["Wi-Fi","Bluetooth","Sound","Controls","Date","Calendar","Now Playing"].includes(bar.systemMenu)
+            visible:["Wi-Fi","Bluetooth","Sound","Controls","Focus","Date","Calendar","Now Playing"].includes(bar.systemMenu)
             width:systemPanel.width;height:Math.min(systemPanel.height,Math.max(1,parent.height-Theme.barHeight-24))
             x:Math.max(8,parent.width-width-12);y:Theme.barHeight+10
             contentWidth:width;contentHeight:systemPanel.height;clip:true;boundsBehavior:Flickable.StopAtBounds
@@ -178,6 +190,7 @@ PanelWindow {
                 Repeater {
                     id:builtinItems
                     model: {
+                        if(bar.menu==="Overflow")return bar.overflowItems;
                         if(bar.filesFocused){const rows=shell.filesItems(bar.menu);if(rows)return rows;}
                         if (bar.menu.startsWith("Unassigned: ")) return [{label:bar.menu.substring(12) + " is unassigned"},{label:"Open Applications…",action:"apps"}];
                         if (bar.menu === "File") return [{label:"Open Application…",action:"apps"},{label:"New Terminal",action:"terminal"}].concat(bar.selectedWindow ? [{label:"Close Window",action:"close"}] : []);

@@ -12,6 +12,8 @@ if not a.inside:
     runtime=Path(tempfile.mkdtemp(prefix='auth-qa-'))
     env=dict(os.environ,XDG_RUNTIME_DIR=str(runtime),XDG_CONFIG_HOME=str(a.output/'config'),XDG_STATE_HOME=str(a.output/'state'),XDG_CACHE_HOME=str(a.output/'cache'),XDG_DATA_HOME=str(a.output/'data'))
     for k in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK','DBUS_SESSION_BUS_ADDRESS'):env.pop(k,None)
+    env.update(QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
+    env.pop('AT_SPI_BUS_ADDRESS',None)
     try:raise SystemExit(sp.call(['dbus-run-session','--',sys.executable,__file__,*sys.argv[1:],'--inside'],env=env))
     finally:shutil.rmtree(runtime,ignore_errors=True)
 out=a.output.resolve();runtime=Path(os.environ['XDG_RUNTIME_DIR']);assets=out/'assets'
@@ -23,6 +25,8 @@ prefix=Path(shutil.which('lumen-desktop-shell')).read_text().split('\nexec quick
 raw=sp.check_output(['bash','-c',prefix+'\nexec env -0'],stderr=sp.DEVNULL)
 env=dict(os.environ);env.update(dict(v.decode().split('=',1) for v in raw.split(b'\0') if b'=' in v))
 env.update(WLR_BACKENDS='headless',WLR_RENDERER='pixman',WLR_LIBINPUT_NO_DEVICES='1',QT_QPA_PLATFORM='wayland',GDK_BACKEND='wayland',LUMEN_AUTH_SESSION='/bin/true',LUMEN_AUTH_USER='test-user',LUMEN_AUTH_NAME='Test User')
+env.update(QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
+env.pop('AT_SPI_BUS_ADDRESS',None)
 if a.font_config:env['FONTCONFIG_FILE']=str(a.font_config)
 for k in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK'):env.pop(k,None)
 procs=[];checks=[];requests=[]

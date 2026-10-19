@@ -13,7 +13,11 @@ Canvas {
         c.strokeStyle=ink;c.fillStyle=ink;c.lineWidth=1.7;c.lineCap="round";c.lineJoin="round";
         function line(points){c.beginPath();c.moveTo(points[0][0],points[0][1]);for(let i=1;i<points.length;i++)c.lineTo(points[i][0],points[i][1]);c.stroke();}
         function arc(x,y,r,a,b){c.beginPath();c.arc(x,y,r,a,b);c.stroke();}
-        if(name==="wifi") {
+        if(name==="lumen") {
+            for(const x of [7,17])for(const y of [7,17]){c.beginPath();c.arc(x,y,3,0,Math.PI*2);c.fill();}
+        } else if(name==="controls") {
+            for(const y of [7,17]){line([[5,y-3],[19,y-3]]);arc(19,y,3,-Math.PI/2,Math.PI/2);line([[19,y+3],[5,y+3]]);arc(5,y,3,Math.PI/2,Math.PI*1.5);c.beginPath();c.arc(y===7?8:16,y,2,0,Math.PI*2);c.fill();}
+        } else if(name==="wifi") {
             for(const r of [5,9,13])arc(12,21,r,Math.PI*1.25,Math.PI*1.75);
             c.beginPath();c.arc(12,20,1.1,0,Math.PI*2);c.fill();
         } else if(name==="bluetooth") {

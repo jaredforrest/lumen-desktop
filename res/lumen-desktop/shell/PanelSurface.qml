@@ -6,7 +6,7 @@ Rectangle {
     border.color: Theme.outline
     border.width: 1
     MouseArea { anchors.fill: parent }
-    layer.enabled: true
+    layer.enabled: GraphicsInfo.api !== GraphicsInfo.Software
     layer.effect: MultiEffect {
         shadowEnabled: true
         shadowBlur: 0.65

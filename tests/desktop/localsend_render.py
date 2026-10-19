@@ -10,6 +10,8 @@ env=dict(os.environ,HOME=str(out/'home'),XDG_CONFIG_HOME=str(out/'config'),XDG_D
 for k in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK'):env.pop(k,None)
 for name in ('home','config','data','cache','state'):(out/name).mkdir()
 prefs=out/'data/org.localsend.localsend_app/shared_preferences.json';prefs.parent.mkdir(parents=True);prefs.write_text(json.dumps({'flutter.ls_theme':'dark' if a.dark else 'light','flutter.ls_alias':'Test Computer'}))
+env.update(QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
+env.pop('AT_SPI_BUS_ADDRESS',None)
 procs=[]
 def launch(args,name):
  p=sp.Popen(args,env=env,stdout=(out/name).open('w'),stderr=sp.STDOUT,start_new_session=True);procs.append(p);return p

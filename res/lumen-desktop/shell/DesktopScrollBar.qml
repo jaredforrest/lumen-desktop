@@ -5,7 +5,8 @@ ScrollBar {
     padding: 2
     visible: size < 1.0
     readonly property bool alwaysVisible: Theme.preferences.scrollbars === "always"
-    opacity: alwaysVisible || active || hovered || pressed || linger.running ? 1 : 0
+    readonly property bool scrollingOnly: Theme.preferences.scrollbars === "when_scrolling"
+    opacity: alwaysVisible || active || pressed || linger.running || (!scrollingOnly && hovered) ? 1 : 0
     onActiveChanged: if (active) linger.restart()
     onPositionChanged: linger.restart()
     Timer { id:linger; interval:1200 }

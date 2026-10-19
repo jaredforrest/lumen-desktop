@@ -21,6 +21,8 @@ if not args.inside:
 root=args.output.resolve();root.mkdir(parents=True,exist_ok=False)
 runtime=Path(tempfile.mkdtemp(prefix='lumen-switcher-'))
 env=dict(os.environ,XDG_RUNTIME_DIR=str(runtime),WLR_BACKENDS='headless',WLR_RENDERER='pixman',WLR_LIBINPUT_NO_DEVICES='1',QT_QPA_PLATFORM='wayland',QT_QUICK_BACKEND='software',GDK_BACKEND='wayland',QT_QPA_PLATFORMTHEME='')
+env.update(QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
+env.pop('AT_SPI_BUS_ADDRESS',None)
 for key in ('WAYLAND_DISPLAY','SWAYSOCK','DISPLAY'):env.pop(key,None)
 for key in ('CONFIG','CACHE','STATE','DATA'):env['XDG_'+key+'_HOME']=str(root/key.lower())
 source=Path(__file__).resolve().parents[2]/'res/lumen-desktop/shell'
@@ -56,7 +58,15 @@ ShellRoot {id:mock
 }''')
 qs=shutil.which('quickshell')
 config=root/'sway.conf'
-config.write_text('output HEADLESS-1 resolution 1000x700\nseat seat0 fallback true\nbindsym Mod4+Tab exec '+qs+' -p '+str(fixture)+' ipc call fixture step next\n'+'bindsym --release Super_L exec '+qs+' -p '+str(fixture)+' ipc call fixture step commit\n'+'bindsym --release Super_R exec '+qs+' -p '+str(fixture)+' ipc call fixture step commit\n')
+# The binding has no build-specific QML path. Model a rebuilt service whose
+# PID changes while the compositor keeps its existing binding wrapper.
+service_pid=root/'service.pid'
+service_control=root/'systemctl-fixture'
+service_control.write_text('#!'+shutil.which('bash')+'\ncat '+str(service_pid)+'\n')
+service_control.chmod(0o700)
+ipc_source=Path(__file__).resolve().parents[2]/'res/lumen-desktop/runtime/shell_ipc.py'
+binding=' '.join([sys.executable,str(ipc_source),'--systemctl',str(service_control),'--quickshell',qs,'--','call','fixture','step'])
+config.write_text('output HEADLESS-1 resolution 1000x700\nseat seat0 fallback true\nbindsym Mod4+Tab exec '+binding+' next\n'+'bindsym --release Super_L exec '+binding+' commit\n'+'bindsym --release Super_R exec '+binding+' commit\n')
 processes=[]
 def launch(command,name):
     process=subprocess.Popen(command,env=env,stdout=(root/name).open('w'),stderr=subprocess.STDOUT,start_new_session=True)
@@ -87,7 +97,8 @@ try:
     subprocess.run(['swaymsg','[app_id="a"] focus'],env=env,check=True,stdout=subprocess.DEVNULL)
     def focused_app():return next((w['app_id'] for w in app_windows() if w.get('focused')),None)
     assert focused_app()=='a'
-    launch([qs,'-p',str(fixture)],'shell.log')
+    shell_process=launch([qs,'-p',str(fixture)],'shell.log')
+    service_pid.write_text(str(shell_process.pid))
     wait(lambda:status()['picker']['phase']=='closed')
     # One virtual keyboard holds Super throughout invocation/repeat/release.
     subprocess.run([args.wtype,'-M','logo','-P','Super_L','-k','Tab','-s','350','-p','Super_L','-m','logo'],env=env,check=True,timeout=5)
@@ -106,7 +117,17 @@ try:
     assert epoch_cancelled['activated']==2,epoch_cancelled
     ipc('raceRemovedApp');removed_cancelled=wait(lambda:(s if (s:=status())['picker']['phase']=='cancelled' else None))
     assert removed_cancelled['activated']==2,removed_cancelled
-    (root/'result.json').write_text(json.dumps(dict(first=first,second=second,cancelled=cancelled,epoch_cancelled=epoch_cancelled,removed_cancelled=removed_cancelled),indent=2))
+    # Rebuild/restart the service from another immutable-path analogue while
+    # deliberately leaving Sway's binding unchanged. Actions must follow it.
+    os.killpg(shell_process.pid,signal.SIGTERM);shell_process.wait(timeout=3)
+    rebuilt=root/'rebuilt-assets';shutil.copytree(fixture,rebuilt);fixture=rebuilt
+    shell_process=launch([qs,'-p',str(fixture)],'rebuilt-shell.log')
+    service_pid.write_text(str(shell_process.pid))
+    wait(lambda:status()['picker']['phase']=='closed')
+    subprocess.run([args.wtype,'-M','logo','-P','Super_L','-k','Tab','-s','350','-p','Super_L','-m','logo'],env=env,check=True,timeout=5)
+    after_rebuild=wait(lambda:(s if (s:=status())['activated']==1 else None))
+    assert after_rebuild['app']=='b' and after_rebuild['picker']['phase']=='committed',after_rebuild
+    (root/'result.json').write_text(json.dumps(dict(first=first,second=second,cancelled=cancelled,epoch_cancelled=epoch_cancelled,removed_cancelled=removed_cancelled,after_rebuild=after_rebuild),indent=2))
     print('PASS real Super release, app grouping, repeat and cancellation without preview activation')
 finally:
     for process in reversed(processes):

@@ -16,6 +16,8 @@ import dbus.mainloop.glib
 from gi.repository import GLib
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent/'shell'))
 from nix_settings import read_settings, set_section
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from focus import Focus
 
 BUS = 'org.freedesktop.Notifications'
 PATH = '/org/freedesktop/Notifications'
@@ -127,8 +129,15 @@ class Server(dbus.service.Object):
         os.chmod(directory, 0o700)
         preferences=read_settings()['notifications']
         self.policies=preferences['policies']
+        self.preview=preferences.get('preview','always')
+        self.preferences_checked=0
         self.file = directory / 'history.json'
         self.rows, self.dnd, self.next_id = restore_history(self.file, os.environ.get("LUMEN_INITIAL_DND") == "1")
+        self.focus = Focus(directory / 'focus.json')
+        if not self.focus.path.exists() and self.dnd:
+            self.focus.command({'profile':'quiet'})
+        self.focus_signature = json.dumps(self.focus.state(),sort_keys=True)
+        self.dnd = bool(self.focus.state()['active'])
         self.bus = bus
         self.name = dbus.service.BusName(BUS, bus, do_not_queue=True)
         super().__init__(bus, PATH)
@@ -159,7 +168,10 @@ class Server(dbus.service.Object):
                 image.unlink(missing_ok=True)
 
     def state(self):
-        return json.dumps({'ready': True, 'dnd': self.dnd, 'policies':self.policies, 'rows': [{k: v for k, v in r.items() if k != 'sender'} for r in self.rows]}, ensure_ascii=False)
+        rows=[{k:v for k,v in row.items() if k!='sender'} for row in self.rows]
+        if self.preview=='never':
+            for row in rows:row.update(summary='Notification',body='',image='',actions=[])
+        return json.dumps({'ready':True,'dnd':self.dnd,'focus':self.focus.state(),'preview':self.preview,'policies':self.policies,'rows':rows},ensure_ascii=False)
 
     def changed(self, persist=True):
         if persist:
@@ -194,7 +206,28 @@ class Server(dbus.service.Object):
 
     def tick(self):
         now = time.monotonic()
-        changed = False
+        preferences_changed=False
+        if now-self.preferences_checked>=1:
+            self.preferences_checked=now
+            try:
+                preferences=read_settings()['notifications']
+                preview=preferences.get('preview','always')
+                policies=preferences.get('policies',{})
+                preferences_changed=preview!=self.preview or policies!=self.policies
+                self.preview,self.policies=preview,policies
+                if preferences_changed:
+                    for row in self.rows:
+                        if policies.get(row['desktop'] or row['app'],'banners')!='banners':row['banner']=False
+            except (OSError,ValueError,KeyError):
+                preferences_changed=self.preview!='never'
+                self.preview='never'
+        signature = json.dumps(self.focus.state(),sort_keys=True)
+        changed = preferences_changed or signature != self.focus_signature
+        self.focus_signature = signature
+        self.dnd = bool(self.focus.state()['active'])
+        if changed:
+            for row in self.rows:
+                if not self.focus.allows(row['desktop'] or row['app'],row['urgency']):row['banner']=False
         for row in list(self.rows):
             if row['deadline'] and now >= row['deadline']:
                 self.close(row, 1, keep=True)
@@ -265,7 +298,7 @@ class Server(dbus.service.Object):
                    actions=[{'id': str(actions[i])[:256], 'label': str(actions[i+1])[:256]} for i in range(0, min(len(actions)-1, 32), 2)],
                    urgency=urgency, resident=bool(hints.get('resident', False)), transient=transient,
                    timestamp=int(time.time()*1000), delivery=str(time.monotonic_ns()), active=True, sender=str(sender), unread=True,
-                   banner=not self.dnd, deadline=deadline, bannerDeadline=now+banner_duration if banner_duration else 0)
+                   banner=self.focus.allows(desktop or str(app_name)[:256],urgency), deadline=deadline, bannerDeadline=now+banner_duration if banner_duration else 0)
         policy=self.policies.get(row['desktop'] or row['app'],'banners')
         if policy!='banners':row['banner']=False
         if policy=='off':
@@ -310,7 +343,7 @@ class Server(dbus.service.Object):
         if not isinstance(data, dict):
             raise ValueError('Notification command must be an object')
         action = data.get('action')
-        if action not in ('hold', 'dnd', 'policy', 'seen', 'dismiss', 'clear', 'hide', 'invoke'):
+        if action not in ('hold', 'dnd', 'focus', 'policy', 'seen', 'dismiss', 'clear', 'hide', 'invoke'):
             raise ValueError('Unknown notification command')
         if 'enabled' in data and type(data['enabled']) is not bool:
             raise ValueError('Notification enabled state must be boolean')
@@ -327,12 +360,15 @@ class Server(dbus.service.Object):
                 row['bannerDeadline'] = time.monotonic() + row.pop('held')
                 row.pop('heldBy', None)
             return
-        if action == 'dnd':
-            # Focus mode is live session state, like mute; policies are configuration.
-            self.dnd=bool(data['enabled']) if 'enabled' in data else not self.dnd
-            if self.dnd:
-                for item in self.rows:
-                    item['banner'] = False
+        if action in ('dnd', 'focus'):
+            if action=='dnd':
+                enabled=bool(data['enabled']) if 'enabled' in data else not self.dnd
+                self.focus.command({'profile':'quiet' if enabled else ''})
+            else:self.focus.command(data)
+            self.dnd=bool(self.focus.state()['active'])
+            self.focus_signature=json.dumps(self.focus.state(),sort_keys=True)
+            for item in self.rows:
+                if not self.focus.allows(item['desktop'] or item['app'],item['urgency']):item['banner']=False
         elif action == 'policy':
             app,policy=data.get('app'),data.get('policy')
             if not isinstance(app,str) or not app or len(app)>255 or policy not in ('banners','silent','off'):
@@ -348,7 +384,7 @@ class Server(dbus.service.Object):
                 return False
             def rebuild():
                 try:
-                    result=set_section('notifications',preferences)
+                    result=set_section('notifications',{'policies':preferences['policies']},merge=True)
                     GLib.idle_add(finish,result)
                 except Exception as exc:
                     print('Notification policy was not applied: '+str(exc),file=sys.stderr)
@@ -356,7 +392,7 @@ class Server(dbus.service.Object):
                 # Keep notification delivery and D-Bus responsive during a full build.
                 threading.Thread(target=rebuild,daemon=True).start()
                 return
-            finish(set_section('notifications',preferences))
+            finish(set_section('notifications',{'policies':preferences['policies']},merge=True))
         elif action == 'seen':
             for item in self.rows:
                 item.update(unread=False, banner=False)
@@ -418,6 +454,17 @@ def main():
             bus.add_signal_receiver(owner_changed, 'NameOwnerChanged', 'org.freedesktop.DBus')
             GLib.io_add_watch(sys.stdin, GLib.IO_IN | GLib.IO_HUP, command)
             loop.run()
+        elif mode == 'focus':
+            if len(sys.argv)==2:
+                print(json.dumps(json.loads(api.Snapshot())['focus'],ensure_ascii=False))
+            elif sys.argv[2]=='configure':
+                if len(sys.argv)!=3:raise SystemExit('Provide one profile JSON object on standard input')
+                value=json.loads(sys.stdin.read(65537))
+                api.Command(json.dumps({'action':'focus','operation':'profile','profile':value}))
+            else:
+                if len(sys.argv)>4:raise SystemExit('Usage: lumen-notifications focus PROFILE|off|auto [SECONDS]')
+                ident=None if sys.argv[2]=='auto' else '' if sys.argv[2]=='off' else sys.argv[2]
+                api.Command(json.dumps({'action':'focus','profile':ident,'seconds':int(sys.argv[3]) if len(sys.argv)>3 else 0}))
         elif mode == 'dnd':
             api.Command(json.dumps({'action':'dnd'}))
         elif mode == 'mode':

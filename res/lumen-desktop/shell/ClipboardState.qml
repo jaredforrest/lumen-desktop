@@ -5,6 +5,7 @@ Item {
     objectName:"clipboard-history-state"
     property string executable:"lumen-clipboard-history"
     property bool active:false
+    property bool listWhenActive:true
     property bool available:false
     property bool enabled:false
     property bool busy:false
@@ -24,7 +25,7 @@ Item {
         if(action==="copy")args.push(id);
         worker.command=args;worker.running=true;
     }
-    function search(text){query=text;revision++;entries=[];if(active && enabled)debounce.restart();}
+    function search(text){query=text;revision++;entries=[];if(active && enabled && listWhenActive)debounce.restart();}
     function enable(){request("enable");}
     function disable(){request("disable");}
     function clear(){request("clear");}
@@ -42,7 +43,7 @@ Item {
             }
             if(action==="copy" && data.copied){message="Copied. Paste it in the destination application.";copied();}
             if(action==="clear"){entries=[];message="Clipboard history cleared.";}
-            if((action==="enable" || action==="status") && enabled && active)refreshPending=true;
+            if((action==="enable" || action==="status") && enabled && active && listWhenActive)refreshPending=true;
         }catch(e){error="Clipboard history returned an unreadable response.";available=false;entries=[];}
     }
     onActiveChanged:{revision++;debounce.stop();if(active)request("status");else {entries=[];message="";refreshPending=false;}}
@@ -58,7 +59,7 @@ Item {
             root.busy=false;
             if(code!==0){root.error="Clipboard history is unavailable. No clipboard contents were read.";root.available=false;}
             else root.receive(response,action,requestRevision);
-            if(root.refreshPending && root.active){root.refreshPending=false;Qt.callLater(()=>root.request(root.enabled?"list":"status"));}
+            if(root.refreshPending && root.active){root.refreshPending=false;Qt.callLater(()=>root.request(root.enabled && root.listWhenActive?"list":"status"));}
         }
     }
 }

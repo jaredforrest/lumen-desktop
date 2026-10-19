@@ -69,3 +69,12 @@ RemoteDesktopWindow 1.0 RemoteDesktopWindow.qml
 ClipboardState 1.0 ClipboardState.qml
 
 AppSwitcher 1.0 AppSwitcher.qml
+WindowLayoutMenu 1.0 WindowLayoutMenu.qml
+
+SearchHistoryState 1.0 SearchHistoryState.qml
+
+FocusProfileEditor 1.0 FocusProfileEditor.qml
+ControlCentre 1.0 ControlCentre.qml
+
+WidgetState 1.0 WidgetState.qml
+DesktopWidgets 1.0 DesktopWidgets.qml

@@ -14,6 +14,7 @@ PanelSurface {
     property bool compact:false
     property bool agendaOnly:false
     property bool reduceTransparency:false
+    property bool monochrome:false
     property bool followingToday:true
     property int firstDayOfWeek:Qt.locale().firstDayOfWeek
     property string calendarTimeZone:"Europe/London"
@@ -35,7 +36,7 @@ PanelSurface {
         selectDate(d);return true;
     }
     function dayColors(day){return Array.from(new Set(dayEvents(day).map(event=>tint(event)))).slice(0,3);}
-    function tint(event){return CalendarLogic.tint(event,Theme.dark);}
+    function tint(event){return monochrome?Theme.colors.muted:CalendarLogic.tint(event,Theme.dark);}
     function timeLabel(event){if(event.allDay)return "All day";const d=new Date(event.date+"T"+event.startTime);return isNaN(d.getTime())?event.startTime:Qt.formatTime(d,Qt.locale().timeFormat(Locale.ShortFormat));}
     property bool optionsOpen:false
     property bool active:visible
@@ -154,8 +155,8 @@ PanelSurface {
                     Accessible.name:valid?Qt.formatDateTime(dateValue,"dddd d MMMM yyyy")+(current?", today":"")+(selected?", selected":"")+(root.dayEvents(dateValue).length?", "+root.dayEvents(dateValue).length+" events":""):""
                     onClicked:{root.selectDate(dateValue);dateGrid.forceActiveFocus();}
                     background:Item {
-                        Rectangle {anchors.horizontalCenter:parent.horizontalCenter;width:26;height:26;radius:13;color:cell.current?(Theme.dark?"#ff453a":"#ff3b30"):cell.selected?Theme.colors.accent:cell.hovered?Theme.colors.hover:"transparent";border.width:cell.activeFocus || (dateGrid.activeFocus && cell.selected)?2:0;border.color:Theme.colors.text}
-                        Row {anchors.horizontalCenter:parent.horizontalCenter;y:28;spacing:2;visible:cell.valid;Repeater {model:cell.valid?root.dayColors(cell.dateValue):[];Rectangle {required property string modelData;width:3;height:3;radius:2;color:modelData}}}
+                        Rectangle {anchors.horizontalCenter:parent.horizontalCenter;width:26;height:26;radius:13;color:cell.current?(root.monochrome?Theme.colors.muted:Theme.dark?"#ff453a":"#ff3b30"):cell.selected?(root.monochrome?Theme.colors.muted:Theme.colors.accent):cell.hovered?Theme.colors.hover:"transparent";border.width:cell.activeFocus || (dateGrid.activeFocus && cell.selected)?2:0;border.color:Theme.colors.text}
+                        Row {anchors.horizontalCenter:parent.horizontalCenter;y:28;spacing:2;visible:cell.valid;Repeater {model:cell.valid?root.dayColors(cell.dateValue):[];Rectangle {required property string modelData;width:3;height:3;radius:2;color:root.monochrome?Theme.colors.muted:modelData}}}
                     }
                     contentItem:PanelLabel {height:26;text:cell.valid?cell.day:"";color:cell.current || cell.selected?"white":Theme.colors.text;font.pixelSize:12;horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignTop;topPadding:5}
                 }
@@ -164,7 +165,7 @@ PanelSurface {
         Row {
             width:parent.width
             PanelLabel {width:parent.width-58;text:Qt.formatDateTime(root.selected,Qt.locale().dateFormat(root.compact?Locale.LongFormat:Locale.ShortFormat));font.pixelSize:root.compact?15:13;font.weight:Font.DemiBold;verticalAlignment:Text.AlignVCenter;height:24}
-            AbstractButton {width:58;height:24;enabled:!root.busy;text:"Today";Accessible.name:"Go to today";contentItem:PanelLabel {text:parent.text;color:Theme.colors.accent;horizontalAlignment:Text.AlignRight;verticalAlignment:Text.AlignVCenter} onClicked:root.goToday()}
+            AbstractButton {width:58;height:24;enabled:!root.busy;text:"Today";Accessible.name:"Go to today";contentItem:PanelLabel {text:parent.text;color:(root.monochrome?Theme.colors.muted:Theme.colors.accent);horizontalAlignment:Text.AlignRight;verticalAlignment:Text.AlignVCenter} onClicked:root.goToday()}
         }
         PanelLabel {visible:root.events.length===0;width:parent.width;wrapMode:Text.WordWrap;color:Theme.colors.muted;text:!root.loaded?(root.busy?"Loading calendar…":"Calendar unavailable"):!root.configured?"Connect a calendar to see your appointments here.":!root.lastSuccess?"Calendars are configured, but no successful sync has completed.":"No events on this day"}
         ScrollView {
@@ -232,8 +233,8 @@ PanelSurface {
     ControlRow {visible:root.compact;width:parent.width-36;x:18;y:content.y+content.height+4;height:30;text:root.events.length>3?"Show all "+root.total+" events in Calendar":"Open Calendar";onClicked:root.openCalendar()}
     component CalendarField: TextField {
         height:30;font.family:Theme.font;font.pixelSize:12;color:Theme.colors.text;placeholderTextColor:Theme.colors.muted
-        selectionColor:Theme.colors.accent;selectedTextColor:Theme.colors.selectedText
-        background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline}
+        selectionColor:(root.monochrome?Theme.colors.muted:Theme.colors.accent);selectedTextColor:Theme.colors.selectedText
+        background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?(root.monochrome?Theme.colors.muted:Theme.colors.accent):Theme.hairline}
     }
     Column {
         id:editor;visible:root.editing;x:18;y:18;width:parent.width-36;spacing:8
@@ -246,7 +247,7 @@ PanelSurface {
         PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:allDay.checked?"All-day dates include the final day.":"Times in "+root.calendarTimeZone;color:Theme.colors.muted;font.pixelSize:11}
         DateTimeField {id:editStart;width:parent.width;label:"Starts";allDay:allDay.checked;enabled:!root.busy}
         DateTimeField {id:editEnd;width:parent.width;label:"Ends";allDay:allDay.checked;enabled:!root.busy}
-        ScrollView {width:parent.width;height:90;clip:true;TextArea {id:editNotes;font.family:Theme.font;font.pixelSize:12;color:Theme.colors.text;placeholderTextColor:Theme.colors.muted;selectionColor:Theme.colors.accent;selectedTextColor:Theme.colors.selectedText;background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline} placeholderText:"Notes";enabled:!root.busy;wrapMode:TextEdit.Wrap;Accessible.name:"Event notes";selectByMouse:true}}
+        ScrollView {width:parent.width;height:90;clip:true;TextArea {id:editNotes;font.family:Theme.font;font.pixelSize:12;color:Theme.colors.text;placeholderTextColor:Theme.colors.muted;selectionColor:(root.monochrome?Theme.colors.muted:Theme.colors.accent);selectedTextColor:Theme.colors.selectedText;background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?(root.monochrome?Theme.colors.muted:Theme.colors.accent):Theme.hairline} placeholderText:"Notes";enabled:!root.busy;wrapMode:TextEdit.Wrap;Accessible.name:"Event notes";selectByMouse:true}}
         PanelLabel {visible:!!root.error;width:parent.width;wrapMode:Text.WordWrap;text:root.error;textFormat:Text.PlainText;color:Theme.colors.muted;font.pixelSize:11}
         Row {width:parent.width;spacing:8
             DialogButton {width:(parent.width-8)/2;text:"Cancel";enabled:!root.busy;onClicked:{root.editing=false;root.error="";}}
