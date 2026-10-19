@@ -65,7 +65,11 @@ class AuthorityTests(unittest.TestCase):
     self.assertTrue(authority._events(None,0,authority.monitor));self.assertEqual(authority.facts,{'known':True,'locked':True})
     authority.glib=None
     peer.revision=0;self.assertEqual(authority.snapshot(),{'known':False,'locked':True})
+    # The threaded peers share one PID. Keep the retired endpoint allocated so
+    # filesystem inode reuse cannot make the replacement indistinguishable.
+    retired=Path(private)/'retired-ipc';Path(path).rename(retired)
     peer.stop();peer=NativePeer(path);peer.locked=True
+    self.assertNotEqual(retired.stat().st_ino,Path(path).stat().st_ino)
     authority.retry=0;self.assertEqual(authority.snapshot(),{'known':True,'locked':True})
     self.assertFalse(authority._events(None,0,old_connection));self.assertEqual(authority.facts,{'known':True,'locked':True})
     peer.stop();self.assertEqual(authority.snapshot(),{'known':False,'locked':True})
