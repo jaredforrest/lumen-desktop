@@ -110,9 +110,6 @@ jobs:
             artifacts/calendar-widget*
             artifacts/input-settings
             artifacts/widget-catalogue-*
-            artifacts/window-groups-*
-            artifacts/dialog-manager-lifetime-*
-            artifacts/desktop-lifecycle-*
             artifacts/shell
             artifacts/interactions
             artifacts/native-layouts
