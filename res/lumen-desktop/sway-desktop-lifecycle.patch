@@ -1,0 +1,133 @@
+--- a/include/sway/tree/container.h
++++ b/include/sway/tree/container.h
+@@ -68,6 +68,7 @@
+ 
+ struct sway_lumen_placement {
+  char *workspace;
++ char *output_name;
+  uint64_t parent_id;
+  int index;
+  bool floating;
+@@ -182,6 +183,7 @@
+ void container_lumen_hide(struct sway_container *con);
+ void container_lumen_unhide(struct sway_container *con);
+ void container_lumen_placement_free(struct sway_lumen_placement *placement);
++bool container_lumen_rehome(struct sway_container *con, const char *source, const char *target, const char *output);
+ void container_lumen_restore_snapshot(struct sway_container *con,struct sway_lumen_placement *placement,bool focus);
+ 
+ void container_begin_destroy(struct sway_container *con);
+--- a/sway/tree/root.c
++++ b/sway/tree/root.c
+@@ -101,8 +101,37 @@
+ 
+ 
+ void container_lumen_placement_free(struct sway_lumen_placement *p) {
+- if (p) { free(p->workspace); free(p); }
+-}
++ if (p) { free(p->workspace); free(p->output_name); free(p); }
++}
++
++bool container_lumen_rehome(struct sway_container *con, const char *source, const char *target, const char *output) {
++ if (!con || !con->view || !output_by_name_or_id(output)) return false;
++ struct sway_lumen_placement *all[] = {con->lumen_minimized, con->lumen_filled, con->lumen_hidden, con->lumen_desktop_hidden};
++ struct sway_lumen_placement *placements[4] = {0};
++ char *names[4] = {0}, *outputs[4] = {0};
++ int count = 0;
++ for (int i = 0; i < 4; i++) {
++  if (!all[i] || strcmp(all[i]->workspace, source) != 0) continue;
++  bool duplicate = false;
++  for (int j = 0; j < count; j++) if (placements[j] == all[i]) duplicate = true;
++  if (duplicate) continue;
++  placements[count] = all[i];
++  names[count] = strdup(target); outputs[count] = strdup(output);
++  if (!names[count] || !outputs[count]) {
++   for (int j = 0; j <= count; j++) {free(names[j]); free(outputs[j]);}
++   return false;
++  }
++  count++;
++ }
++ for (int i = 0; i < count; i++) {
++  free(placements[i]->workspace); free(placements[i]->output_name);
++  placements[i]->workspace = names[i]; placements[i]->output_name = outputs[i];
++  placements[i]->parent_id = 0; placements[i]->index = 0;
++ }
++ node_set_dirty(&con->node);
++ return true;
++}
++
+ 
+ bool container_lumen_action_enabled(struct sway_container *con, int action) {
+  if (!con || con->node.destroying || !con->view || !con->view->surface) return false;
+@@ -126,6 +158,8 @@
+  if (!p) return NULL;
+  p->workspace = strdup(con->pending.workspace->name);
+  if (!p->workspace) { free(p); return NULL; }
++ p->output_name = strdup(con->pending.workspace->output->wlr_output->name);
++ if (!p->output_name) { free(p->workspace); free(p); return NULL; }
+  p->parent_id = con->pending.parent ? con->pending.parent->node.id : 0;
+  p->index = list_find(container_get_siblings(con), con);
+  p->floating = container_is_floating(con);
+@@ -146,7 +180,8 @@
+  if (!ws) {
+   struct sway_workspace *focused = seat_get_focused_workspace(input_manager_current_seat());
+   if (!focused) return;
+-  ws = workspace_create(focused->output, p->workspace);
++  struct sway_output *output = p->output_name ? output_by_name_or_id(p->output_name) : NULL;
++  ws = workspace_create(output ? output : focused->output, p->workspace);
+  }
+  if (ws->width <= 0 || ws->height <= 0) arrange_workspace(ws);
+  struct sway_container *parent = p->parent_id ? root_find_container(lumen_parent_matches, &p->parent_id) : NULL;
+--- a/sway/commands/scratchpad.c
++++ b/sway/commands/scratchpad.c
+@@ -134,6 +134,13 @@
+ }
+ 
+ struct cmd_results *cmd_lumen_window(int argc, char **argv) {
++ if (argc == 4 && strcmp(argv[0], "rehome") == 0) {
++  struct sway_container *con = config->handler_context.container;
++  if (!container_lumen_rehome(con, argv[1], argv[2], argv[3]))
++   return cmd_results_new(CMD_INVALID, "Cannot rehome saved window placements");
++  transaction_commit_dirty();
++  return cmd_results_new(CMD_SUCCESS, NULL);
++ }
+  if (argc == 2) {
+   if (container_lumen_configure(argv[0], argv[1])) return cmd_results_new(CMD_SUCCESS, NULL);
+   return cmd_results_new(CMD_INVALID, "Invalid layout configuration");
+--- a/sway/ipc-json.c
++++ b/sway/ipc-json.c
+@@ -228,6 +228,7 @@
+ json_object *ipc_json_get_version(void) {
+ 	int major = 0, minor = 0, patch = 0;
+ 	json_object *version = json_object_new_object();
++	json_object_object_add(version, "desktop_rehome", json_object_new_boolean(true));
+ 	json_object_object_add(version, "native_window_relationships", json_object_new_boolean(true));
+ 
+ 	json_object_object_add(version, "native_file_drag_state", json_object_new_boolean(true));
+@@ -780,6 +781,12 @@
+ 	json_object_object_add(lumen_state, "desktop_hidden", json_object_new_boolean(c->lumen_desktop_hidden != NULL));
+ 	struct sway_lumen_placement *saved = c->lumen_hidden ? c->lumen_hidden : c->lumen_minimized;
+ 	json_object_object_add(lumen_state, "restore_workspace", saved ? json_object_new_string(saved->workspace) : NULL);
++	json_object *saved_workspaces = json_object_new_array();
++	struct sway_lumen_placement *placements[] = {c->lumen_minimized, c->lumen_filled, c->lumen_hidden, c->lumen_desktop_hidden};
++	for (int i = 0; i < 4; i++) {
++		if (placements[i]) json_object_array_add(saved_workspaces, json_object_new_string(placements[i]->workspace));
++	}
++	json_object_object_add(lumen_state, "restore_workspaces", saved_workspaces);
+ 	json_object_object_add(lumen_state, "version", json_object_new_int(1));
+ 	json_object_object_add(object, "lumen_state", lumen_state);
+ 
+--- a/sway/tree/lumen_pair.c
++++ b/sway/tree/lumen_pair.c
+@@ -325,6 +325,12 @@
+ }
+ json_object *lumen_pair_json(struct sway_container *con) {
+  json_object *state=json_object_new_object();
++ struct sway_lumen_placement *restore=con->lumen_pair_restore;
++ if(con->lumen_pair && con->lumen_pair->parent!=con) {
++  int index=con->lumen_pair->members[1].con==con;
++  restore=con->lumen_pair->members[index].restore;
++ }
++ json_object_object_add(state,"restore_workspace",restore?json_object_new_string(restore->workspace):NULL);
+  json_object_object_add(state,"version",json_object_new_int(1));
+  json_object_object_add(state,"eligible",json_object_new_boolean(eligible(con)));
+  json_object_object_add(state,"survivor",json_object_new_boolean(con->lumen_pair_restore!=NULL));

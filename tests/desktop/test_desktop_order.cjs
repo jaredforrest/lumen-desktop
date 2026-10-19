@@ -1,0 +1,10 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const model={};vm.createContext(model);vm.runInContext(fs.readFileSync('res/lumen-desktop/shell/DesktopOrderModel.js','utf8').replace('.pragma library',''),model);
+const desktops=[{logicalId:'one',outputId:'A',available:true},{logicalId:'two',outputId:'A',available:true},{logicalId:'other',outputId:'B',available:true},{logicalId:'three',outputId:'A',available:true}];
+let gesture=model.begin(desktops,'one',4,'session');assert.deepEqual(Array.from(gesture.order),['one','two','three']);
+let preview=model.move(gesture,2);assert.deepEqual(Array.from(preview.order),['two','three','one']);assert.deepEqual(Array.from(gesture.order),['one','two','three']);assert.equal(desktops[0].logicalId,'one');
+assert.equal(model.request(gesture,4,'session'),null);assert.equal(model.request(preview,5,'session'),null);assert.equal(model.request(preview,4,'other-session'),null);
+const request=model.request(preview,4,'session');assert.equal(request.action,'desktop-reorder');assert.deepEqual(Array.from(request.order),['two','three','one']);assert.equal(request.outputId,'A');
+assert.equal(model.begin(desktops,'missing',4,'session'),null);assert.equal(model.begin([{logicalId:'one',outputId:'A',available:false}],'one',4,'session'),null);
+assert.equal(model.move(gesture,-1),gesture);assert.equal(model.move(gesture,99),gesture);assert.equal(model.request(null,4,'session'),null);
+console.log('DESKTOP_ORDER_MODEL_PASS');

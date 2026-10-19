@@ -21,6 +21,8 @@ class SpacePolicy:
             if data.get("version") != 1 or not isinstance(data.get("desktops"), dict) or not isinstance(data.get("assignments"), dict):
                 raise ValueError("Invalid desktop policy state")
             self.state = data
+        self.state.setdefault("revision", 0)
+        self.state.setdefault("created_counter", 0)
         self.current = {}
         self.outputs = {}
 
@@ -32,9 +34,12 @@ class SpacePolicy:
             fcntl.flock(lock, fcntl.LOCK_EX)
             if self.path.exists():
                 self.state = json.loads(self.path.read_text())
+            self.state.setdefault("revision", 0)
+            self.state.setdefault("created_counter", 0)
             yield
 
     def save(self):
+        self.state["revision"] = self.state.get("revision", 0) + 1
         self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         fd, name = tempfile.mkstemp(dir=self.path.parent, prefix=".spaces-")
         try:
@@ -43,6 +48,9 @@ class SpacePolicy:
                 stream.flush()
                 os.fsync(stream.fileno())
             os.replace(name, self.path)
+            directory = os.open(self.path.parent, os.O_RDONLY | os.O_DIRECTORY)
+            try:os.fsync(directory)
+            finally:os.close(directory)
         finally:
             if os.path.exists(name):
                 os.unlink(name)
@@ -62,7 +70,9 @@ class SpacePolicy:
         return "connector:" + output["name"]
 
     def reconcile(self, workspaces, outputs):
+        before = json.dumps(self.state, sort_keys=True)
         self.outputs = {self.display(o): o["name"] for o in outputs if o.get("active", True)}
+        focused_output = next((o["name"] for o in outputs if o.get("active", True) and o.get("focused")), next(iter(self.outputs.values()), None))
         previous = self.current
         current = {}
         for workspace in workspaces:
@@ -73,12 +83,23 @@ class SpacePolicy:
                 key = next((key for key, item in self.state["desktops"].items() if item["name"] == workspace["name"]), None)
             if key is None:
                 key = str(uuid.uuid4())
-                self.state["desktops"][key] = {"ordinal": len(self.state["desktops"]), "recent": 0}
-            self.state["desktops"][key].update(name=workspace["name"], output=workspace["output"])
+                self.state["desktops"][key] = {"ordinal": max((item["ordinal"] for item in self.state["desktops"].values()), default=-1) + 1, "recent": 0}
+            self.state["desktops"][key].update(name=workspace["name"], output=workspace["output"],
+                output_id=next((oid for oid, name in self.outputs.items() if name == workspace["output"]), None))
             current[workspace["id"]] = key
         self.current = current
         self.workspaces = workspaces
-        self.save()
+        for key, item in self.state["desktops"].items():
+            if not item.get("persistent") or key in current.values():
+                continue
+            if item.get("output_id") in self.outputs:
+                item["output"] = self.outputs[item["output_id"]]
+            elif focused_output is not None:
+                # An empty logical desktop has no native windows to strand.
+                item["output"] = focused_output
+                item["output_id"] = next(oid for oid, name in self.outputs.items() if name == focused_output)
+        if json.dumps(self.state, sort_keys=True) != before:
+            self.save()
 
     def focus(self, compositor_id):
         key = self.current.get(compositor_id)
@@ -88,9 +109,77 @@ class SpacePolicy:
             self.save()
 
     def order(self, output=None):
-        keys = [key for key in self.current.values() if output is None or self.state["desktops"][key]["output"] == output]
+        keys = [key for key, item in self.state["desktops"].items()
+                if (key in self.current.values() or item.get("persistent"))
+                and (output is None or item["output"] == output)]
         field = "recent" if self.state["auto_reorder"] else "ordinal"
         return sorted(keys, key=lambda key: ((-1 if field == "recent" else 1) * self.state["desktops"][key][field], self.state["desktops"][key]["ordinal"]))
+
+    def require_revision(self, revision):
+        if type(revision) is not int or revision != self.state["revision"]:
+            raise ValueError("Desktop list changed; refresh and try again")
+
+    def catalog(self):
+        live = {key: wid for wid, key in self.current.items()}
+        by_id = {workspace["id"]: workspace for workspace in self.workspaces}
+        return [dict(logicalId=key, name=self.state["desktops"][key]["name"],
+            label=self.state["desktops"][key].get("label", "Desktop " + self.state["desktops"][key]["name"]),
+            output=self.state["desktops"][key]["output"], outputId=self.state["desktops"][key].get("output_id"),
+            available=self.state["desktops"][key]["output"] in self.outputs.values(),
+            persistent=bool(self.state["desktops"][key].get("persistent")),
+            id=live.get(key), focused=bool(by_id.get(live.get(key), {}).get("focused")),
+            visible=bool(by_id.get(live.get(key), {}).get("visible"))) for key in self.order()]
+
+    def desktop(self, key, *, connected=True):
+        item = next((item for item in self.catalog() if item["logicalId"] == key), None)
+        if item is None:
+            raise ValueError("This desktop is no longer available")
+        if connected and not item["available"]:
+            raise ValueError("The desktop display is disconnected")
+        return item
+
+    def create(self, output_id, revision):
+        self.require_revision(revision)
+        if output_id not in self.outputs:
+            raise ValueError("The desktop display is disconnected")
+        if len(self.catalog()) >= 64:
+            raise ValueError("The desktop limit is 64")
+        key = str(uuid.uuid4())
+        numbers = [int(item["name"]) for item in self.state["desktops"].values() if item["name"].isdigit()]
+        self.state["created_counter"] = max(self.state["created_counter"], max(numbers, default=0)) + 1
+        self.state["desktops"][key] = dict(name="lumen:" + key, label="Desktop " + str(self.state["created_counter"]),
+            persistent=True, output=self.outputs[output_id], output_id=output_id,
+            ordinal=max((item["ordinal"] for item in self.state["desktops"].values()), default=-1) + 1, recent=0)
+        self.save()
+        return self.desktop(key)
+
+    def reorder(self, output_id, order, revision):
+        self.require_revision(revision)
+        if output_id not in self.outputs:
+            raise ValueError("The desktop display is disconnected")
+        current = self.order(self.outputs[output_id])
+        if (not isinstance(order, list) or any(not isinstance(key, str) for key in order)
+                or len(order) != len(set(order)) or set(order) != set(current)):
+            raise ValueError("Manual order must contain every desktop on this display exactly once")
+        slots = sorted(self.state["desktops"][key]["ordinal"] for key in current)
+        for key, ordinal in zip(order, slots):
+            self.state["desktops"][key]["ordinal"] = ordinal
+        self.state["auto_reorder"] = False
+        self.save()
+
+    def remove(self, source, destination, revision):
+        """Retire only after the caller has verified native evacuation."""
+        self.require_revision(revision)
+        old = self.state["desktops"].get(source)
+        target = self.desktop(destination)
+        if old is None:
+            raise ValueError("This desktop is no longer available")
+        if source == destination or old.get("output_id") != target["outputId"]:
+            raise ValueError("Choose a different surviving desktop on the same display")
+        if source in self.current.values():
+            raise ValueError("The desktop still exists in the compositor")
+        del self.state["desktops"][source]
+        self.save()
 
     def configure(self, *, auto_reorder):
         if type(auto_reorder) is not bool:
@@ -178,6 +267,10 @@ def main():
         try:
             for line in stream.stdout:
                 event = json.loads(line)
+                if event.get("success") is True:
+                    with policy.transaction():refresh(policy)
+                    print(json.dumps({"ready": True}), flush=True)
+                    continue
                 with policy.transaction():
                     refresh(policy)
                     if event.get('change') == 'focus' and event.get('current', {}).get('type') == 'workspace':

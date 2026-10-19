@@ -43,6 +43,7 @@ jobs:
           nix build .#test-constraint-client --out-link artifacts/constraint-client --option abort-on-warn true
           nix build .#test-window-relationships --out-link artifacts/window-relationships-client --option abort-on-warn true
           for compositor in compositor compositor-effects; do
+            nix develop --command desktop-test-python tests/desktop/desktop_lifecycle_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/desktop-lifecycle-$compositor"
             nix develop --command desktop-test-python tests/desktop/window_relationships_input.py --sway "$PWD/artifacts/$compositor/bin/sway" --client "$PWD/artifacts/window-relationships-client/bin/lumen-test-window-relationships" --keyboard wtype --output "artifacts/window-relationships-$compositor"
             nix develop --command desktop-test-python tests/desktop/owned_window_context_input.py --full-shell --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --output "artifacts/owned-window-context-$compositor"
           done

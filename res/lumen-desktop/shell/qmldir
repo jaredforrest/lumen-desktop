@@ -47,6 +47,7 @@ DesktopComboBox 1.0 DesktopComboBox.qml
 AudioDeviceControl 1.0 AudioDeviceControl.qml
 DisplaySettingsPane 1.0 DisplaySettingsPane.qml
 TextToolsWindow 1.0 TextToolsWindow.qml
+DesktopStrip 1.0 DesktopStrip.qml
 WindowOverview 1.0 WindowOverview.qml
 QuickLookWindow 1.0 QuickLookWindow.qml
 
