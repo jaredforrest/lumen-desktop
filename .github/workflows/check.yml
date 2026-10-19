@@ -90,6 +90,7 @@ jobs:
           nix develop --command desktop-test-python tests/desktop/window_frames_render.py --core-only --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/native-layouts
           PATH="$PWD/artifacts/shell-package/bin:$PATH" nix develop --command desktop-test-python tests/desktop/interaction_regression.py --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/interactions
           nix develop --command desktop-test-python tests/desktop/accessibility_protocol.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/accessibility --full-shell
+          PYTHONWARNINGS=error nix develop --command desktop-test-python tests/desktop/force_quit_surface.py --sway "$PWD/artifacts/compositor/bin/sway" --wtype wtype --output artifacts/force-quit
           nix develop --command desktop-test-python tests/desktop/spaces_placement.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/spaces
           nix develop --command desktop-test-python tests/desktop/application_lifecycle_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/application-lifecycle
           nix develop --command desktop-test-python tests/desktop/session_end_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/session-end
@@ -104,6 +105,7 @@ jobs:
           if-no-files-found: error
           path: |
             artifacts/backends
+            artifacts/force-quit
             artifacts/group-membership-*
             artifacts/group-selector-*
             artifacts/window-groups-*
