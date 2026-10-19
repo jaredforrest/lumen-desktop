@@ -18,10 +18,11 @@ args=parser.parse_args()
 if not args.inside:
     import shutil
     private=tempfile.mkdtemp(prefix='lumen-ui-')
-    isolated=dict(os.environ,HOME=private,XDG_RUNTIME_DIR=private,QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
+    isolated=dict(os.environ,HOME=private,XDG_RUNTIME_DIR=private,DBUS_SYSTEM_BUS_ADDRESS='unix:path='+private+'/absent-system',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
     for key in ('CONFIG','STATE','CACHE','DATA'):isolated['XDG_'+key+'_HOME']=str(args.output.resolve()/key.lower())
     for key in ('AT_SPI_BUS_ADDRESS','DBUS_SESSION_BUS_ADDRESS','SWAYSOCK','WAYLAND_DISPLAY','DISPLAY'):isolated.pop(key,None)
-    try:raise SystemExit(sp.call(['dbus-run-session','--',sys.executable,__file__,*sys.argv[1:],'--inside'],env=isolated))
+    config=Path(private)/'bus.conf';config.write_text('<busconfig><type>session</type><listen>unix:tmpdir='+private+'</listen><auth>EXTERNAL</auth><policy context="default"><allow send_destination="*"/><allow receive_sender="*"/><allow own="*"/></policy></busconfig>')
+    try:raise SystemExit(sp.call(['dbus-run-session','--config-file='+str(config),'--',sys.executable,__file__,*sys.argv[1:],'--inside'],env=isolated))
     finally:shutil.rmtree(private,ignore_errors=True)
 import shutil
 launcher=Path(shutil.which(args.launcher) or args.launcher)
