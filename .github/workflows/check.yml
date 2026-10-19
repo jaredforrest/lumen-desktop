@@ -43,8 +43,10 @@ jobs:
           nix build .#test-constraint-client --out-link artifacts/constraint-client --option abort-on-warn true
           nix build .#test-window-relationships --out-link artifacts/window-relationships-client --option abort-on-warn true
           for compositor in compositor compositor-effects; do
-            nix develop --command desktop-test-python tests/desktop/group_membership_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --client "$PWD/artifacts/window-relationships-client/bin/lumen-test-window-relationships" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --locker "$PWD/artifacts/session-lock/bin/lumen-test-session-lock" --output "artifacts/group-membership-$compositor"
-            nix develop --command desktop-test-python tests/desktop/group_selector_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --client "$PWD/artifacts/window-relationships-client/bin/lumen-test-window-relationships" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --locker "$PWD/artifacts/session-lock/bin/lumen-test-session-lock" --output "artifacts/group-selector-$compositor"
+            compositor_flags=()
+            if [[ "$compositor" == compositor-effects ]]; then compositor_flags=(--effects); fi
+            nix develop --command desktop-test-python tests/desktop/group_membership_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --client "$PWD/artifacts/window-relationships-client/bin/lumen-test-window-relationships" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --locker "$PWD/artifacts/session-lock/bin/lumen-test-session-lock" --output "artifacts/group-membership-$compositor"
+            nix develop --command desktop-test-python tests/desktop/group_selector_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --client "$PWD/artifacts/window-relationships-client/bin/lumen-test-window-relationships" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --locker "$PWD/artifacts/session-lock/bin/lumen-test-session-lock" --output "artifacts/group-selector-$compositor"
             nix develop --command desktop-test-python tests/desktop/window_groups_native.py --sway "$PWD/artifacts/$compositor/bin/sway" --client "$PWD/artifacts/window-relationships-client/bin/lumen-test-window-relationships" --keyboard wtype --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --locker "$PWD/artifacts/session-lock/bin/lumen-test-session-lock" --output "artifacts/window-groups-$compositor"
             nix develop --command desktop-test-python tests/desktop/widget_catalogue_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/widget-catalogue-$compositor"
             nix develop --command desktop-test-python tests/desktop/dialog_manager_lifetime.py --sway "$PWD/artifacts/$compositor/bin/sway" --client "$PWD/artifacts/window-relationships-client/bin/lumen-test-window-relationships" --output "artifacts/dialog-manager-lifetime-$compositor"
@@ -89,12 +91,22 @@ jobs:
       - run: |
           nix build .#test-network-provider --out-link artifacts/network-provider --option abort-on-warn true
           nix develop --command desktop-test-python tests/desktop/network_locations_provider.py --provider "$PWD/artifacts/network-provider" | tee artifacts/network-provider.log
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: backend-logs
+          if-no-files-found: error
           path: |
             artifacts/backends
+            artifacts/group-membership-*
+            artifacts/group-selector-*
+            artifacts/window-groups-*
+            artifacts/dialog-manager-lifetime-*
+            artifacts/desktop-lifecycle-*
+            artifacts/widget-visibility-*
+            artifacts/screen-saver*
+            artifacts/calendar-widget*
+            artifacts/input-settings
             artifacts/widget-catalogue-*
             artifacts/shell
             artifacts/interactions
