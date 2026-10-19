@@ -66,7 +66,8 @@ ShellRoot {
 }''')
 processes=[]
 def launch(command,name):
-    process=sp.Popen(command,env=env,stdout=(out/name).open('w'),stderr=sp.STDOUT,start_new_session=True);processes.append(process);return process
+    with (out/name).open('w') as log:process=sp.Popen(command,env=env,stdout=log,stderr=sp.STDOUT,start_new_session=True)
+    processes.append(process);return process
 
 def call(*command):return sp.check_output(command,env=env,text=True,timeout=10).strip()
 def wait(fn):
@@ -149,5 +150,6 @@ finally:
         if process.poll() is None:os.killpg(process.pid,signal.SIGTERM)
     for process in reversed(processes):
         try:process.wait(timeout=4)
-        except sp.TimeoutExpired:os.killpg(process.pid,signal.SIGKILL)
+        except sp.TimeoutExpired:os.killpg(process.pid,signal.SIGKILL);process.wait(timeout=4)
+    if 'pointer' in globals() and pointer.stdin:pointer.stdin.close()
 print('PASS native enlarged Settings focus, scroll and pointer reachability')

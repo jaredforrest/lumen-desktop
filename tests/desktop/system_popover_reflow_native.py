@@ -10,6 +10,7 @@ import subprocess as sp
 import sys
 import tempfile
 import time
+import dbus
 p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--launcher',type=Path,required=True);p.add_argument('--sway',default='sway');p.add_argument('--theme',choices=['light','dark'],default='dark');p.add_argument('--native-frame',choices=['on','off'],default='off');p.add_argument('--effects',action='store_true');p.add_argument('--inside',action='store_true');a=p.parse_args()
 if not a.inside:
     with tempfile.TemporaryDirectory(prefix='lumen-surfaces-',ignore_cleanup_errors=True) as private:
@@ -79,6 +80,9 @@ addition='''
 menu=(fixture/'MenuBar.qml').read_text();menu=menu.replace('id: dismiss','id: dismiss;Component.onCompleted:bar.shell.auditWindows=bar.shell.auditWindows.concat([dismiss])');(fixture/'MenuBar.qml').write_text(menu)
 (fixture/'shell.qml').write_text(original[:original.rfind('}')]+addition+'}\n')
 try:
+    env['LUMEN_MPRIS_CALLS']=str(out/'media-calls.jsonl')
+    launch([sys.executable,str(Path(__file__).parent/'fixtures/mpris_mock.py')],'media-provider.log');bus=dbus.SessionBus();wait(lambda:bus.name_has_owner('org.lumen.MediaFixture'));mediaProvider=dbus.Interface(bus.get_object('org.lumen.MediaFixture','/org/lumen/MediaFixture'),'org.lumen.MediaFixture')
+    for player in ('alpha','beta'):mediaProvider.Add(json.dumps(dict(name=player,identity='Synthetic '+player,properties=dict(PlaybackStatus='Playing' if player=='alpha' else 'Paused',Metadata={'mpris:trackid':'/fixture/'+player,'mpris:length':180000000,'xesam:title':'An extended synthetic track title for enlarged media controls','xesam:artist':['An extended synthetic artist name']}))))
     config=out/'sway.conf';config.write_text('output HEADLESS-1 resolution 640x480\nxwayland disable\ndefault_border none\nfor_window [app_id="org.quickshell"] floating enable, resize set 420 300\n')
     if a.native_frame=='on':
         with config.open('a') as stream:stream.write('default_border normal 1\ndefault_floating_border normal 1\nfor_window [app_id="org.quickshell"] border normal 1\n')
@@ -88,7 +92,7 @@ try:
     launch(['quickshell','-p',str(fixture)],'shell.log')
     def ipc(method,*args):return call('quickshell','-p',str(fixture),'ipc','call','popoverAudit',method,*args)
     wait(lambda:ipc('ready')=='true');checks=[]
-    for name in ('Controls','Date','Calendar','session'):
+    for name in ('Controls','Now Playing','Date','Calendar','session'):
         ipc('open',name);time.sleep(.6)
         if name=='Controls':ipc('longLabels')
         snapshots=[]
@@ -103,11 +107,12 @@ try:
         if name=='Controls':
             labels=[text for snap in snapshots for text in snap['texts'] if text['text']=='Display configuration and arrangement preferences'];assert labels and all(not row['truncated'] and row['size']==18 for row in labels),labels
             assert 'System Settings…' in commands,commands
+        if name=='Now Playing':assert {'media-source','media-position','media-volume','media-play','media-next','media-previous'}.issubset(commands),commands
         if name=='Date':assert 'Edit Widgets' in commands and 'Open Calendar' in commands,commands
         if name=='session':assert 'Cancel' in commands and 'Continue' in commands,commands
         checks.append(dict(surface=name,focusedCommands=commands))
     log=(out/'shell.log').read_text();assert not any(marker in log for marker in ('WARN scene:','ReferenceError:','TypeError:','Binding loop','Failed to load configuration','Cannot assign')),log
-    (out/'result.json').write_text(json.dumps(dict(passed=True,checks=checks,textScale=1.5,output=[640,480]),indent=2));print('PASS small-output system popover text/reachability')
+    (out/'result.json').write_text(json.dumps(dict(passed=True,checks=checks,textScale=1.5,output=[640,480],providers='Private synthetic notification/calendar and real private MPRIS services'),indent=2));print('PASS small-output system popover text/reachability')
 finally:
     for process in reversed(processes):
         try:os.killpg(process.pid,signal.SIGTERM)

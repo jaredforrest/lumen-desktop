@@ -2,7 +2,7 @@
 
 Owned Control Centre tiles, status labels and media labels follow the shared text-size preference. Enlarged Control Centre uses one column; tiles wrap their labels and size their contents naturally. Footer commands and notification widget toggles retain their natural text height. The session confirmation body scrolls and reveals keyboard focus when explanatory or error text exceeds the available window height.
 
-`tests/desktop/system_popover_reflow_native.py` runs the production shell in a private session with a synthetic read-only calendar and synthetic notification provider. It uses a 640 × 480 output at 150% text, a long control label and a long session diagnostic. Actual Tab traversal checks focus bounds against the window and all clipping ancestors; named footer commands must be reached. Captures and text/focus measurements are retained for every surface. No session operation is executed.
+`tests/desktop/system_popover_reflow_native.py` runs the production shell in a private session with a synthetic read-only calendar, synthetic notification provider and two actual private MPRIS services. It uses a 640 × 480 output at 150% text, a long control label and a long session diagnostic. Now Playing includes supported playback-position and player-volume rows. Actual Tab traversal checks focus bounds against the window and all clipping ancestors; named footer commands must be reached. Captures and text/focus measurements are retained for every surface. No session operation is executed.
 
 Run with the packaged runtime:
 
