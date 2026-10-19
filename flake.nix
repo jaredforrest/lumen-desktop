@@ -13,13 +13,16 @@
       profileBridge = import ./packages/lumen-native-profile.nix { inherit pkgs; nixSettings = settings; };
       office = import ./packages/craft-office.nix { inherit pkgs profileBridge; };
       runtime = import ./tests/desktop/runtime.nix { inherit pkgs; };
+      testBusConfig = pkgs.writeText "lumen-test-session.conf" ''
+        <busconfig><type>session</type><listen>unix:tmpdir=/tmp</listen><auth>EXTERNAL</auth><policy context="default"><allow send_destination="*"/><allow receive_sender="*"/><allow own="*"/></policy></busconfig>
+      '';
       privateBus = pkgs.writeShellScriptBin "dbus-run-session" ''
         for argument in "$@"; do
           case "$argument" in
             --config-file=*) exec ${pkgs.dbus}/bin/dbus-run-session "$@" ;;
           esac
         done
-        exec ${pkgs.dbus}/bin/dbus-run-session --config-file=${pkgs.dbus}/share/dbus-1/session.conf "$@"
+        exec ${pkgs.dbus}/bin/dbus-run-session --config-file=${testBusConfig} "$@"
       '';
       python = (import ./packages/python-runtime.nix { inherit pkgs; }).withPackages (p: [ p.pygobject3 p.dbus-python p.astral p.icalendar p.recurring-ical-events p.pillow ]);
     in {

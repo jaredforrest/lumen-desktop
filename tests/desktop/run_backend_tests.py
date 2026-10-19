@@ -36,7 +36,7 @@ if calendar and not env.get('DESKTOP_TEST_PINNED_RUNTIME'):
 results=[]
 for test in sorted(Path(__file__).parent.glob('test_*.py')):
     with tempfile.TemporaryDirectory(prefix='lumen-backend-') as private:
-        test_env=dict(env,HOME=private,XDG_RUNTIME_DIR=private,QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
+        test_env=dict(env,HOME=private,XDG_RUNTIME_DIR=private,DBUS_SYSTEM_BUS_ADDRESS='unix:path='+private+'/absent-system',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
         for key in ('CONFIG','STATE','CACHE','DATA'):test_env['XDG_'+key+'_HOME']=str(Path(private)/key.lower())
         for key in ('AT_SPI_BUS_ADDRESS','SWAYSOCK','WAYLAND_DISPLAY','DISPLAY'):test_env.pop(key,None)
         run=subprocess.run(['dbus-run-session','--',sys.executable,str(test)],env=test_env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=180)
