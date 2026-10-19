@@ -3,6 +3,6 @@ Text {
     textFormat: Text.PlainText
     color: Theme.colors.text
     font.family: Theme.font
-    font.pixelSize: 13
+    font.pixelSize: Theme.textSize(13)
     elide: Text.ElideRight
 }

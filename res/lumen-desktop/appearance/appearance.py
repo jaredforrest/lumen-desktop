@@ -24,10 +24,11 @@ def write(path,text):
 def run(*args):
     return subprocess.run(args,check=False,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode
 
-DEFAULTS={'mode':'auto','accent':'blue','iconAppearance':'auto','switchToAppSpace':True,'dockMagnification':True,'reduceMotion':False,'reduceTransparency':False,'scrollbars':'auto','increaseContrast':False,'sidebarIconSize':'medium','dockPins':None,'dockRecentApps':True,'dockIndicators':True,'dockFolders':[],'dockPosition':'bottom','dockAutoHide':False,'dockSize':48,'dockFiles':[]}
+DEFAULTS={'textScale':1,'mode':'auto','accent':'blue','iconAppearance':'auto','switchToAppSpace':True,'dockMagnification':True,'reduceMotion':False,'reduceTransparency':False,'scrollbars':'auto','increaseContrast':False,'sidebarIconSize':'medium','dockPins':None,'dockRecentApps':True,'dockIndicators':True,'dockFolders':[],'dockPosition':'bottom','dockAutoHide':False,'dockSize':48,'dockFiles':[]}
 ACCENTS={'blue':('#007aff','#0a84ff'),'purple':('#a855c7','#bf5af2'),'pink':('#d94382','#ff6482'),'red':('#df3038','#ff453a'),'orange':('#b65c00','#ff9f0a'),'yellow':('#947500','#ffd60a'),'green':('#248a3d','#30d158'),'graphite':('#707078','#98989f')}
 
 def valid(key,value):
+    if key=='textScale':return type(value) in (int,float) and value in (1,1.15,1.3,1.5)
     if key=='dockFiles':return isinstance(value,list) and all(isinstance(path,str) and path.startswith('/') and len(path.encode('utf-8'))<=4096 and not any(ord(c)<32 for c in path) for path in value) and len(value)==len(set(value))
     if key=='dockFolders':
         if not isinstance(value,list):return False

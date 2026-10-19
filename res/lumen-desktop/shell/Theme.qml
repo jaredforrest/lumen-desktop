@@ -11,6 +11,8 @@ Singleton {
     property var controlCentrePreferences: ({order:["wifi","bluetooth","sharing","media","displays","appearance","focus","brightness","sound"],hidden:[]})
     property var notificationsPreferences: ({preview:"always"})
     property var searchPreferences: ({disabledProviders:[]})
+    readonly property real textScale:[1,1.15,1.3,1.5].includes(preferences.textScale)?preferences.textScale:1
+    function textSize(base){return Math.round(base*textScale);}
     property string font: "Interlude Variable"
     property var colors: ({background:"#f2f2f4",surface:"#ffffff",field:"#e5e5e8",text:"#202023",muted:"#626267",border:"#c8c8ce",hover:"#dedee3",accent:"#007aff",selectedText:"#000000"})
     readonly property color backgroundTone: colors.background

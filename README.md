@@ -19,3 +19,5 @@ Public source does not yet carry a blanket redistribution licence. Original geom
 
 Status order and clock formatting: [presentation contract and tests](docs/status-clock.md).
 Saved portal decisions: [provider contract, scope and acceptance](docs/portal-permissions.md).
+
+Interface text sizing: [scope, layout contract and tests](docs/text-sizing.md).

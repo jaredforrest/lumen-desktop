@@ -10,12 +10,14 @@ AbstractButton {
     Keys.onReturnPressed: if (enabled) clicked()
     Keys.onEnterPressed: if (enabled) clicked()
     Shortcut {sequence:"Return";context:Qt.WindowShortcut;enabled:control.defaultAction && control.enabled && control.visible && !control.activeFocus;onActivated:control.clicked()}
-    implicitHeight: 28
+    implicitHeight: Math.max(28,label.implicitHeight+12)
     implicitWidth: Math.max(80, label.implicitWidth + 28)
     opacity: enabled ? 1 : 0.45
     contentItem: PanelLabel {
         id: label
         text: control.text
+        wrapMode:Text.Wrap
+        elide:Text.ElideNone
         horizontalAlignment: Text.AlignHCenter
         verticalAlignment: Text.AlignVCenter
         color: control.primary ? (control.destructive ? "white" : Theme.colors.selectedText) : control.destructive ? control.actionColor : Theme.colors.text

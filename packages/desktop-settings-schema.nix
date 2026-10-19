@@ -44,6 +44,7 @@ let
             scrollbars = mkOption { type = types.enum [ "auto" "when_scrolling" "always" ]; default = "auto"; };
             reduceTransparency = mkOption { type = types.bool; default = false; };
             increaseContrast = mkOption { type = types.bool; default = false; };
+            textScale = mkOption { type = types.enum [ 1 1.15 1.3 1.5 ]; default = 1; };
             sidebarIconSize = mkOption { type = types.enum [ "small" "medium" "large" ]; default = "medium"; };
             reduceMotion = mkOption { type = types.bool; default = false; };
           };

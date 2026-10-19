@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Window
 import QtQuick.Effects
 import Quickshell
+import "ScrollGeometry.js" as ScrollGeometry
 
 FloatingWindow {
     id:root
@@ -67,6 +68,23 @@ FloatingWindow {
         const next=historyIndex+delta;if(next<0 || next>=history.length)return;
         historyIndex=next;page=history[next];
     }
+    function revealFocus(){
+        if(!content.Window.window)return;
+        const item=content.Window.window.activeFocusItem;
+        if(!item)return;
+        for(const viewport of [scroller,sidebarScroll.contentItem]){
+            if(!viewport || viewport.contentY===undefined)continue;
+            let ancestor=item;
+            while(ancestor && ancestor!==viewport.contentItem)ancestor=ancestor.parent;
+            if(!ancestor)continue;
+            const at=item.mapToItem(viewport.contentItem,0,0);
+            viewport.contentY=ScrollGeometry.reveal(viewport.contentY,viewport.height,viewport.contentHeight,at.y,item.height,8);
+        }
+    }
+    Connections {target:content.Window.window;function onActiveFocusItemChanged(){Qt.callLater(root.revealFocus);}}
+    Connections {target:Theme;function onTextScaleChanged(){Qt.callLater(root.revealFocus);}}
+    onWidthChanged:Qt.callLater(root.revealFocus)
+    onHeightChanged:Qt.callLater(root.revealFocus)
     onPageChanged:scroller.contentY=0
     Rectangle {id:windowMask;width:root.width;height:root.height;radius:Theme.nativeWindowFrame?0:12;layer.enabled:!Theme.nativeWindowFrame && GraphicsInfo.api !== GraphicsInfo.Software;visible:false}
     Item {
@@ -99,28 +117,30 @@ FloatingWindow {
         TextField {
             placeholderTextColor:Theme.colors.muted;selectionColor:Theme.colors.accent;selectedTextColor:Theme.colors.selectedText
 
-            id:search;x:14;y:56;width:root.sidebarWidth-28;height:30
-            placeholderText:"Search";color:Theme.colors.text;font.family:Theme.font;font.pixelSize:13
+            id:search;x:14;y:56;width:root.sidebarWidth-28;height:Math.max(30,implicitHeight+8)
+            placeholderText:"Search";color:Theme.colors.text;font.family:Theme.font;font.pixelSize:Theme.textSize(13)
             selectByMouse:true;Accessible.name:"Search settings"
             background:Rectangle {radius:7;color:Theme.colors.background;border.color:search.activeFocus?Theme.colors.accent:Theme.hairline}
             onAccepted:{const found=root.pages.filter(p=>(p.name+" "+p.terms).toLowerCase().includes(text.toLowerCase()));if(found.length)root.navigate(found[0].name);}
         }
         ScrollView {
+            id:sidebarScroll
             ScrollBar.vertical:DesktopScrollBar {}
-            x:12;y:101;width:root.sidebarWidth-24;height:parent.height-y-12;clip:true
+            x:12;y:search.y+search.height+15;width:root.sidebarWidth-24;height:parent.height-y-12;clip:true
             Column {
                 width:root.sidebarWidth-24;spacing:2
                 Repeater {
                     model:root.pages.filter(p=>(p.name+" "+p.terms).toLowerCase().includes(search.text.toLowerCase()))
                     AbstractButton {
                         required property var modelData
-                        width:parent.width;height:Math.max(34,Theme.sidebarIconSize+14)
+                        width:parent.width;height:Math.max(34,Theme.sidebarIconSize+14,navigationLabel.implicitHeight+14)
+                        objectName:"settings-navigation-"+modelData.name
                         Accessible.name:modelData.name
                         onClicked:root.navigate(modelData.name)
                         background:Rectangle {radius:7;color:root.page===parent.modelData.name?root.selectionFill:parent.hovered || parent.activeFocus?Theme.colors.hover:"transparent"}
                         contentItem:Item {
                             Rectangle {x:7;anchors.verticalCenter:parent.verticalCenter;width:Theme.sidebarIconSize+2;height:width;radius:5;color:modelData.color;SystemGlyph {anchors.centerIn:parent;name:modelData.icon;width:Theme.sidebarIconSize-4;height:width;ink:"white"}}
-                            PanelLabel {x:Theme.sidebarIconSize+17;anchors.verticalCenter:parent.verticalCenter;width:parent.width-x-5;text:modelData.name;elide:Text.ElideRight;color:root.page===modelData.name?root.selectionText:Theme.colors.text}
+                            PanelLabel {id:navigationLabel;x:Theme.sidebarIconSize+17;anchors.verticalCenter:parent.verticalCenter;width:parent.width-x-5;text:modelData.name;wrapMode:Text.Wrap;elide:Text.ElideNone;color:root.page===modelData.name?root.selectionText:Theme.colors.text}
                         }
                     }
                 }
@@ -128,7 +148,7 @@ FloatingWindow {
             }
         }
         Row {
-            x:root.sidebarWidth+14;y:9;spacing:3
+            id:pageHeader;x:root.sidebarWidth+14;y:9;spacing:3;width:parent.width-x-12
             Repeater {
                 model:[-1,1]
                 AbstractButton {
@@ -140,15 +160,15 @@ FloatingWindow {
                     contentItem:SystemGlyph {name:parent.modelData<0?"chevron-left":"chevron-right";ink:Theme.colors.text;opacity:parent.enabled?1:0.3}
                 }
             }
-            PanelLabel {height:30;verticalAlignment:Text.AlignVCenter;text:root.page;font.weight:Font.DemiBold;font.pixelSize:15}
+            PanelLabel {width:parent.width-62;height:Math.max(30,implicitHeight);wrapMode:Text.Wrap;elide:Text.ElideNone;verticalAlignment:Text.AlignVCenter;text:root.page;font.weight:Font.DemiBold;font.pixelSize:Theme.textSize(15)}
         }
         Flickable {
-            id:scroller;x:root.sidebarWidth+24;y:63;width:parent.width-x-24;height:parent.height-y-18
+            id:scroller;objectName:"settings-content-scroll";x:root.sidebarWidth+24;y:Math.max(63,pageHeader.y+pageHeader.height+20);width:parent.width-x-24;height:parent.height-y-18
             clip:true;contentWidth:width;contentHeight:body.height;boundsBehavior:Flickable.StopAtBounds
             ScrollBar.vertical:DesktopScrollBar {}
             Column {
                 id:body;width:scroller.width;spacing:16
-                PanelLabel {width:parent.width;wrapMode:Text.WordWrap;visible:root.service.busy;text:root.service.applying===true?"Applying your preferences…":"Loading your preferences…";font.pixelSize:11;color:Theme.colors.muted}
+                PanelLabel {width:parent.width;wrapMode:Text.WordWrap;visible:root.service.busy;text:root.service.applying===true?"Applying your preferences…":"Loading your preferences…";font.pixelSize:Theme.textSize(11);color:Theme.colors.muted}
                 PanelLabel {visible:root.service.error!=="" || root.service.warning!=="";text:root.service.error || root.service.warning;wrapMode:Text.WordWrap;width:parent.width;color:Theme.colors.muted}
                 Column {
                     visible:root.page==="Appearance";width:parent.width;spacing:14
@@ -174,7 +194,7 @@ FloatingWindow {
                                             Rectangle {x:parent.width*.4;y:40;width:parent.width*.4;height:6;radius:2;color:"#b1b1b9"}
                                             Rectangle {anchors.fill:parent;radius:8;color:"transparent";border.width:root.service.preferences.mode===modelData?3:1;border.color:root.service.preferences.mode===modelData?Theme.colors.accent:Theme.outline}
                                         }
-                                        PanelLabel {width:parent.width;text:modelData==="auto"?"Auto":modelData==="dark"?"Dark":"Light";horizontalAlignment:Text.AlignHCenter;font.pixelSize:12}
+                                        PanelLabel {width:parent.width;text:modelData==="auto"?"Auto":modelData==="dark"?"Dark":"Light";horizontalAlignment:Text.AlignHCenter;font.pixelSize:Theme.textSize(12)}
                                     }
                                     background:Rectangle {color:"transparent";border.color:parent.activeFocus?Theme.colors.accent:"transparent";radius:8}
                                 }
@@ -182,15 +202,16 @@ FloatingWindow {
                         }
                     }
                     Rectangle {
-                        width:parent.width;height:88;radius:10;color:Theme.colors.surface;border.color:Theme.hairline
-                        PanelLabel {x:14;y:12;text:"Accent colour"}
-                        Row {
-                            x:14;y:42;spacing:12
+                        width:parent.width;height:accentChoices.y+accentChoices.height+14;radius:10;color:Theme.colors.surface;border.color:Theme.hairline
+                        PanelLabel {id:accentTitle;x:14;y:12;width:parent.width-28;wrapMode:Text.Wrap;text:"Accent colour"}
+                        Flow {
+                            id:accentChoices;x:14;y:accentTitle.y+accentTitle.height+12;width:parent.width-28;spacing:12
                             Repeater {
                                 model:[{key:"graphite",color:"#8e8e93"},{key:"blue",color:"#007aff"},{key:"purple",color:"#a855c7"},{key:"pink",color:"#ee5d9b"},{key:"red",color:"#ff453a"},{key:"orange",color:"#ff9f0a"},{key:"yellow",color:"#ffd60a"},{key:"green",color:"#30b65c"}]
                                 AbstractButton {
                                     required property var modelData
                                     width:24;height:24;enabled:root.service.available && !root.service.busy
+                                    objectName:"settings-accent-"+modelData.key
                                     Accessible.name:modelData.key+" accent"
                                     onClicked:root.service.setPreference("accent",modelData.key)
                                     background:Rectangle {radius:12;color:parent.modelData.color;border.width:root.service.preferences.accent===parent.modelData.key || parent.activeFocus?3:0;border.color:Theme.colors.text}
@@ -199,27 +220,28 @@ FloatingWindow {
                         }
                     }
                     Rectangle {
-                        width:parent.width;height:116;radius:10;color:Theme.colors.surface;border.color:Theme.hairline
-                        PanelLabel {x:14;y:12;text:"Icon style"}
-                        Row {
-                            x:14;y:38;width:parent.width-28;spacing:8
+                        objectName:"settings-icon-style-card";width:parent.width;height:iconStyleDescription.y+iconStyleDescription.height+14;radius:10;color:Theme.colors.surface;border.color:Theme.hairline
+                        PanelLabel {id:iconStyleTitle;x:14;y:12;width:parent.width-28;wrapMode:Text.Wrap;text:"Icon style"}
+                        Flow {
+                            id:iconStyleChoices;objectName:"settings-icon-style-choices";x:14;y:iconStyleTitle.y+iconStyleTitle.height+12;width:parent.width-28;spacing:8
                             Repeater {
                                 model:[{key:"default",label:"Default"},{key:"auto",label:"Automatic"},{key:"dark",label:"Dark"}]
                                 AbstractButton {
                                     required property var modelData
-                                    width:(parent.width-16)/3;height:29
+                                    width:Math.min(parent.width,Math.max(90,iconChoiceLabel.implicitWidth+20));height:Math.max(29,iconChoiceLabel.implicitHeight+12)
                                     enabled:root.service.available && !root.service.busy
+                                    objectName:"settings-icon-choice-"+modelData.key
                                     Accessible.name:modelData.label+" icon style"
                                     onClicked:root.service.setPreference("iconAppearance",modelData.key)
-                                    contentItem:PanelLabel {text:parent.modelData.label;horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter;font.pixelSize:12;color:(root.service.preferences.iconAppearance || "auto")===parent.modelData.key?Theme.colors.selectedText:Theme.colors.text}
+                                    contentItem:PanelLabel {id:iconChoiceLabel;wrapMode:Text.Wrap;elide:Text.ElideNone;text:parent.modelData.label;horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter;font.pixelSize:Theme.textSize(12);color:(root.service.preferences.iconAppearance || "auto")===parent.modelData.key?Theme.colors.selectedText:Theme.colors.text}
                                     background:Rectangle {radius:6;color:(root.service.preferences.iconAppearance || "auto")===parent.modelData.key?Theme.colors.accent:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:"transparent"}
                                 }
                             }
                         }
-                        PanelLabel {x:14;y:76;width:parent.width-28;wrapMode:Text.WordWrap;font.pixelSize:11;color:Theme.colors.muted;text:"Automatic follows appearance. Apps without a dark icon keep their original artwork."}
+                        PanelLabel {id:iconStyleDescription;objectName:"settings-icon-style-description";x:14;y:iconStyleChoices.y+iconStyleChoices.height+10;width:parent.width-28;wrapMode:Text.WordWrap;font.pixelSize:Theme.textSize(11);color:Theme.colors.muted;text:"Automatic follows appearance. Apps without a dark icon keep their original artwork."}
                     }
-                    PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:root.service.preferences.mode==="auto"?"Automatic appearance changes at sunrise and sunset in London.":"Automatic sunrise and sunset switching is paused while this appearance is selected.";color:Theme.colors.muted;font.pixelSize:12}
-                    PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:"Sunrise "+Qt.formatDateTime(new Date(root.service.appearance.sunrise || 0),"h:mm AP")+"   ·   Sunset "+Qt.formatDateTime(new Date(root.service.appearance.sunset || 0),"h:mm AP");color:Theme.colors.muted;font.pixelSize:12}
+                    PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:root.service.preferences.mode==="auto"?"Automatic appearance changes at sunrise and sunset in London.":"Automatic sunrise and sunset switching is paused while this appearance is selected.";color:Theme.colors.muted;font.pixelSize:Theme.textSize(12)}
+                    PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:"Sunrise "+Qt.formatDateTime(new Date(root.service.appearance.sunrise || 0),"h:mm AP")+"   ·   Sunset "+Qt.formatDateTime(new Date(root.service.appearance.sunset || 0),"h:mm AP");color:Theme.colors.muted;font.pixelSize:Theme.textSize(12)}
                 }
                 Column {
                     visible:root.page==="Desktop & Dock";width:parent.width;spacing:12
@@ -280,14 +302,17 @@ FloatingWindow {
                 }
                 Column {
                     visible:root.page==="Accessibility";width:parent.width;spacing:12
-                    SettingsToggle {width:parent.width;text:"Increase contrast";detail:"Stronger text and boundaries with opaque desktop materials";checked:!!root.service.preferences.increaseContrast;enabled:root.service.available && !root.service.busy;onClicked:root.service.setPreference("increaseContrast",checked)}
+                    PanelLabel {width:parent.width;text:"Interface text size";wrapMode:Text.Wrap;font.weight:Font.DemiBold}
+                    DesktopComboBox {objectName:"settings-text-size";width:parent.width;model:["Default (100%)","Larger (115%)","Large (130%)","Largest (150%)"];currentIndex:[1,1.15,1.3,1.5].indexOf(root.service.preferences.textScale || 1);Accessible.name:"Interface text size";enabled:root.service.available && !root.service.busy;onActivated:index=>root.service.setPreference("textScale",[1,1.15,1.3,1.5][index])}
+                    PanelLabel {width:parent.width;wrapMode:Text.Wrap;text:"Enlarges shared desktop text and supported controls. Individual app interfaces and output scaling have separate settings.";color:Theme.colors.muted}
+                    SettingsToggle {objectName:"settings-increase-contrast";width:parent.width;text:"Increase contrast";detail:"Stronger text and boundaries with opaque desktop materials";checked:!!root.service.preferences.increaseContrast;enabled:root.service.available && !root.service.busy;onClicked:root.service.setPreference("increaseContrast",checked)}
                     SettingsToggle {width:parent.width;text:"Reduce transparency";detail:"Use opaque desktop sidebars and popovers";checked:!!root.service.preferences.reduceTransparency;enabled:root.service.available && !root.service.busy;onClicked:root.service.setPreference("reduceTransparency",checked)}
-                    SettingsToggle {width:parent.width;text:"Reduce motion";detail:"Reduce desktop interface animations";checked:!!root.service.preferences.reduceMotion;enabled:root.service.available && !root.service.busy;onClicked:root.service.setPreference("reduceMotion",checked)}
+                    SettingsToggle {objectName:"settings-reduce-motion";width:parent.width;text:"Reduce motion";detail:"Reduce desktop interface animations";checked:!!root.service.preferences.reduceMotion;enabled:root.service.available && !root.service.busy;onClicked:root.service.setPreference("reduceMotion",checked)}
                 }
                 Column {
                     visible:root.page==="General";width:parent.width;spacing:14
                     Image {source:"reference-icons/settings.svg";width:70;height:70;sourceSize:Qt.size(140,140)}
-                    PanelLabel {text:root.service.system.system || "System information unavailable";width:parent.width;wrapMode:Text.WordWrap;font.pixelSize:18;font.weight:Font.DemiBold}
+                    PanelLabel {text:root.service.system.system || "System information unavailable";width:parent.width;wrapMode:Text.WordWrap;font.pixelSize:Theme.textSize(18);font.weight:Font.DemiBold}
                     PanelLabel {text:"Desktop · "+(root.service.system.desktop || "Wayland");width:parent.width;wrapMode:Text.WordWrap}
                 }
                 PrivacySecurityPane {
@@ -335,7 +360,7 @@ FloatingWindow {
                     visible:root.page==="Notifications";width:parent.width;spacing:12
                     PanelLabel {text:"Show notification previews"}
                     DesktopComboBox {width:parent.width;model:["Always","Never"];currentIndex:root.service.notificationsPreferences.preview==="never"?1:0;enabled:root.service.available && !root.service.busy;Accessible.name:"Show notification previews";onActivated:index=>root.service.setNotificationPreference("preview",index===1?"never":"always")}
-                    PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:"Never hides message content and actions while keeping the source application and time visible.";font.pixelSize:11;color:Theme.colors.muted}
+                    PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:"Never hides message content and actions while keeping the source application and time visible.";font.pixelSize:Theme.textSize(11);color:Theme.colors.muted}
                     SettingsToggle {width:parent.width;text:"Do Not Disturb";detail:"Silence banners while keeping notifications in Notification Centre";checked:root.shell.notifications.dnd;enabled:root.shell.notifications.available;onClicked:root.shell.notifications.command({action:"dnd",enabled:checked})}
                     Repeater {model:root.shell.notifications.applications
                         Column {required property var modelData;width:parent.width;spacing:5
@@ -355,7 +380,7 @@ FloatingWindow {
                 Loader {width:parent.width;height:item?item.implicitHeight:0;active:root.visible && root.page==="VPN";sourceComponent:Component {VpnPanel {width:body.width;service:root.shell.vpn}}}
                 Column {
                     visible:root.page==="Search";width:parent.width;spacing:12
-                    PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:"Search applications, personal folders and ~/data.";font.pixelSize:14}
+                    PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:"Search applications, personal folders and ~/data.";font.pixelSize:Theme.textSize(14)}
                     PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:"Desktop, Documents, Downloads, Pictures, Music, Videos and data. Filters: kind:folder, kind:file, ext:pdf, in:Documents, since:2026-01-01, before:2027-01-01. Dates filter the last modification time.";color:Theme.colors.muted}
                     SettingsToggle {width:parent.width;text:"Save recent search queries";detail:"Keep up to 20 queries on this device. Queries can contain sensitive text. Clipboard searches are excluded.";checked:root.service.searchPreferences.queryHistory===true;enabled:root.service.available && !root.service.busy;onClicked:root.service.setSearchPreference("queryHistory",checked)}
                     ControlRow {width:parent.width;text:"Clear Search History";enabled:!settingsHistory.busy;onClicked:settingsHistory.clear()}
@@ -371,7 +396,7 @@ FloatingWindow {
                     ControlRow {width:parent.width;text:"Disable Clipboard History";detail:settingsClipboard.enabled?"Stop collection and remove saved entries":"History collection is disabled";enabled:settingsClipboard.enabled && !settingsClipboard.busy;onClicked:settingsClipboard.disable()}
                     ControlRow {width:parent.width;text:"Clear Clipboard History";enabled:settingsClipboard.enabled && !settingsClipboard.busy;onClicked:settingsClipboard.clear()}
                     PanelLabel {visible:!!settingsClipboard.error;width:parent.width;wrapMode:Text.WordWrap;text:settingsClipboard.error;color:Theme.colors.muted}
-                    PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:"Disabled providers are excluded from results. Disabling Clipboard here does not revoke collection consent; use Disable Clipboard History above to stop collection. Query history is saved only when enabled above.";color:Theme.colors.muted;font.pixelSize:11}
+                    PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:"Disabled providers are excluded from results. Disabling Clipboard here does not revoke collection consent; use Disable Clipboard History above to stop collection. Query history is saved only when enabled above.";color:Theme.colors.muted;font.pixelSize:Theme.textSize(11)}
                     ControlRow {width:parent.width;text:"Open Search";detail:"Super+P";onClicked:{root.visible=false;root.shell.launchApps();}}
                     ControlRow {width:parent.width;text:"Refresh file index";enabled:root.shell.search.available && !root.shell.search.scanning;onClicked:root.shell.search.refresh()}
                     PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:!root.shell.search.available?"The index starts when Search opens.":root.shell.search.scanning?"Updating the index…":root.shell.search.indexed+" files and folders indexed";color:Theme.colors.muted}

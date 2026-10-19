@@ -35,6 +35,13 @@ class NixSettingsTest(unittest.TestCase):
             with self.assertRaises(ValueError):settings.transaction('menuBar',invalid,merge=True)
         self.assertEqual(settings.transaction('menuBar',{'showDate':False},merge=True)['menuBar']['locale'],'fr_FR')
 
+    def test_text_scale_is_typed_and_persistent(self):
+        values=settings.transaction('appearance',{'textScale':1.5},merge=True)
+        self.assertEqual(values['appearance']['textScale'],1.5)
+        for invalid in (True,2,1.25,'1.5'):
+            with self.assertRaises(ValueError):settings.transaction('appearance',{'textScale':invalid},merge=True)
+        self.assertEqual(settings.transaction('appearance',{'accent':'green'},merge=True)['appearance']['textScale'],1.5)
+
     def test_patch_preserves_sibling_preferences(self):
         settings.transaction('appearance', {'accent':'green','mode':'dark'})
         values=settings.transaction('appearance', {'reduceMotion':True,'switchToAppSpace':False},merge=True)
