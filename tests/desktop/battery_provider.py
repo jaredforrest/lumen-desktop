@@ -3,6 +3,7 @@ import argparse
 from contextlib import ExitStack
 import json
 import os
+import select
 from pathlib import Path
 import subprocess as sp
 import sys
@@ -48,9 +49,19 @@ if args.serve:
 assert args.output is not None,'--output is required'
 args.output.mkdir(parents=True,exist_ok=False)
 processes=[]
+def reap():
+    for process in reversed(processes):
+        if process.poll() is None:
+            process.terminate()
+            try:process.wait(timeout=5)
+            except sp.TimeoutExpired:process.kill();process.wait(timeout=5)
+        if process.stdout and not process.stdout.closed:process.stdout.close()
+
 with ExitStack() as stack:
+    stack.callback(reap)
     daemon=sp.Popen(['dbus-daemon','--session','--nofork','--nopidfile','--print-address=1'],stdout=sp.PIPE,stderr=stack.enter_context((args.output/'bus.log').open('w')),text=True)
     processes.append(daemon)
+    assert select.select([daemon.stdout],[],[],5)[0],'Private D-Bus startup timed out'
     address=daemon.stdout.readline().strip()
     assert address.startswith('unix:'),'Private D-Bus did not start'
     environment=dict(os.environ,DBUS_SYSTEM_BUS_ADDRESS=address)
@@ -98,9 +109,4 @@ with ExitStack() as stack:
         (args.output/'result.json').write_text(json.dumps(dict(passed=True,privateSystemBus=True,scope='Real D-Bus facts and service lifecycle; no physical battery acceptance',checks=results),indent=2)+'\n')
         print('PASS private power provider transitions, owner loss and replacement')
     finally:
-        for process in reversed(processes):
-            if process.poll() is None:
-                process.terminate()
-                try:process.wait(timeout=5)
-                except sp.TimeoutExpired:process.kill();process.wait(timeout=5)
-        if daemon.stdout:daemon.stdout.close()
+        reap()

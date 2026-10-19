@@ -28,7 +28,7 @@ PanelWindow {
         if(width<720 && shell.notifications.dnd)result.push({label:"Focus",action:"status:Focus"});
         if(width<800)result.push({label:"Search",action:"apps"});
         if(width<860)result.push({label:"VPN",action:"status:VPN"});
-        if(width<960 && shell.systemState && shell.systemState.power && shell.systemState.power.present)result.push({label:"Battery",action:"status:Controls"});
+        if(width<960 && shell.systemState && shell.systemState.power && shell.systemState.power.available && shell.systemState.power.present)result.push({label:"Battery",action:"status:Controls"});
         return result;
     }
     readonly property real menuBudget:Math.max(0,statusIcons.x-28)
