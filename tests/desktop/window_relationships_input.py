@@ -2,13 +2,13 @@
 import argparse,json,os,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
 from private_native_bus import start_private_bus
-p=argparse.ArgumentParser();p.add_argument('--sway',required=True);p.add_argument('--client',required=True);p.add_argument('--keyboard',required=True);p.add_argument('--output',required=True,type=Path);a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--sway',required=True);p.add_argument('--client',required=True);p.add_argument('--keyboard',required=True);p.add_argument('--output',required=True,type=Path);p.add_argument('--effects',action='store_true');a=p.parse_args()
 a.output.mkdir(parents=True,exist_ok=False)
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'res/lumen-desktop/runtime'))
 from window_context import contexts,tree_context
 processes=[]
 with tempfile.TemporaryDirectory(prefix='lumen-window-relations-') as private:
- env=dict(os.environ,HOME=private,XDG_RUNTIME_DIR=private,WLR_BACKENDS='headless',WLR_RENDERER='pixman',WLR_LIBINPUT_NO_DEVICES='1')
+ env=dict(os.environ,HOME=private,XDG_RUNTIME_DIR=private,WLR_BACKENDS='headless',WLR_RENDERER='gles2' if a.effects else 'pixman',WLR_RENDERER_ALLOW_SOFTWARE='1',LIBGL_ALWAYS_SOFTWARE='1',WLR_LIBINPUT_NO_DEVICES='1')
  for key in ('WAYLAND_DISPLAY','DISPLAY','SWAYSOCK','DBUS_SESSION_BUS_ADDRESS'):env.pop(key,None)
  def launch(cmd,log,**kw):
   with (a.output/log).open('w') as stream:process=sp.Popen(cmd,env=env,stdout=stream,stderr=sp.STDOUT,start_new_session=True,**kw)
@@ -19,7 +19,7 @@ with tempfile.TemporaryDirectory(prefix='lumen-window-relations-') as private:
    value=predicate()
    if value:return value
    time.sleep(.03)
-  raise AssertionError('Native relationship fixture timeout: '+str(a.output))
+  raise AssertionError('Native relationship fixture timeout: '+str(a.output)+'; compositor logs: '+ '\n'.join(path.name+': '+path.read_text() for path in a.output.glob('*sway*.log')))
  swaymsg=str(Path(a.sway).parent/'swaymsg')
  def ipc(*args,allow_error=False):
   response=sp.run([swaymsg,'-r',*args],env=env,text=True,capture_output=True,timeout=4)

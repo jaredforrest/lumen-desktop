@@ -1,7 +1,7 @@
 """Real Files main/utility association in a disposable native Qt session."""
 import argparse,json,os,re,shutil,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
-p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--launcher',type=Path,required=True);p.add_argument('--sway',required=True);p.add_argument('--full-shell',action='store_true');p.add_argument('--inside',action='store_true');a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--launcher',type=Path,required=True);p.add_argument('--sway',required=True);p.add_argument('--full-shell',action='store_true');p.add_argument('--inside',action='store_true');p.add_argument('--effects',action='store_true');a=p.parse_args()
 if not a.inside:
  with tempfile.TemporaryDirectory(prefix='lumen-owned-window-') as private:
   env=dict(os.environ,HOME=private,XDG_RUNTIME_DIR=private,DBUS_SYSTEM_BUS_ADDRESS='unix:path='+str(Path(private)/'no-system-bus'))
@@ -14,7 +14,7 @@ if not a.inside:
 repo=Path(__file__).resolve().parents[2];out=a.output.resolve();out.mkdir(parents=True,exist_ok=False)
 prefix=re.split(r'\n[ \t]*exec quickshell ',a.launcher.read_text(),maxsplit=1)[0]
 env=dict(value.decode().split('=',1) for value in sp.check_output(['bash','-c',prefix+'\nexec env -0']).split(b'\0') if b'=' in value)
-env.update(WLR_BACKENDS='headless',WLR_RENDERER='pixman',WLR_LIBINPUT_NO_DEVICES='1',QT_QPA_PLATFORM='wayland',QT_QPA_PLATFORMTHEME='generic',QT_QUICK_BACKEND='software',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',LUMEN_FILE_SERVICE='0',LUMEN_LAUNCH_SCOPES='0',QT_NO_XDG_DESKTOP_PORTAL='1',LUMEN_NATIVE_WINDOW_CONTROLS='0',LUMEN_NATIVE_WINDOW_ACTIONS='0')
+env.update(WLR_BACKENDS='headless',WLR_RENDERER='gles2' if a.effects else 'pixman',WLR_RENDERER_ALLOW_SOFTWARE='1',LIBGL_ALWAYS_SOFTWARE='1',WLR_LIBINPUT_NO_DEVICES='1',QT_QPA_PLATFORM='wayland',QT_QPA_PLATFORMTHEME='generic',QT_QUICK_BACKEND='software',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',LUMEN_FILE_SERVICE='0',LUMEN_LAUNCH_SCOPES='0',QT_NO_XDG_DESKTOP_PORTAL='1',LUMEN_NATIVE_WINDOW_CONTROLS='0',LUMEN_NATIVE_WINDOW_ACTIONS='0')
 for key in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK','AT_SPI_BUS_ADDRESS'):env.pop(key,None)
 activatable=sp.check_output(['dbus-send','--session','--print-reply','--dest=org.freedesktop.DBus','/org/freedesktop/DBus','org.freedesktop.DBus.ListActivatableNames'],env=env,text=True)
 assert set(re.findall(r'string "([^"]+)"',activatable))<={'org.freedesktop.DBus'},activatable
@@ -85,7 +85,7 @@ def wait(predicate):
    if value:return value
   except (ValueError,OSError,sp.SubprocessError):pass
   time.sleep(.04)
- raise AssertionError('Owned context timeout: '+str(out))
+ raise AssertionError('Owned context timeout: '+str(out)+'; compositor logs: '+ '\n'.join(path.name+': '+path.read_text() for path in out.glob('*sway*.log')))
 try:
  config=out/'sway.conf';config.write_text('output HEADLESS-1 resolution 1280x900\nxwayland disable\nfocus_follows_mouse no\nfor_window [all] floating enable\n')
  launch([a.sway,'--unsupported-gpu','-c',str(config)],'sway.log');runtime=Path(env['XDG_RUNTIME_DIR']);env['SWAYSOCK']=str(wait(lambda:next(runtime.glob('sway-ipc*.sock'),None)));env['WAYLAND_DISPLAY']=wait(lambda:next((path.name for path in runtime.glob('wayland-*') if not path.name.endswith('.lock')),None))

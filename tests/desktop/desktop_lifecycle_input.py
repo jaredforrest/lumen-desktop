@@ -1,14 +1,14 @@
 """Real desktop lifecycle, saved window evacuation and cancel-safe Overview order."""
 import argparse,json,os,re,select,shutil,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
-p=argparse.ArgumentParser();p.add_argument('--launcher',type=Path,required=True);p.add_argument('--sway',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--output',type=Path,required=True);a=p.parse_args();a.output.mkdir(parents=True,exist_ok=False)
+p=argparse.ArgumentParser();p.add_argument('--launcher',type=Path,required=True);p.add_argument('--sway',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--effects',action='store_true');a=p.parse_args();a.output.mkdir(parents=True,exist_ok=False)
 repo=Path(__file__).resolve().parents[2];processes=[]
 with tempfile.TemporaryDirectory(prefix='lumen-desktop-lifecycle-') as temporary:
  private=Path(temporary);prefix=re.split(r'\n[ \t]*exec quickshell ',a.launcher.read_text(),maxsplit=1)[0]
  env=dict(value.decode().split('=',1) for value in sp.check_output(['bash','-c',prefix+'\nexec env -0']).split(b'\0') if b'=' in value)
  for name in ('HOME','XDG_RUNTIME_DIR','XDG_STATE_HOME','XDG_DATA_HOME','XDG_CONFIG_HOME','XDG_CACHE_HOME'):env[name]=str(private/name);Path(env[name]).mkdir(mode=0o700)
  for name in ('SWAYSOCK','WAYLAND_DISPLAY','DISPLAY','DBUS_SESSION_BUS_ADDRESS','AT_SPI_BUS_ADDRESS'):env.pop(name,None)
- env.update(WLR_BACKENDS='headless',WLR_HEADLESS_OUTPUTS='2',WLR_RENDERER='pixman',WLR_LIBINPUT_NO_DEVICES='1',QT_QPA_PLATFORM='wayland',QT_QUICK_BACKEND='software',QT_QPA_PLATFORMTHEME='generic',QT_NO_XDG_DESKTOP_PORTAL='1',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
+ env.update(WLR_BACKENDS='headless',WLR_HEADLESS_OUTPUTS='2',WLR_RENDERER='gles2' if a.effects else 'pixman',WLR_RENDERER_ALLOW_SOFTWARE='1',LIBGL_ALWAYS_SOFTWARE='1',WLR_LIBINPUT_NO_DEVICES='1',QT_QPA_PLATFORM='wayland',QT_QUICK_BACKEND='software',QT_QPA_PLATFORMTHEME='generic',QT_NO_XDG_DESKTOP_PORTAL='1',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
  backend=repo/'res/lumen-desktop/shell/window_overview.py';python=env.get('GLOBAL_MENU_PYTHON') or sys.executable
  def launch(args,name,**kwargs):
   with (a.output/name).open('w') as stream:proc=sp.Popen(args,env=env,stdout=stream,stderr=sp.STDOUT,start_new_session=True,**kwargs)
@@ -30,7 +30,7 @@ with tempfile.TemporaryDirectory(prefix='lumen-desktop-lifecycle-') as temporary
     if value:return value
    except (ValueError,OSError,sp.SubprocessError):pass
    time.sleep(.04)
-  raise AssertionError('Desktop lifecycle timeout: '+str(a.output))
+  raise AssertionError('Desktop lifecycle timeout: '+str(a.output)+'; compositor logs: '+ '\n'.join(path.name+': '+path.read_text() for path in a.output.glob('*sway*.log')))
  def nodes(node):
   yield node
   for child in node.get('nodes',[])+node.get('floating_nodes',[]):yield from nodes(child)

@@ -1,7 +1,7 @@
 """Real gallery clicks, masked widgets, staged movement and restart on two outputs."""
 import argparse,json,os,re,shutil,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
-p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--launcher',type=Path,required=True);p.add_argument('--sway',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--theme',choices=['light','dark'],default='dark');p.add_argument('--inside',action='store_true');a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--launcher',type=Path,required=True);p.add_argument('--sway',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--theme',choices=['light','dark'],default='dark');p.add_argument('--inside',action='store_true');p.add_argument('--effects',action='store_true');a=p.parse_args()
 if not a.inside:
  with tempfile.TemporaryDirectory(prefix='lumen-widgets-') as private:
   env=dict(os.environ,HOME=private,XDG_RUNTIME_DIR=private,DBUS_SYSTEM_BUS_ADDRESS='unix:path='+private+'/absent-system')
@@ -12,7 +12,7 @@ if not a.inside:
 repo=Path(__file__).resolve().parents[2];out=a.output.resolve();out.mkdir(parents=True,exist_ok=False)
 prefix=re.split(r'\n[ \t]*exec quickshell ',a.launcher.read_text(),maxsplit=1)[0]
 env=dict(value.decode().split('=',1) for value in sp.check_output(['bash','-c',prefix+'\nexec env -0']).split(b'\0') if b'=' in value)
-env.update(WLR_BACKENDS='headless',WLR_HEADLESS_OUTPUTS='2',WLR_RENDERER='pixman',WLR_LIBINPUT_NO_DEVICES='1',QT_QPA_PLATFORM='wayland',QT_QPA_PLATFORMTHEME='generic',QT_NO_XDG_DESKTOP_PORTAL='1',QT_QUICK_BACKEND='software',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none',LUMEN_NATIVE_WINDOW_CONTROLS='0',LUMEN_NATIVE_WINDOW_ACTIONS='0',LUMEN_FILE_SERVICE='0',LUMEN_LAUNCH_SCOPES='0')
+env.update(WLR_BACKENDS='headless',WLR_HEADLESS_OUTPUTS='2',WLR_RENDERER='gles2' if a.effects else 'pixman',WLR_RENDERER_ALLOW_SOFTWARE='1',LIBGL_ALWAYS_SOFTWARE='1',WLR_LIBINPUT_NO_DEVICES='1',QT_QPA_PLATFORM='wayland',QT_QPA_PLATFORMTHEME='generic',QT_NO_XDG_DESKTOP_PORTAL='1',QT_QUICK_BACKEND='software',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none',LUMEN_NATIVE_WINDOW_CONTROLS='0',LUMEN_NATIVE_WINDOW_ACTIONS='0',LUMEN_FILE_SERVICE='0',LUMEN_LAUNCH_SCOPES='0')
 for key in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK','AT_SPI_BUS_ADDRESS'):env.pop(key,None)
 shutil.copytree(repo/'res/lumen-desktop',out/'assets');palettes=json.loads((repo/'res/lumen-desktop/appearance/palette.json').read_text())
 appearance=out/'appearance.json';appearance.write_text(json.dumps(dict(font=palettes['font'],palette=palettes[a.theme],preferences={})));env['LUMEN_APPEARANCE_STATE']=str(appearance)
@@ -65,7 +65,7 @@ def wait(predicate):
    if result:return result
   except (OSError,ValueError,KeyError,sp.SubprocessError):pass
   time.sleep(.04)
- raise AssertionError('Widget input timeout; inspect '+str(out))
+ raise AssertionError('Widget input timeout; inspect '+str(out)+'; compositor logs: '+ '\n'.join(path.name+': '+path.read_text() for path in out.glob('*sway*.log')))
 def ipc(method,*args):return call('quickshell','-p',str(qml),'ipc','call','widgetAudit',method,*args)
 def state():
  value=json.loads(ipc('state'));(out/'last-state.json').write_text(json.dumps(value,indent=2));return value
