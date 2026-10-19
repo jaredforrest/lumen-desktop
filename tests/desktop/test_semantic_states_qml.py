@@ -34,6 +34,10 @@ ShellRoot {
   status.severity="warning";
   if(!status.Accessible.name.startsWith("Warning: ") || status.Accessible.description!=="warning")throw Error("Warning is only a colour");
   if(remove.enabled || !remove.destructive || remove.Accessible.name!=="Delete Fixture")throw Error("Destructive/disabled action identity missing");
+  remove.enabled=true;remove.primary=true;
+  if(remove.actionColor!==D.Theme.errorText || remove.contentItem.color!==D.Theme.destructiveText)throw Error("Filled destructive action bypasses semantic colours");
+  remove.primary=false;
+  if(remove.contentItem.color!==D.Theme.errorText)throw Error("Outlined destructive action bypasses semantic colours");
   console.log("SEMANTIC_STATES_PASS");Qt.quit();
  }catch(error){console.error("SEMANTIC_STATES_FAIL "+error);Qt.quit();}}}
 }''')
