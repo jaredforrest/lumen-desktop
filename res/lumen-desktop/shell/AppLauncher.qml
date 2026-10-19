@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Window
 import Quickshell
 PanelSurface {
     id: root
@@ -20,6 +21,9 @@ PanelSurface {
     property int selectedIndex: 0
     readonly property string queryText:search.text
     property string selectedKey:""
+    function focusSearch(){if(visible && root.Window.window && root.Window.window.visible)search.forceActiveFocus();}
+    function activateResult(key){if(visible && root.Window.window && root.Window.window.visible && showingResults)launchKey(key,false);}
+    function resultDescription(item){const text=item.subtitle || "";return item.kind==="file"?text.replace(Quickshell.env("HOME"),"~"):text;}
     function resultKey(item){return item?item.kind+":"+(item.path || item.id)+":"+(item.token || ""):"";}
     onSelectedIndexChanged:selectedKey=resultKey(results[selectedIndex])
     readonly property var service: shell.search
@@ -208,6 +212,16 @@ PanelSurface {
                 delegate:Rectangle {
                     required property var modelData
                     required property int index
+                    property string focusKey:""
+                    activeFocusOnTab:true;enabled:!root.service.opening
+                    Accessible.role:Accessible.Button;Accessible.name:modelData.title;Accessible.description:root.resultDescription(modelData);Accessible.selected:index===root.selectedIndex
+                    Accessible.onPressAction:if(enabled && visible)root.activateResult(root.resultKey(modelData))
+                    onActiveFocusChanged:if(activeFocus){focusKey=root.resultKey(modelData);root.selectedIndex=index;}
+                    onModelDataChanged:if(activeFocus && focusKey && focusKey!==root.resultKey(modelData))root.focusSearch()
+                    Component.onDestruction:if(activeFocus)root.focusSearch()
+                    Keys.onReturnPressed:root.activateResult(focusKey)
+                    Keys.onSpacePressed:root.activateResult(focusKey)
+                    border.width:activeFocus?2:0;border.color:Theme.colors.accent
                     width:list.width;height:50;radius:9;color:root.selectedIndex===index?Theme.selection:"transparent"
                     AppIcon {visible:modelData.kind==="app";x:12;anchors.verticalCenter:parent.verticalCenter;width:28;height:28;iconSource:root.icon(modelData);calendarDate:root.shell.currentDate;sourceSize.width:64;sourceSize.height:64}
                     SystemGlyph {visible:modelData.kind!=="app";x:14;anchors.verticalCenter:parent.verticalCenter;width:24;height:24;name:modelData.kind==="file"?(modelData.folder?"folder":"document"):modelData.glyph || "info";ink:modelData.kind==="file" && modelData.folder?Theme.colors.accent:Theme.colors.text}
@@ -222,6 +236,16 @@ PanelSurface {
                 delegate:Rectangle {
                     required property var modelData
                     required property int index
+                    property string focusKey:""
+                    activeFocusOnTab:true;enabled:!root.service.opening
+                    Accessible.role:Accessible.Button;Accessible.name:modelData.title;Accessible.description:root.resultDescription(modelData);Accessible.selected:index===root.selectedIndex
+                    Accessible.onPressAction:if(enabled && visible)root.activateResult(root.resultKey(modelData))
+                    onActiveFocusChanged:if(activeFocus){focusKey=root.resultKey(modelData);root.selectedIndex=index;}
+                    onModelDataChanged:if(activeFocus && focusKey && focusKey!==root.resultKey(modelData))root.focusSearch()
+                    Component.onDestruction:if(activeFocus)root.focusSearch()
+                    Keys.onReturnPressed:root.activateResult(focusKey)
+                    Keys.onSpacePressed:root.activateResult(focusKey)
+                    border.width:activeFocus?2:0;border.color:Theme.colors.accent
                     width:grid.cellWidth-4;height:96;radius:10;color:root.selectedIndex===index?Theme.selection:"transparent"
                     AppIcon {anchors.horizontalCenter:parent.horizontalCenter;y:8;width:52;height:52;iconSource:root.icon(modelData);calendarDate:root.shell.currentDate;sourceSize.width:128;sourceSize.height:128}
                     PanelLabel {x:5;y:67;width:parent.width-10;text:modelData.title;textFormat:Text.PlainText;font.pixelSize:11;horizontalAlignment:Text.AlignHCenter}

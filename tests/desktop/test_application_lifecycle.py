@@ -73,6 +73,12 @@ class ApplicationLifecycleTests(unittest.TestCase):
   bus.proxy.pid=22;bus.proxy.before_activate=lambda:setattr(bus,'owner',':1.99')
   with self.assertRaises(ValueError):lifecycle.CooperativeApplication(self.tracker,bus).quit('org.example.Editor')
   self.assertEqual(bus.proxy.calls,[])
+ def test_queued_quit_rejects_replaced_application_instance(self):
+  instances=self.tracker.refresh('session',[node()])[0]['instanceIds'];bus=Bus()
+  self.backend.identities[22]['start']+=1;current=self.tracker.refresh('session',[node()])[0]['instanceIds']
+  with self.assertRaises(ValueError):lifecycle.CooperativeApplication(self.tracker,bus).quit('org.example.Editor',instances)
+  self.assertEqual(bus.proxy.calls,[])
+  self.assertTrue(lifecycle.CooperativeApplication(self.tracker,bus).quit('org.example.Editor',current)['requested']);self.assertEqual(len(bus.proxy.calls),1)
  def test_real_disposable_child_exit_is_observed_with_pidfd(self):
   child=subprocess.Popen([sys.executable,'-c','import time;print("ready",flush=True);time.sleep(60)'],stdout=subprocess.PIPE,text=True)
   tracker=lifecycle.Lifecycle();self.addCleanup(tracker.close)

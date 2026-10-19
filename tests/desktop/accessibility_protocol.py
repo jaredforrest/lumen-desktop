@@ -61,6 +61,7 @@ group_state=dict(windows=[dict(id=101,pid=202,title='Fixture document',app='Edit
 import QtQuick.Window
 import Quickshell
 import Quickshell.Io
+import Quickshell.Wayland
 import "'''+os.path.relpath(source,fixture)+'''" as D
 ShellRoot {id:mock;property int disabledPresses:0
  QtObject {id:service;property bool available:true;property string error:"";property var focusState:({profiles:[{id:"work",name:"Work",allowedApps:[],allowCritical:false,schedules:[]}]});property var applications:[{key:"chat",name:"Chat"}];function command(data){focusState={profiles:[data.profile]};}}
@@ -82,7 +83,7 @@ ShellRoot {id:mock;property int disabledPresses:0
  property int finalActions:0
  QtObject {id:noticeService;property bool available:true;property var expandedCards:({});property var invocations:[];property var commands:[];function invoke(notification,action){invocations=invocations.concat([{id:notification.id,action:action}]);}function command(value){commands=commands.concat([value]);}function toggleExpanded(id){}}
  QtObject {id:searchService;property var files:[];property var preview:({});property bool searching:false;property bool opening:false;property bool scanning:false;property int indexed:0;property bool limited:false;property bool unreadable:false;property bool more:false;property string error:"";signal opened();function search(value){}function requestPreview(value){}}
- QtObject {id:launchShell;property var search:searchService;property var entries:[];property var notifications:({dnd:false,available:false});property var audioState:({muted:false,available:false});property var exportedMenu:({state:{menu:null},label:function(value){return value;}});property date currentDate:new Date();function appLabel(entry){return entry.name;}function appIcon(entry){return "";}}
+ QtObject {id:launchShell;property var search:searchService;property var entries:[];property var notifications:({dnd:false,available:false});property var audioState:({muted:false,available:false});property var exportedMenu:({state:{menu:null},label:function(value){return value;}});property date currentDate:new Date();property var launches:[];function activate(entry,newWindow){launches=launches.concat([entry.id]);}function appLabel(entry){return entry.name;}function appIcon(entry){return "";}}
  FloatingWindow {id:actionsWindow;visible:false;title:"Shell action accessibility";implicitWidth:950;implicitHeight:800
   Column {anchors.fill:parent;spacing:18
    D.AppLauncher {id:launcher;shell:launchShell;onCloseRequested:actionsWindow.visible=false}
@@ -90,7 +91,15 @@ ShellRoot {id:mock;property int disabledPresses:0
   }
  }
  property int expansions:0
+ QtObject {id:dockShell;property var referenceDock:[{key:"fixture-dock",canvas:68,entry:{id:"fixture-dock",name:"Fixture Dock",icon:"application-x-executable"}}];property string popupOwner:"";property bool dockPreferencesBusy:false;property string aliasError:"";property string applicationCommandError:"";property date currentDate:new Date();property var focuses:[];property var activations:[];property var quits:[];property var windows:ToplevelManager.toplevels.values;signal requestDockFocus(string name);signal dismissPopups(string owner);function claimPopup(owner){popupOwner=owner;}function windowsFor(entry){return windows.filter(w=>w.appId==="accessibility-dock-source" || w.appId==="accessibility-dock-other");}function dockWindows(item){return windowsFor(item.entry);}function dockLabel(item){return item.entry.name;}function runningFor(entry){return windowsFor(entry).length>0;}function canConfigureDockEntry(entry){return false;}function isDockPinned(entry){return false;}function canForceQuit(entry){return false;}function focusWindow(window){focuses=focuses.concat([window.title]);window.activate();}function activate(entry,fresh){activations=activations.concat([entry.id]);}function activateDock(item,fresh,output){activations=activations.concat([item.entry.id]);}function updateDockPin(entry,action){}function reorderDockPin(key,index){}function quitApplication(entry){quits=quits.concat([entry.id]);}function forceQuit(entry){}function revealDockAlias(alias){}function removeDockAlias(alias){}}
+ D.Dock {id:fixtureDock;screen:Quickshell.screens[0];shell:dockShell}
  IpcHandler {target:"a11yFixture";function status():string {return JSON.stringify({visible:window.visible,focus:focus.active,profile:service.focusState.profiles[0],disabledPresses:mock.disabledPresses});}function close():void {window.visible=false;}
+ function dockOpen():void {fixtureDock.openContext(dockShell.referenceDock[0],0);}
+ function dockStatus():string {return JSON.stringify({open:fixtureDock.contextEntry!==null,index:fixtureDock.contextIndex,windows:dockShell.windowsFor(dockShell.referenceDock[0].entry).map(w=>w.title),focuses:dockShell.focuses,activations:dockShell.activations,quits:dockShell.quits});}
+ function resultsSetup():void {actionsWindow.visible=true;launchShell.entries=[{id:"fixture.alpha",name:"Fixture Alpha",genericName:"Synthetic app",noDisplay:false},{id:"fixture.beta",name:"Fixture Beta",genericName:"Synthetic app",noDisplay:false}];launcher.setProvider("Applications");}
+ function resultsGrid():void {launcher.gridMode=true;}
+ function resultsRemove():void {launchShell.entries=launchShell.entries.filter(e=>e.id!=="fixture.alpha");}
+ function resultsStatus():string {return JSON.stringify({visible:launcher.visible,provider:launcher.provider,query:launcher.queryText,launches:launchShell.launches,results:launcher.results.map(r=>r.id)});}
  function actionsShow():void {actionsWindow.visible=true;}
  function actionsStatus():string {return JSON.stringify({visible:actionsWindow.visible,preview:launcher.previewOpen,grid:launcher.gridMode,invocations:noticeService.invocations,expansions:mock.expansions});}
  function actionsDisableApps():void {D.Theme.searchPreferences={disabledProviders:["applications"]};}
@@ -144,6 +153,16 @@ try:
     a11y_bus.add_signal_receiver(lambda *args:events.append(dict(detail=str(args[0]),value=int(args[1]))),signal_name='StateChanged',dbus_interface='org.a11y.atspi.Event.Object')
     desktop=('org.a11y.atspi.Registry','/org/a11y/atspi/accessible/root')
     def interface(ref,name):return dbus.Interface(a11y_bus.get_object(*ref,introspect=False),name)
+    expected_stale_paths=set()
+    def stale_action(ref):
+        expected_stale_paths.add(str(ref[1]))
+        record=dict(path=str(ref[1]))
+        try:record['accepted']=bool(interface(ref,'org.a11y.atspi.Action').DoAction(0,timeout=2))
+        except dbus.DBusException as error:
+            record['error']=error.get_dbus_name()
+            assert record['error'] in ('org.freedesktop.DBus.Error.UnknownObject','org.freedesktop.DBus.Error.UnknownMethod'),record
+        with (out/'stale-actions.jsonl').open('a') as stream:stream.write(json.dumps(record)+'\n')
+
     def tree():
         rows=[];pending=[desktop];seen=set()
         while pending and len(rows)<500:
@@ -164,8 +183,8 @@ try:
                 with (out/'protocol-errors.log').open('a') as log:log.write(str(ref)+' '+str(exc)+'\n')
                 continue
         return rows
-    def named(name):
-        rows=tree();(out/'last-tree.json').write_text(json.dumps([row for _,row in rows],indent=2));return next(((item,row) for item,row in rows if row['name']==name),None)
+    def named(name,showing=False):
+        rows=tree();(out/'last-tree.json').write_text(json.dumps([row for _,row in rows],indent=2));return next(((item,row) for item,row in rows if row['name']==name and (not showing or row['showing'])),None)
     wait(lambda:named('Focus, Off'),'Focus accessibility object')
     (out/'initial-tree.json').write_text(json.dumps([row for _,row in tree()],indent=2))
     focus,row=named('Focus, Off');assert row['role']=='check box' and not row['checked'],row
@@ -286,6 +305,61 @@ try:
     ipc('actionsEnableApps');wait(lambda:named('Application grid')[1]['enabled'],'restored provider enables grid action')
     assert interface(grid,'org.a11y.atspi.Component').GrabFocus(timeout=2);call('wtype','-s','200','-k','Escape')
     wait(lambda:not json.loads(ipc('actionsStatus'))['visible'],'Escape closes launcher from toolbar control')
+    ipc('resultsSetup')
+    wait(lambda:json.loads(ipc('resultsStatus'))['visible'],'visible launcher results fixture')
+    time.sleep(.3)
+    query,row=named('Search applications, files, actions and clipboard history');assert interface(query,'org.a11y.atspi.Component').GrabFocus(timeout=2);interface(query,'org.a11y.atspi.EditableText').SetTextContents('Fixture',timeout=2)
+    (out/'results-state.json').write_text(ipc('resultsStatus'))
+    initial_result=named('Fixture Alpha');(out/'result-row-protocol.json').write_text(json.dumps(initial_result[1] if initial_result else None,indent=2))
+    alpha,row=wait(lambda:named('Fixture Alpha',True),'semantic launcher result');assert row['role']=='push button' and row['description']=='Synthetic app',row
+    assert interface(alpha,'org.a11y.atspi.Component').GrabFocus(timeout=2);call('wtype','-s','200','-k','Return')
+    wait(lambda:json.loads(ipc('resultsStatus'))['launches']==['fixture.alpha'],'Return launches captured app once')
+    stale_action(alpha)
+    time.sleep(.2);assert json.loads(ipc('resultsStatus'))['launches']==['fixture.alpha']
+    ipc('resultsSetup');time.sleep(.3);query,row=named('Search applications, files, actions and clipboard history');interface(query,'org.a11y.atspi.EditableText').SetTextContents('Fixture',timeout=2)
+    old_alpha,row=wait(lambda:named('Fixture Alpha',True),'captured result before removal');assert interface(old_alpha,'org.a11y.atspi.Component').GrabFocus(timeout=2)
+    ipc('resultsRemove');wait(lambda:json.loads(ipc('resultsStatus'))['results']==['fixture.beta'],'selected app result removed')
+    stale_action(old_alpha)
+    time.sleep(.2);assert json.loads(ipc('resultsStatus'))['launches']==['fixture.alpha'],'stale result activated a bystander'
+    beta,row=wait(lambda:named('Fixture Beta',True),'remaining app result');assert interface(beta,'org.a11y.atspi.Action').DoAction(0,timeout=2)
+    wait(lambda:json.loads(ipc('resultsStatus'))['launches']==['fixture.alpha','fixture.beta'],'assistive result targets remaining app once')
+    ipc('resultsSetup');time.sleep(.3);ipc('resultsGrid')
+    grid_alpha,row=wait(lambda:named('Fixture Alpha',True),'accessible grid result');assert row['role']=='push button'
+    assert interface(grid_alpha,'org.a11y.atspi.Component').GrabFocus(timeout=2);call('wtype','-s','200','-k','space')
+    wait(lambda:json.loads(ipc('resultsStatus'))['launches']==['fixture.alpha','fixture.beta','fixture.alpha'],'grid keyboard action targets captured app once')
+    # Disposable native windows establish exact stale Dock selection behaviour.
+    for app,title in [('source','Dock Source'),('other','Dock Other'),('bystander','Dock Bystander')]:launch(['foot','--app-id=accessibility-dock-'+app,'--title='+title,'sleep','180'],'dock-'+app+'.log')
+    def native_nodes(node):
+        yield node
+        for child in node.get('nodes',[])+node.get('floating_nodes',[]):yield from native_nodes(child)
+    def native_windows():return {n.get('name'):n for n in native_nodes(json.loads(call('swaymsg','-r','-t','get_tree'))) if str(n.get('app_id','')).startswith('accessibility-dock-')}
+    wait(lambda:len(native_windows())==3,'three disposable Dock windows')
+    wait(lambda:len(json.loads(ipc('dockStatus'))['windows'])==2,'Dock native foreign-toplevel handles')
+    ipc('dockOpen');wait(lambda:json.loads(ipc('dockStatus'))['open'],'Dock menu window');time.sleep(.3)
+    initial_row=named('Open New');(out/'dock-row-protocol.json').write_text(json.dumps(initial_row[1] if initial_row else None,indent=2))
+    call('wtype','-s','200','-k','Down','-k','Down');wait(lambda:json.loads(ipc('dockStatus'))['index']==1,'keyboard captures first native menu window')
+    captured=json.loads(ipc('dockStatus'))['windows'][0];call('swaymsg','[con_id='+str(native_windows()[captured]['id'])+'] kill');wait(lambda:len(json.loads(ipc('dockStatus'))['windows'])==1,'selected native window closes')
+    bystander=native_windows()['Dock Bystander']['id'];call('swaymsg','[con_id='+str(bystander)+'] focus')
+    call('wtype','-s','200','-k','Return');wait(lambda:not json.loads(ipc('dockStatus'))['open'],'stale Dock confirmation resolves')
+    assert json.loads(ipc('dockStatus'))['focuses']==[],json.loads(ipc('dockStatus'))
+    assert native_windows()['Dock Bystander']['focused'],native_windows()
+    ipc('dockOpen');open_new,row=wait(lambda:named('Open New',True),'accessible Dock menu item');assert row['role']=='menu item' and row['enabled'],row
+    unavailable,row=named('Request Quit',True);assert not row['enabled'] and not row['sensitive'],row
+    interface(unavailable,'org.a11y.atspi.Action').DoAction(0,timeout=2);assert json.loads(ipc('dockStatus'))['quits']==[]
+    remaining=json.loads(ipc('dockStatus'))['windows'][0];target,row=wait(lambda:named(remaining,True),'native Dock window item');assert row['role']=='menu item'
+    assert interface(target,'org.a11y.atspi.Action').DoAction(0,timeout=2);wait(lambda:json.loads(ipc('dockStatus'))['focuses']==[remaining],'assistive Dock window action once')
+    wait(lambda:native_windows()[remaining]['focused'],'actual native captured Dock window focus')
+    stale_action(target)
+    time.sleep(.2);assert json.loads(ipc('dockStatus'))['focuses']==[remaining]
+    ipc('dockOpen');open_new,row=wait(lambda:named('Open New',True),'current Dock app action')
+    assert interface(open_new,'org.a11y.atspi.Action').DoAction(0,timeout=2);wait(lambda:json.loads(ipc('dockStatus'))['activations']==['fixture-dock'],'assistive Dock app action once')
+    ipc('dockOpen');wait(lambda:json.loads(ipc('dockStatus'))['open'],'fresh Dock menu')
+    stale_action(open_new)
+    time.sleep(.2);assert json.loads(ipc('dockStatus'))['activations']==['fixture-dock'],'old menu action replayed into fresh menu'
+    call('wtype','-s','200','-k','Down','-k','Return');wait(lambda:json.loads(ipc('dockStatus'))['activations']==['fixture-dock']*2,'keyboard Dock app action once')
+    time.sleep(.2);assert json.loads(ipc('dockStatus'))['activations']==['fixture-dock']*2
+    (out/'dock-result-identity.json').write_text(json.dumps(dict(dock=json.loads(ipc('dockStatus')),launcher=json.loads(ipc('resultsStatus'))),indent=2))
+    for window in native_windows().values():call('swaymsg','[con_id='+str(window['id'])+'] kill')
     full_checks=[]
     if a.full_shell:
         shutil.copyfile(production_source/'window_overview.py',source/'window_overview.py')
@@ -317,10 +391,13 @@ try:
         (out/'owned-windows-tree.json').write_text(json.dumps([row for _,row in tree()],indent=2))
     for log in ['fixture.log']+(['desktop.log'] if a.full_shell else []):
         text=(out/log).read_text()
-        assert 'qt.accessibility.atspi:' not in text,text
+        for line in text.splitlines():
+            if 'qt.accessibility.atspi:' not in line:continue
+            matched=re.fullmatch(r'  WARN qt.accessibility.atspi: Could not find accessible on path: "([^"]+)"',line)
+            assert matched and matched.group(1) in expected_stale_paths,line
         assert not any(message in text for message in ('Failed to load configuration','ReferenceError:','TypeError:')),text
     (out/'final-tree.json').write_text(json.dumps([row for _,row in tree()],indent=2))
-    (out/'result.json').write_text(json.dumps(dict(passed=True,bus=address,status={str(k):bool(v) for k,v in status.items()},events=events,checks=['private AT-SPI bus','actual roles and names','protocol focus reflected in state','physical Space activates controls','checked state propagated','widget row role/context/read order and keyboard selection','removed widget restores focus','Overview group Return and AT-SPI dispatch exact fresh intents','Overview dialog returns focus to opener','session dialog role/context/read order and disabled waiting action','keyboard session cancellation without host action','notification primary and stack actions work through AT-SPI and keyboard','launcher toolbar toggles expose checkbox state and accept keyboard and assistive actions','disabled application provider blocks grid action','Escape closes launcher from toolbar focus']+full_checks),indent=2))
+    (out/'result.json').write_text(json.dumps(dict(passed=True,bus=address,status={str(k):bool(v) for k,v in status.items()},events=events,checks=['private AT-SPI bus','actual roles and names','protocol focus reflected in state','physical Space activates controls','checked state propagated','widget row role/context/read order and keyboard selection','removed widget restores focus','Overview group Return and AT-SPI dispatch exact fresh intents','Overview dialog returns focus to opener','session dialog role/context/read order and disabled waiting action','keyboard session cancellation without host action','notification primary and stack actions work through AT-SPI and keyboard','launcher toolbar toggles expose checkbox state and accept keyboard and assistive actions','disabled application provider blocks grid action','Escape closes launcher from toolbar focus','launcher list/grid result roles and captured-key keyboard and assistive actions','removed/hidden result references cannot launch another app','Dock menu-item actions activate exact native window once','window removal invalidates Dock menu without bystander focus','retired Dock menu actions cannot replay into a fresh menu']+full_checks),indent=2))
     print(out/'result.json')
 finally:
     for proc in reversed(processes):

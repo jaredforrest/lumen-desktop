@@ -140,7 +140,7 @@ ShellRoot {
     readonly property var runningApplications:applicationLifecycle.applications
     function runningFor(entry){return !!entry && (windowsFor(entry).length>0 || runningApplications.some(app=>{const candidate=entryFor({appId:app.appId,title:""});return candidate && candidate.id===entry.id;}));}
     function applicationInstanceKey(entry){let ids=[];for(const app of runningApplications){const candidate=entryFor({appId:app.appId,title:""});if(candidate && candidate.id===entry.id)ids=ids.concat(app.instanceIds || []);}return ids.sort().join(":");}
-    function quitApplication(entry){const app=runningApplications.find(app=>{const candidate=entryFor({appId:app.appId,title:""});return candidate && candidate.id===entry.id;});if(!app || !applicationLifecycle.quit(app.appId))applicationCommandError="Use the application’s own Quit command. Cooperative Quit is unavailable.";}
+    function quitApplication(entry,expectedInstances){if(expectedInstances!==undefined && expectedInstances!==applicationInstanceKey(entry)){applicationCommandError="The application changed. Select it again before requesting Quit.";return;}const app=runningApplications.find(app=>{const candidate=entryFor({appId:app.appId,title:""});return candidate && candidate.id===entry.id;});if(!app || !applicationLifecycle.quit(app.appId,app.instanceIds))applicationCommandError="Use the application’s own Quit command. Cooperative Quit is unavailable.";}
     property var windowCreationOrder:[]
     property var windows: ToplevelManager.toplevels.values
     onWindowsChanged:windowCreationOrder=SwitcherModel.creationOrder(windowCreationOrder,windows)

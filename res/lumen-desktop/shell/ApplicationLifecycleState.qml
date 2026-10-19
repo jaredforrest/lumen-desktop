@@ -13,9 +13,9 @@ QtObject {
     signal sessionAuthorized(var authorization)
     signal resultReady(var result)
     function sessionCommand(action,value){if(!available)return false;observer.write(JSON.stringify({action:action,sessionAction:value,token:value})+"\n");return true;}
-    function quit(appId){
+    function quit(appId,instanceIds){
         if(!available || pending)return false;
-        pending=true;observer.write(JSON.stringify({action:"quit",appId:appId})+"\n");return true;
+        pending=true;observer.write(JSON.stringify({action:"quit",appId:appId,instanceIds:instanceIds || ((applications.find(app=>app.appId===appId) || {}).instanceIds) || []})+"\n");return true;
     }
     property Process observer:Process {
         running:true;stdinEnabled:true

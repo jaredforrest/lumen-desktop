@@ -210,7 +210,12 @@ class CooperativeApplication:
         import dbus
         proxy.Activate('quit',dbus.Array([],signature='v'),dbus.Dictionary({},signature='sv'),dbus_interface='org.gtk.Actions',timeout=2)
         return {'requested':True,'protocol':'org.gtk.Actions','status':'requested-not-confirmed-exited'}
-    def quit(self,app):return self.dispatch_quit(self.prepare_quit(app))
+    def quit(self,app,instance_ids=None):
+        prepared=self.prepare_quit(app)
+        if instance_ids is not None:
+            actual=hashlib.sha256(json.dumps(prepared[1]['identity'],sort_keys=True).encode()).hexdigest()
+            if instance_ids!=[actual]:raise ValueError('The selected application process changed')
+        return self.dispatch_quit(prepared)
 
 
 def receive(stream):
@@ -289,7 +294,7 @@ def watch():
                                 if command=='session_begin':session.begin(data.get('sessionAction'),nodes);emit(True);continue
                                 authorization=session.authorize(data.get('token'),nodes);emit(True,result={'sessionAuthorization':authorization});continue
                             if not isinstance(data,dict) or data.get('action')!='quit' or not isinstance(data.get('appId'),str):raise ValueError('Unsupported application command')
-                            result=CooperativeApplication(lifecycle).quit(data['appId']);result['appId']=data['appId']
+                            result=CooperativeApplication(lifecycle).quit(data['appId'],data.get('instanceIds'));result['appId']=data['appId']
                         except Exception:
                             if isinstance(data,dict) and str(data.get('action','')).startswith('session_'):session.fail('Session confirmation failed. The session remains open; cancel and start again.')
                             result={'requested':False,'error':'Cooperative Quit is unavailable or the application changed. Use its own Quit command; Force Quit is a separate action.'}

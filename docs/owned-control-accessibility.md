@@ -27,6 +27,23 @@ Escape closes the launcher while either is focused. These checks use synthetic
 notification actions and a no-launch search service, not personal notifications,
 clipboard history or host commands.
 
+Launcher list and grid results expose named, selected, focusable actions with
+result-key dispatch. Hidden or removed result references cannot retarget another
+app. Dock context actions expose menu-item roles, enabled/selected state and
+keyboard/assistive activation. Menu invocations capture the application, process
+observation identity, native window references and menu generation. A changed
+window set invalidates the menu instead of allowing an index to select another
+window. Window focus and Close Windows are explicit actions; a destroyed window
+never falls through to closing other windows. Queued cooperative Quit also
+compares the expected process observation identity at helper dispatch.
+
+The protocol regression deliberately calls retired accessibility references.
+Qt may reject these with UnknownObject and a matching missing-path warning;
+only paths from those explicit probes are allowed. Other provider warnings
+still fail. Actual disposable native windows prove stale selection leaves the
+bystander focused and valid actions focus the exact chosen window once. App
+launch requests are recorded by a no-launch fixture, not executed on the host.
+
 `tests/desktop/accessibility_protocol.py` runs a private activation-free session
 bus, explicitly launched private AT-SPI bus/registry, private runtime and native
 headless compositor. It records actual protocol trees, checks keyboard and

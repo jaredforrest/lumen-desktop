@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Effects
 import Quickshell
 import Quickshell.Wayland
@@ -54,26 +55,57 @@ PanelWindow {
     property real contextX: 0
     property real contextY:0
     property int contextIndex:-1
+    property var contextSelection:null
+    property var contextWindowSnapshot:[]
+    property string contextInstanceSnapshot:""
+    property int contextGeneration:0
+    function contextValid(){if(!contextEntry)return true;if(typeof shell.applicationInstanceKey==="function" && shell.applicationInstanceKey(contextEntry)!==contextInstanceSnapshot)return false;const live=shell.windowsFor(contextEntry);return live.length===contextWindowSnapshot.length && contextWindowSnapshot.every(w=>w && live.includes(w));}
+    Connections {target:shell;ignoreUnknownSignals:true;function onWindowsChanged(){if(dock.contextEntry && !dock.contextValid())dock.closeContext();}function onRunningApplicationsChanged(){if(dock.contextEntry && !dock.contextValid())dock.closeContext();}}
+    function closeContext(){contextGeneration++;contextEntry=null;contextAlias=null;contextSelection=null;}
+    function captureContext(row,generation){return {generation:generation===undefined?contextGeneration:generation,row:row,entry:contextEntry,appId:contextEntry?contextEntry.id:"",instanceKey:contextEntry && typeof shell.applicationInstanceKey==="function"?shell.applicationInstanceKey(contextEntry):"",alias:contextAlias,aliasKey:contextAlias?contextAlias.key:"",windows:contextEntry?shell.windowsFor(contextEntry).slice():[]};}
+    function contextSelected(row){return !!contextSelection && (row.action==="window"?contextSelection.row.action==="window" && row.win===contextSelection.row.win:row.action===contextSelection.row.action);}
+    function selectContext(index){contextIndex=index;const row=contextItems.model[index];contextSelection=row?captureContext(row):null;}
     function openContext(item,index){
+        contextGeneration++;contextIndex=-1;contextSelection=null;
+        contextWindowSnapshot=item.entry?shell.windowsFor(item.entry).slice():[];contextInstanceSnapshot=item.entry && typeof shell.applicationInstanceKey==="function"?shell.applicationInstanceKey(item.entry):"";
         dock.keyboardMode=false;contextEntry=item.entry || null;contextAlias=item.entry?null:item;
         contextY=((screen?screen.height:1000)-height)/2+12+(index+0.5)*slot;
         contextX=((screen?screen.width:1440)-width)/2+12+(index+0.5)*slot;
     }
-    onContextAliasChanged:{contextIndex=-1;if(contextAlias)shell.claimPopup("dock:"+outputName);else if(!contextEntry){if(shell.popupOwner==="dock:"+outputName)shell.popupOwner="";hideTimer.restart();}}
+    onContextAliasChanged:{contextIndex=-1;contextSelection=null;if(contextAlias)shell.claimPopup("dock:"+outputName);else if(!contextEntry){if(shell.popupOwner==="dock:"+outputName)shell.popupOwner="";hideTimer.restart();}}
     function stepContext(delta) {
+        if(!contextValid()){closeContext();return;}
         const count=contextItems.count;if(!count)return;
-        contextIndex=contextIndex<0?(delta>0?0:count-1):(contextIndex+delta+count)%count;
-        contextScroll.contentY=Math.max(0,Math.min(contextScroll.contentHeight-contextScroll.height,contextIndex*(Theme.menuRowHeight+2)-contextScroll.height/2));
+        let next=contextIndex;
+        for(let i=0;i<count;i++){next=next<0?(delta>0?0:count-1):(next+delta+count)%count;if(contextItems.model[next].enabled!==false)break;}
+        if(contextItems.model[next].enabled===false)return;
+        selectContext(next);
+        contextScroll.contentY=Math.max(0,Math.min(contextScroll.contentHeight-contextScroll.height,next*(Theme.menuRowHeight+2)-contextScroll.height/2));
+        const item=contextItems.itemAt(next);if(item)item.forceActiveFocus();
     }
     function applicationRunning(entry){return typeof shell.runningFor==="function"?shell.runningFor(entry):shell.windowsFor(entry).length>0;}
-    function activateContext(row) {
+    function activateContext(row,captured) {
         if(!row || row.enabled===false)return;
-        const entry=contextEntry,alias=contextAlias;contextEntry=null;contextAlias=null;
+        const intent=captured || captureContext(row),entry=intent.entry,alias=intent.alias;
+        if(intent.generation!==contextGeneration || entry!==contextEntry || alias!==contextAlias || (entry && entry.id!==intent.appId) || (alias && alias.key!==intent.aliasKey))return;
+        if(entry && !contextValid()){closeContext();return;}
+        const currentInstances=entry && typeof shell.applicationInstanceKey==="function"?shell.applicationInstanceKey(entry):"";
+        if(row.action==="quit" && !intent.instanceKey)return;
+        if(["quit","force-quit"].includes(row.action) && currentInstances!==intent.instanceKey)return;
+        if(row.action==="force-quit" && (intent.windows.length!==shell.windowsFor(entry).length || intent.windows.some(w=>!shell.windowsFor(entry).includes(w))))return;
+        closeContext();
         if(alias){if(row.action==="alias-open")shell.activateDock(alias,false,outputName);else if(row.action==="alias-reveal")shell.revealDockAlias(alias);else if(row.action==="alias-remove")shell.removeDockAlias(alias);return;}
-        if(row.win)shell.focusWindow(row.win);else if(row.action==="new")shell.activate(entry,true);else if(row.action==="force-quit")shell.forceQuit(entry);else if(row.action==="quit")shell.quitApplication(entry);else if(["pin","remove","earlier","later"].includes(row.action))shell.updateDockPin(entry,row.action);else shell.windowsFor(entry).forEach(w=>w.close());
+        if(!entry)return;
+        const live=shell.windowsFor(entry);
+        if(row.action==="window"){if(row.win && live.includes(row.win))shell.focusWindow(row.win);}
+        else if(row.action==="new")shell.activate(entry,true);
+        else if(row.action==="force-quit")shell.forceQuit(entry);
+        else if(row.action==="quit")shell.quitApplication(entry,intent.instanceKey);
+        else if(["pin","remove","earlier","later"].includes(row.action))shell.updateDockPin(entry,row.action);
+        else if(row.action==="close")intent.windows.filter(w=>w && live.includes(w)).forEach(w=>w.close());
     }
     onContextEntryChanged: {
-        contextIndex=-1;
+        contextIndex=-1;contextSelection=null;contextWindowSnapshot=contextEntry?shell.windowsFor(contextEntry).slice():[];contextInstanceSnapshot=contextEntry && typeof shell.applicationInstanceKey==="function"?shell.applicationInstanceKey(contextEntry):"";
         if(contextEntry)shell.claimPopup("dock:"+outputName);
         else {if(shell.popupOwner==="dock:"+outputName)shell.popupOwner="";hideTimer.restart();}
     }
@@ -240,13 +272,15 @@ PanelWindow {
         WlrLayershell.layer:WlrLayer.Overlay; WlrLayershell.namespace:"lumen-dock-popup"
         WlrLayershell.keyboardFocus:WlrKeyboardFocus.Exclusive
         MouseArea {anchors.fill:parent;onClicked:{dock.contextEntry=null;dock.contextAlias=null;}}
-        Item {anchors.fill:parent;focus:true;Keys.onEscapePressed:{dock.contextEntry=null;dock.contextAlias=null;}
-            Keys.onDownPressed:dock.stepContext(1)
-            Keys.onUpPressed:dock.stepContext(-1)
-            Keys.onReturnPressed:if(dock.contextIndex>=0)dock.activateContext(contextItems.model[dock.contextIndex])
+        Item {anchors.fill:parent;focus:true
+            Shortcut {sequence:"Escape";onActivated:dock.closeContext()}
+            Shortcut {sequence:"Down";onActivated:dock.stepContext(1)}
+            Shortcut {sequence:"Up";onActivated:dock.stepContext(-1)}
+            Shortcut {sequence:"Return";onActivated:if(dock.contextSelection)dock.activateContext(dock.contextSelection.row,dock.contextSelection)}
         }
         PanelSurface {
             id:contextPanel
+            Accessible.role:Accessible.PopupMenu;Accessible.name:"Dock options for "+(dock.contextEntry?dock.contextEntry.name:dock.contextAlias?dock.contextAlias.name:"item")
             FontMetrics {id:contextMetrics;font.family:Theme.font;font.pixelSize:13}
             x:dock.vertical?(dock.position==="left"?dock.shelfThickness+20:parent.width-width-dock.shelfThickness-20):Math.max(8,Math.min(parent.width-width-8,dock.contextX-width/2)); y:dock.vertical?Math.max(Theme.barHeight+8,Math.min(parent.height-height-8,dock.contextY-height/2)):Math.max(Theme.barHeight+8,parent.height-height-dock.shelfThickness-18)
             width:Math.max(220,Math.min(380,contextItems.model.reduce((w,n)=>Math.max(w,contextMetrics.advanceWidth(n.label)+36),0)));height:Math.min(contextColumn.height+16,parent.height-Theme.barHeight-108);radius:Theme.menuRadius;color:Theme.colors.background;border.color:Theme.outline
@@ -257,13 +291,23 @@ PanelWindow {
                 id:contextColumn;spacing:2
                 Repeater {
                     id:contextItems
-                    model:dock.contextAlias?[{label:"Open",action:"alias-open"},{label:"Show in Files",action:"alias-reveal"},{label:"Remove from Dock",action:"alias-remove",enabled:!shell.dockPreferencesBusy}]:dock.contextEntry ? [{label:"Open New",action:"new"}].concat(shell.windowsFor(dock.contextEntry).map(w=>({label:(w.minimized?"Minimized — ":"")+(w.title || "Window"),win:w}))).concat(!shell.canConfigureDockEntry(dock.contextEntry)?[]:shell.dockPreferencesBusy?[{label:"Saving Dock settings…",enabled:false}]:shell.isDockPinned(dock.contextEntry)?[{label:"Remove from Dock",action:"remove"},{label:"Move Earlier",action:"earlier"},{label:"Move Later",action:"later"}]:[{label:"Keep in Dock",action:"pin"}]).concat([{label:"Close Windows",action:"close",enabled:shell.windowsFor(dock.contextEntry).length>0},{label:"Request Quit",action:"quit",enabled:dock.applicationRunning(dock.contextEntry)}]).concat(shell.canForceQuit(dock.contextEntry)?[{label:"Force Quit…",action:"force-quit"}]:[]) : []
-                    Rectangle {
-                        required property var modelData
+                    model:dock.contextAlias?[{label:"Open",action:"alias-open"},{label:"Show in Files",action:"alias-reveal"},{label:"Remove from Dock",action:"alias-remove",enabled:!shell.dockPreferencesBusy}]:dock.contextEntry ? [{label:"Open New",action:"new"}].concat(shell.windowsFor(dock.contextEntry).map(w=>({label:(w.minimized?"Minimized — ":"")+(w.title || "Window"),action:"window",win:w}))).concat(!shell.canConfigureDockEntry(dock.contextEntry)?[]:shell.dockPreferencesBusy?[{label:"Saving Dock settings…",enabled:false}]:shell.isDockPinned(dock.contextEntry)?[{label:"Remove from Dock",action:"remove"},{label:"Move Earlier",action:"earlier"},{label:"Move Later",action:"later"}]:[{label:"Keep in Dock",action:"pin"}]).concat([{label:"Close Windows",action:"close",enabled:shell.windowsFor(dock.contextEntry).length>0},{label:"Request Quit",action:"quit",enabled:dock.applicationRunning(dock.contextEntry) && typeof shell.applicationInstanceKey==="function" && !!shell.applicationInstanceKey(dock.contextEntry)}]).concat(shell.canForceQuit(dock.contextEntry)?[{label:"Force Quit…",action:"force-quit"}]:[]) : []
+                    AbstractButton {
+                        id:contextButton;required property var modelData
                         required property int index
-                        width:contextPanel.width-16;height:Theme.menuRowHeight;radius:5;color:dock.contextIndex===index?Theme.colors.accent:"transparent"
-                        Text {anchors.fill:parent;anchors.leftMargin:10;anchors.rightMargin:10;verticalAlignment:Text.AlignVCenter;text:modelData.label;elide:Text.ElideRight;color:dock.contextIndex===index?Theme.colors.selectedText:Theme.colors.text;font.family:Theme.font;font.pixelSize:13}
-                        MouseArea {id:contextMouse;anchors.fill:parent;hoverEnabled:true;onEntered:dock.contextIndex=index;enabled:modelData.enabled!==false;onClicked:dock.activateContext(modelData)}
+                        property var pressedContext:null
+                        property int menuGeneration:0
+                        Component.onCompleted:menuGeneration=dock.contextGeneration
+                        width:contextPanel.width-16;height:Theme.menuRowHeight;enabled:modelData.enabled!==false
+                        leftPadding:10;rightPadding:10;topPadding:0;bottomPadding:0;opacity:enabled?1:.45
+                        Accessible.role:Accessible.MenuItem;Accessible.name:modelData.label;Accessible.selected:dock.contextSelected(modelData)
+                        onActiveFocusChanged:if(activeFocus){if(dock.contextValid())dock.selectContext(index);else dock.closeContext();}
+                        onHoveredChanged:if(hovered)dock.selectContext(index)
+                        onPressed:pressedContext=dock.captureContext(modelData,menuGeneration)
+                        onCanceled:pressedContext=null
+                        onClicked:{const intent=pressedContext || dock.captureContext(modelData,menuGeneration);pressedContext=null;dock.activateContext(intent.row,intent);}
+                        contentItem:Text {verticalAlignment:Text.AlignVCenter;textFormat:Text.PlainText;text:contextButton.modelData.label;elide:Text.ElideRight;color:dock.contextSelected(contextButton.modelData)?Theme.colors.selectedText:Theme.colors.text;font.family:Theme.font;font.pixelSize:13;Accessible.ignored:true}
+                        background:Rectangle {radius:5;color:dock.contextSelected(contextButton.modelData)?Theme.colors.accent:"transparent"}
                     }
                 }
             }
