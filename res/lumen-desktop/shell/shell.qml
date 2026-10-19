@@ -84,6 +84,8 @@ ShellRoot {
     function canForceQuit(entry){const matches=windowsFor(entry);return matches.length>0 && matches.every(window=>window.appId!=="org.quickshell");}
     function forceQuit(entry){forceQuitDialog.show(appLabel(entry),windowsFor(entry).map(window=>({appId:window.appId,title:window.title || ""})));}
     WindowGroupState {id:windowGroupState}
+    GroupMembershipDrag {id:membershipDrag;shell:root;service:windowGroupState}
+    property alias groupMembershipDrag:membershipDrag
     signal requestGroupSelector(string name)
     property var groupSurfaces:({})
     function openGroupSelector(){const name=windowGroupState.state.focusedOutput || "";if(name)requestGroupSelector(name);}

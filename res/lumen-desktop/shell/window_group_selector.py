@@ -29,7 +29,7 @@ def project(tree, outputs, workspaces, version, epoch):
         workspace=integer(visible[0].get('id'))
         items=sorted((g for g in groups.groups if g.workspace==workspace),key=lambda g:(-g.recent,g.id))
         rows.append(dict(name=name,workspace=workspace,suspended=any(g.suspended for g in items),groups=[dict(id=g.id,selected=g.selected,recent=g.recent,count=len(g.members)) for g in items]))
-    return dict(available=True,enabled=groups.enabled,locked=groups.locked or lock['locked'],epoch=epoch,revision=groups.revision,
+    return dict(available=True,membershipSupported=version.get('native_window_group_membership') is True,enabled=groups.enabled,locked=groups.locked or lock['locked'],epoch=epoch,revision=groups.revision,
                 focusedOutput=next((o['name'] for o in outputs if o.get('active') is True and o.get('focused') is True),''),outputs=rows)
 
 

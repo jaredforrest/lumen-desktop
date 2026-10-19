@@ -1,0 +1,37 @@
+--- a/sway/tree/lumen_groups.c
++++ b/sway/tree/lumen_groups.c
+@@ -189,7 +189,23 @@
+   if (argc < 3 || !number(argv[2], &gid)) return cmd_results_new(CMD_INVALID, "Invalid group target");
+   struct group *g = find(gid);
+   if (!g || suspended(g->workspace)) return cmd_results_new(CMD_INVALID, "Group is unavailable in the current presentation");
+-  if (argc == 5 && !strcmp(action, "select-scoped")) {
++  if ((argc == 8 && !strcmp(action, "add-scoped")) || (argc == 7 && !strcmp(action, "remove-scoped"))) {
++   uint64_t wid, cid, pid, source_id = 0;
++   struct sway_output *output = output_by_name_or_id(argv[4]);
++   if (!number(argv[3], &wid) || wid != g->workspace || !output ||
++       output_get_active_workspace(output) != workspace(wid) || workspace(wid)->output != output ||
++       !number(argv[5], &cid) || !number(argv[6], &pid) ||
++       (argc == 8 && !number(argv[7], &source_id)))
++    return cmd_results_new(CMD_INVALID, "The captured group desktop or output changed");
++   if (argc == 7) source_id = gid;
++   struct sway_container *con = root_find_container(con_id, &cid);
++   struct group *source = find(source_id);
++   if (!con || !source || source->workspace != wid || con->lumen_group_id != source_id ||
++       !con->view || (uint64_t)con->view->pid != pid || (argc == 8 && source_id == gid))
++    return cmd_results_new(CMD_INVALID, "The captured source membership changed");
++   char *next[] = {argv[0], argc == 8 ? "add" : "remove", argv[2], argv[5], argv[6]};
++   return lumen_groups_command(5, next);
++  } else if (argc == 5 && !strcmp(action, "select-scoped")) {
+    uint64_t wid;
+    struct sway_output *output = output_by_name_or_id(argv[4]);
+    if (!number(argv[3], &wid) || wid != g->workspace || !output ||
+--- a/sway/ipc-json.c
++++ b/sway/ipc-json.c
+@@ -231,6 +231,7 @@
+ 	json_object *version = json_object_new_object();
+  json_object_object_add(version, "native_window_groups", json_object_new_boolean(true));
+  json_object_object_add(version, "native_window_group_selector", json_object_new_boolean(true));
++ json_object_object_add(version, "native_window_group_membership", json_object_new_boolean(true));
+ 	json_object_object_add(version, "desktop_rehome", json_object_new_boolean(true));
+ 	json_object_object_add(version, "native_window_relationships", json_object_new_boolean(true));
+ 

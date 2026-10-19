@@ -127,3 +127,7 @@ ScreenSaverPane 1.0 ScreenSaverPane.qml
 FocusFlickable 1.0 FocusFlickable.qml
 WindowGroupState 1.0 WindowGroupState.qml
 WindowGroupSelector 1.0 WindowGroupSelector.qml
+
+GroupMembershipDrag 1.0 GroupMembershipDrag.qml
+GroupMembershipStrip 1.0 GroupMembershipStrip.qml
+GroupDragHandle 1.0 GroupDragHandle.qml

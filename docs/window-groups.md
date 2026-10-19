@@ -38,8 +38,8 @@ placement emulation.
 ## Current boundaries
 
 This is a functional grouping workflow, not a complete spatial presentation.
-The recent groups edge selector is implemented below. Pointer drag into/out of
-that selector, packing, previews and animations are not implemented. Ordinary tiled windows
+The recent groups edge selector is implemented below. Owned Overview membership drag is implemented below. Spatial packing, previews
+and animations are not implemented. Ordinary tiled windows
 retain their original layout slots. There is no together/one-window-at-a-time
 setting yet. Sticky windows, X11 windows and shared-process shell windows are currently ungrouped;
 the latter need explicit owned-role adapters rather than title-based inference.
@@ -96,9 +96,45 @@ hidden desktop. Native groups remain the sole visibility and membership owner;
 edge previews never change them.
 
 The edge width, reveal/leave delays and card dimensions are chosen implementation
-policy, not measured reference geometry. Pointer grouping drag, live previews,
-packing and presentation animation remain unsupported. Acceptance uses both
+policy, not measured reference geometry. Direct arbitrary application-window grouping drag, live previews, packing and
+presentation animation remain unsupported. Acceptance uses both
 native compositor variants, two real disposable outputs, real keyboard/pointer
 input, actual session lock and observer shutdown. It checks MRU/scope projection,
 preview cancellation, pointer release, stale native scope rejection and removal
 of disconnected output surfaces.
+
+
+## Captured membership drag
+
+Each eligible window card in Overview has a **Group…** handle. Drag that handle
+onto a group in the temporary destination strip, or onto the recent-group edge
+selector. **New Group** detaches the captured window. The preview never changes
+membership: only release over a valid destination commits. Escape, outside
+release, changed native revision/session, changed visible desktop, session lock
+or output removal cancels the captured intent. It never closes a window or moves
+a document on disk. Protocol-owned child dialogs follow their owner and cannot
+be independently grouped through a handle.
+
+The keyboard equivalent uses Tab and Space to activate the handle, Left/Right to
+preview destinations and Return or Space to apply. Escape cancels. Both input
+paths invoke the same exact native source/container/PID, original-group,
+destination-group, epoch, revision, visible-desktop and output validation. Native
+`add-scoped` / `remove-scoped` recheck source membership and visible output scope
+in the same compositor command before any mutation. The capability
+`native_window_group_membership` is required; older native builds leave the
+handles unavailable instead of trying placement commands.
+
+Cross-surface pointer transfer uses a real native drag with a process-local opaque
+intent token. The offer contains no document paths, titles, PIDs or command data.
+Drop targets accept it only while the matching owned intent remains active;
+external MIME strings are never interpreted as membership instructions. Qt client
+global coordinates are not used to infer Wayland toplevel placement. Native
+Escape cancellation ends the offer; other invalidation clears the intent so a
+later release cannot commit it.
+
+This supports owned Overview handles and destination/selector surfaces. Dragging
+arbitrary application title bars into groups is not implemented. Strip dimensions
+and the motion threshold are provisional interaction policy, not reference
+measurements. Real private-session tests cover native cross-surface transfer,
+keyboard detach, no preview writes, forged-token rejection, release/cancel, scope
+races, native lock and disconnected outputs on both compositor variants.

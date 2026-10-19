@@ -19,6 +19,10 @@ class SelectorTests(unittest.TestCase):
  def project(self):return selector.project(dict(window_groups=self.groups),self.outputs,self.workspaces,self.version,'epoch')
  def test_recent_order_is_scoped_to_visible_workspace_and_named_output(self):
   value=self.project();self.assertEqual([g['id'] for g in value['outputs'][0]['groups']],[2,1]);self.assertEqual([g['id'] for g in value['outputs'][1]['groups']],[4]);self.assertEqual(value['focusedOutput'],'A')
+ def test_old_selector_capability_does_not_enable_membership_actions(self):
+  self.assertFalse(self.project()['membershipSupported'])
+  self.version['native_window_group_membership']=1;self.assertFalse(self.project()['membershipSupported'])
+  self.version['native_window_group_membership']=True;self.assertTrue(self.project()['membershipSupported'])
  def test_disconnected_output_removed_without_retargeting(self):
   self.outputs[0]['active']=False;self.assertEqual([o['name'] for o in self.project()['outputs']],['B'])
  def test_unknown_capability_or_lock_facts_fail_closed(self):
