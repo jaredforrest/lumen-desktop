@@ -16,7 +16,11 @@ if not a.inside:
  env['XDG_RUNTIME_DIR']=tempfile.mkdtemp(prefix='sway-frame-')
  env.update(QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
  env.pop('AT_SPI_BUS_ADDRESS',None)
- try:raise SystemExit(sp.call(['dbus-run-session','--',sys.executable,__file__,*sys.argv[1:],'--inside'],env=env))
+ bus_config=out/'bus.conf'
+ # Native frames and the local layout menu need a bus, not host portals.
+ # Omitting activation directories keeps this fixture's services private.
+ bus_config.write_text('<busconfig><type>session</type><listen>unix:tmpdir='+env['XDG_RUNTIME_DIR']+'</listen><policy context="default"><allow own="*"/><allow send_destination="*"/><allow receive_sender="*"/></policy></busconfig>')
+ try:raise SystemExit(sp.call(['dbus-run-session','--config-file='+str(bus_config),'--',sys.executable,__file__,*sys.argv[1:],'--inside'],env=env))
  finally:shutil.rmtree(env['XDG_RUNTIME_DIR'],ignore_errors=True)
 env=dict(os.environ,GSETTINGS_BACKEND='keyfile',GTK_THEME='WhiteSur-Light',WLR_BACKENDS='headless',WLR_RENDERER='gles2' if a.effects else 'pixman',WLR_RENDERER_ALLOW_SOFTWARE='1',WLR_LIBINPUT_NO_DEVICES='1',GDK_BACKEND='wayland',QT_QPA_PLATFORM='wayland',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
 for k in ['SWAYSOCK','WAYLAND_DISPLAY','DISPLAY']:env.pop(k,None)
@@ -218,6 +222,26 @@ try:
  assert not next(n for n in leaves() if n['name']=='Tiled B')['lumen_state']['desktop_hidden']
  ipc('[title="^Desktop Reveal New$"] lumen_window close')
  print('PASS: reversible desktop reveal preserves minimisation/fullscreen; activation and new app windows restore the desktop.')
+ # Every visible output participates; a second display is not a separate reveal.
+ ipc('create_output')
+ outputs=json.loads(call('swaymsg','-t','get_outputs','-r'))
+ second=next(output['name'] for output in outputs if output['name']!='HEADLESS-1')
+ ipc(f'output {second} position 1280 0')
+ ipc(f'focus output {second}')
+ launch(['foot','--title=Desktop Second Display','sh','-c','sleep 600'],'desktop-second.log')
+ wait(lambda:any(n['name']=='Desktop Second Display' for n in leaves()))
+ ipc('focus output HEADLESS-1')
+ visible_before={n['name']:n['rect'] for n in leaves() if n['name'] in ('Tiled B','Desktop Second Display')}
+ ipc('lumen_window show-desktop-on')
+ visible={n['name']:n for n in leaves()}
+ assert all(visible[name]['lumen_state']['desktop_hidden'] for name in visible_before)
+ ipc('lumen_window show-desktop-off')
+ visible={n['name']:n for n in leaves()}
+ assert all(not visible[name]['lumen_state']['desktop_hidden'] and visible[name]['rect']==rect for name,rect in visible_before.items())
+ ipc('[title="^Desktop Second Display$"] lumen_window close')
+ ipc(f'output {second} disable')
+ ipc('focus output HEADLESS-1')
+ print('PASS: desktop reveal restores visible windows independently on two outputs.')
  ipc('[title="^Tiled A$"] scratchpad show')
  assert {n['name']:n['rect'] for n in leaves()}==before
  ipc('[title="^Tiled [AB]$"] lumen_window close');wait(lambda:not leaves())
