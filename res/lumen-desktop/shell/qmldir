@@ -118,3 +118,8 @@ WallpaperSettingsPane 1.0 WallpaperSettingsPane.qml
 LocalImageChooser 1.0 LocalImageChooser.qml
 DesktopWidgetItem 1.0 DesktopWidgetItem.qml
 DesktopWidgetEditor 1.0 DesktopWidgetEditor.qml
+
+ScreenSaverState 1.0 ScreenSaverState.qml
+ScreenSaverController 1.0 ScreenSaverController.qml
+ScreenSaverSurface 1.0 ScreenSaverSurface.qml
+ScreenSaverPane 1.0 ScreenSaverPane.qml

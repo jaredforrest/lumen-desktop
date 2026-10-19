@@ -1,0 +1,12 @@
+--- a/sway/desktop/layer_shell.c
++++ b/sway/desktop/layer_shell.c
+@@ -298,6 +298,9 @@ static void handle_map(struct wl_listener *listener, void *data) {
+ 		}
+ 		arrange_layers(surface->output);
+ 	}
++	// Mapping an overlay changes the pointer target even without motion.
++	// Rebase after its scene is mapped, before a stationary button press.
++	cursor_rebase_all();
+ }
+ 
+ static void handle_unmap(struct wl_listener *listener, void *data) {

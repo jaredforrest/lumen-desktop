@@ -108,6 +108,14 @@ let
         }; };
         default = {};
       };
+      screenSaver = mkOption {
+        type = types.submodule { options = {
+          enabled = mkOption { type = types.bool; default = false; };
+          idleSeconds = mkOption { type = types.ints.between 15 7200; default = 300; };
+          motion = mkOption { type = types.bool; default = true; };
+        }; };
+        default = {};
+      };
       wallpaper = mkOption {
         type = types.submodule { options = let
           imagePath = types.addCheck types.str (value: lib.hasPrefix "/" value && !lib.hasInfix "\n" value && !lib.hasInfix "\r" value);

@@ -18,6 +18,7 @@ FloatingWindow {
     minimumSize:Qt.size(480,320)
     color:"transparent"
     surfaceFormat.opaque:false
+    ScreenSaverState {id:standaloneSaverPreferences;active:root.visible && root.page==="Screen Saver" && !root.shell.screenSaverPreferences}
     SearchHistoryState {id:settingsHistory;active:root.visible && root.page==="Search"}
     ClipboardState {id:settingsClipboard;active:root.visible && root.page==="Search";listWhenActive:false}
     property bool minimized:false
@@ -32,6 +33,7 @@ FloatingWindow {
         {name:"General",icon:"gear",color:"#8e8e93",terms:"about system version operating"},
         {name:"Privacy & Security",icon:"gear",color:"#8e8e93",terms:"passwords bitwarden encryption secure boot"},
         {name:"Appearance",icon:"contrast",color:"#56565b",terms:"light dark auto theme accent colour sunset icons"},
+        {name:"Screen Saver",icon:"screen",color:"#56565b",terms:"idle decoration preview animation"},
         {name:"Wallpaper",icon:"screen",color:"#56565b",terms:"image picture background displays"},
         {name:"Input Devices",icon:"controls",color:"#56565b",terms:"keyboard mouse trackpad pointer tap scroll repeat"},
         {name:"Accessibility",icon:"person",color:"#007aff",terms:"reduce motion animations"},
@@ -317,6 +319,7 @@ FloatingWindow {
                     PanelLabel {text:root.service.system.system || "System information unavailable";width:parent.width;wrapMode:Text.WordWrap;font.pixelSize:Theme.textSize(18);font.weight:Font.DemiBold}
                     PanelLabel {text:"Desktop · "+(root.service.system.desktop || "Wayland");width:parent.width;wrapMode:Text.WordWrap}
                 }
+                ScreenSaverPane {visible:root.page==="Screen Saver";width:parent.width;service:root.shell.screenSaverPreferences || standaloneSaverPreferences;onPreviewRequested:if(root.shell.previewScreenSaver)root.shell.previewScreenSaver()}
                 WallpaperSettingsPane {visible:root.page==="Wallpaper";active:root.visible && visible;width:parent.width}
                 InputSettingsPane {visible:root.page==="Input Devices";active:root.visible && visible;width:parent.width}
                 PrivacySecurityPane {

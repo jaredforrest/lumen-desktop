@@ -42,6 +42,13 @@ class NixSettingsTest(unittest.TestCase):
             with self.assertRaises(ValueError):settings.transaction('appearance',{'textScale':invalid},merge=True)
         self.assertEqual(settings.transaction('appearance',{'accent':'green'},merge=True)['appearance']['textScale'],1.5)
 
+    def test_screen_saver_cannot_override_lock_policy(self):
+        result=settings.transaction('screenSaver',{'enabled':True,'idleSeconds':15,'motion':False})
+        self.assertEqual(result['screenSaver'],{'enabled':True,'idleSeconds':15,'motion':False})
+        for invalid in ({'enabled':1},{'idleSeconds':True},{'idleSeconds':14},{'idleSeconds':7201},{'motion':'off'},{'lockDelay':0},{'ignoreInhibitors':True}):
+            with self.assertRaises(ValueError):settings.transaction('screenSaver',invalid)
+        self.assertFalse(settings.transaction('screenSaver',{})['screenSaver']['enabled'])
+
     def test_wallpaper_references_are_typed(self):
         import hashlib
         identity='connector:Fixture-1';key=hashlib.sha256(identity.encode()).hexdigest()

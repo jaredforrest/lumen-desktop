@@ -9,6 +9,10 @@ import "AppSwitcherModel.js" as SwitcherModel
 
 ShellRoot {
     id: root
+    ScreenSaverState {id:saverPreferences;active:true}
+    property alias screenSaverPreferences:saverPreferences
+    ScreenSaverController {id:saverController;state:saverPreferences}
+    function previewScreenSaver(){claimPopup("");return saverController.start(true);}
     signal requestMenu(string name, string outputName)
     signal requestDockFocus(string outputName)
     signal dismissPopups(string owner)
@@ -294,6 +298,7 @@ ShellRoot {
     readonly property var currentDate: clock.date
     SystemClock { id: clock; precision: Theme.menuBarPreferences.showSeconds ? SystemClock.Seconds : SystemClock.Minutes }
     IpcHandler {
+        function screenSaver(action:string):string {if(action==="preview")root.previewScreenSaver();else if(action==="dismiss")saverController.dismiss();return JSON.stringify({showing:saverController.showing,reason:saverController.reason,permitted:saverPreferences.permitted});}
         function showDesktop():string {return root.revealDesktop();}
         function windowLayout():void {root.openWindowLayout();}
         function remoteDesktop():void {root.openRemoteDesktop();}
