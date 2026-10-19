@@ -193,6 +193,31 @@ try:
  shown={n['name']:n for n in leaves()}
  assert shown['Tiled A']['scratchpad_state']!='none' and shown['Tiled A']['lumen_state']['minimised'],shown
  assert shown['Tiled B']['scratchpad_state']=='none' and not shown['Tiled B']['lumen_state']['hidden'],shown
+ desktop_before=shown['Tiled B']['rect']
+ ipc('lumen_window show-desktop-on')
+ desktop={n['name']:n for n in leaves()}
+ assert desktop['Tiled B']['lumen_state']['desktop_hidden'] and not desktop['Tiled B']['lumen_state']['minimised']
+ assert desktop['Tiled A']['lumen_state']['minimised'] and not desktop['Tiled A']['lumen_state']['desktop_hidden']
+ ipc('lumen_window show-desktop-on')
+ ipc('lumen_window show-desktop-off')
+ ipc('lumen_window show-desktop-off')
+ desktop={n['name']:n for n in leaves()}
+ assert desktop['Tiled B']['rect']==desktop_before and not desktop['Tiled B']['lumen_state']['desktop_hidden']
+ assert desktop['Tiled A']['lumen_state']['minimised']
+ ipc('lumen_window show-desktop-on')
+ ipc('[title="^Tiled B$"] scratchpad show')
+ assert not next(n for n in leaves() if n['name']=='Tiled B')['lumen_state']['desktop_hidden']
+ ipc('[title="^Tiled B$"] lumen_window fullscreen')
+ ipc('lumen_window show-desktop-on')
+ ipc('lumen_window show-desktop-off')
+ assert next(n for n in leaves() if n['name']=='Tiled B')['fullscreen_mode']!=0
+ ipc('[title="^Tiled B$"] lumen_window fullscreen')
+ ipc('lumen_window show-desktop-on')
+ launch(['foot','--title=Desktop Reveal New','sh','-c','sleep 600'],'desktop-new.log')
+ wait(lambda:any(n['name']=='Desktop Reveal New' for n in leaves()))
+ assert not next(n for n in leaves() if n['name']=='Tiled B')['lumen_state']['desktop_hidden']
+ ipc('[title="^Desktop Reveal New$"] lumen_window close')
+ print('PASS: reversible desktop reveal preserves minimisation/fullscreen; activation and new app windows restore the desktop.')
  ipc('[title="^Tiled A$"] scratchpad show')
  assert {n['name']:n['rect'] for n in leaves()}==before
  ipc('[title="^Tiled [AB]$"] lumen_window close');wait(lambda:not leaves())

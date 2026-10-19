@@ -62,13 +62,14 @@ def snapshot(tree, outputs, epoch):
                 if not isinstance(extension, dict) or any(type(extension.get(k)) is not bool for k in ('minimised', 'filled')):
                     raise ProtocolError('Invalid placement extension')
                 if 'hidden' in extension and type(extension['hidden']) is not bool:raise ProtocolError('Invalid hidden state')
+                if 'desktop_hidden' in extension and type(extension['desktop_hidden']) is not bool:raise ProtocolError('Invalid desktop reveal state')
                 extension_seen = True
             if type(node.get('fullscreen_mode',0)) is not int or node.get('fullscreen_mode',0) not in (0,1,2):raise ProtocolError('Invalid fullscreen state')
             app = node.get('app_id') or properties.get('class')
             windows.append(dict(id='w-' + str(container), app_hint=app,
                 identity_assurance='advertised_unverified', main_window=None,
                 key=bool(node.get('focused')), minimised=extension['minimised'] if extension else None,
-                app_hidden=extension.get('hidden') if extension else None, occluded=None,
+                app_hidden=extension.get('hidden') if extension else None, desktop_hidden=extension.get('desktop_hidden') if extension else None, occluded=None,
                 placement='fullscreen' if node.get('fullscreen_mode', 0) else 'filled' if extension and extension['filled'] else 'floating' if floating else 'layout_managed',
                 space='s-' + workspace if workspace is not None else None,
                 output=output, bounds=bounds(node.get('rect')),

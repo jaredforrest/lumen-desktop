@@ -94,7 +94,7 @@
 +}
 --- a/include/sway/tree/container.h
 +++ b/include/sway/tree/container.h
-@@ -67,6 +67,16 @@
+@@ -67,6 +67,17 @@
  	double content_width, content_height;
  };
  
@@ -106,6 +106,7 @@
 + struct wlr_box box;
 + double width_fraction, height_fraction;
 + enum sway_container_border border;
++ enum sway_fullscreen_mode fullscreen;
 +};
 +
  struct sway_container {
@@ -123,12 +124,12 @@
  	// Both hidden and visible scratchpad containers have scratchpad=true.
  	// Hidden scratchpad containers have a NULL parent.
  	bool scratchpad;
-+ struct sway_lumen_placement *lumen_minimized, *lumen_filled, *lumen_hidden;
++ struct sway_lumen_placement *lumen_minimized, *lumen_filled, *lumen_hidden, *lumen_desktop_hidden;
 + bool lumen_app_hidden;
  
  	// Stores last output size and position for adjusting coordinates of
  	// scratchpad windows.
-@@ -185,6 +197,16 @@
+@@ -185,6 +197,17 @@
  struct sway_container *container_create(struct sway_view *view);
  
  void container_destroy(struct sway_container *con);
@@ -136,6 +137,7 @@
 +void container_lumen_minimize(struct sway_container *con);
 +void container_lumen_fill(struct sway_container *con);
 +void container_lumen_restore(struct sway_container *con);
++void container_lumen_show_desktop(int mode);
 +bool container_lumen_configure(const char *setting, const char *value);
 +void container_lumen_titlebar_action(struct sway_container *con);
 +void container_lumen_tile(struct sway_container *con, int column, int row, int columns, int rows);
@@ -187,13 +189,14 @@
  
  		int alloc_width = MIN((int) node->width,
  			width - h_padding - config->titlebar_h_padding);
-@@ -572,6 +589,9 @@
+@@ -572,6 +589,10 @@
  		finish_animation(&con->animation_state.animation);
  	}
  
 + container_lumen_placement_free(con->lumen_minimized);
 + container_lumen_placement_free(con->lumen_filled);
 + container_lumen_placement_free(con->lumen_hidden);
++ container_lumen_placement_free(con->lumen_desktop_hidden);
  	free(con->title);
  	free(con->formatted_title);
  	free(con->title_format);
@@ -315,7 +318,7 @@
  		check_focus_follows_mouse(seat, e, node);
 --- a/sway/ipc-json.c
 +++ b/sway/ipc-json.c
-@@ -233,7 +233,12 @@
+@@ -233,7 +233,13 @@
  	sscanf(SWAY_VERSION, "%d.%d.%d", &major, &minor, &patch);
  
  	json_object_object_add(version, "human_readable", json_object_new_string(SWAY_VERSION));
@@ -323,6 +326,7 @@
 +	json_object_object_add(version, "native_window_controls", json_object_new_boolean(true));
 +	json_object_object_add(version, "window_placement_preferences", json_object_new_boolean(true));
 +	json_object_object_add(version, "native_window_layouts", json_object_new_boolean(true));
++	json_object_object_add(version, "native_show_desktop", json_object_new_boolean(true));
 + json_object_object_add(version, "native_window_actions", json_object_new_boolean(true));
 + json_object_object_add(version, "compositor_effects", json_object_new_boolean(true));
 + json_object_object_add(version, "sway_original_version", json_object_new_string(SWAY_ORIGINAL_VERSION));
@@ -339,7 +343,7 @@
  #include "list.h"
  #include "log.h"
  #include "util.h"
-@@ -115,6 +116,200 @@
+@@ -115,6 +116,253 @@
  	con->transform = box;
  }
  
@@ -369,6 +373,8 @@
 + p->index = list_find(container_get_siblings(con), con);
 + p->floating = container_is_floating(con);
 + p->box = (struct wlr_box){con->pending.x, con->pending.y, con->pending.width, con->pending.height};
++ p->fullscreen = con->pending.fullscreen_mode;
++ if (p->fullscreen != FULLSCREEN_NONE) p->box = (struct wlr_box){con->saved_x, con->saved_y, con->saved_width, con->saved_height};
 + p->border = con->pending.border;
 + p->width_fraction = con->width_fraction; p->height_fraction = con->height_fraction;
 + return p;
@@ -433,7 +439,58 @@
 + arrange_workspace(ws);
 + node_set_dirty(&con->node);
 + if (con->view && con->view->foreign_toplevel) wlr_foreign_toplevel_handle_v1_set_minimized(con->view->foreign_toplevel, false);
++ if (p->fullscreen != FULLSCREEN_NONE) container_set_fullscreen(con, p->fullscreen);
 + if (focus) seat_set_focus(input_manager_current_seat(), &con->node);
++}
++
++static bool lumen_desktop_revealed;
++static uint64_t lumen_desktop_focus;
++
++static void lumen_desktop_collect(struct sway_container *con, void *data) {
++ list_t *targets = data;
++ if (!con->view || con->node.destroying) return;
++ if (lumen_desktop_revealed) {
++  if (con->lumen_desktop_hidden) list_add(targets, con);
++ } else if (!con->scratchpad && con->pending.workspace && workspace_is_visible(con->pending.workspace)) {
++  list_add(targets, con);
++ }
++}
++
++static bool lumen_desktop_focus_matches(struct sway_container *con, void *data) {
++ return con->node.id == *(uint64_t *)data && con->view && !con->node.destroying;
++}
++
++void container_lumen_show_desktop(int mode) {
++ bool show = mode < 0 ? !lumen_desktop_revealed : mode != 0;
++ if (show == lumen_desktop_revealed) return;
++ list_t *targets = create_list();
++ if (!targets) return;
++ root_for_each_container(lumen_desktop_collect, targets);
++ struct sway_seat *seat = input_manager_current_seat();
++ if (show) {
++  struct sway_container *focused = seat_get_focused_container(seat);
++  lumen_desktop_focus = focused ? focused->node.id : 0;
++ }
++ for (int i = 0; i < targets->length; ++i) {
++  struct sway_container *con = targets->items[i];
++  if (show) {
++   con->lumen_desktop_hidden = lumen_save(con);
++   if (con->lumen_desktop_hidden) root_scratchpad_add_container(con, NULL);
++  } else {
++   struct sway_lumen_placement *saved = con->lumen_desktop_hidden;
++   con->lumen_desktop_hidden = NULL;
++   lumen_restore(con, saved, false);
++   container_lumen_placement_free(saved);
++  }
++  node_set_dirty(&con->node);
++ }
++ list_free(targets);
++ lumen_desktop_revealed = show;
++ if (!show) {
++  struct sway_container *focused = root_find_container(lumen_desktop_focus_matches, &lumen_desktop_focus);
++  if (focused && !focused->scratchpad) seat_set_focus(seat, &focused->node);
++  lumen_desktop_focus = 0;
++ }
 +}
 +
 +void container_lumen_hide(struct sway_container *con) {
@@ -540,10 +597,15 @@
  void root_scratchpad_add_container(struct sway_container *con, struct sway_workspace *ws) {
  	if (!sway_assert(!con->scratchpad, "Container is already in scratchpad")) {
  		return;
-@@ -179,6 +289,14 @@
+@@ -179,6 +289,19 @@
  }
  
  void root_scratchpad_show(struct sway_container *con) {
++ if (con->lumen_desktop_hidden) {
++  container_lumen_show_desktop(0);
++  seat_set_focus(input_manager_current_seat(), &con->node);
++  return;
++ }
 + if (con->lumen_app_hidden) {
 +  container_lumen_unhide(con);
 +  if (!con->scratchpad) { seat_set_focus(input_manager_current_seat(), &con->node); return; }
@@ -586,7 +648,7 @@
  
  static void scratchpad_toggle_auto(void) {
  	struct sway_seat *seat = input_manager_current_seat();
-@@ -130,3 +132,33 @@
+@@ -130,3 +132,38 @@
  
  	return cmd_results_new(CMD_SUCCESS, NULL);
  }
@@ -598,6 +660,11 @@
 + }
 + struct cmd_results *error = checkarg(argc, "lumen_window", EXPECTED_EQUAL_TO, 1);
 + if (error) return error;
++ if (strcmp(argv[0], "show-desktop") == 0 || strcmp(argv[0], "show-desktop-on") == 0 || strcmp(argv[0], "show-desktop-off") == 0) {
++  container_lumen_show_desktop(strcmp(argv[0], "show-desktop") == 0 ? -1 : strcmp(argv[0], "show-desktop-on") == 0);
++  transaction_commit_dirty();
++  return cmd_results_new(CMD_SUCCESS, NULL);
++ }
 + struct sway_container *con = config->handler_context.container;
 + if (!con || !con->view) return cmd_results_new(CMD_INVALID, "Select an application window");
 + if (strcmp(argv[0], "close") == 0) view_close(con->view);
@@ -622,7 +689,7 @@
 +}
 --- a/sway/ipc-json.c
 +++ b/sway/ipc-json.c
-@@ -740,6 +740,17 @@
+@@ -740,6 +740,18 @@
  	// sway doesn't track if window was resized in scratchpad, so we can't use "changed"
  	json_object_object_add(object, "scratchpad_state",
  			json_object_new_string(!c->scratchpad ? "none" : "fresh"));
@@ -632,6 +699,7 @@
 +	json_object_object_add(lumen_state, "filled",
 +		json_object_new_boolean(c->lumen_filled != NULL));
 +	json_object_object_add(lumen_state, "hidden", json_object_new_boolean(c->lumen_app_hidden));
++	json_object_object_add(lumen_state, "desktop_hidden", json_object_new_boolean(c->lumen_desktop_hidden != NULL));
 +	struct sway_lumen_placement *saved = c->lumen_hidden ? c->lumen_hidden : c->lumen_minimized;
 +	json_object_object_add(lumen_state, "restore_workspace", saved ? json_object_new_string(saved->workspace) : NULL);
 +	json_object_object_add(lumen_state, "version", json_object_new_int(1));
@@ -667,3 +735,9 @@
 +	uint32_t lumen_titlebar_time;
 +	double lumen_titlebar_x, lumen_titlebar_y;
 +
+--- a/sway/tree/view.c
++++ b/sway/tree/view.c
+@@ -819,2 +819,3 @@
+ 	view_populate_pid(view);
++	container_lumen_show_desktop(0);
+ 	view->container = container_create(view);

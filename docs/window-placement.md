@@ -35,3 +35,16 @@ This implementation does not yet provide edge-drag layout previews, full-screen
 paired layouts, or application-declared preferred-content Zoom. These are
 unfinished implementation or adapter requirements, not substitutes for the
 implemented half/quarter commands.
+
+Show Desktop uses `lumen_window show-desktop` (toggle),
+`show-desktop-on` and `show-desktop-off` (idempotent). Super+Control+D and the
+menu item are enabled only when `native_show_desktop` is advertised. It saves
+the visible windows on each output independently of application hiding and
+minimisation. Reversing the action restores placement and full-screen state;
+activating a revealed window or opening a new application window restores the
+saved windows. Previously minimised windows remain minimised.
+
+The nested native tests cover repeated on/off, independent minimisation,
+full-screen restoration, activation, and a newly mapped application window on
+both compositor variants. Gesture activation and reference timing remain
+unverified.

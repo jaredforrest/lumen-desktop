@@ -78,6 +78,16 @@ class CursorHighWater(unittest.TestCase):
 
 
 class StateValidation(unittest.TestCase):
+    def test_desktop_reveal_is_independent_from_app_hiding_and_minimisation(self):
+        tree,outputs,window,_=compositor_fixture()
+        window['lumen_state']={'minimised':False,'filled':False,'hidden':False,'desktop_hidden':True}
+        observed=state.snapshot(tree,outputs,'fixture')['windows'][0]
+        self.assertTrue(observed['desktop_hidden'])
+        self.assertFalse(observed['app_hidden'])
+        self.assertFalse(observed['minimised'])
+        window['lumen_state']['desktop_hidden']='false'
+        with self.assertRaises(protocol.ProtocolError):state.snapshot(tree,outputs,'fixture')
+
     def test_malformed_children_and_window_properties_are_rejected(self):
         for field,value in (('nodes',5),('floating_nodes',{}),('window_properties','invalid')):
             tree,outputs,window,_=compositor_fixture();window[field]=value
