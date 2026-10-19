@@ -230,7 +230,7 @@ PanelSurface {
         PanelLabel {visible:!root.compact && root.optionsOpen;width:parent.width;text:"Google syncs in the background · iCloud read-only · "+root.calendarTimeZone;color:Theme.colors.muted;font.pixelSize:10;wrapMode:Text.WordWrap}
     }
     // Compact content stays read-only; navigation hands off to the Calendar app.
-    ControlRow {visible:root.compact;width:parent.width-36;x:18;y:content.y+content.height+4;height:30;text:root.events.length>3?"Show all "+root.total+" events in Calendar":"Open Calendar";onClicked:root.openCalendar()}
+    ControlRow {objectName:"calendar-open-related";visible:root.compact;width:parent.width-36;x:18;y:content.y+content.height+4;height:30;text:root.events.length>3?"Show all "+root.total+" events in Calendar":"Open Calendar";onClicked:root.openCalendar()}
     component CalendarField: TextField {
         height:30;font.family:Theme.font;font.pixelSize:12;color:Theme.colors.text;placeholderTextColor:Theme.colors.muted
         selectionColor:(root.monochrome?Theme.colors.muted:Theme.colors.accent);selectedTextColor:Theme.colors.selectedText
