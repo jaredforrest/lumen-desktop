@@ -27,7 +27,6 @@ PanelWindow {
         if(width<640)result.push({label:"Sound",action:"status:Sound"});
         if(width<720 && shell.notifications.dnd)result.push({label:"Focus",action:"status:Focus"});
         if(width<800)result.push({label:"Search",action:"apps"});
-        if(width<860)result.push({label:"VPN",action:"status:VPN"});
         return result;
     }
     readonly property real menuBudget:Math.max(0,statusIcons.x-28)
@@ -118,9 +117,6 @@ PanelWindow {
         MenuButton {visible:bar.width>=640; text: ""; iconName: shell.volume.includes("MUTED") ? "muted" : "sound"; onClicked: bar.toggle("Sound", bar.width-370) }
         MenuButton {visible:bar.width>=720 && shell.notifications.dnd;text:"";iconName:"moon";onClicked:bar.toggle("Controls",bar.width-340)}
         MenuButton {visible:bar.width>=800; text: ""; iconName: "search"; onClicked: shell.launchApps() }
-        MenuButton {visible:bar.width>=860;text:"";iconName:"network";selected:bar.menu==="VPN";Accessible.name:"VPN status: "+(shell.vpn.mullvad.state==="connected"?"Mullvad connected, ":"Mullvad disconnected, ")+(shell.vpn.tailscale.online?"Tailscale connected":"Tailscale disconnected");onClicked:bar.toggle("VPN",bar.width-350)
-            Rectangle {width:6;height:6;radius:3;anchors.right:parent.right;anchors.bottom:parent.bottom;anchors.rightMargin:3;anchors.bottomMargin:3;color:shell.vpn.anyConnected?"#30b65c":Theme.colors.muted}
-        }
         MenuButton { text: ""; iconName: "controls"; onClicked: bar.toggle("Controls", bar.width-340) }
 
     }
