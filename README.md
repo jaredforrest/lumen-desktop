@@ -18,3 +18,4 @@ The default standalone settings adapter uses immutable defaults. A host injects 
 Public source does not yet carry a blanket redistribution licence. Original geometric artwork is included; fetched dependencies retain their own licences. A project-wide licence needs to be chosen before presenting this as a generally reusable distribution.
 
 Status order and clock formatting: [presentation contract and tests](docs/status-clock.md).
+Saved portal decisions: [provider contract, scope and acceptance](docs/portal-permissions.md).

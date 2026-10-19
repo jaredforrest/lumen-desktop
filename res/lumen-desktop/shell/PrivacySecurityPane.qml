@@ -38,6 +38,7 @@ Column {
             }
         }
     }
+    PortalPermissionsPane {width:parent.width;active:root.active}
     Repeater {
         model: [{key:"encryption", name:"Disk encryption"}, {key:"secureBoot", name:"Secure Boot"}]
         Rectangle {

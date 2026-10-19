@@ -14,6 +14,11 @@
       office = import ./packages/craft-office.nix { inherit pkgs profileBridge; };
       runtime = import ./tests/desktop/runtime.nix { inherit pkgs; };
       privateBus = pkgs.writeShellScriptBin "dbus-run-session" ''
+        for argument in "$@"; do
+          case "$argument" in
+            --config-file=*) exec ${pkgs.dbus}/bin/dbus-run-session "$@" ;;
+          esac
+        done
         exec ${pkgs.dbus}/bin/dbus-run-session --config-file=${pkgs.dbus}/share/dbus-1/session.conf "$@"
       '';
       python = (import ./packages/python-runtime.nix { inherit pkgs; }).withPackages (p: [ p.pygobject3 p.dbus-python p.astral p.icalendar p.recurring-ical-events p.pillow ]);
