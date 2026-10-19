@@ -116,7 +116,10 @@ ShellRoot {
             environment.pop('AT_SPI_BUS_ADDRESS',None)
             for key in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK'):
                 environment.pop(key, None)
-            result = subprocess.run(['dbus-run-session','--','quickshell','-p',str(qml)], env=environment, capture_output=True, text=True, timeout=12)
+            try:
+                result = subprocess.run(['dbus-run-session','--','quickshell','-p',str(qml)], env=environment, capture_output=True, text=True, timeout=12)
+            except subprocess.TimeoutExpired as error:
+                self.fail('Qt fixture did not exit: '+str(error.stdout)+' '+str(error.stderr))
             output = result.stdout+result.stderr
             self.assertEqual(result.returncode, 0, output)
             self.assertIn('PASS shell request lifecycle', output)

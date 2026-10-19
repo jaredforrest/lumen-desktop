@@ -57,7 +57,7 @@ Actions=new-window;
 Name=New Window
 Exec=env MULTI=1 app --new-instance
 ''')
-    env = dict(os.environ, QT_QPA_PLATFORM='offscreen', XDG_DATA_HOME=str(root / 'data'),
+    env = dict(os.environ, QT_QPA_PLATFORM='offscreen', QT_QPA_PLATFORMTHEME='', QT_QUICK_BACKEND='software', XDG_DATA_HOME=str(root / 'data'),
                XDG_CONFIG_HOME=str(root / 'config'), XDG_CACHE_HOME=str(root / 'cache'))
     env.pop('WAYLAND_DISPLAY', None)
     result = subprocess.run(['quickshell', '-p', str(root)], env=env, text=True,

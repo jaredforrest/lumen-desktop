@@ -418,7 +418,8 @@ def remote(data):
         conn.settimeout(5)
         conn.connect(str(Path(os.environ['XDG_RUNTIME_DIR'])/'lumen-file-operations.sock'))
         conn.sendall(json.dumps(data).encode()+b'\n')
-        result = json.loads(conn.makefile('rb').readline(4*1024*1024))
+        with conn.makefile('rb') as stream:
+            result = json.loads(stream.readline(4*1024*1024))
         if result.get('error'):
             raise RuntimeError(result['error'])
         return result
@@ -432,23 +433,34 @@ def serve():
     endpoint = Path(os.environ['XDG_RUNTIME_DIR'])/'lumen-file-operations.sock'
     endpoint.unlink(missing_ok=True)
     def stop(*_):
-        for ident in list(_jobs.tokens):
-            _jobs.cancel(ident)
+        # Signal handlers must not acquire the state lock: a worker can hold it
+        # while committing its journal. Set cancellation flags directly; workers
+        # remain non-daemon so Python waits for staging cleanup before exiting.
+        for token in list(_jobs.tokens.values()):
+            token.set()
         raise SystemExit(0)
     signal.signal(signal.SIGTERM, stop)
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
-        listener.bind(str(endpoint))
-        listener.listen(16)
-        while True:
-            conn, _ = listener.accept()
-            with conn:
-                conn.settimeout(3)
-                try:
-                    data = json.loads(conn.makefile('rb').readline(1024*1024))
-                    result = request(data)
-                except Exception as exc:
-                    result = {'error': str(exc)}
-                conn.sendall(json.dumps(result).encode()+b'\n')
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as listener:
+            listener.bind(str(endpoint))
+            listener.listen(16)
+            while True:
+                conn, _ = listener.accept()
+                with conn:
+                    conn.settimeout(3)
+                    try:
+                        with conn.makefile('rb') as stream:
+                            data = json.loads(stream.readline(1024*1024))
+                        result = request(data)
+                    except Exception as exc:
+                        result = {'error': str(exc)}
+                    try:
+                        conn.sendall(json.dumps(result).encode()+b'\n')
+                    except (BrokenPipeError, ConnectionResetError):
+                        # Client lifetime does not own accepted file operations.
+                        continue
+    finally:
+        endpoint.unlink(missing_ok=True)
 
 
 if __name__ == '__main__':
