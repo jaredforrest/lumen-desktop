@@ -5,6 +5,7 @@ import Quickshell.Services.Mpris
 PanelSurface {
     id: root
     radius: 26
+    implicitHeight:mediaContents.implicitHeight+26
     property bool expanded:false
     property string selectedPlayer:""
     signal expandRequested()
@@ -15,6 +16,7 @@ PanelSurface {
     DialogButton {visible:!root.expanded;x:parent.width-34;y:8;width:26;height:22;text:"•••";Accessible.name:"Expand Now Playing";onClicked:root.expandRequested()}
     Timer {interval:1000;repeat:true;running:root.visible && root.expanded && !!root.player && root.player.isPlaying;onTriggered:root.player.positionChanged()}
     Column {
+        id:mediaContents
         x: 16; y: 13; width: parent.width - 32; spacing: 5
         DesktopComboBox {visible:root.expanded && root.players.length>1;width:parent.width;model:root.players.map(p=>p.identity);Accessible.name:"Media source";currentIndex:root.players.indexOf(root.player);onActivated:index=>root.selectedPlayer=root.players[index].dbusName}
         Rectangle {
@@ -22,10 +24,10 @@ PanelSurface {
             SystemGlyph { anchors.centerIn: parent; name: "music"; width: 20; height: 20 }
             Image { anchors.fill: parent; source: root.player ? root.player.trackArtUrl : ""; fillMode: Image.PreserveAspectCrop; asynchronous: true }
         }
-        PanelLabel { width: parent.width; text: root.player ? root.player.trackTitle || root.player.identity : "Not Playing"; elide: Text.ElideRight; font.pixelSize: 11; font.weight: Font.DemiBold }
-        PanelLabel { width: parent.width; text: root.player ? root.player.trackArtist || root.player.identity : ""; elide: Text.ElideRight; font.pixelSize: 10; color: Theme.colors.muted }
+        PanelLabel { width: parent.width; text: root.player ? root.player.trackTitle || root.player.identity : "Not Playing"; elide: Text.ElideRight; font.pixelSize:Theme.textSize(11); font.weight: Font.DemiBold }
+        PanelLabel { width: parent.width; text: root.player ? root.player.trackArtist || root.player.identity : ""; elide: Text.ElideRight; font.pixelSize:Theme.textSize(10); color: Theme.colors.muted }
         SystemSlider {visible:root.expanded && !!root.player && root.player.lengthSupported;width:parent.width;from:0;to:root.player?Math.max(1,root.player.length):1;value:root.player?root.player.position:0;enabled:!!root.player && root.player.canSeek && root.player.positionSupported;Accessible.name:"Playback position";onMoved:root.seekTo(value)}
-        PanelLabel {visible:root.expanded && !!root.player && root.player.lengthSupported;width:parent.width;text:root.player?root.duration(root.player.position)+" / "+root.duration(root.player.length):"";font.pixelSize:10;color:Theme.colors.muted}
+        PanelLabel {visible:root.expanded && !!root.player && root.player.lengthSupported;width:parent.width;text:root.player?root.duration(root.player.position)+" / "+root.duration(root.player.length):"";font.pixelSize:Theme.textSize(10);color:Theme.colors.muted}
         Row {
             width: parent.width; spacing: 9
             Repeater {

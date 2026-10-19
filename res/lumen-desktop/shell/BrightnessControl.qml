@@ -23,7 +23,7 @@ Column {
         writingBus=display.bus;pending=-1;writer.running=true;
     }
     DesktopComboBox {visible:root.displays.length>1;width:parent.width;model:root.displays;textRole:"name";currentIndex:root.displays.findIndex(d=>d.bus===root.selectedBus);displayText:currentIndex<0?"Choose display":currentText;onActivated:index=>{root.selectedBus=root.displays[index].bus;root.level=root.display.level;} Accessible.name:"Brightness display"}
-    PanelLabel {text:root.display?"Display":"Display · Unavailable";font.pixelSize:12;font.weight:Font.DemiBold}
+    PanelLabel {text:root.display?"Display":"Display · Unavailable";font.pixelSize:Theme.textSize(12);font.weight:Font.DemiBold}
     SystemSlider {
         id: slider;width:parent.width;height:18;from:0;to:1;value:root.level;enabled:!!root.display
         leftPadding:24;rightPadding:26

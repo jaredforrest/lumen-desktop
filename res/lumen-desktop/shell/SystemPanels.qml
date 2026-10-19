@@ -79,7 +79,7 @@ Item {
 
     Column {visible:root.kind==="Now Playing";width:parent.width;spacing:8
         ControlRow {width:parent.width;text:"‹  Control Centre";onClicked:root.panelRequested("Controls")}
-        MediaControl {width:parent.width;height:245;expanded:true}
+        MediaControl {width:parent.width;height:Math.max(245,implicitHeight);expanded:true}
     }
     }
 }

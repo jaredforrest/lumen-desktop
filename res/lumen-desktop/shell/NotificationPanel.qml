@@ -26,16 +26,16 @@ Column {
         onOpenCalendar:day=>root.shell.openCalendarAt(day,null)
         onEventRequested:(event,day)=>root.shell.openCalendarAt(day,event)
     }
-    ControlRow {width:parent.width;height:30;text:root.editingWidgets?"Done":"Edit Widgets";onClicked:root.editingWidgets=!root.editingWidgets}
+    ControlRow {width:parent.width;height:Math.max(30,implicitHeight);text:root.editingWidgets?"Done":"Edit Widgets";onClicked:root.editingWidgets=!root.editingWidgets}
     PanelSurface {
         visible:root.editingWidgets;width:parent.width;implicitHeight:editor.height+28;radius:18
         Column {id:editor;x:14;y:14;width:parent.width-28;spacing:8
             PanelLabel {text:"Calendar widget";font.weight:Font.DemiBold}
-            SettingsToggle {width:parent.width;height:36;text:"Show Calendar";checked:root.preferences.calendarVisible;onClicked:root.setPreference("calendarVisible",checked)}
+            SettingsToggle {width:parent.width;height:Math.max(36,implicitHeight);text:"Show Calendar";checked:root.preferences.calendarVisible;onClicked:root.setPreference("calendarVisible",checked)}
             DesktopComboBox {width:parent.width;model:["Month and agenda","Agenda"];currentIndex:root.preferences.style==="agenda"?1:0;Accessible.name:"Calendar widget layout";onActivated:index=>root.setPreference("style",index===1?"agenda":"month")}
             ControlRow {width:parent.width;text:root.preferences.calendarFirst?"Move Calendar below notifications":"Move Calendar above notifications";onClicked:root.setPreference("calendarFirst",!root.preferences.calendarFirst)}
-            SettingsToggle {width:parent.width;height:36;text:"Reduce transparency";checked:root.preferences.reduceTransparency;onClicked:root.setPreference("reduceTransparency",checked)}
-            SettingsToggle {width:parent.width;height:36;text:"Show desktop widgets";checked:root.preferences.desktopVisible;onClicked:root.setPreference("desktopVisible",checked)}
+            SettingsToggle {width:parent.width;height:Math.max(36,implicitHeight);text:"Reduce transparency";checked:root.preferences.reduceTransparency;onClicked:root.setPreference("reduceTransparency",checked)}
+            SettingsToggle {width:parent.width;height:Math.max(36,implicitHeight);text:"Show desktop widgets";checked:root.preferences.desktopVisible;onClicked:root.setPreference("desktopVisible",checked)}
             DesktopComboBox {width:parent.width;model:["Desktop: month and agenda","Desktop: compact agenda"];currentIndex:root.preferences.desktopStyle==="agenda"?1:0;Accessible.name:"Default desktop calendar layout";onActivated:index=>root.setPreference("desktopStyle",index===1?"agenda":"month")}
             DesktopComboBox {width:parent.width;model:["Automatic colour","Full colour","Monochrome"];currentIndex:["auto","color","monochrome"].indexOf(root.preferences.desktopColor);Accessible.name:"Desktop widget colour";onActivated:index=>root.setPreference("desktopColor",["auto","color","monochrome"][index])}
             DesktopWidgetEditor {width:parent.width;service:root.widgetState}

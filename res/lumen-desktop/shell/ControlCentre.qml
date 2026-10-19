@@ -10,6 +10,7 @@ Column {
     signal settingsRequested()
     width:300;spacing:10
     property bool editing:false
+    readonly property bool singleColumn:Theme.textSize(12)>12 || width<260
     readonly property var power:root.shell.systemState && root.shell.systemState.power?root.shell.systemState.power:null
     property var preferences:Theme.controlCentrePreferences
     property var pending:({})
@@ -26,12 +27,12 @@ Column {
         BatteryGlyph {anchors.verticalCenter:parent.verticalCenter;percentage:root.power?root.power.percentage:0;charging:!!root.power && root.power.state==="charging"}
         Column {width:parent.width-32
             PanelLabel {width:parent.width;text:root.power?BatteryModel.description(root.power):"";elide:Text.ElideRight}
-            PanelLabel {width:parent.width;visible:text!=="";text:root.power?BatteryModel.estimate(root.power):"";color:Theme.colors.muted;font.pixelSize:11;elide:Text.ElideRight}
+            PanelLabel {width:parent.width;visible:text!=="";text:root.power?BatteryModel.estimate(root.power):"";color:Theme.colors.muted;font.pixelSize:Theme.textSize(11);elide:Text.ElideRight}
         }
     }
     Flow {visible:!root.editing;width:parent.width;spacing:10
         Repeater {model:root.preferences.order.filter(id=>!root.preferences.hidden.includes(id))
-            delegate:Loader {required property string modelData;width:["brightness","sound"].includes(modelData)?root.width:(root.width-10)/2;height:modelData==="media"?130:62
+            delegate:Loader {required property string modelData;width:root.singleColumn || ["brightness","sound"].includes(modelData)?root.width:(root.width-10)/2;height:Math.max(modelData==="media"?130:62,item?item.implicitHeight:0)
                 sourceComponent:({wifi:componentWifi,bluetooth:componentBluetooth,sharing:componentSharing,media:componentMedia,displays:componentDisplays,appearance:componentAppearance,focus:componentFocus,brightness:componentBrightness,sound:componentSound})[modelData]
             }
         }
@@ -41,16 +42,16 @@ Column {
         PanelLabel {text:"Edit controls";font.weight:Font.DemiBold}
         Repeater {model:root.preferences.order
             delegate:Row {required property string modelData;required property int index;width:root.width;spacing:4
-                ControlRow {width:parent.width-84;height:32;text:(root.preferences.hidden.includes(modelData)?"    ":"✓  ")+root.names[modelData];Accessible.name:(root.preferences.hidden.includes(modelData)?"Show ":"Hide ")+root.names[modelData];onClicked:root.toggle(modelData)}
-                DialogButton {width:38;height:30;text:"↑";Accessible.name:"Move "+root.names[parent.modelData]+" earlier";enabled:parent.index>0;onClicked:root.move(parent.modelData,-1)}
-                DialogButton {width:38;height:30;text:"↓";Accessible.name:"Move "+root.names[parent.modelData]+" later";enabled:parent.index<root.preferences.order.length-1;onClicked:root.move(parent.modelData,1)}
+                ControlRow {width:parent.width-84;height:Math.max(32,implicitHeight);text:(root.preferences.hidden.includes(modelData)?"    ":"✓  ")+root.names[modelData];Accessible.name:(root.preferences.hidden.includes(modelData)?"Show ":"Hide ")+root.names[modelData];onClicked:root.toggle(modelData)}
+                DialogButton {width:38;height:Math.max(30,implicitHeight);text:"↑";Accessible.name:"Move "+root.names[parent.modelData]+" earlier";enabled:parent.index>0;onClicked:root.move(parent.modelData,-1)}
+                DialogButton {width:38;height:Math.max(30,implicitHeight);text:"↓";Accessible.name:"Move "+root.names[parent.modelData]+" later";enabled:parent.index<root.preferences.order.length-1;onClicked:root.move(parent.modelData,1)}
             }
         }
         PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:"Show, hide and reorder supported controls. Hardware availability still determines whether a control can be used.";color:Theme.colors.muted}
     }
     Row {width:parent.width;spacing:8
-        DialogButton {width:92;height:28;text:root.editing?"Done":"Edit controls";onClicked:root.editing=!root.editing}
-        DialogButton {width:parent.width-100;height:28;text:"System Settings…";onClicked:root.settingsRequested()}
+        DialogButton {width:Math.min(parent.width/2-4,implicitWidth);text:root.editing?"Done":"Edit controls";onClicked:root.editing=!root.editing}
+        DialogButton {width:parent.width-parent.children[0].width-8;text:"System Settings…";onClicked:root.settingsRequested()}
     }
     PanelLabel {visible:root.error!=="";width:parent.width;wrapMode:Text.WordWrap;text:root.error;color:Theme.colors.muted}
     Component {id:componentWifi;ControlTile {label:"Wi-Fi";symbol:"wifi";unavailable:!root.shell.systemState.wifi.available;active:root.shell.systemState.wifi.state==="COMPLETED";subtitle:active?"Connected":"Disconnected";onClicked:root.panelRequested("Wi-Fi")}}
@@ -60,6 +61,6 @@ Column {
     Component {id:componentDisplays;ControlTile {label:"Displays";subtitle:"Settings";symbol:"screen";unavailable:false;onClicked:root.shell.openSettings("Displays")}}
     Component {id:componentAppearance;ControlTile {label:"Appearance";subtitle:"Settings";symbol:"contrast";unavailable:false;onClicked:root.shell.openSettings("Appearance")}}
     Component {id:componentFocus;ControlTile {label:"Focus";toggle:true;symbol:"moon";unavailable:!root.shell.notifications.available;active:root.shell.notifications.dnd;subtitle:active?root.shell.notifications.focusState.name:"Off";onClicked:root.panelRequested("Focus")}}
-    Component {id:componentBrightness;PanelSurface {radius:24;BrightnessControl {x:16;y:12;width:parent.width-32}}}
-    Component {id:componentSound;PanelSurface {radius:24;SoundControl {x:16;y:12;width:parent.width-32;shell:root.shell;compact:true}}}
+    Component {id:componentBrightness;PanelSurface {radius:24;implicitHeight:brightnessContent.implicitHeight+24;BrightnessControl {id:brightnessContent;x:16;y:12;width:parent.width-32}}}
+    Component {id:componentSound;PanelSurface {radius:24;implicitHeight:soundContent.implicitHeight+24;SoundControl {id:soundContent;x:16;y:12;width:parent.width-32;shell:root.shell;compact:true}}}
 }

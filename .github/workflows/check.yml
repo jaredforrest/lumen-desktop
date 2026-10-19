@@ -65,6 +65,8 @@ jobs:
           nix develop --command desktop-test-python tests/desktop/calendar_widget_native.py --effects --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/calendar-widget-effects
           nix develop --command desktop-test-python tests/desktop/widget_visibility_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/widget-visibility
           nix develop --command desktop-test-python tests/desktop/widget_visibility_native.py --effects --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/widget-visibility-effects
+          nix develop --command desktop-test-python tests/desktop/system_popover_reflow_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/system-popover-reflow
+          nix develop --command desktop-test-python tests/desktop/system_popover_reflow_native.py --effects --theme light --native-frame on --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --output artifacts/system-popover-reflow-effects
           nix develop --command desktop-test-python tests/desktop/text_sizing_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/text-sizing
           nix develop --command desktop-test-python tests/desktop/portal_permissions_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/portal-permissions
           nix develop --command desktop-test-python tests/desktop/files_layout_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/files-layout
@@ -134,6 +136,7 @@ jobs:
             artifacts/owned-window-context-*
             artifacts/status-clock
             artifacts/portal-permissions
+            artifacts/system-popover-reflow*
             artifacts/text-sizing
             artifacts/application-lifecycle
             artifacts/session-end*
