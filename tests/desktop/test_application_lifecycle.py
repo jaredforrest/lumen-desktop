@@ -1,5 +1,6 @@
 """Exact native process lifetime, safe cooperative Quit and ambiguous ownership."""
-import importlib.util,os,subprocess,sys,time,unittest
+import importlib.util,json,os,subprocess,sys,tempfile,time,unittest
+from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
 ROOT=Path(__file__).resolve().parents[2];sys.path.insert(0,str(ROOT/'res/lumen-desktop/runtime'))
@@ -83,4 +84,76 @@ class ApplicationLifecycleTests(unittest.TestCase):
   finally:
    if child.poll() is None:child.kill();child.wait()
    child.stdout.close()
+class ObservationRecoveryTests(unittest.TestCase):
+ epoch='a'*24
+ boot='12345678-1234-1234-1234-123456789abc'
+ def setUp(self):
+  self.temporary=tempfile.TemporaryDirectory();self.addCleanup(self.temporary.cleanup);self.runtime=Path(self.temporary.name);self.backend=FakeBackend()
+ def store(self,epoch=None,boot=None):return lifecycle.ObservationStore(self.runtime,epoch or self.epoch,boot or self.boot)
+ def snapshot(self):
+  tracker=lifecycle.Lifecycle(self.backend);tracker.refresh(self.epoch,[node()]);records=tracker.records();tracker.close();return records
+ def journal(self,epoch=None):return self.runtime/'lumen-application-observations'/((epoch or self.epoch)+'.json')
+ def test_valid_private_record_recovers_zero_windows_with_fresh_handle(self):
+  records=self.snapshot()
+  with closing(self.store()) as store:store.save(records)
+  previous_handles=set(self.backend.handles)
+  tracker=lifecycle.Lifecycle(self.backend);self.addCleanup(tracker.close)
+  with closing(self.store()) as store:tracker.recover(self.epoch,store.load())
+  rows=tracker.refresh(self.epoch,[]);self.assertEqual(len(rows),1);self.assertTrue(rows[0]['zeroWindows']);self.assertTrue(set(self.backend.handles)-previous_handles)
+  self.assertEqual(self.journal().stat().st_mode&0o777,0o600)
+ def test_different_boot_or_compositor_session_is_not_recovered(self):
+  with closing(self.store()) as store:store.save(self.snapshot())
+  with closing(self.store(boot='22345678-1234-1234-1234-123456789abc')) as store:self.assertEqual(store.load(),[])
+  other='b'*24;self.journal(other).write_bytes(self.journal().read_bytes());self.journal(other).chmod(0o600)
+  with closing(self.store(epoch=other)) as store:self.assertEqual(store.load(),[])
+ def test_pid_reuse_executable_change_or_owner_rejection_drops_record(self):
+  records=self.snapshot()
+  for mutation in [('start',200),('inode',99)]:
+   self.backend.identities[22]=dict(pid=22,start=100,device=2,inode=3);self.backend.identities[22][mutation[0]]=mutation[1]
+   tracker=lifecycle.Lifecycle(self.backend);tracker.recover(self.epoch,records);self.assertEqual(tracker.rows(),[]);tracker.close()
+  del self.backend.identities[22];tracker=lifecycle.Lifecycle(self.backend);tracker.recover(self.epoch,records);self.assertEqual(tracker.rows(),[]);tracker.close()
+ def test_recovery_rechecks_identity_after_pidfd_open(self):
+  records=self.snapshot();original=self.backend.open
+  def race(pid):
+   fd=original(pid);self.backend.identities[pid]['start']+=1;return fd
+  self.backend.open=race;tracker=lifecycle.Lifecycle(self.backend);tracker.recover(self.epoch,records);self.assertEqual(tracker.rows(),[]);tracker.close()
+ def test_malformed_unbounded_or_public_record_is_not_recovered(self):
+  records=self.snapshot()
+  with closing(self.store()) as store:
+   store.save(records);good=self.journal().read_bytes()
+   self.journal().chmod(0o644);self.assertEqual(store.load(),[]);self.journal().chmod(0o600)
+   self.journal().write_text('{torn');self.assertEqual(store.load(),[])
+   for mutate in [lambda data:data.update(version=True),lambda data:data['processes'][0]['identity'].update(pid=True),lambda data:data['processes'][0].update(apps=['org.quickshell']),lambda data:data['processes'][0].update(apps=['org.example.Editor']*2)]:
+    data=json.loads(good);mutate(data);self.journal().write_text(json.dumps(data));self.assertEqual(store.load(),[])
+   self.journal().write_bytes(b'x'*1048577);self.assertEqual(store.load(),[])
+ def test_fifo_record_never_blocks_recovery(self):
+  with closing(self.store()) as store:
+   os.mkfifo(self.journal(),0o600);self.assertEqual(store.load(),[])
+ def test_actual_replaced_compositor_socket_rejects_old_observations(self):
+  import socket
+  endpoint=self.runtime/'compositor.sock'
+  with socket.socket(socket.AF_UNIX) as first:
+   first.bind(str(endpoint));epoch=lifecycle.runtime_epoch(endpoint)
+   with closing(self.store(epoch=epoch)) as store:store.save(self.snapshot())
+  endpoint.unlink()
+  with socket.socket(socket.AF_UNIX) as second:
+   second.bind(str(endpoint));replacement=lifecycle.runtime_epoch(endpoint);self.assertNotEqual(epoch,replacement)
+   old=self.journal(epoch).read_bytes();self.journal(replacement).write_bytes(old);self.journal(replacement).chmod(0o600)
+   with closing(self.store(epoch=replacement)) as store:self.assertEqual(store.load(),[])
+ def test_symlink_and_nonprivate_runtime_do_not_confer_authority(self):
+  with closing(self.store()) as store:
+   target=self.runtime/'unrelated';target.write_text('untouched');self.journal().symlink_to(target);self.assertEqual(store.load(),[]);self.assertEqual(target.read_text(),'untouched')
+  self.runtime.chmod(0o755)
+  try:
+   with self.assertRaises(ValueError):self.store()
+  finally:self.runtime.chmod(0o700)
+ def test_one_observer_lease_per_compositor_and_atomic_replacement(self):
+  first=self.store()
+  try:
+   with self.assertRaises(BlockingIOError):self.store()
+   first.save(self.snapshot());self.assertTrue(self.journal().is_file());self.assertEqual(list(self.journal().parent.glob('.*')),[])
+  finally:first.close()
+  with closing(self.store()) as second:
+   self.assertEqual(len(second.load()),1);second.invalidate();self.assertEqual(second.load(),[])
+
 if __name__=='__main__':unittest.main()

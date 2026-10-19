@@ -23,7 +23,8 @@ for key in ('WAYLAND_DISPLAY','DISPLAY','SWAYSOCK'):env.pop(key,None)
 assets=out/'assets';shutil.copytree(source,assets);shell=assets/'shell';original=(shell/'shell.qml').read_text();head,tail=original.rsplit('\n}',1)
 (shell/'shell.qml').write_text(head+'''
  IpcHandler {target:"lifecycleAudit"
-  function status():string {const e=DesktopEntries.byId("org.example.Lifecycle");return JSON.stringify({command:applicationLifecycle.observer.command,observerRunning:applicationLifecycle.observer.running,available:applicationLifecycle.available,observerError:applicationLifecycle.error,apps:root.runningApplications,entry:!!e,running:e?root.runningFor(e):false,error:root.applicationCommandError,pending:applicationLifecycle.pending,extras:root.runningExtras.map(e=>e.id)});}
+  function status():string {const e=DesktopEntries.byId("org.example.Lifecycle");return JSON.stringify({command:applicationLifecycle.observer.command,observerRunning:applicationLifecycle.observer.running,recoveryAvailable:applicationLifecycle.recoveryAvailable,available:applicationLifecycle.available,observerError:applicationLifecycle.error,apps:root.runningApplications,entry:!!e,running:e?root.runningFor(e):false,error:root.applicationCommandError,pending:applicationLifecycle.pending,extras:root.runningExtras.map(e=>e.id)});}
+  function restartObserver():void{applicationLifecycle.observer.running=false;}
   function quit():void{root.quitApplication(DesktopEntries.byId("org.example.Lifecycle"));}
  }
 }'''+tail)
@@ -88,16 +89,27 @@ try:
  config=out/'sway.conf';config.write_text('output HEADLESS-1 resolution 1440x1000\nxwayland disable\nseat seat0 fallback true\n')
  launch([a.sway,'--unsupported-gpu','-c',str(config)],'sway.log');wait(lambda:list(runtime.glob('sway-ipc*.sock')))
  env['SWAYSOCK']=str(next(runtime.glob('sway-ipc*.sock')));env['WAYLAND_DISPLAY']=next(p.name for p in runtime.glob('wayland-*') if not p.name.endswith('.lock'))
- launch(['quickshell','-p',str(shell)],'desktop.log');wait(lambda:state()['entry'])
+ desktop=launch(['quickshell','-p',str(shell)],'desktop.log');wait(lambda:state()['entry'])
  application=launch([env['GLOBAL_MENU_PYTHON'],str(client),str(out)],'client.log');wait(lambda:app_state()['windows']==2)
  (out/'native-tree.json').write_text(call('swaymsg','-t','get_tree'));(out/'initial-lifecycle.json').write_text(json.dumps(state(),indent=2))
  first=wait(lambda:next((app for app in state()['apps'] if app['appId']=='org.example.Lifecycle' and app['windowCount']==2),None));instances=first['instanceIds'];assert state()['running']
  (out/'command').write_text('hide all windows');wait(lambda:app_state()['windows']==0)
  zero=wait(lambda:next((app for app in state()['apps'] if app['appId']=='org.example.Lifecycle' and app['zeroWindows']),None));assert zero['instanceIds']==instances and application.poll() is None and state()['running'];assert 'org.example.Lifecycle' in state()['extras']
- def painted_zero():
-  call('grim',str(out/'zero-windows.png'))
-  with Image.open(out/'zero-windows.png') as image:return sum(image.convert('RGB').getpixel((720,500)))<80
+ def painted_zero(name="zero-windows.png"):
+  call('grim',str(out/name))
+  with Image.open(out/name) as image:return sum(image.convert('RGB').getpixel((720,500)))<80
  wait(painted_zero)
+ assert state()['recoveryAvailable']
+ # Restart the observer with no native windows available to rediscover the app.
+ ipc('restartObserver');wait(lambda:not state()['available'])
+ recovered=wait(lambda:next((app for app in state()['apps'] if app['appId']=='org.example.Lifecycle' and app['zeroWindows']),None))
+ assert recovered['instanceIds']==instances and state()['running'] and application.poll() is None
+ # Restart the entire owned shell group, preserving the external application.
+ os.killpg(desktop.pid,signal.SIGTERM);desktop.wait(timeout=5);assert application.poll() is None
+ desktop=launch(['quickshell','-p',str(shell)],'desktop-restarted.log')
+ recovered=wait(lambda:next((app for app in state()['apps'] if app['appId']=='org.example.Lifecycle' and app['zeroWindows']),None))
+ assert recovered['instanceIds']==instances and state()['running'] and 'org.example.Lifecycle' in state()['extras']
+ wait(lambda:painted_zero('recovered-zero-windows.png'))
  picker=json.loads(ipc('appSwitcher','begin',target='desktop'));assert 'org.example.Lifecycle' in picker['items'];ipc('appSwitcher','commit',target='desktop');wait(lambda:app_state()['windows']==2)
  reopened=wait(lambda:next((app for app in state()['apps'] if app['appId']=='org.example.Lifecycle' and app['windowCount']==2),None));assert reopened['instanceIds']==instances and application.poll() is None
  # Two dirty documents: cooperative cancellation leaves both documents/process alive.
@@ -109,8 +121,8 @@ try:
  application=launch([env['GLOBAL_MENU_PYTHON'],str(client),str(out)],'discard-client.log')
  wait(lambda:any(app['appId']=='org.example.Lifecycle' and app['windowCount']==2 and app['instanceIds']!=instances for app in state()['apps']))
  (out/'choice').write_text('discard');ipc('quit');application.wait(timeout=8);assert application.returncode==0;assert not list(out.glob('saved-*.txt'));wait(lambda:not state()['running'])
- log=(out/'desktop.log').read_text();assert not any(error in log for error in ('TypeError:','ReferenceError:','Failed to load configuration')),log
- result={'passed':True,'checks':['actual native compositor process identity','pidfd-retained zero-window process','Dock running entry retained without windows','switcher zero-window item and activation reopen same process','advertised GTK Quit action only','dirty two-document cancel preserves process/data','explicit save Quit commits both synthetic documents','actual process exit removes running indicator/state','separate instance explicit discard does not write documents']};(out/'result.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result))
+ log=(out/'desktop.log').read_text()+(out/'desktop-restarted.log').read_text();assert not any(error in log for error in ('TypeError:','ReferenceError:','Failed to load configuration')),log
+ result={'passed':True,'checks':['actual native compositor process identity','pidfd-retained zero-window process','observer restart recovers same validated zero-window process','shell restart retains Dock/switcher identity without native windows','Dock running entry retained without windows','switcher zero-window item and activation reopen same process','advertised GTK Quit action only','dirty two-document cancel preserves process/data','explicit save Quit commits both synthetic documents','actual process exit removes running indicator/state','separate instance explicit discard does not write documents']};(out/'result.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result))
 finally:
  for proc in reversed(processes):
   if proc.poll() is None:

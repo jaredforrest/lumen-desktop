@@ -41,14 +41,26 @@ workflow; its security checks are unchanged.
 ## Remaining boundaries
 
 This is an observer, not a complete application broker. It cannot discover a
-process that has never exposed an observed native window. Observations are not
-persisted across observer/session restarts; an already zero-window process then
-requires new native evidence. Applications with different native and bus IDs,
+process that has never exposed an observed native window. Already-observed
+identities can be recovered across observer and shell restarts
+in the same compositor session. The private runtime journal binds records to the
+boot ID and owned compositor socket epoch. Each recovered process must again match
+same-user credentials, start time and executable identity before and after a fresh
+pidfd is opened. Corrupt, oversized, nonprivate, linked or cross-session records
+confer no running state. Atomic replacement and a per-session observer lease avoid
+partial records and concurrent writers. This is a saved observation, not an
+authentication claim about the advertised application ID. Never-observed zero-
+window processes still require new native evidence. Application MRU persistence
+across a whole shell restart is separate and is not implemented here. Applications
+with different native and bus IDs,
 unsupported Quit protocols, or helper-process ownership need explicit adapters.
 No command is guessed from a translated menu label. Package identity, active
 application/main-window ownership, state restoration and retained-app document
 fidelity remain separate contracts.
 
 The disposable native GTK test exercises two in-memory dirty documents with app-
-owned cancel, save and discard handlers. It proves routing and non-forced
-termination, not the document fidelity of every retained application.
+owned cancel, save and discard handlers. It also restarts the observer and then
+the whole isolated shell while all app
+windows are closed, checking fresh process validation and retained Dock/switcher
+activation. It proves routing and non-forced termination, not the document fidelity
+of every retained application.
