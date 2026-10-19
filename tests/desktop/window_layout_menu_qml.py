@@ -2,6 +2,7 @@
 import os
 from pathlib import Path
 import re
+import select
 import shutil
 import subprocess
 import tempfile
@@ -17,33 +18,59 @@ class LayoutMenuTest(unittest.TestCase):
         prefix = re.split(r'\n[ \t]*exec quickshell ', Path(launcher).read_text(), maxsplit=1)[0]
         raw = subprocess.check_output(['bash', '-c', prefix+'\nexec env -0'])
         env = dict(v.decode().split('=', 1) for v in raw.split(b'\0') if b'=' in v)
-        with tempfile.TemporaryDirectory() as temporary:
-            path = Path(temporary)
-            for key in ('HOME','XDG_RUNTIME_DIR','XDG_CONFIG_HOME','XDG_STATE_HOME','XDG_DATA_HOME','XDG_CACHE_HOME'):
-                env[key] = str(path/key)
-                Path(env[key]).mkdir(mode=0o700)
-            for key in ('SWAYSOCK','WAYLAND_DISPLAY','DISPLAY','DBUS_SESSION_BUS_ADDRESS'):
-                env.pop(key, None)
-            env.update(QT_QPA_PLATFORM='offscreen',QT_QUICK_BACKEND='software',QT_QPA_PLATFORMTHEME='generic',QT_IM_MODULE='',NO_AT_BRIDGE='1',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',GTK_A11Y='none')
-            config=path/'sway.conf'
-            config.write_text('output * resolution 800x600\n')
-            compositor_env=dict(env,WLR_BACKENDS='headless',WLR_RENDERER='pixman',WLR_LIBINPUT_NO_DEVICES='1')
-            log=(path/'compositor.log').open('w')
-            self.addCleanup(log.close)
-            compositor=subprocess.Popen([os.environ.get('LUMEN_TEST_COMPOSITOR','sway'),'--unsupported-gpu','-c',str(config)],env=compositor_env,stdout=log,stderr=subprocess.STDOUT)
-            def stop():
-                if compositor.poll() is None:compositor.terminate()
-                compositor.wait(timeout=5)
-            self.addCleanup(stop)
-            until=time.monotonic()+15
-            while time.monotonic()<until and not list(Path(env['XDG_RUNTIME_DIR']).glob('wayland-*')):
-                time.sleep(.05)
-            displays=[p for p in Path(env['XDG_RUNTIME_DIR']).glob('wayland-*') if not p.name.endswith('.lock')]
-            self.assertTrue(displays,'headless compositor failed: '+(path/'compositor.log').read_text())
-            env['WAYLAND_DISPLAY']=displays[0].name
-            env['QT_QPA_PLATFORM']='wayland'
-            assets = root/'res/lumen-desktop/shell'
-            (path/'shell.qml').write_text('''import QtQuick
+        temporary_directory = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary_directory.cleanup)
+        temporary = temporary_directory.name
+        path = Path(temporary)
+        for key in ('HOME','XDG_RUNTIME_DIR','XDG_CONFIG_HOME','XDG_STATE_HOME','XDG_DATA_HOME','XDG_CACHE_HOME'):
+            env[key] = str(path/key)
+            Path(env[key]).mkdir(mode=0o700)
+        for key in ('SWAYSOCK','WAYLAND_DISPLAY','DISPLAY','DBUS_SESSION_BUS_ADDRESS'):
+            env.pop(key, None)
+        env.update(QT_QPA_PLATFORM='offscreen',QT_QUICK_BACKEND='software',QT_QPA_PLATFORMTHEME='generic',QT_IM_MODULE='',NO_AT_BRIDGE='1',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',GTK_A11Y='none')
+        # The compositor wrapper otherwise starts a bus using the host's
+        # /etc configuration, which is absent on clean CI runners.
+        daemon = Path(shutil.which('dbus-daemon')).resolve()
+        # No activation directories: this fixture tests a local menu, not
+        # portals or the host's user services.
+        bus_config = path/'bus.conf'
+        bus_config.write_text('<busconfig><type>session</type>'
+                              '<listen>unix:tmpdir='+env['XDG_RUNTIME_DIR']+'</listen>'
+                              '<policy context="default"><allow own="*"/>'
+                              '<allow send_destination="*"/>'
+                              '<allow receive_sender="*"/></policy></busconfig>')
+        bus = subprocess.Popen([str(daemon), '--nofork', '--print-address=1',
+                                '--config-file='+str(bus_config)], env=env,
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        def stop_bus():
+            if bus.poll() is None: bus.terminate()
+            bus.wait(timeout=5)
+            bus.stdout.close()
+            bus.stderr.close()
+        self.addCleanup(stop_bus)
+        self.assertTrue(select.select([bus.stdout], [], [], 5)[0], 'private bus did not start')
+        address = bus.stdout.readline().strip()
+        self.assertTrue(address.startswith('unix:'), address)
+        env['DBUS_SESSION_BUS_ADDRESS'] = address
+        config=path/'sway.conf'
+        config.write_text('output * resolution 800x600\n')
+        compositor_env=dict(env,WLR_BACKENDS='headless',WLR_RENDERER='pixman',WLR_LIBINPUT_NO_DEVICES='1')
+        log=(path/'compositor.log').open('w')
+        self.addCleanup(log.close)
+        compositor=subprocess.Popen([os.environ.get('LUMEN_TEST_COMPOSITOR','sway'),'--unsupported-gpu','-c',str(config)],env=compositor_env,stdout=log,stderr=subprocess.STDOUT)
+        def stop():
+            if compositor.poll() is None:compositor.terminate()
+            compositor.wait(timeout=5)
+        self.addCleanup(stop)
+        until=time.monotonic()+15
+        while time.monotonic()<until and not list(Path(env['XDG_RUNTIME_DIR']).glob('wayland-*')):
+            time.sleep(.05)
+        displays=[p for p in Path(env['XDG_RUNTIME_DIR']).glob('wayland-*') if not p.name.endswith('.lock')]
+        self.assertTrue(displays,'headless compositor failed: '+(path/'compositor.log').read_text())
+        env['WAYLAND_DISPLAY']=displays[0].name
+        env['QT_QPA_PLATFORM']='wayland'
+        assets = root/'res/lumen-desktop/shell'
+        (path/'shell.qml').write_text('''import QtQuick
 import Quickshell
 import "file:'''+str(assets)+'''" as D
 ShellRoot {
@@ -63,13 +90,13 @@ ShellRoot {
   finish.start();
  }}
 }''')
-            try:
-                result = subprocess.run(['quickshell','-p',str(path/'shell.qml')],env=env,capture_output=True,text=True,timeout=20)
-            except subprocess.TimeoutExpired as error:
-                self.fail(str(error.stdout)+str(error.stderr))
-            self.assertEqual(result.returncode,0,result.stdout+result.stderr)
-            self.assertIn('LAYOUT_MENU_PASS',result.stdout+result.stderr)
-            self.assertNotIn('Failed to load',result.stdout+result.stderr)
+        try:
+            result = subprocess.run(['quickshell','-p',str(path/'shell.qml')],env=env,capture_output=True,text=True,timeout=20)
+        except subprocess.TimeoutExpired as error:
+            self.fail(str(error.stdout)+str(error.stderr))
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertIn('LAYOUT_MENU_PASS',result.stdout+result.stderr)
+        self.assertNotIn('Failed to load',result.stdout+result.stderr)
 
 
 if __name__=='__main__':
