@@ -81,6 +81,7 @@
           export GI_TYPELIB_PATH=${pkgs.lib.makeSearchPath "lib/girepository-1.0" [ pkgs.glib pkgs.gtk3 pkgs.libical pkgs.evolution-data-server pkgs.gnome-online-accounts ]}
           export PYTHONDONTWRITEBYTECODE=1
           export PYTHONWARNINGS=error
+          export TZDIR=${pkgs.tzdata}/share/zoneinfo
           for test in ${self}/tests/desktop/test_*.py; do
             case "$test" in
               *test_nix_settings.py|*test_app_launch_qml.py|*test_dock_model_qml.py) continue ;;
