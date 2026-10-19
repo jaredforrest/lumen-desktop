@@ -1,7 +1,7 @@
 """Real gallery clicks, masked widgets, staged movement and restart on two outputs."""
 import argparse,json,os,re,shutil,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
-p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--launcher',type=Path,required=True);p.add_argument('--sway',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--inside',action='store_true');a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--launcher',type=Path,required=True);p.add_argument('--sway',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--theme',choices=['light','dark'],default='dark');p.add_argument('--inside',action='store_true');a=p.parse_args()
 if not a.inside:
  with tempfile.TemporaryDirectory(prefix='lumen-widgets-') as private:
   env=dict(os.environ,HOME=private,XDG_RUNTIME_DIR=private,DBUS_SYSTEM_BUS_ADDRESS='unix:path='+private+'/absent-system')
@@ -15,7 +15,7 @@ env=dict(value.decode().split('=',1) for value in sp.check_output(['bash','-c',p
 env.update(WLR_BACKENDS='headless',WLR_HEADLESS_OUTPUTS='2',WLR_RENDERER='pixman',WLR_LIBINPUT_NO_DEVICES='1',QT_QPA_PLATFORM='wayland',QT_QPA_PLATFORMTHEME='generic',QT_NO_XDG_DESKTOP_PORTAL='1',QT_QUICK_BACKEND='software',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none',LUMEN_NATIVE_WINDOW_CONTROLS='0',LUMEN_NATIVE_WINDOW_ACTIONS='0',LUMEN_FILE_SERVICE='0',LUMEN_LAUNCH_SCOPES='0')
 for key in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK','AT_SPI_BUS_ADDRESS'):env.pop(key,None)
 shutil.copytree(repo/'res/lumen-desktop',out/'assets');palettes=json.loads((repo/'res/lumen-desktop/appearance/palette.json').read_text())
-appearance=out/'appearance.json';appearance.write_text(json.dumps(dict(font=palettes['font'],palette=palettes['dark'],preferences={})));env['LUMEN_APPEARANCE_STATE']=str(appearance)
+appearance=out/'appearance.json';appearance.write_text(json.dumps(dict(font=palettes['font'],palette=palettes[a.theme],preferences={})));env['LUMEN_APPEARANCE_STATE']=str(appearance)
 qml=out/'shell.qml';qml.write_text('''import QtQuick
 import QtQuick.Controls
 import QtQuick.Window
@@ -93,9 +93,11 @@ try:
  original=dict(item()['positions']['HEADLESS-1']);key('-k','space','-k','Right','-k','Escape');assert item()['positions']['HEADLESS-1']==original
  key('-k','space','-k','Right','-k','Return');wait(lambda:item()['positions']['HEADLESS-1']['x']>original['x']);checks.append('Keyboard move previews cancel or commit against the same captured instance')
  identifier=item()['id'];click(point('widget-size-'+identifier));key('-k','Home','-k','Return');wait(lambda:item()['size']=='small' and card()['width']==214);assert state()['same'];checks.append('Size control updates both surfaces while preserving component identity')
- call('grim',str(out/'widgets-dark.png'))
+ call('grim',str(out/('widgets-'+a.theme+'.png')))
  saved=dict(item());os.killpg(shell.pid,signal.SIGTERM);shell.wait(timeout=5);shell=launch(['quickshell','-p',str(qml)],'shell-restart.log');wait(lambda:state()['preferences'].get('desktopItems') and item()['id']==saved['id']);assert item()==saved;checks.append('Restart restores the exact instance, size and independent positions')
  click(point('widget-remove-'+identifier));wait(lambda:state()['preferences']['desktopItems']==[] and all(not output['items'] for output in state()['outputs']));checks.append('Removing the last instance preserves an explicitly empty layout')
+ click(point('widget-add-calendar'));wait(lambda:item()['type']=='calendar' and all(len(output['items'])==1 for output in state()['outputs']));assert item()['id']!=identifier;checks.append('Calendar can be added after an explicitly empty layout with a fresh identity')
+ call('grim',str(out/('calendar-'+a.theme+'.png')))
  assert not state()['error'],state()
  for name in ('shell.log','shell-restart.log'):
   text=(out/name).read_text();assert not any(marker in text for marker in ('TypeError:','ReferenceError:','Binding loop','Failed to load configuration','Cannot assign')),text
