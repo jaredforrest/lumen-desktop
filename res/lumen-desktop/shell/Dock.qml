@@ -127,10 +127,10 @@ PanelWindow {
     // the shelf. This is wallpaper-only blur, not blur of other applications.
     Item {
         anchors.bottom: parent.bottom; width:parent.width; height:dock.shelfThickness
-        visible: !dock.vertical && !Theme.preferences.reduceTransparency && !Theme.compositorEffects
+        visible: GraphicsInfo.api !== GraphicsInfo.Software && !dock.vertical && !Theme.preferences.reduceTransparency && !Theme.compositorEffects
         Image { id:backdrop; width:(dock.screen?dock.screen.width:1440); height:(dock.screen?dock.screen.height:1000); source:Qt.resolvedUrl("wallpaper.png"); fillMode:Image.PreserveAspectCrop; visible:false }
         ShaderEffectSource { id:slice; sourceItem:backdrop; sourceRect:Qt.rect(((dock.screen?dock.screen.width:1440)-dock.width)/2,(dock.screen?dock.screen.height:1000)-dock.shelfThickness-7,surface.width,dock.shelfThickness); width:surface.width; height:dock.shelfThickness; visible:false }
-        Rectangle { id:roundedMask; width:surface.width; height:dock.shelfThickness; radius:22; layer.enabled:true; visible:false }
+        Rectangle { id:roundedMask; width:surface.width; height:dock.shelfThickness; radius:22; layer.enabled:GraphicsInfo.api !== GraphicsInfo.Software; visible:false }
         MultiEffect { anchors.fill:parent; source:slice; blurEnabled:true; blurMax:32; blur:0.7; maskEnabled:true; maskSource:roundedMask; autoPaddingEnabled:false }
     }
     Rectangle {

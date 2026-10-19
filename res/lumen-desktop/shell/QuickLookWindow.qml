@@ -33,7 +33,7 @@ FloatingWindow {
         Keys.onRightPressed:if(root.returnTo)root.returnTo.quickLookStep(1)
         MouseArea {width:parent.width;height:48;onPressed:if(content.Window.window)content.Window.window.startSystemMove()}
         WindowControls {windowName:"Quick Look";canMinimize:false;canFullscreen:false;windowActive:content.Window.window?content.Window.window.active:false;onTriggered:root.visible=false}
-        PanelLabel {x:94;y:14;width:Math.max(40,parent.width-236);height:24;text:root.result.title || root.path.split("/").pop();font.weight:Font.DemiBold;verticalAlignment:Text.AlignVCenter}
+        PanelLabel {x:94;y:14;visible:!Theme.nativeWindowFrame;width:Math.max(40,parent.width-236);height:24;text:root.result.title || root.path.split("/").pop();font.weight:Font.DemiBold;verticalAlignment:Text.AlignVCenter}
         DialogButton {anchors.right:more.left;anchors.rightMargin:8;y:12;width:70;text:"Open";onClicked:AppLaunch.run(["xdg-open","file://"+root.path.split("/").map(encodeURIComponent).join("/")])}
         DialogButton {id:more;anchors.right:parent.right;anchors.rightMargin:14;y:12;width:32;text:"•••";Accessible.name:"Preview actions";onClicked:previewActions.popup()}
         Menu {id:previewActions

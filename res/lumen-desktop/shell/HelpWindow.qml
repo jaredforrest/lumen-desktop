@@ -20,12 +20,12 @@ FloatingWindow {
  readonly property var matches:topics.filter(t=>(t.title+" "+t.body).toLowerCase().includes(query.toLowerCase()))
  function show(){visible=true;Qt.callLater(()=>{search.forceActiveFocus();if(body.Window.window)body.Window.window.requestActivate();});}
  function openTopic(action){if(!action)return;visible=false;if(action==="search")shell.launchApps();else if(action==="files")shell.openFiles("");else if(action==="overview")shell.openOverview(false);else if(action==="calendar")shell.showMenu("Date");else if(action==="settings")shell.openSettings("Appearance");else if(action==="dock")shell.requestDockFocus(shell.preferredOutput());}
- Rectangle {id:body;anchors.fill:parent;color:Theme.colors.background;radius:12
-  MouseArea {width:parent.width;height:48;onPressed:body.Window.window.startSystemMove()}
+ Rectangle {id:body;anchors.fill:parent;color:Theme.colors.background;radius:Theme.nativeWindowFrame?0:12
+  MouseArea {visible:!Theme.nativeWindowFrame;width:parent.width;height:48;onPressed:body.Window.window.startSystemMove()}
   WindowControls {windowActive:body.Window.window?body.Window.window.active:false;windowName:"Desktop Help";canFullscreen:false;onTriggered:index=>{if(index===0)root.visible=false;else if(index===1)body.Window.window.showMinimized();}}
-  PanelLabel {x:100;y:14;text:"Desktop Help";font.weight:Font.DemiBold}
-  TextField {id:search;x:20;y:58;width:parent.width-40;height:34;placeholderText:"Search Help";Accessible.name:"Search Help";color:Theme.colors.text;font.family:Theme.font;onTextChanged:root.query=text;background:Rectangle {radius:7;color:Theme.colors.field;border.color:search.activeFocus?Theme.colors.accent:Theme.hairline}}
-  ListView {x:20;y:104;width:parent.width-40;height:parent.height-124;clip:true;spacing:10;model:root.matches;ScrollBar.vertical:DesktopScrollBar {}
+  PanelLabel {x:100;y:14;visible:!Theme.nativeWindowFrame;text:"Desktop Help";font.weight:Font.DemiBold}
+  TextField {id:search;x:20;y:Theme.nativeWindowFrame?14:58;width:parent.width-40;height:34;placeholderText:"Search Help";placeholderTextColor:Theme.colors.muted;Accessible.name:"Search Help";color:Theme.colors.text;font.family:Theme.font;onTextChanged:root.query=text;background:Rectangle {radius:7;color:Theme.colors.field;border.color:search.activeFocus?Theme.colors.accent:Theme.hairline}}
+  ListView {x:20;y:Theme.nativeWindowFrame?60:104;width:parent.width-40;height:parent.height-y-20;clip:true;spacing:10;model:root.matches;ScrollBar.vertical:DesktopScrollBar {}
    delegate:Rectangle {required property var modelData;width:ListView.view.width;height:topic.height+24;radius:10;color:Theme.colors.surface
     Column {id:topic;x:12;y:12;width:parent.width-24;spacing:8
      PanelLabel {width:parent.width;text:modelData.title;font.weight:Font.DemiBold}

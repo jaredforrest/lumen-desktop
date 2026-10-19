@@ -36,6 +36,7 @@ PanelWindow {
         shell.updateFolderStack(folder,{sort:sort,descending:descending,presentation:presentation});
         if(key!=="presentation")reload();
     }
+    function itemIcon(item){const name=item.directory?"folder":item.kind.startsWith("image/")?"image-x-generic":item.kind.startsWith("video/")?"video-x-generic":"text-x-generic";return Quickshell.hasThemeIcon(name)?Quickshell.iconPath(name):Qt.resolvedUrl(item.directory?"icons/folder.svg":"icons/application.svg");}
     function openItem(){if(!rows[selected])return;const item=rows[selected];visible=false;if(item.directory)shell.openFiles(item.path);else AppLaunch.run(["xdg-open",item.uri]);}
     function moveSelection(delta){selected=Math.max(0,Math.min(rows.length-1,selected+delta));}
     onVisibleChanged:if(!visible){++generation;worker.running=false;reloadTimer.stop();if(shell.popupOwner==="folder-stack")shell.claimPopup("");}
@@ -64,7 +65,7 @@ PanelWindow {
             Item {width:parent.width;height:Math.max(0,parent.height-104)
                 ListView {id:items;anchors.fill:parent;visible:!root.grid;clip:true;model:root.rows;currentIndex:root.selected;onCurrentIndexChanged:positionViewAtIndex(currentIndex,ListView.Contain)
                     delegate:ControlRow {required property var modelData;required property int index;width:items.width;height:32;leftPadding:38;text:modelData.name
-                        Image {x:5;y:5;width:22;height:22;asynchronous:true;sourceSize:Qt.size(44,44);fillMode:Image.PreserveAspectFit;source:Quickshell.iconPath(modelData.directory?"folder":modelData.kind.startsWith("image/")?"image-x-generic":modelData.kind.startsWith("video/")?"video-x-generic":"text-x-generic")}
+                        Image {x:5;y:5;width:22;height:22;asynchronous:true;sourceSize:Qt.size(44,44);fillMode:Image.PreserveAspectFit;source:root.itemIcon(modelData)}
                         selected:root.selected===index;onClicked:{root.selected=index;root.openItem();}
                     }
                     ScrollBar.vertical:DesktopScrollBar {}
@@ -73,7 +74,7 @@ PanelWindow {
                     delegate:AbstractButton {required property var modelData;required property int index;width:gridItems.cellWidth;height:94;Accessible.name:modelData.name;Accessible.selected:root.selected===index
                         background:Rectangle {radius:8;color:root.selected===parent.index?Theme.selection:"transparent"}
                         contentItem:Item {
-                            Image {anchors.horizontalCenter:parent.horizontalCenter;y:4;width:48;height:48;sourceSize:Qt.size(96,96);asynchronous:true;fillMode:Image.PreserveAspectFit;source:Quickshell.iconPath(parent.parent.modelData.directory?"folder":parent.parent.modelData.kind.startsWith("image/")?"image-x-generic":"text-x-generic")}
+                            Image {anchors.horizontalCenter:parent.horizontalCenter;y:4;width:48;height:48;sourceSize:Qt.size(96,96);asynchronous:true;fillMode:Image.PreserveAspectFit;source:root.itemIcon(parent.parent.modelData)}
                             PanelLabel {x:4;y:57;width:parent.width-8;height:32;maximumLineCount:2;wrapMode:Text.Wrap;elide:Text.ElideRight;horizontalAlignment:Text.AlignHCenter;font.pixelSize:11;text:parent.parent.modelData.name}
                         }
                         onClicked:{root.selected=index;root.openItem();}

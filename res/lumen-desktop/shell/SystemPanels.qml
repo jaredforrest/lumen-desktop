@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import Quickshell
 import Quickshell.Bluetooth
-Column {
+Item {
     id: root
     required property string kind
     required property var shell
@@ -15,9 +15,14 @@ Column {
     signal panelRequested(string name)
     property real maximumWidth:344
     width: kind==="Date" ? Math.min(344,maximumWidth) : Math.min(300,maximumWidth)
-    spacing:12
+    readonly property bool enclosingMaterial:["Controls","Date","Now Playing","VPN"].includes(kind)
+    implicitHeight:panelContents.height+(enclosingMaterial?24:0)
+    height:implicitHeight
+    PanelSurface {anchors.fill:parent;visible:root.enclosingMaterial}
+    Column {id:panelContents;x:root.enclosingMaterial?12:0;y:x;width:parent.width-x*2;spacing:12
     ControlCentre {visible:root.kind==="Controls";width:parent.width;shell:root.shell;onSettingsRequested:root.settingsRequested();onPanelRequested:name=>root.panelRequested(name)}
-    Column {visible:root.kind==="Focus" && root.editingFocus==="";width:parent.width;spacing:8
+    PanelSurface {visible:root.kind==="Focus" && root.editingFocus==="";width:parent.width;height:focusBody.height+32
+      Column {id:focusBody;x:16;y:16;width:parent.width-32;spacing:8
         ControlRow {width:parent.width;text:"‹  Control Centre";onClicked:root.panelRequested("Controls")}
         PanelLabel {text:"Focus";font.weight:Font.DemiBold}
         PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:root.focusState.active?(root.focusState.name+(root.focusState.until?" · until "+Qt.formatTime(new Date(root.focusState.until*1000),"HH:mm"):root.focusState.scheduled?" · scheduled":" · until turned off")):"Off";color:Theme.colors.muted}
@@ -32,10 +37,13 @@ Column {
         ControlRow {width:parent.width;text:"Use schedules";onClicked:root.shell.notifications.command({action:"focus",profile:null})}
         PanelLabel {width:parent.width;wrapMode:Text.WordWrap;color:Theme.colors.muted;text:"Focus silences banners except allowed apps. Notifications remain in Notification Centre."}
     }
-    Column {visible:root.kind==="Focus" && root.editingFocus!=="";width:parent.width;spacing:8
+      }
+    PanelSurface {visible:root.kind==="Focus" && root.editingFocus!=="";width:parent.width;height:focusEditorBody.height+32
+      Column {id:focusEditorBody;x:16;y:16;width:parent.width-32;spacing:8
         ControlRow {width:parent.width;text:"‹  Focus";onClicked:root.editingFocus=""}
         FocusProfileEditor {width:parent.width;service:root.shell.notifications;profileId:root.editingFocus}
     }
+      }
     PanelLabel {visible:root.kind==="Controls" && text!=="";width:parent.width;wrapMode:Text.WordWrap;text:root.shell.systemState.error;color:Theme.colors.muted}
     PanelSurface {
         visible:root.kind==="Sound"
@@ -69,8 +77,9 @@ Column {
         width:parent.width;today:root.today;compact:true;onOpenCalendar:root.shell.openCalendarAt(selected,null);onEventRequested:(event,day)=>root.shell.openCalendarAt(day,event)
     }
 
-    Column {visible:root.kind==="Now Playing";width:300;spacing:8
+    Column {visible:root.kind==="Now Playing";width:parent.width;spacing:8
         ControlRow {width:parent.width;text:"‹  Control Centre";onClicked:root.panelRequested("Controls")}
         MediaControl {width:parent.width;height:245;expanded:true}
+    }
     }
 }

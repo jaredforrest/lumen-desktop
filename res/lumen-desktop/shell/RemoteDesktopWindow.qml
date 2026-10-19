@@ -21,13 +21,13 @@ FloatingWindow {
     function choose(index){if(index<0 || index>=matches.length)return;selectedId=matches[index].id;grid.currentIndex=index;grid.positionViewAtIndex(index,GridView.Contain);if(grid.currentItem)grid.currentItem.forceActiveFocus();}
     function connect(){if(current)send({action:"connect",id:current.id});}
     onVisibleChanged:if(visible && screen){implicitWidth=Math.max(480,Math.min(780,screen.width-32));implicitHeight=Math.max(320,Math.min(520,screen.height-92));}
-    Rectangle {id:body;anchors.fill:parent;color:Theme.colors.background;radius:12
-        Rectangle {width:150;height:parent.height;color:Theme.sidebarMaterial;radius:12}
+    Rectangle {id:body;anchors.fill:parent;color:Theme.colors.background;radius:Theme.nativeWindowFrame?0:12
+        Rectangle {width:150;height:parent.height;color:Theme.sidebarMaterial;radius:Theme.nativeWindowFrame?0:12}
         Rectangle {x:138;width:12;height:parent.height;color:Theme.sidebarMaterial}
-        MouseArea {width:parent.width;height:48;onPressed:body.Window.window.startSystemMove()}
+        MouseArea {visible:!Theme.nativeWindowFrame;width:parent.width;height:48;onPressed:body.Window.window.startSystemMove()}
         WindowControls {windowName:"Remote Desktop";canFullscreen:false;windowActive:body.Window.window?body.Window.window.active:false;onTriggered:index=>{if(index===0)root.visible=false;else if(index===1)body.Window.window.showMinimized();}}
-        PanelLabel {x:168;y:15;text:"Remote Desktop";font.weight:Font.DemiBold}
-        Column {x:12;y:62;width:126;spacing:5
+        PanelLabel {x:168;y:15;visible:!Theme.nativeWindowFrame;text:"Remote Desktop";font.weight:Font.DemiBold}
+        Column {x:12;y:Theme.nativeWindowFrame?18:62;width:126;spacing:5
             PanelLabel {x:8;text:"Connections";font.pixelSize:11;font.weight:Font.DemiBold;color:Theme.colors.muted;height:24}
             Repeater {model:["All","RDP","VNC","SSH"]
                 AbstractButton {required property string modelData;width:126;height:34;Accessible.name:modelData==="All"?"All Computers":modelData;onClicked:root.filter=modelData
@@ -37,8 +37,8 @@ FloatingWindow {
             }
             ControlRow {width:126;text:"Advanced…";onClicked:root.send({action:"advanced"})}
         }
-        TextField {id:search;x:168;y:58;width:parent.width-186;height:32;placeholderText:"Search computers";Accessible.name:"Search computers";onTextChanged:root.query=text;color:Theme.colors.text;font.family:Theme.font;background:Rectangle {radius:7;color:Theme.colors.field;border.color:search.activeFocus?Theme.colors.accent:Theme.hairline}}
-        GridView {id:grid;x:168;y:104;width:parent.width-186;height:Math.max(50,parent.height-244);cellWidth:Math.max(140,Math.floor(width/Math.max(1,Math.floor(width/180))));cellHeight:144;model:root.matches;clip:true;ScrollBar.vertical:DesktopScrollBar {}
+        TextField {id:search;x:168;y:Theme.nativeWindowFrame?14:58;width:parent.width-186;height:32;placeholderText:"Search computers";placeholderTextColor:Theme.colors.muted;Accessible.name:"Search computers";onTextChanged:root.query=text;color:Theme.colors.text;font.family:Theme.font;background:Rectangle {radius:7;color:Theme.colors.field;border.color:search.activeFocus?Theme.colors.accent:Theme.hairline}}
+        GridView {id:grid;x:168;y:Theme.nativeWindowFrame?60:104;width:parent.width-186;height:Math.max(50,parent.height-y-140);cellWidth:Math.max(140,Math.floor(width/Math.max(1,Math.floor(width/180))));cellHeight:144;model:root.matches;clip:true;ScrollBar.vertical:DesktopScrollBar {}
             delegate:AbstractButton {required property var modelData;required property int index;width:grid.cellWidth-10;height:132;Accessible.name:modelData.name+", "+modelData.protocol
                 onClicked:root.choose(index)
                 onDoubleClicked:{root.selectedId=modelData.id;root.connect();}
@@ -64,7 +64,7 @@ FloatingWindow {
         }
         Row {x:168;y:parent.height-62;width:parent.width-186;spacing:8
             DesktopComboBox {id:protocol;width:80;model:["RDP","VNC"];Accessible.name:"Connection protocol"}
-            TextField {id:address;width:Math.max(100,parent.width-176);height:30;placeholderText:"Hostname or IP address";Accessible.name:"Remote computer address";color:Theme.colors.text;font.family:Theme.font;onAccepted:if(text.trim())root.send({action:"quick",address:text.trim(),protocol:protocol.currentText});background:Rectangle {radius:6;color:Theme.colors.field;border.color:address.activeFocus?Theme.colors.accent:Theme.hairline}}
+            TextField {id:address;width:Math.max(100,parent.width-176);height:30;placeholderText:"Hostname or IP address";placeholderTextColor:Theme.colors.muted;Accessible.name:"Remote computer address";color:Theme.colors.text;font.family:Theme.font;onAccepted:if(text.trim())root.send({action:"quick",address:text.trim(),protocol:protocol.currentText});background:Rectangle {radius:6;color:Theme.colors.field;border.color:address.activeFocus?Theme.colors.accent:Theme.hairline}}
             DialogButton {width:80;text:"Open";enabled:!!address.text.trim() && !worker.running;onClicked:root.send({action:"quick",address:address.text.trim(),protocol:protocol.currentText})}
         }
         Shortcut {sequence:"Escape";onActivated:root.visible=false}

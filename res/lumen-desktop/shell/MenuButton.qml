@@ -18,5 +18,5 @@ Rectangle {
     MouseArea { id: mouse; anchors.fill: parent; hoverEnabled: true; onClicked: button.clicked(); onEntered:button.entered() }
     Accessible.role: Accessible.Button
     Accessible.name: iconName || text
-    Accessible.onPressAction: clicked()
+    Accessible.onPressAction: if(enabled)clicked()
 }

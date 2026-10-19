@@ -29,10 +29,10 @@ FloatingWindow {
     function show(){target=shell.exportedMenu.state.windowId;targetApp=shell.exportedMenu.state.appName;menuCommands=commandPaths(shell.exportedMenu.state.menu,[]);shell.claimPopup("");visible=true;send({action:"status"});Qt.callLater(()=>{if(content.Window.window)content.Window.window.requestActivate();input.forceActiveFocus();});}
     function send(data){if(worker.running)return;request=Object.assign({},data,{language:language});error="";severity="info";worker.running=true;}
     Rectangle {id:content;anchors.fill:parent;radius:Theme.nativeWindowFrame?0:12;color:Theme.colors.background;border.color:Theme.outline
-        MouseArea {anchors.top:parent.top;width:parent.width;height:45;onPressed:if(content.Window.window)content.Window.window.startSystemMove()}
+        MouseArea {visible:!Theme.nativeWindowFrame;anchors.top:parent.top;width:parent.width;height:45;onPressed:if(content.Window.window)content.Window.window.startSystemMove()}
         WindowControls {windowName:"Text Tools";canFullscreen:false;windowActive:content.Window.window?content.Window.window.active:false;onTriggered:index=>{if(index===0)root.visible=false;else if(content.Window.window && index===1)content.Window.window.showMinimized();}}
-        PanelLabel {x:100;y:14;text:"Text Tools";font.weight:Font.DemiBold}
-        Column {x:12;y:58;width:132;spacing:3
+        PanelLabel {x:100;y:14;visible:!Theme.nativeWindowFrame;text:"Text Tools";font.weight:Font.DemiBold}
+        Column {x:12;y:Theme.nativeWindowFrame?14:58;width:132;spacing:3
             Repeater {model:root.pages
                 AbstractButton {required property string modelData;width:132;height:34;Accessible.name:modelData;onClicked:root.page=modelData
                     contentItem:PanelLabel {text:parent.modelData;verticalAlignment:Text.AlignVCenter;leftPadding:10;color:root.page===parent.modelData?Theme.colors.selectedText:Theme.colors.text}
@@ -40,7 +40,7 @@ FloatingWindow {
                 }
             }
         }
-        Flickable {x:160;y:58;width:parent.width-178;height:parent.height-y-18;clip:true;contentWidth:width;contentHeight:body.height
+        Flickable {x:160;y:Theme.nativeWindowFrame?14:58;width:parent.width-178;height:parent.height-y-18;clip:true;contentWidth:width;contentHeight:body.height
             ScrollBar.vertical:DesktopScrollBar {}
         Column {id:body;width:parent.width;spacing:10
             PanelLabel {text:root.page;font.pixelSize:18;font.weight:Font.DemiBold}
@@ -98,7 +98,7 @@ FloatingWindow {
             Column {visible:root.page==="Shortcuts";width:parent.width;spacing:10
                 PanelLabel {width:parent.width;text:"Application: "+root.targetApp;wrapMode:Text.WordWrap}
                 DesktopComboBox {id:slot;width:parent.width;model:Array.from({length:12},(_,i)=>"⌘⌥F"+(i+1));Accessible.name:"Menu shortcut slot"}
-                TextField {width:parent.width;height:32;readOnly:true;placeholderText:"Click here, then press ⌘⌥F1–F12";Accessible.name:"Capture application shortcut";color:Theme.colors.text;font.family:Theme.font;background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline}
+                TextField {width:parent.width;height:32;readOnly:true;placeholderText:"Click here, then press ⌘⌥F1–F12";placeholderTextColor:Theme.colors.muted;Accessible.name:"Capture application shortcut";color:Theme.colors.text;font.family:Theme.font;background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline}
                     Keys.onPressed:event=>{if((event.modifiers & Qt.MetaModifier) && (event.modifiers & Qt.AltModifier) && event.key>=Qt.Key_F1 && event.key<=Qt.Key_F12){slot.currentIndex=event.key-Qt.Key_F1;text="⌘⌥F"+(slot.currentIndex+1);event.accepted=true;}}
                 }
                 DesktopComboBox {width:parent.width;model:["Choose an application command…"].concat(root.menuCommands);enabled:root.menuCommands.length>0;Accessible.name:"Application command";onActivated:index=>{if(index>0)menuPath.text=root.menuCommands[index-1];}}

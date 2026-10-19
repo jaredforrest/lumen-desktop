@@ -12,8 +12,11 @@ Image {
     readonly property url desiredSource: usingDarkVariant ? Qt.resolvedUrl("reference-icons/dark/"+variantName+".svg") : iconSource
     property bool failed: false
     onDesiredSourceChanged: failed = false
-    source: failed ? Qt.resolvedUrl("icons/application.svg") : desiredSource
-    onStatusChanged: if (status === Image.Error && !failed) failed = true
+    source: failed || String(desiredSource)==="" ? Qt.resolvedUrl("icons/application.svg") : desiredSource
+    onStatusChanged: if (status === Image.Error && !failed) {
+        const expected=String(desiredSource);
+        Qt.callLater(()=>{if(root.status===Image.Error && String(root.desiredSource)===expected)root.failed=true;});
+    }
 
     // Magnification and fractional output scales shrink the same texture by
     // different amounts. Linear filtering alone undersamples curved edges and
@@ -33,7 +36,7 @@ Image {
         y: parent.height * 0.14
         text: Qt.formatDateTime(root.calendarDate, "ddd")
         font.family: Theme.font; font.pixelSize: parent.height * 0.17; font.weight: Font.DemiBold
-        color: root.usingDarkVariant ? "#f16d68" : "#d34743"
+        color: root.usingDarkVariant ? "#f16d68" : "#b93931"
     }
     Text {
         visible: root.variantName === "calendar"

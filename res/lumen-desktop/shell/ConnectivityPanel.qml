@@ -21,7 +21,7 @@ PanelSurface {
     signal backRequested()
     width:300;height:content.height+28
     radius:embedded?12:24
-    layer.enabled:!embedded
+    layer.enabled:!embedded && GraphicsInfo.api !== GraphicsInfo.Software
     color:embedded?Theme.colors.surface:Theme.colors.background
     readonly property var adapter: Bluetooth.defaultAdapter
     readonly property var radio: adapter ? (controls.bluetoothRadios[adapter.dbusPath] || ({})) : ({})

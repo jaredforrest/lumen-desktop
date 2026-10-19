@@ -14,7 +14,7 @@ FloatingWindow {
  property bool executeActions:true
  function show(value){if(!labels[value])return;action=value;error="";visible=true;Qt.callLater(()=>{cancel.forceActiveFocus();if(body.Window.window)body.Window.window.requestActivate();});}
  function confirm(){if(!commands[action] || worker.running)return;confirmed(action);if(!executeActions){visible=false;return;}worker.command=commands[action];worker.running=true;}
- Rectangle {id:body;anchors.fill:parent;color:Theme.colors.background;radius:12
+ Rectangle {id:body;anchors.fill:parent;color:Theme.colors.background;radius:Theme.nativeWindowFrame?0:12
   MouseArea {width:parent.width;height:48;onPressed:body.Window.window.startSystemMove()}
   WindowControls {windowActive:body.Window.window?body.Window.window.active:false;windowName:"Session Options";canMinimize:false;canFullscreen:false;onTriggered:root.visible=false}
   Column {x:24;y:62;width:parent.width-48;spacing:14
