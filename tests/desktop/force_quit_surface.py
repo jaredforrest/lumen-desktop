@@ -38,7 +38,9 @@ ShellRoot {id:mock
 config=root/'sway.conf';config.write_text('output HEADLESS-1 resolution 900x650\nseat seat0 fallback true\n')
 processes=[]
 def launch(command,name):
-    process=subprocess.Popen(command,env=env,stdout=(root/name).open('w'),stderr=subprocess.STDOUT,start_new_session=True);processes.append(process);return process
+    with (root/name).open('w') as stream:
+        process=subprocess.Popen(command,env=env,stdout=stream,stderr=subprocess.STDOUT,start_new_session=True)
+    processes.append(process);return process
 
 def wait(callback):
     for _ in range(100):
@@ -75,5 +77,6 @@ finally:
         except ProcessLookupError:pass
     for process in processes:
         try:process.wait(timeout=3)
-        except subprocess.TimeoutExpired:os.killpg(process.pid,signal.SIGKILL)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid,signal.SIGKILL);process.wait(timeout=3)
     shutil.rmtree(runtime,ignore_errors=True)
