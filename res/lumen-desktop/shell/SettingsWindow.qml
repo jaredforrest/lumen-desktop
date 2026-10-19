@@ -361,8 +361,8 @@ FloatingWindow {
                 Column {
                     visible:root.page==="Notifications";width:parent.width;spacing:12
                     PanelLabel {text:"Show notification previews"}
-                    DesktopComboBox {width:parent.width;model:["Always","Never"];currentIndex:root.service.notificationsPreferences.preview==="never"?1:0;enabled:root.service.available && !root.service.busy;Accessible.name:"Show notification previews";onActivated:index=>root.service.setNotificationPreference("preview",index===1?"never":"always")}
-                    PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:"Never hides message content and actions while keeping the source application and time visible.";font.pixelSize:Theme.textSize(11);color:Theme.colors.muted}
+                    DesktopComboBox {width:parent.width;model:["Always","When Unlocked","Never"];currentIndex:["always","when_unlocked","never"].indexOf(root.service.notificationsPreferences.preview);enabled:root.service.available && !root.service.busy;Accessible.name:"Show notification previews";onActivated:index=>root.service.setNotificationPreference("preview",["always","when_unlocked","never"][index])}
+                    PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:"Never hides message content and actions while keeping the source application and time visible. Previews while locked also require system permission.";font.pixelSize:Theme.textSize(11);color:Theme.colors.muted}
                     SettingsToggle {width:parent.width;text:"Do Not Disturb";detail:"Silence banners while keeping notifications in Notification Centre";checked:root.shell.notifications.dnd;enabled:root.shell.notifications.available;onClicked:root.shell.notifications.command({action:"dnd",enabled:checked})}
                     Repeater {model:root.shell.notifications.applications
                         Column {required property var modelData;width:parent.width;spacing:5

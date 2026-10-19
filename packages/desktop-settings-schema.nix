@@ -167,7 +167,7 @@ let
       };
       notifications = mkOption {
         type = types.submodule { options = {
-          preview = mkOption { type = types.enum [ "always" "never" ]; default = "always"; };
+          preview = mkOption { type = types.enum [ "always" "when_unlocked" "never" ]; default = "when_unlocked"; };
           policies = mkOption { type = types.attrsOf (types.enum [ "banners" "silent" "off" ]); default = {}; };
         }; };
         default = {};

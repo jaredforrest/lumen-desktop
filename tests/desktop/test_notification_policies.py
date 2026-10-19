@@ -1,6 +1,7 @@
 """Run under a private dbus-run-session."""
 import copy,importlib.util,json,tempfile,time
 from pathlib import Path
+from notification_test_authority import UnlockedAuthority
 import dbus,dbus.mainloop.glib
 source=Path(__file__).resolve().parents[2]/'res/lumen-desktop/notifications/service.py'
 spec=importlib.util.spec_from_file_location('notifications',source);service=importlib.util.module_from_spec(spec);spec.loader.exec_module(service)
@@ -11,7 +12,7 @@ def set_section(section,value,**kwargs):
 service.set_section=set_section
 dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
 with tempfile.TemporaryDirectory() as t:
- server=service.Server(dbus.SessionBus(),Path(t))
+ server=service.Server(dbus.SessionBus(),Path(t),lock_authority=UnlockedAuthority())
  def settled(policy):
   deadline=time.monotonic()+3
   while server.policies.get('Policy Fixture')!=policy and time.monotonic()<deadline:

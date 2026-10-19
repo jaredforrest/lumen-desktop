@@ -1,0 +1,70 @@
+--- a/include/sway/lock.h
++++ b/include/sway/lock.h
+@@ -2,4 +2,6 @@
+ #define _SWAY_LOCK_H
+ 
++#include <json-c/json.h>
++json_object *session_lock_state_json(void);
+ void arrange_locks(void);
+ 
+--- a/sway/lock.c
++++ b/sway/lock.c
+@@ -11,4 +11,20 @@
+ #include "sway/server.h"
+ #include "sway/lock.h"
++#include "sway/ipc-server.h"
++
++static uint64_t lock_state_revision;
++static void lock_state_changed(void) {
++ lock_state_revision++;
++ /* A wakeup is never an authority claim: consumers query the native facts. */
++ ipc_event_tick("lumen-session-lock");
++}
++json_object *session_lock_state_json(void) {
++ json_object *state=json_object_new_object();
++ json_object_object_add(state,"version",json_object_new_int(1));
++ json_object_object_add(state,"available",json_object_new_boolean(server.session_lock.manager!=NULL));
++ json_object_object_add(state,"locked",json_object_new_boolean(server.session_lock.lock!=NULL));
++ json_object_object_add(state,"revision",json_object_new_int64(lock_state_revision));
++ return state;
++}
+ 
+ struct sway_session_lock_output {
+@@ -202,4 +218,5 @@
+ 	if (server.session_lock.lock == lock) {
+ 		server.session_lock.lock = NULL;
++		lock_state_changed();
+ 		cursor_hot_corners_lock_changed();
+ 	}
+@@ -253,4 +270,5 @@
+ 
+ 	lock->abandoned = true;
++	lock_state_changed();
+ 	wl_list_remove(&lock->destroy.link);
+ 	wl_list_remove(&lock->unlock.link);
+@@ -306,4 +324,5 @@
+ 	wlr_session_lock_v1_send_locked(lock);
+ 	server.session_lock.lock = sway_lock;
++	lock_state_changed();
+ 	cursor_hot_corners_lock_changed();
+ 
+@@ -323,4 +342,5 @@
+ 
+ 	server.session_lock.manager = NULL;
++	lock_state_changed();
+ }
+ 
+--- a/sway/ipc-json.c
++++ b/sway/ipc-json.c
+@@ -17,4 +17,5 @@
+ #include "sway/ipc-json.h"
+ #include "sway/server.h"
++#include "sway/lock.h"
+ #include "sway/tree/container.h"
+ #include "sway/tree/view.h"
+@@ -234,4 +235,5 @@
+ 	json_object_object_add(version,"native_paired_layouts",json_object_new_boolean(true));
+ 	sscanf(SWAY_VERSION, "%d.%d.%d", &major, &minor, &patch);
++	json_object_object_add(version,"lumen_session_lock",session_lock_state_json());
+ 
+ 	json_object_object_add(version, "human_readable", json_object_new_string(SWAY_VERSION));

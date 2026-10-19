@@ -1,13 +1,14 @@
 """Run on an isolated D-Bus session; exercises actual delivery through Focus policy."""
 import importlib.util,json,tempfile,time
 from pathlib import Path
+from notification_test_authority import UnlockedAuthority
 import dbus,dbus.mainloop.glib
 source=Path(__file__).resolve().parents[2]/'res/lumen-desktop/notifications/service.py'
 spec=importlib.util.spec_from_file_location('focus_delivery',source);s=importlib.util.module_from_spec(spec);spec.loader.exec_module(s)
 s.read_settings=lambda:{'notifications':{'policies':{}}}
 dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
 with tempfile.TemporaryDirectory() as directory:
- server=s.Server(dbus.SessionBus(),Path(directory))
+ server=s.Server(dbus.SessionBus(),Path(directory),lock_authority=UnlockedAuthority())
  def command(**data):server.Command(json.dumps(dict(action='focus',**data)))
  def notify(app,urgency=1):
   server.Notify(app,0,'','Example','Body',[],{'desktop-entry':app,'urgency':urgency},-1,sender=dbus.SessionBus().get_unique_name());return server.rows[0]

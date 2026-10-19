@@ -8,6 +8,7 @@ import shutil
 import sys
 import time
 import threading
+import uuid
 from urllib.parse import unquote, urlparse
 
 import dbus
@@ -18,6 +19,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent/'shell'))
 from nix_settings import read_settings, set_section
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from focus import Focus
+from session_lock import SessionLockAuthority, previews_allowed
+from transport import TransportOrder
 
 BUS = 'org.freedesktop.Notifications'
 PATH = '/org/freedesktop/Notifications'
@@ -123,13 +126,19 @@ def restore_history(file, initial_dnd=False):
 
 
 class Server(dbus.service.Object):
-    def __init__(self, bus, directory):
+    def __init__(self, bus, directory, lock_authority=None):
+        self.instance=uuid.uuid4().hex
+        self.transport_revision=0
+        self.lock=lock_authority if lock_authority is not None else SessionLockAuthority(GLib)
+        self.lock_published=dict(self.lock.facts)
+        self.lock_previews=os.environ.get("LUMEN_LOCK_PREVIEWS")=="1"
         self.directory = directory
         directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         os.chmod(directory, 0o700)
         preferences=read_settings()['notifications']
         self.policies=preferences['policies']
-        self.preview=preferences.get('preview','always')
+        self.preview=preferences.get('preview','when_unlocked')
+        self.preview_published=self.preview
         self.preferences_checked=0
         self.file = directory / 'history.json'
         self.rows, self.dnd, self.next_id = restore_history(self.file, os.environ.get("LUMEN_INITIAL_DND") == "1")
@@ -142,6 +151,7 @@ class Server(dbus.service.Object):
         self.name = dbus.service.BusName(BUS, bus, do_not_queue=True)
         super().__init__(bus, PATH)
         bus.add_signal_receiver(self.owner_changed, 'NameOwnerChanged', 'org.freedesktop.DBus')
+        self.lock.changed=lambda:self.changed(False)
         self.save()
         self.tick_source = GLib.timeout_add(250, self.tick)
 
@@ -167,16 +177,29 @@ class Server(dbus.service.Object):
             if image.as_uri() not in used:
                 image.unlink(missing_ok=True)
 
+    def preview_policy(self):
+        try:
+            value=read_settings()['notifications'].get('preview','when_unlocked')
+            return value if value in ('always','when_unlocked','never') else 'never'
+        except (OSError,ValueError,KeyError,TypeError,AttributeError):return 'never'
+
     def state(self):
+        self.preview=self.preview_policy()
         rows=[{k:v for k,v in row.items() if k!='sender'} for row in self.rows]
-        if self.preview=='never':
-            for row in rows:row.update(summary='Notification',body='',image='',actions=[])
-        return json.dumps({'ready':True,'dnd':self.dnd,'focus':self.focus.state(),'preview':self.preview,'policies':self.policies,'rows':rows},ensure_ascii=False)
+        lock=self.lock.snapshot()
+        allowed=previews_allowed(self.preview,lock,self.lock_previews)
+        if not allowed:
+            for row in rows:row.update(summary='Notification',body='',image='',icon='',actions=[])
+        self.transport_revision+=1
+        return json.dumps({'instance':self.instance,'revision':self.transport_revision,'lock':lock,'previewsVisible':allowed,'ready':True,'dnd':self.dnd,'focus':self.focus.state(),'preview':self.preview,'policies':self.policies,'rows':rows},ensure_ascii=False)
 
     def changed(self, persist=True):
         if persist:
             self.save()
-        self.Changed(self.state())
+        payload=self.state()
+        self.lock_published=dict(self.lock.facts)
+        self.preview_published=self.preview
+        self.Changed(payload)
 
     def find(self, ident):
         return next((r for r in self.rows if r['id'] == int(ident)), None)
@@ -206,23 +229,27 @@ class Server(dbus.service.Object):
 
     def tick(self):
         now = time.monotonic()
-        preferences_changed=False
+        lock_changed=self.lock.refresh() or self.lock.facts!=self.lock_published
+        current_preview=self.preview_policy()
+        preferences_changed=current_preview!=self.preview or current_preview!=self.preview_published
+        self.preview=current_preview
         if now-self.preferences_checked>=1:
             self.preferences_checked=now
             try:
                 preferences=read_settings()['notifications']
-                preview=preferences.get('preview','always')
+                preview=preferences.get('preview','when_unlocked')
                 policies=preferences.get('policies',{})
-                preferences_changed=preview!=self.preview or policies!=self.policies
+                if preview not in ('always','when_unlocked','never') or not isinstance(policies,dict):raise ValueError('Invalid notification policy')
+                preferences_changed=preferences_changed or preview!=self.preview or policies!=self.policies
                 self.preview,self.policies=preview,policies
                 if preferences_changed:
                     for row in self.rows:
                         if policies.get(row['desktop'] or row['app'],'banners')!='banners':row['banner']=False
-            except (OSError,ValueError,KeyError):
+            except (OSError,ValueError,KeyError,TypeError,AttributeError):
                 preferences_changed=self.preview!='never'
                 self.preview='never'
         signature = json.dumps(self.focus.state(),sort_keys=True)
-        changed = preferences_changed or signature != self.focus_signature
+        changed = lock_changed or preferences_changed or signature != self.focus_signature
         self.focus_signature = signature
         self.dnd = bool(self.focus.state()['active'])
         if changed:
@@ -406,6 +433,8 @@ class Server(dbus.service.Object):
         elif action == 'hide' and row:
             row['banner'] = False
         elif action == 'invoke' and row and row['active']:
+            self.preview=self.preview_policy()
+            if not previews_allowed(self.preview,self.lock.snapshot(),self.lock_previews):return
             # A replacement keeps the protocol ID but owns a new action set.
             if 'delivery' in data and data['delivery'] != row.get('delivery'):
                 return
@@ -426,10 +455,22 @@ def main():
         server = Server(bus, state)
         GLib.MainLoop().run()
     else:
-        api = dbus.Interface(bus.get_object(BUS, PATH), UI)
+        owner=str(bus.get_name_owner(BUS))
+        api = dbus.Interface(bus.get_object(owner, PATH), UI)
         if mode == 'watch':
+            generation=sys.argv[2] if len(sys.argv)>2 else ''
+            if len(generation)>32 or generation and not generation.isdecimal():raise SystemExit('Invalid notification watch generation')
+            order=TransportOrder()
             def output(state):
-                print(str(state), flush=True)
+                try:
+                    if str(bus.get_name_owner(BUS))!=owner:return
+                except dbus.DBusException:return
+                try:
+                    value=json.loads(str(state))
+                    if not order.accept(value):return
+                except (ValueError,TypeError):return
+                value['transport']=generation
+                print(json.dumps(value,ensure_ascii=False), flush=True)
             api.connect_to_signal('Changed', output)
             output(api.Snapshot())
             pending = bytearray()
@@ -446,7 +487,7 @@ def main():
                     try:
                         api.Command(line.decode('utf-8'))
                     except (dbus.DBusException, ValueError):
-                        print(json.dumps({'error':'Notification request failed'}), flush=True)
+                        print(json.dumps({'error':'Notification request failed','transport':generation}), flush=True)
                 return True
             def owner_changed(name, old, new):
                 if name == BUS and old:

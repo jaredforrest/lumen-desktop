@@ -2,6 +2,7 @@
 import importlib.util
 import json
 from pathlib import Path
+from notification_test_authority import UnlockedAuthority
 import tempfile
 import unittest
 import dbus
@@ -18,7 +19,7 @@ dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
 class ActionIdentityTests(unittest.TestCase):
     def test_replaced_delivery_rejects_stale_actions_and_focus_does_not_replay(self):
         with tempfile.TemporaryDirectory() as directory:
-            server = service.Server(dbus.SessionBus(), Path(directory))
+            server = service.Server(dbus.SessionBus(), Path(directory),lock_authority=UnlockedAuthority())
             actions = []
             server.ActionInvoked = lambda ident, key: actions.append((ident, key))
             sender = server.bus.get_unique_name()
