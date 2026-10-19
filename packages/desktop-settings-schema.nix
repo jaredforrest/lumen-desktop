@@ -108,6 +108,18 @@ let
         }; };
         default = {};
       };
+      wallpaper = mkOption {
+        type = types.submodule { options = let
+          imagePath = types.addCheck types.str (value: lib.hasPrefix "/" value && !lib.hasInfix "\n" value && !lib.hasInfix "\r" value);
+        in {
+          defaultImage = mkOption { type = types.nullOr imagePath; default = null; };
+          displays = mkOption { type = types.attrsOf (types.submodule { options = {
+            identity = mkOption { type = types.str; };
+            image = mkOption { type = imagePath; };
+          }; }); default = {}; };
+        }; };
+        default = {};
+      };
       inputs = mkOption {
         type = types.addCheck (types.attrsOf (types.submodule {
           options = let
@@ -188,6 +200,9 @@ in let
   in key == builtins.hashString "sha256" (builtins.toJSON profile.identity)
     && lib.all (field: builtins.elem field (inputFields profile.identity.type) && profile.baseline.${field} != null) active
   ) (builtins.attrNames result.inputs);
-in if !distinctFolders then throw "Dock folder paths must be distinct"
+  validWallpapers = lib.all (key: key == builtins.hashString "sha256" result.wallpaper.displays.${key}.identity)
+    (builtins.attrNames result.wallpaper.displays);
+in if !validWallpapers then throw "Wallpaper display keys must match their identities"
+  else if !distinctFolders then throw "Dock folder paths must be distinct"
   else if !validInputs then throw "Input profile keys, device option scope and previous values must match their identities"
   else result

@@ -7,6 +7,7 @@ import "DockInteraction.js" as DockInteraction
 
 PanelWindow {
     id: dock
+    WallpaperSettingsState {id:wallpaperState;active:GraphicsInfo.api !== GraphicsInfo.Software && !Theme.compositorEffects && !Theme.preferences.reduceTransparency}
     readonly property string position:Theme.preferences.dockPosition || "bottom"
     readonly property bool vertical:position!=="bottom"
     readonly property bool autoHide:Theme.preferences.dockAutoHide===true
@@ -124,12 +125,12 @@ PanelWindow {
         opacity:!dock.autoHide || dock.revealed?1:0
         Behavior on opacity {NumberAnimation {duration:Theme.preferences.reduceMotion?0:140}}
 
-    // In Sway only, sample our installed wallpaper to soften its detail under
+    // In Sway only, sample the selected wallpaper to soften its detail under
     // the shelf. This is wallpaper-only blur, not blur of other applications.
     Item {
         anchors.bottom: parent.bottom; width:parent.width; height:dock.shelfThickness
         visible: GraphicsInfo.api !== GraphicsInfo.Software && !dock.vertical && !Theme.preferences.reduceTransparency && !Theme.compositorEffects
-        Image { id:backdrop; width:(dock.screen?dock.screen.width:1440); height:(dock.screen?dock.screen.height:1000); source:Qt.resolvedUrl("wallpaper.png"); fillMode:Image.PreserveAspectCrop; visible:false }
+        Image { id:backdrop; width:(dock.screen?dock.screen.width:1440); height:(dock.screen?dock.screen.height:1000); source:{const row=wallpaperState.outputs.find(item=>dock.screen && item.name===dock.screen.name);return row && row.image && !row.fallback?"file://"+encodeURI(row.image).replace(/#/g,"%23").replace(/\?/g,"%3F"):Qt.resolvedUrl("wallpaper.png");} fillMode:Image.PreserveAspectCrop; visible:false }
         ShaderEffectSource { id:slice; sourceItem:backdrop; sourceRect:Qt.rect(((dock.screen?dock.screen.width:1440)-dock.width)/2,(dock.screen?dock.screen.height:1000)-dock.shelfThickness-7,surface.width,dock.shelfThickness); width:surface.width; height:dock.shelfThickness; visible:false }
         Rectangle { id:roundedMask; width:surface.width; height:dock.shelfThickness; radius:22; layer.enabled:GraphicsInfo.api !== GraphicsInfo.Software; visible:false }
         MultiEffect { anchors.fill:parent; source:slice; blurEnabled:true; blurMax:32; blur:0.7; maskEnabled:true; maskSource:roundedMask; autoPaddingEnabled:false }

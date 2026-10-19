@@ -8,7 +8,7 @@ import subprocess
 import sys
 import tempfile
 
-SECTIONS = {'applicationPreferences', 'appearance', 'displays', 'textTools', 'menuShortcuts', 'notifications', 'search', 'controlCentre', 'windows', 'desktop', 'menuBar', 'inputs'}
+SECTIONS = {'applicationPreferences', 'appearance', 'displays', 'textTools', 'menuShortcuts', 'notifications', 'search', 'controlCentre', 'windows', 'desktop', 'menuBar', 'inputs', 'wallpaper'}
 
 
 def runtime():

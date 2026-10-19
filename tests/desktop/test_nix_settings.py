@@ -42,6 +42,15 @@ class NixSettingsTest(unittest.TestCase):
             with self.assertRaises(ValueError):settings.transaction('appearance',{'textScale':invalid},merge=True)
         self.assertEqual(settings.transaction('appearance',{'accent':'green'},merge=True)['appearance']['textScale'],1.5)
 
+    def test_wallpaper_references_are_typed(self):
+        import hashlib
+        identity='connector:Fixture-1';key=hashlib.sha256(identity.encode()).hexdigest()
+        value={'defaultImage':'/temporary image.png','displays':{key:{'identity':identity,'image':'/other.jpg'}}}
+        self.assertEqual(settings.transaction('wallpaper',value)['wallpaper'],value)
+        for invalid in ({'defaultImage':'https://example.invalid/image.png'}, {'defaultImage':'relative.png'}, {'defaultImage':'/bad\nname'}, {'displays':{'wrong':{'identity':identity,'image':'/x.png'}}}, {'displays':{key:{'identity':identity,'image':'/x.png','download':True}}}):
+            with self.assertRaises(ValueError):settings.transaction('wallpaper',invalid)
+        self.assertEqual(settings.transaction('wallpaper',{'defaultImage':None,'displays':{}})['wallpaper']['defaultImage'],None)
+
     def test_device_preferences_have_closed_typed_values(self):
         profile={'identity':{'identifier':'2:2:Fixture_Mouse','name':'Fixture Mouse','type':'pointer'},'values':{'natural_scroll':True,'pointer_accel':0.2},'baseline':{'natural_scroll':False,'pointer_accel':0.0}}
         import hashlib

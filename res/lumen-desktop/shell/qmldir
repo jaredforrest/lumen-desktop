@@ -112,3 +112,7 @@ PortalPermissionsPane 1.0 PortalPermissionsPane.qml
 
 InputSettingsState 1.0 InputSettingsState.qml
 InputSettingsPane 1.0 InputSettingsPane.qml
+
+WallpaperSettingsState 1.0 WallpaperSettingsState.qml
+WallpaperSettingsPane 1.0 WallpaperSettingsPane.qml
+LocalImageChooser 1.0 LocalImageChooser.qml

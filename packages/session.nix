@@ -26,6 +26,14 @@ let
         exec ${pkgs.python3}/bin/python3 ${assets}/runtime/spaces.py "$@"
       '';
     };
+    wallpaperPreferences = pkgs.writeShellApplication {
+      name = "lumen-wallpaper-preferences";
+      runtimeInputs = [ pkgs.sway nixSettings ];
+      text = ''
+        export LUMEN_WALLPAPER_FALLBACK=${assets}/shell/wallpaper.png
+        exec ${menuRuntime}/bin/global-menu-python ${assets}/shell/wallpaper_settings.py watch
+      '';
+    };
     inputPreferences = pkgs.writeShellApplication {
       name = "lumen-input-preferences";
       runtimeInputs = [ nixSettings ];
@@ -224,4 +232,4 @@ let
     settingsLauncher = pkgs.writeShellScriptBin "lumen-system-settings" ''
       exec ${shellIpc}/bin/lumen-shell-ipc call desktop settings ""
     '';
-in { inherit hotCorners spaces inputPreferences networkLocations quickshell nixSettings appearance qtTheme qtTheme5 palette menuRuntime personalServices fileClipboard displayLayout fileOperations focusWindow dockDrop applicationControl applicationLifecycle fileAlias desktopState shellIpc clipboardHistory launchApp shellLauncher audioKey mediaKey notifications menuCommand desktopDoctor desktopAction appLauncher filesLauncher remoteDesktopLauncher calendarLauncher settingsLauncher; }
+in { inherit hotCorners spaces wallpaperPreferences inputPreferences networkLocations quickshell nixSettings appearance qtTheme qtTheme5 palette menuRuntime personalServices fileClipboard displayLayout fileOperations focusWindow dockDrop applicationControl applicationLifecycle fileAlias desktopState shellIpc clipboardHistory launchApp shellLauncher audioKey mediaKey notifications menuCommand desktopDoctor desktopAction appLauncher filesLauncher remoteDesktopLauncher calendarLauncher settingsLauncher; }

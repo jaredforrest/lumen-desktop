@@ -1,5 +1,5 @@
 { pkgs }:
-let python = (import ./python-runtime.nix { inherit pkgs; }).withPackages (p: [ p.dbus-python p.pygobject3 ]);
+let python = (import ./python-runtime.nix { inherit pkgs; }).withPackages (p: [ p.dbus-python p.pygobject3 p.pillow ]);
 in pkgs.stdenvNoCC.mkDerivation {
   pname = "lumen-global-menu-runtime";
   version = "1.0";

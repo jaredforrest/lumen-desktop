@@ -32,6 +32,7 @@ FloatingWindow {
         {name:"General",icon:"gear",color:"#8e8e93",terms:"about system version operating"},
         {name:"Privacy & Security",icon:"gear",color:"#8e8e93",terms:"passwords bitwarden encryption secure boot"},
         {name:"Appearance",icon:"contrast",color:"#56565b",terms:"light dark auto theme accent colour sunset icons"},
+        {name:"Wallpaper",icon:"screen",color:"#56565b",terms:"image picture background displays"},
         {name:"Input Devices",icon:"controls",color:"#56565b",terms:"keyboard mouse trackpad pointer tap scroll repeat"},
         {name:"Accessibility",icon:"person",color:"#007aff",terms:"reduce motion animations"},
         {name:"Desktop & Dock",icon:"screen",color:"#007aff",terms:"magnification icons"},
@@ -316,6 +317,7 @@ FloatingWindow {
                     PanelLabel {text:root.service.system.system || "System information unavailable";width:parent.width;wrapMode:Text.WordWrap;font.pixelSize:Theme.textSize(18);font.weight:Font.DemiBold}
                     PanelLabel {text:"Desktop · "+(root.service.system.desktop || "Wayland");width:parent.width;wrapMode:Text.WordWrap}
                 }
+                WallpaperSettingsPane {visible:root.page==="Wallpaper";active:root.visible && visible;width:parent.width}
                 InputSettingsPane {visible:root.page==="Input Devices";active:root.visible && visible;width:parent.width}
                 PrivacySecurityPane {
                     visible:root.page==="Privacy & Security";width:parent.width
