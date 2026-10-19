@@ -6,7 +6,7 @@ pkgs.python3.override {
       patches = (old.patches or [ ]) ++ [ ./dbus-python-headers-first.patch ];
     });
     pygobject3 = previous.pygobject3.overrideAttrs (old: {
-      patches = (old.patches or [ ]) ++ [ ./pygobject-deprecation-registration.patch ./pygobject-python-headers-first.patch ./pygobject-unused-warnlib-target.patch ];
+      patches = (old.patches or [ ]) ++ [ ./pygobject-deprecation-registration.patch ./pygobject-python-headers-first.patch ./pygobject-unused-warnlib-target.patch ./pygobject-lazy-legacy-policy.patch ];
       postPatch = (old.postPatch or "") + ''
         ${pkgs.python3}/bin/python3 ${./check-pygobject-test-scope.py} .
       '';

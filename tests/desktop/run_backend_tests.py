@@ -14,6 +14,7 @@ parser.add_argument('--output',required=True,type=Path)
 parser.add_argument('--settings-command',default=os.environ.get('LUMEN_TEST_SETTINGS_COMMAND'))
 a=parser.parse_args();a.output.mkdir(parents=True,exist_ok=False)
 env=dict(os.environ)
+env['PYTHONWARNINGS']='error'
 # Never pass production deployment settings to tests of configuration writes.
 for key in list(env):
     if key.startswith('LUMEN_NIX_SETTINGS_'):env.pop(key)
