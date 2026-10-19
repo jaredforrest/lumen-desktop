@@ -273,7 +273,7 @@ ShellRoot {
     }
     function launchApps() { showMenu("Launcher"); }
     readonly property var currentDate: clock.date
-    SystemClock { id: clock; precision: SystemClock.Minutes }
+    SystemClock { id: clock; precision: Theme.menuBarPreferences.showSeconds ? SystemClock.Seconds : SystemClock.Minutes }
     IpcHandler {
         function showDesktop():string {return root.revealDesktop();}
         function windowLayout():void {root.openWindowLayout();}

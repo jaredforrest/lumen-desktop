@@ -71,6 +71,19 @@ let
         }; };
         default = {};
       };
+      menuBar = mkOption {
+        type = types.submodule { options = let
+          ids = [ "battery" "sound" "focus" "search" "controls" ];
+        in {
+          order = mkOption { type = types.addCheck (types.listOf (types.enum ids)) (items: lib.length items == lib.length ids && lib.length items == lib.length (lib.unique items)); default = ids; };
+          hourCycle = mkOption { type = types.enum [ "locale" "12" "24" ]; default = "locale"; };
+          locale = mkOption { type = types.strMatching "^$|[a-z]{2,3}(_[A-Z]{2})?"; default = ""; };
+          showDate = mkOption { type = types.bool; default = true; };
+          showWeekday = mkOption { type = types.bool; default = true; };
+          showSeconds = mkOption { type = types.bool; default = false; };
+        }; };
+        default = {};
+      };
       controlCentre = mkOption {
         type = types.submodule {
           options = let

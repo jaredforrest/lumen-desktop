@@ -223,6 +223,7 @@ FloatingWindow {
                 }
                 Column {
                     visible:root.page==="Desktop & Dock";width:parent.width;spacing:12
+                    ClockSettings {width:parent.width;service:root.service}
                     HotCornerSettings {width:parent.width}
                     PanelLabel {text:"Desktop files";font.weight:Font.DemiBold}
                     SettingsToggle {width:parent.width;text:"Show files on the desktop";detail:"Display the configured Desktop folder on the primary display";checked:root.service.desktopPreferences.showFiles===true;enabled:root.service.available && !root.service.busy;onClicked:root.service.setDesktopPreference("showFiles",checked)}

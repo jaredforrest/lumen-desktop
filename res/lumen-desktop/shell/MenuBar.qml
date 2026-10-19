@@ -2,8 +2,8 @@ import QtQuick
 import QtQuick.Controls
 import Quickshell
 import Quickshell.Wayland
-import "CalendarLogic.js" as CalendarLogic
 import "MenuLayout.js" as MenuLayout
+import "ClockFormat.js" as ClockFormat
 
 PanelWindow {
     id: bar
@@ -22,14 +22,8 @@ PanelWindow {
         if(exported.state.supported && exported.state.menu)return exported.state.menu.children.filter(n=>n.visible).map(n=>({label:exported.label(n.label),exportId:n.id,enabled:n.enabled}));
         return (desktopFocused || filesFocused?["File","Edit","View","Go","Window","Help"]:["Window"]).map(name=>({label:name,heading:name,enabled:true}));
     }
-    readonly property var hiddenStatus: {
-        let result=[];
-        if(width<640)result.push({label:"Sound",action:"status:Sound"});
-        if(width<720 && shell.notifications.dnd)result.push({label:"Focus",action:"status:Focus"});
-        if(width<800)result.push({label:"Search",action:"apps"});
-        if(width<960 && shell.systemState && shell.systemState.power && shell.systemState.power.available && shell.systemState.power.present)result.push({label:"Battery",action:"status:Controls"});
-        return result;
-    }
+    readonly property var hiddenStatus:statusIcons.layout.overflow.map(id=>({label:statusIcons.labels[id],action:id==="search"?"apps":"status:"+(id==="sound"?"Sound":"Controls")}))
+    SettingsState {id:barSettings}
     readonly property real menuBudget:Math.max(0,statusIcons.x-28)
     readonly property int visibleHeadingCount:MenuLayout.fit(menuHeadings.map(n=>headingMetrics.advanceWidth(n.label)+20),menuBudget-brandButton.width-applicationButton.width,38,hiddenStatus.length>0)
     readonly property var overflowItems:menuHeadings.slice(visibleHeadingCount).map(n=>({label:n.label,exportId:n.exportId,action:n.enabled?(n.heading?"heading:"+n.heading:"export-menu"):undefined})).concat(hiddenStatus)
@@ -112,20 +106,22 @@ PanelWindow {
         }
         MenuButton {visible:bar.overflowItems.length>0;text:"»";selected:bar.menu==="Overflow";Accessible.name:"More menus and status controls";onClicked:{bar.selectedWindow=shell.active;bar.toggle("Overflow",mapToItem(bar.contentItem,0,0).x);}}
     }
-    Row {
+    StatusStrip {
         id:statusIcons
-        anchors.right: parent.right; anchors.rightMargin: clockButton.width+12; anchors.verticalCenter: parent.verticalCenter; spacing: 0
-        BatteryMenuButton {power:bar.shell.systemState && bar.shell.systemState.power?bar.shell.systemState.power:null;visible:bar.width>=960 && validated.available && validated.present;onClicked:bar.toggle("Controls",bar.width-340)}
-        MenuButton {visible:bar.width>=640; text: ""; iconName: shell.volume.includes("MUTED") ? "muted" : "sound"; onClicked: bar.toggle("Sound", bar.width-370) }
-        MenuButton {visible:bar.width>=720 && shell.notifications.dnd;text:"";iconName:"moon";onClicked:bar.toggle("Controls",bar.width-340)}
-        MenuButton {visible:bar.width>=800; text: ""; iconName: "search"; onClicked: shell.launchApps() }
-        MenuButton { text: ""; iconName: "controls"; onClicked: bar.toggle("Controls", bar.width-340) }
-
+        anchors.right:parent.right;anchors.rightMargin:clockButton.width+12;anchors.verticalCenter:parent.verticalCenter
+        order:Theme.menuBarPreferences.order
+        budget:Math.max(38,Math.min(222,bar.width-clockButton.width-220))
+        power:shell.systemState && shell.systemState.power ? shell.systemState.power : null
+        soundIcon:shell.volume.includes("MUTED")?"muted":"sound"
+        available:({battery:!!(shell.systemState && shell.systemState.power && shell.systemState.power.available && shell.systemState.power.present),sound:true,focus:!!shell.notifications.dnd,search:true,controls:true})
+        onActivated:id=>{if(id==="search")shell.launchApps();else bar.toggle(id==="sound"?"Sound":"Controls",bar.width-370);}
+        onReordered:order=>barSettings.setMenuBarPreference("order",order)
     }
     MenuButton {
         anchors.right: parent.right; anchors.rightMargin: 12; anchors.verticalCenter: parent.verticalCenter
         id:clockButton;width:Math.min(implicitWidth,Math.max(80,bar.width*0.35)); textSize: 13; selected:bar.menu==="Date"
-        text: Qt.formatDateTime(bar.clockDate,CalendarLogic.clockDatePattern(Qt.locale(),Locale.LongFormat))+"  "+Qt.formatTime(bar.clockDate,Qt.locale().timeFormat(Locale.ShortFormat))
+        text:ClockFormat.text(bar.clockDate,Qt.locale(Theme.menuBarPreferences.locale || ""),Theme.menuBarPreferences)
+        Accessible.name:text+", open notifications and calendar"
         onClicked: bar.toggle("Date", bar.width-370)
     }
     // A separate layer surface allows Escape/outside-click dismissal without

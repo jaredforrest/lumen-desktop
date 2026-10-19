@@ -10,6 +10,7 @@ Item {
     property var pending:[]
     property string error:""
     property string warning:""
+    property var menuBarPreferences:Theme.menuBarPreferences
     property var preferences:Theme.preferences
     property var desktopPreferences:Theme.desktopPreferences
     property var windowsPreferences:Theme.windowsPreferences
@@ -18,6 +19,7 @@ Item {
     property var appearance:({})
     property var system:({})
     function refresh() {if(!worker.running){worker.command=["lumen-appearance","--settings"];worker.running=true;}}
+    function setMenuBarPreference(key,value){queue("menuBar",key,value);}
     function setDesktopPreference(key,value){queue("desktop",key,value);}
     function setWindowPreference(key,value){queue("windows",key,value);}
     function setNotificationPreference(key,value){queue("notifications",key,value);}
@@ -32,7 +34,7 @@ Item {
     function drain() {
         if(worker.running || pending.length===0)return;
         const edit=pending[0];pending=pending.slice(1);
-        error="";warning="";worker.command=["lumen-appearance",edit.section==="search"?"--set-search":edit.section==="notifications"?"--set-notifications":edit.section==="windows"?"--set-windows":edit.section==="desktop"?"--set-desktop":"--set",edit.key,JSON.stringify(edit.value)];worker.running=true;
+        error="";warning="";worker.command=["lumen-appearance",edit.section==="menuBar"?"--set-menu-bar":edit.section==="search"?"--set-search":edit.section==="notifications"?"--set-notifications":edit.section==="windows"?"--set-windows":edit.section==="desktop"?"--set-desktop":"--set",edit.key,JSON.stringify(edit.value)];worker.running=true;
     }
     onActiveChanged:if(active)refresh()
     Process {
@@ -43,7 +45,7 @@ Item {
             try{
                 const data=JSON.parse(text);worker.received=true;
                 if(data.error){root.error=data.error;return;}
-                root.preferences=data.preferences;root.searchPreferences=data.searchPreferences || ({disabledProviders:[]});root.notificationsPreferences=data.notificationsPreferences || ({preview:"always"});root.windowsPreferences=data.windowsPreferences || Theme.windowsPreferences;root.desktopPreferences=data.desktopPreferences || ({showFiles:false,fileSort:"name",fileDescending:false});root.appearance=data.appearance;root.system=data.system;
+                root.menuBarPreferences=data.menuBarPreferences || Theme.menuBarPreferences;root.preferences=data.preferences;root.searchPreferences=data.searchPreferences || ({disabledProviders:[]});root.notificationsPreferences=data.notificationsPreferences || ({preview:"always"});root.windowsPreferences=data.windowsPreferences || Theme.windowsPreferences;root.desktopPreferences=data.desktopPreferences || ({showFiles:false,fileSort:"name",fileDescending:false});root.appearance=data.appearance;root.system=data.system;
                 root.available=true;root.error="";root.warning=data.warning || "";
             }catch(e){root.error="Unable to read desktop preferences";}
         }}

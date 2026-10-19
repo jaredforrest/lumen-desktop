@@ -81,6 +81,14 @@ CONTROL_IDS=('wifi','bluetooth','sharing','media','displays','appearance','focus
 def valid_control(key,value):
     return key in ('order','hidden') and isinstance(value,list) and all(isinstance(item,str) and item in CONTROL_IDS for item in value) and len(value)==len(set(value)) and (key=='hidden' or len(value)==len(CONTROL_IDS))
 
+MENU_IDS=('battery','sound','focus','search','controls')
+MENU_DEFAULTS=dict(order=list(MENU_IDS),hourCycle='locale',locale='',showDate=True,showWeekday=True,showSeconds=False)
+def valid_menu(key,value):
+    if key=='order':return isinstance(value,list) and len(value)==len(MENU_IDS) and all(isinstance(item,str) for item in value) and set(value)==set(MENU_IDS)
+    if key=='hourCycle':return value in ('locale','12','24')
+    if key=='locale':return isinstance(value,str) and (value=='' or re.fullmatch(r'[a-z]{2,3}(_[A-Z]{2})?',value) is not None)
+    return key in ('showDate','showWeekday','showSeconds') and type(value) is bool
+
 SEARCH_PROVIDERS=('applications','files','actions','clipboard')
 def valid_search(key,value):
     if key=='queryHistory':return type(value) is bool
@@ -105,6 +113,7 @@ def main():
     p.add_argument('--at');p.add_argument('--print',action='store_true',dest='print_only')
     p.add_argument('--state-dir',type=Path);p.add_argument('--no-desktop',action='store_true')
     p.add_argument('--settings',action='store_true');p.add_argument('--set',nargs=2,metavar=('KEY','JSON_VALUE'));p.add_argument('--set-search',nargs=2,metavar=('KEY','JSON_VALUE'));p.add_argument('--set-notifications',nargs=2,metavar=('KEY','JSON_VALUE'));p.add_argument('--set-control-centre',nargs=2,metavar=('KEY','JSON_VALUE'));p.add_argument('--set-windows',nargs=2,metavar=('KEY','JSON_VALUE'));p.add_argument('--set-desktop',nargs=2,metavar=('KEY','JSON_VALUE'))
+    p.add_argument('--set-menu-bar',nargs=2,metavar=('KEY','JSON_VALUE'))
     a=p.parse_args()
     state=a.state_dir or Path(os.environ.get('XDG_STATE_HOME',str(Path.home()/'.local/state')))/'lumen-desktop'
     state.mkdir(parents=True,exist_ok=True)
@@ -113,6 +122,13 @@ def main():
         fcntl.flock(lock,fcntl.LOCK_EX)
         prefs=preferences(state)
         from nix_settings import read_settings
+        menu_prefs={**MENU_DEFAULTS,**read_settings().get('menuBar',{})}
+        if a.set_menu_bar:
+            key,raw=a.set_menu_bar
+            value=json.loads(raw)
+            if not valid_menu(key,value):raise ValueError('Unsupported menu bar preference or value')
+            from nix_settings import set_section
+            menu_prefs=set_section('menuBar',{key:value},merge=True)['menuBar']
         desktop_prefs=read_settings().get('desktop',{'showFiles':False,'fileSort':'name','fileDescending':False})
         if a.set_desktop:
             key,raw=a.set_desktop
@@ -163,10 +179,10 @@ def main():
         if now.tzinfo is None:now=now.replace(tzinfo=ZONE)
         solar,times=schedule(now);source=a.mode or prefs['mode'];mode=solar if source=='auto' else source
         palettes=json.loads((HERE/'palette.json').read_text());colors=resolve_palette(palettes,mode,prefs)
-        data={'mode':mode,'source':source,'location':'London','timezone':'Europe/London','font':palettes['font'],'palette':colors,'preferences':prefs,'searchPreferences':search_prefs,'notificationsPreferences':notification_prefs,'controlCentrePreferences':control_prefs,'windowsPreferences':window_prefs,'desktopPreferences':desktop_prefs,**times}
+        data={'mode':mode,'source':source,'location':'London','timezone':'Europe/London','font':palettes['font'],'palette':colors,'preferences':prefs,'searchPreferences':search_prefs,'notificationsPreferences':notification_prefs,'controlCentrePreferences':control_prefs,'menuBarPreferences':menu_prefs,'windowsPreferences':window_prefs,'desktopPreferences':desktop_prefs,**times}
         if a.print_only:print(json.dumps(data));return
         if a.settings and not (a.set or a.set_search or a.set_notifications or a.set_control_centre or a.set_windows or a.set_desktop):
-            print(json.dumps({'preferences':prefs,'searchPreferences':search_prefs,'notificationsPreferences':notification_prefs,'controlCentrePreferences':control_prefs,'windowsPreferences':window_prefs,'desktopPreferences':desktop_prefs,'appearance':data,'system':system_info()}));return
+            print(json.dumps({'preferences':prefs,'searchPreferences':search_prefs,'notificationsPreferences':notification_prefs,'controlCentrePreferences':control_prefs,'menuBarPreferences':menu_prefs,'windowsPreferences':window_prefs,'desktopPreferences':desktop_prefs,'appearance':data,'system':system_info()}));return
         previous={}
         try:previous=json.loads((state/'appearance.json').read_text())
         except (OSError,ValueError):pass
@@ -226,7 +242,7 @@ def main():
                     if run('swaymsg',command):warnings.append('Could not apply compositor appearance: '+command.split()[0])
             for key,value in [('color-scheme','prefer-'+mode),('gtk-theme','WhiteSur-Dark' if mode=='dark' else 'WhiteSur-Light')]:
                 if run('gsettings','set','org.gnome.desktop.interface',key,value):warnings.append('Could not update application '+key)
-        if a.set or a.set_search or a.set_notifications or a.set_control_centre or a.set_windows or a.set_desktop:print(json.dumps({'preferences':prefs,'searchPreferences':search_prefs,'notificationsPreferences':notification_prefs,'controlCentrePreferences':control_prefs,'windowsPreferences':window_prefs,'desktopPreferences':desktop_prefs,'appearance':data,'system':system_info(),'warning':'; '.join(warnings)}))
+        if a.set_menu_bar or a.set or a.set_search or a.set_notifications or a.set_control_centre or a.set_windows or a.set_desktop:print(json.dumps({'preferences':prefs,'searchPreferences':search_prefs,'notificationsPreferences':notification_prefs,'controlCentrePreferences':control_prefs,'menuBarPreferences':menu_prefs,'windowsPreferences':window_prefs,'desktopPreferences':desktop_prefs,'appearance':data,'system':system_info(),'warning':'; '.join(warnings)}))
         elif previous.get('mode')!=mode:print('Appearance:',mode,'London sunset:',times['sunset'])
 if __name__=='__main__':
     try:main()
