@@ -104,7 +104,7 @@ ShellRoot {
   check(!clipboard.enabled && clipboard.entries.length===0,"Disable retained clipboard history");
   clipboard.receive(JSON.stringify({copied:true}),"copy",4);
   check(clipboard.message.includes("Paste"),"Copy did not explain explicit paste");
-  console.log("PASS shell request lifecycle");Qt.quit();
+  console.log("PASS shell request lifecycle");Qt.callLater(Qt.quit);
  }
  Timer {interval:3000;running:true;onTriggered:Qt.quit()}
 }
