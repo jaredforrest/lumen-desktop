@@ -7,6 +7,9 @@ import argparse
 import json
 import subprocess
 import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent / "runtime"))
+from window_context import relationships, activation_target
 
 def windows(node, workspace=''):
     if node.get('type') == 'workspace':
@@ -14,6 +17,19 @@ def windows(node, workspace=''):
     yield node, workspace
     for child in node.get('nodes', []) + node.get('floating_nodes', []):
         yield from windows(child, workspace)
+
+
+def modal_target(tree, chosen):
+    observed = []
+    nodes = {}
+    for node, workspace in windows(tree):
+        if node.get('app_id') is None and node.get('window') is None and not node.get('window_properties'):
+            continue
+        relation = relationships(node.get('lumen_relationships'))
+        nodes[node['id']] = (node, workspace)
+        observed.append(dict(id=node['id'], parent=relation['parent'] if relation else None,
+                             modal=relation['modal'] if relation else None))
+    return nodes[activation_target(observed, chosen['id'])]
 
 
 def focus_command(tree, app, title, action=None):
@@ -35,6 +51,7 @@ def focus_command(tree, app, title, action=None):
         if action not in ('close', 'minimize', 'fill', 'fullscreen'):
             raise ValueError('Unsupported window action')
         return '[con_id=%d] lumen_window %s' % (int(chosen['id']), action)
+    chosen, workspace = modal_target(tree, chosen)
     restore = 'scratchpad show, ' if workspace == '__i3_scratch' else ''
     return '[con_id=%d] %sfocus' % (int(chosen['id']), restore)
 
@@ -65,7 +82,10 @@ def app_focus_command(tree, app, titles, switch_space=True):
         if len(matches) > 1:
             raise ValueError('Window identity is ambiguous; select it in Window Overview')
         if matches:
-            chosen, workspace = matches[0]
+            chosen, workspace = modal_target(tree, matches[0][0])
+            workspace = (chosen.get('lumen_state') or {}).get('restore_workspace') or workspace
+            if not switch_space and workspace != current:
+                return prefix or None
             if chosen.get('focused'):
                 return prefix or None
             state = chosen.get('lumen_state') or {}

@@ -9,6 +9,7 @@ import subprocess
 import sys
 
 from protocol import loads, ProtocolError
+from window_context import relationships, contexts
 
 
 def bounds(value):
@@ -76,9 +77,13 @@ def snapshot(tree, outputs, epoch):
                     if any(type(pairing.get(key)) is not int or pairing[key]<=0 or pairing[key]==container for key in ('id','partner')) or pairing.get('side') not in ('left','right') or type(pairing.get('ratio')) not in (int,float) or not math.isfinite(pairing['ratio']) or not 0<pairing['ratio']<1 or pairing['survivor']:
                         raise ProtocolError('Invalid paired member identity or ratio')
                     pair=dict(id='p-'+str(pairing['id']),partner='w-'+str(pairing['partner']),side=pairing['side'],ratio=pairing['ratio'])
+            relation = relationships(node.get('lumen_relationships'))
             app = node.get('app_id') or properties.get('class')
             windows.append(dict(id='w-' + str(container), app_hint=app,
                 identity_assurance='advertised_unverified', main_window=None,
+                parent='w-' + str(relation['parent']) if relation and relation['parent'] is not None else None,
+                parent_supported=relation['parent_supported'] if relation else False,
+                modal=relation['modal'] if relation else None,
                 key=bool(node.get('focused')), minimised=extension['minimised'] if extension else None,
                 app_hidden=extension.get('hidden') if extension else None, desktop_hidden=extension.get('desktop_hidden') if extension else None, occluded=None,
                 pair=pair,paired_fullscreen_survivor=pairing['survivor'] if pairing is not None else None,
@@ -94,6 +99,9 @@ def snapshot(tree, outputs, epoch):
             walk(child, workspace, output, True)
 
     walk(tree)
+    associations = contexts(windows)
+    for window in windows:
+        window.update(associations[window['id']])
     live_outputs = []
     output_ids=set()
     for output in outputs:

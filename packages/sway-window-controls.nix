@@ -10,6 +10,7 @@ pkgs.sway.override {
   sway-unwrapped = compositor.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [ framePatch ]
       ++ pkgs.lib.optional effects ../res/lumen-desktop/swayfx-edge-layout-compat.patch
-      ++ [ ../res/lumen-desktop/sway-hot-corners.patch ../res/lumen-desktop/sway-edge-layouts.patch ../res/lumen-desktop/sway-file-drag.patch ../res/lumen-desktop/sway-paired-layouts.patch ];
+      ++ [ ../res/lumen-desktop/sway-hot-corners.patch ../res/lumen-desktop/sway-edge-layouts.patch ../res/lumen-desktop/sway-file-drag.patch
+           ../res/lumen-desktop/sway-paired-layouts.patch ../res/lumen-desktop/sway-window-relationships.patch ];
   });
 }

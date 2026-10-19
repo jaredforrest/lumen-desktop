@@ -46,7 +46,11 @@ FloatingWindow {
     property var applications:[]
     property bool dragging:false
     property var information:({})
-    FileInfoWindow {id:infoWindow}
+    FileInfoWindow {id:infoWindow;owner:root}
+    property alias informationWindow:infoWindow
+    function observeOwnedFocus(){if(!shell.ownedContext)return;if(selectionActive){shell.ownedContext.focus(root,root,"lumen-files","main");shell.activeFiles(root);}else shell.ownedContext.leave(root);}
+    onSelectionActiveChanged:observeOwnedFocus()
+    Component.onDestruction:if(shell.ownedContext)shell.ownedContext.close(root)
     property var dragUris:[]
     function beginDrag(){if(dragUris.length)dragging=true;}
     function newTab(){saveTab();const current=tabs[activeTab];const tab=TabModel.create("tab-"+(++tabSerial),current?current.path:service.path);tab.viewMode=service.viewMode;tabs=tabs.concat([tab]);switchTab(tabs.length-1);}
@@ -73,7 +77,7 @@ FloatingWindow {
     function selectedUris(){return selectedPaths.map(p=>"file://"+p.split("/").map(encodeURIComponent).join("/"));}
     function isSelected(index){return service.rows[index] && selectedPaths.includes(service.rows[index].path);}
     function selectAll(){selectedPaths=service.rows.map(r=>r.path);selected=service.rows.length?0:-1;}
-    onVisibleChanged:service.active=visible
+    onVisibleChanged:{service.active=visible;if(!visible && shell.ownedContext)shell.ownedContext.close(root)}
 
     readonly property var defaultFavorites:[{name:"Home",path:Quickshell.env("HOME")},{name:"Desktop",path:Quickshell.env("HOME")+"/Desktop"},{name:"Documents",path:Quickshell.env("HOME")+"/Documents"},{name:"Downloads",path:Quickshell.env("HOME")+"/Downloads"},{name:"Pictures",path:Quickshell.env("HOME")+"/Pictures"},{name:"Music",path:Quickshell.env("HOME")+"/Music"},{name:"Videos",path:Quickshell.env("HOME")+"/Videos"},{name:"Data",path:Quickshell.env("HOME")+"/data"}]
     readonly property var sidebarFavorites:service.favorites===null?defaultFavorites:service.favorites
@@ -99,6 +103,7 @@ FloatingWindow {
     Connections {target:root.shell.exportedMenu;function onStateChanged(){const state=root.shell.exportedMenu.state;if(state.appName==="org.quickshell" && state.title===root.title)root.swayContainer=state.windowId;}}
     Connections {target:root.screen;function onWidthChanged(){fitTimer.restart();}function onHeightChanged(){fitTimer.restart();}}
     function openPath(path) {
+        if(shell.claimPopup)shell.claimPopup("");
         if(minimized && Quickshell.env("SWAYSOCK")){
             Quickshell.execDetached(["swaymsg",'[con_id='+swayContainer+'] move workspace current, focus']);minimized=false;
         }
@@ -132,7 +137,7 @@ FloatingWindow {
         else dialogFor(action);
     }
     function navigate(path){restoringTabId="";filterDelay.stop();filter.text="";service.query="";service.navigate(path);}
-    function focusContents(){if(content.Window.window)content.Window.window.requestActivate();content.forceActiveFocus();activationTimer.epoch=shell.focusEpoch;activationTimer.restart();}
+    function focusContents(){if(shell.claimPopup)shell.claimPopup("");if(content.Window.window)content.Window.window.requestActivate();content.forceActiveFocus();activationTimer.epoch=shell.focusEpoch;activationTimer.restart();}
     Timer {id:activationTimer;property int epoch;interval:100;onTriggered:{if(epoch!==root.shell.focusEpoch)return;const window=root.shell.windows.find(w=>w.appId==="org.quickshell" && w.title===root.title);if(window)root.shell.focusWindow(window);}}
     function quickLookStep(delta){step(delta,false);if(current)shell.quickLookWindow.show(current.path,root);}
     function openCurrent(){if(!current || service.busy)return;if(current.directory)navigate(current.path);else service.act("open",{path:current.path});}

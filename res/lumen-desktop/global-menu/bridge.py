@@ -5,6 +5,8 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "runtime"))
+from window_context import tree_context
 import dbus
 import dbus.service
 import dbus.mainloop.glib
@@ -196,6 +198,7 @@ class Bridge(dbus.service.Object):
     def current(self):
         tree = json.loads(subprocess.check_output(['swaymsg', '-r', '-t', 'get_tree'], timeout=2))
         win = focused(tree)
+        self.window_context = tree_context(tree).get(win['id'], {}) if win else {}
         def contains_focus(n):
             return n.get('focused', False) or any(contains_focus(c) for c in n.get('nodes', []) + n.get('floating_nodes', []))
         self.output_name = next((o['name'] for o in tree.get('nodes', []) if o.get('type') == 'output' and contains_focus(o)), getattr(self, 'output_name', ''))
@@ -247,6 +250,9 @@ class Bridge(dbus.service.Object):
         self.state = {'token': token, 'title': win.get('name', '') if win else '',
                       'supported': menu is not None, 'menu': menu, 'error': error,
                       'windowId': win['id'] if win else 0, 'outputName': self.output_name,
+                      'contextAppName': self.window_context.get('application_hint'),
+                      'contextWindowId': self.window_context.get('context_window'),
+                      'mainWindowId': self.window_context.get('main_window'),
                       'appName': (win.get('app_id') or win.get('window_properties', {}).get('class') or 'Application') if win else 'Desktop'}
         self.last_refresh = time.monotonic()
         self.publish()

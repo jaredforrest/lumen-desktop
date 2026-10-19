@@ -40,7 +40,7 @@ class MenuGuardTests(unittest.TestCase):
 
     def test_invalid_refresh_removes_old_menu(self):
         fake = SimpleNamespace(current=lambda: ({'id': 1, 'name': 'Fixture', 'app_id': 'fixture'}, ('sender', '/', 1), 'token'),
-                               held_token='', output_name='fixture', proxy=lambda item: SimpleNamespace(GetLayout=lambda *args, **kwargs: (0, (0, [], []))),
+                               held_token='', window_context={}, output_name='fixture', proxy=lambda item: SimpleNamespace(GetLayout=lambda *args, **kwargs: (0, (0, [], []))),
                                publish=lambda: None, state={'menu': bridge.clean(layout()), 'supported': True})
         bridge.Bridge.refresh(fake)
         self.assertFalse(fake.state['supported'])

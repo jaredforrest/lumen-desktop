@@ -1,0 +1,167 @@
+--- a/sway/ipc-json.c
++++ b/sway/ipc-json.c
+@@ -8,2 +8,4 @@
+ #include <wlr/types/wlr_ext_foreign_toplevel_list_v1.h>
++#include <wlr/types/wlr_xdg_shell.h>
++#include <wlr/types/wlr_xdg_dialog_v1.h>
+ #include <xkbcommon/xkbcommon.h>
+@@ -228,3 +229,4 @@
+ 	json_object *version = json_object_new_object();
++	json_object_object_add(version, "native_window_relationships", json_object_new_boolean(true));
+ 
+ 	json_object_object_add(version, "native_file_drag_state", json_object_new_boolean(true));
+@@ -576,2 +579,19 @@
+ static void ipc_json_describe_view(struct sway_container *c, json_object *object) {
++	// Protocol parenthood is not a document role or an authenticated app identity.
++	json_object *relationships = json_object_new_object();
++	json_object_object_add(relationships, "version", json_object_new_int(1));
++	struct sway_view *parent = NULL;
++	bool supported = c->view->type == SWAY_VIEW_XDG_SHELL;
++	if (supported && c->view->wlr_xdg_toplevel->parent) {
++		parent = view_from_wlr_xdg_surface(c->view->wlr_xdg_toplevel->parent->base);
++	}
++	json_object_object_add(relationships, "parent_supported", json_object_new_boolean(supported));
++	json_object_object_add(relationships, "parent",
++		parent && parent->container && parent->surface ?
++			json_object_new_int64(parent->container->node.id) : NULL);
++	struct wlr_xdg_dialog_v1 *dialog = supported ?
++		wlr_xdg_dialog_v1_try_from_wlr_xdg_toplevel(c->view->wlr_xdg_toplevel) : NULL;
++	json_object_object_add(relationships, "modal",
++		dialog ? json_object_new_boolean(dialog->modal) : NULL);
++	json_object_object_add(object, "lumen_relationships", relationships);
+ 	json_object_object_add(object, "pid", json_object_new_int(c->view->pid));
+--- a/sway/server.c
++++ b/sway/server.c
+@@ -13,2 +13,3 @@
+ #include <wlr/types/wlr_compositor.h>
++#include <wlr/types/wlr_xdg_dialog_v1.h>
+ #include <wlr/types/wlr_content_type_v1.h>
+@@ -310,2 +311,3 @@
++	lumen_xdg_dialog_init(server->wl_display);
+ 	server->xdg_shell = wlr_xdg_shell_create(server->wl_display,
+ 		SWAY_XDG_SHELL_VERSION);
+--- a/sway/input/seat.c
++++ b/sway/input/seat.c
+@@ -16,2 +16,4 @@
+ #include <wlr/types/wlr_xcursor_manager.h>
++#include <wlr/types/wlr_xdg_shell.h>
++#include <wlr/types/wlr_xdg_dialog_v1.h>
+ #include "config.h"
+@@ -1129,2 +1131,30 @@
++struct lumen_modal_search {
++	struct sway_container *parent;
++	struct sway_container *child;
++	bool ambiguous;
++};
++
++static void lumen_modal_child(struct sway_container *con, void *data) {
++	struct lumen_modal_search *search = data;
++	if (!con->view || !con->view->surface || con->view->type != SWAY_VIEW_XDG_SHELL) return;
++	struct wlr_xdg_toplevel *top = con->view->wlr_xdg_toplevel;
++	if (top->parent != search->parent->view->wlr_xdg_toplevel) return;
++	struct wlr_xdg_dialog_v1 *dialog = wlr_xdg_dialog_v1_try_from_wlr_xdg_toplevel(top);
++	if (!dialog || !dialog->modal) return;
++	if (search->child) search->ambiguous = true;
++	search->child = con;
++}
++
+ static void seat_set_workspace_focus(struct sway_seat *seat, struct sway_node *node) {
++	// Modal protocol scope is the parent branch, never every window of an app.
++	if (node && node_is_view(node) && node->sway_container->view->type == SWAY_VIEW_XDG_SHELL) {
++		for (int depth = 0; depth < 64; ++depth) {
++			struct lumen_modal_search search = {.parent = node->sway_container};
++			root_for_each_container(lumen_modal_child, &search);
++			if (search.ambiguous) return;
++			if (!search.child) break;
++			node = &search.child->node;
++			if (depth == 63) return;
++		}
++	}
+ 	struct sway_node *last_focus = seat_get_focus(seat);
+--- a/include/sway/server.h
++++ b/include/sway/server.h
+@@ -176,1 +176,2 @@
+ void handle_xdg_shell_toplevel(struct wl_listener *listener, void *data);
++void lumen_xdg_dialog_init(struct wl_display *display);
+--- a/include/sway/tree/view.h
++++ b/include/sway/tree/view.h
+@@ -133,2 +133,3 @@
+ 	struct wl_listener set_app_id;
++	struct wl_listener lumen_set_parent;
+ 	struct wl_listener new_popup;
+--- a/sway/desktop/xdg_shell.c
++++ b/sway/desktop/xdg_shell.c
+@@ -5,2 +5,4 @@
+ #include <wlr/types/wlr_xdg_shell.h>
++#include <wlr/types/wlr_xdg_dialog_v1.h>
++#include "sway/server.h"
+ #include <wlr/util/edges.h>
+@@ -21,1 +23,56 @@
++static void lumen_relationship_changed(struct sway_view *view) {
++	if (!view || !view->surface || !view->container) return;
++	if (view->container->pending.workspace) arrange_workspace(view->container->pending.workspace);
++	struct sway_seat *seat;
++	wl_list_for_each(seat, &server.input->seats, link) {
++		struct sway_node *focus = seat_get_focus(seat);
++		if (focus) seat_set_focus(seat, focus);
++	}
++}
++
++struct lumen_dialog_watch {
++	struct wlr_xdg_dialog_v1 *dialog;
++	struct wl_listener modal;
++	struct wl_listener destroy;
++};
++
++static void lumen_dialog_modal(struct wl_listener *listener, void *data) {
++	(void)data;
++	struct lumen_dialog_watch *watch = wl_container_of(listener, watch, modal);
++	lumen_relationship_changed(view_from_wlr_xdg_surface(watch->dialog->xdg_toplevel->base));
++}
++
++static void lumen_dialog_destroy(struct wl_listener *listener, void *data) {
++	(void)data;
++	struct lumen_dialog_watch *watch = wl_container_of(listener, watch, destroy);
++	wl_list_remove(&watch->modal.link);
++	wl_list_remove(&watch->destroy.link);
++	free(watch);
++}
++
++static void lumen_new_dialog(struct wl_listener *listener, void *data) {
++	(void)listener;
++	struct wlr_xdg_dialog_v1 *dialog = data;
++	struct lumen_dialog_watch *watch = calloc(1, sizeof(*watch));
++	if (!watch) return;
++	watch->dialog = dialog;
++	watch->modal.notify = lumen_dialog_modal;
++	watch->destroy.notify = lumen_dialog_destroy;
++	wl_signal_add(&dialog->events.set_modal, &watch->modal);
++	wl_signal_add(&dialog->events.destroy, &watch->destroy);
++}
++
++void lumen_xdg_dialog_init(struct wl_display *display) {
++	struct wlr_xdg_wm_dialog_v1 *manager = wlr_xdg_wm_dialog_v1_create(display, 1);
++	static struct wl_listener new_dialog;
++	new_dialog.notify = lumen_new_dialog;
++	wl_signal_add(&manager->events.new_dialog, &new_dialog);
++}
++
++static void lumen_set_parent(struct wl_listener *listener, void *data) {
++	(void)data;
++	struct sway_xdg_shell_view *view = wl_container_of(listener, view, lumen_set_parent);
++	lumen_relationship_changed(&view->view);
++}
++
+ static struct sway_xdg_popup *popup_create(
+@@ -456,2 +521,3 @@
+ 	wl_list_remove(&xdg_shell_view->set_app_id.link);
++	wl_list_remove(&xdg_shell_view->lumen_set_parent.link);
+ }
+@@ -512,4 +578,7 @@
+ 	xdg_shell_view->set_app_id.notify = handle_set_app_id;
+ 	wl_signal_add(&toplevel->events.set_app_id,
+ 			&xdg_shell_view->set_app_id);
++	xdg_shell_view->lumen_set_parent.notify = lumen_set_parent;
++	wl_signal_add(&toplevel->events.set_parent,
++			&xdg_shell_view->lumen_set_parent);
+ }

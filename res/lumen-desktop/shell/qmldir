@@ -36,6 +36,7 @@ SettingsState 1.0 SettingsState.qml
 SettingsWindow 1.0 SettingsWindow.qml
 SettingsToggle 1.0 SettingsToggle.qml
 FilesState 1.0 FilesState.qml
+OwnedWindowContext 1.0 OwnedWindowContext.qml
 FilesWindow 1.0 FilesWindow.qml
 DesktopScrollBar 1.0 DesktopScrollBar.qml
 DialogButton 1.0 DialogButton.qml

@@ -57,6 +57,20 @@ ShellRoot {
     function sessionAction(action){claimPopup("");sessionOptions.show(action);focusOwnedWindow("Session Options");}
     function openHelp(){claimPopup("");helpWindow.show();focusOwnedWindow("Desktop Help");}
     FolderStack {id:downloadsStack;shell:root}
+    OwnedWindowContext {id:ownedWindowContext}
+    property alias ownedContext:ownedWindowContext
+    property var ownedToplevelAssociations:[]
+    function observeOwnedToplevel(){
+        const context=ownedWindowContext;
+        const key=context.keyWindow;
+        if(!key || !context.mainWindow || !active || active.appId!=="org.quickshell" || active.title!==key.title)return;
+        const keyActive=context.keyRole==="main"?key.selectionActive:key.keyActive;
+        if(!keyActive)return;
+        ownedToplevelAssociations=ownedToplevelAssociations.filter(item=>windows.includes(item.toplevel) && item.toplevel!==active && item.window && item.window.visible).concat([{toplevel:active,window:key,main:context.mainWindow,applicationId:context.applicationId}]);
+    }
+    Timer {id:ownedAssociationTimer;interval:0;onTriggered:root.observeOwnedToplevel()}
+    Connections {target:ownedWindowContext;function onRevisionChanged(){ownedAssociationTimer.restart();}}
+
     QuickLookWindow {id:quickLook}
     property alias quickLookWindow:quickLook
     TextToolsWindow {id:textTools;shell:root}
@@ -107,8 +121,8 @@ ShellRoot {
         if(menu==="Go")return [item("Back","back",filesState.historyIndex>0),item("Forward","forward",filesState.historyIndex<filesState.history.length-1),item("Enclosing Folder","up"),item("Home","home"),item("Go to Folder…","goto")];
         return null;
     }
-    function filesAction(action){claimPopup("");filesActionTimer.action=action;filesActionTimer.restart();}
-    Timer {id:filesActionTimer;property string action;interval:100;onTriggered:filesWindow.dispatch(action)}
+    function filesAction(action){const target=filesWindow;claimPopup("");filesActionTimer.targetWindow=target;filesActionTimer.action=action;filesActionTimer.epoch=focusEpoch;filesActionTimer.restart();}
+    Timer {id:filesActionTimer;property var targetWindow:null;property string action;property int epoch;interval:100;onTriggered:if(epoch===root.focusEpoch && targetWindow && targetWindow.visible)targetWindow.dispatch(action)}
     ApplicationLifecycleState {id:applicationLifecycle;onResultReady:result=>{root.applicationCommandError=result.error || "";}}
     property string applicationCommandError:""
     onApplicationCommandErrorChanged:if(applicationCommandError)applicationCommandTimer.restart()
@@ -129,6 +143,7 @@ ShellRoot {
     property var activationHistory: []
     property var applicationActivationHistory:[]
     onActiveChanged: {
+        ownedAssociationTimer.restart();
         if (active) {activationHistory=[active].concat(activationHistory.filter(w=>w!==active && windows.includes(w)));const recent=entryFor(active);const identity=recent?recent.id:active.appId;if(identity)applicationActivationHistory=[identity].concat(applicationActivationHistory.filter(id=>id!==identity)).slice(0,512);if(recent)recentAppIds=[recent.id].concat(recentAppIds.filter(id=>!DockModel.sameEntry(id,recent.id))).slice(0,12);}
     }
     property var entries: DesktopEntries.applications.values
@@ -227,6 +242,8 @@ ShellRoot {
     NotificationState {id:notificationState;shell:root}
     function entryFor(w) {
         if (!w) return null;
+        const owned=ownedToplevelAssociations.find(item=>item.toplevel===w && item.window && item.window.visible && item.main && item.main.visible);
+        if(owned)return DesktopEntries.byId(owned.applicationId);
         if((w.appId==="org.quickshell" && w.title==="Remote Desktop") || ["org.remmina.Remmina","remmina"].includes(w.appId))return DesktopEntries.byId("lumen-remote-desktop");
         if(w.appId==="org.quickshell" && w.title.startsWith("Files"))return DesktopEntries.byId("lumen-files");
         if(w.appId==="org.quickshell" && w.title==="Calendar")return DesktopEntries.byId("lumen-calendar-app");

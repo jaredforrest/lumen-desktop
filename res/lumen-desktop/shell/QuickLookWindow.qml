@@ -19,10 +19,15 @@ FloatingWindow {
     property string subjectPath:""
     property string subjectMessage:""
     property var returnTo:null
-    function show(value,owner){path=value;subjectPath="";subjectMessage="";page=1;returnTo=owner;result={};visible=true;refresh();if(owner)owner.shell.focusOwnedWindow("Quick Look");Qt.callLater(()=>{content.forceActiveFocus();if(content.Window.window)content.Window.window.requestActivate();});}
+    readonly property bool keyActive:content.Window.window?content.Window.window.active:false
+    function observeOwnedFocus(){if(!returnTo || !returnTo.shell.ownedContext)return;if(keyActive){returnTo.shell.ownedContext.focus(root,returnTo,"lumen-files","utility");returnTo.shell.activeFiles(returnTo);}else returnTo.shell.ownedContext.leave(root);}
+    onKeyActiveChanged:observeOwnedFocus()
+    onReturnToChanged:if(keyActive)observeOwnedFocus()
+    Component.onDestruction:if(returnTo && returnTo.shell.ownedContext)returnTo.shell.ownedContext.close(root)
+    function show(value,owner){if(owner && owner.shell.claimPopup)owner.shell.claimPopup("");path=value;subjectPath="";subjectMessage="";page=1;returnTo=owner;result={};visible=true;refresh();if(owner)owner.shell.focusOwnedWindow("Quick Look");Qt.callLater(()=>{content.forceActiveFocus();if(content.Window.window)content.Window.window.requestActivate();});}
     function saveSubject(){if(subjectPath)subjectSave.open();}
     function refresh(){if(worker.running)return;worker.requestPath=path;worker.requestPage=page;worker.command=[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("file_preview.py").toString().replace("file://",""),path,String(page)];worker.running=true;}
-    onVisibleChanged:if(visible)fit();else {subjectSave.close();recognizeOnLoad=false;ocr.running=false;subject.running=false;if(returnTo)Qt.callLater(()=>returnTo.focusContents());}
+    onVisibleChanged:if(visible)fit();else {if(returnTo && returnTo.shell.ownedContext)returnTo.shell.ownedContext.close(root);subjectSave.close();recognizeOnLoad=false;ocr.running=false;subject.running=false;if(returnTo)Qt.callLater(()=>returnTo.focusContents());}
     Rectangle {id:content;anchors.fill:parent;radius:Theme.nativeWindowFrame?0:12;color:Theme.colors.background;border.color:Theme.outline;focus:true
         Keys.onEscapePressed:root.visible=false
         Keys.onSpacePressed:root.visible=false

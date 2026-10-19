@@ -29,6 +29,16 @@ def tree(*nodes, workspace='1', floating=False):
 
 
 class FocusWindowTests(unittest.TestCase):
+    def test_modal_native_child_redirects_parent_activation_only(self):
+        document=window(17)
+        utility=window(18,title='Find');utility['lumen_relationships']=dict(version=1,parent_supported=True,parent=17,modal=None)
+        self.assertEqual(focus.focus_command(tree(document,utility),'writer','Document'),'[con_id=17] focus')
+        utility['lumen_relationships']['modal']=True
+        self.assertEqual(focus.focus_command(tree(document,utility),'writer','Document'),'[con_id=18] focus')
+        self.assertEqual(focus.app_focus_command(tree(document,utility),'writer',['Document']),'[con_id=18] focus')
+        self.assertEqual(focus.focus_command(tree(document,utility),'writer','Document','close'),'[con_id=17] lumen_window close')
+
+
     def test_unique_native_window_uses_container_identity(self):
         self.assertEqual(focus.focus_command(tree(window(17)), 'writer', 'Document'),
                          '[con_id=17] focus')

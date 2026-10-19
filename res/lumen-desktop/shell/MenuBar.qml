@@ -13,8 +13,9 @@ PanelWindow {
     required property date clockDate
     // Label and headings must use the same committed focus/menu snapshot.
     property bool usesBridge: Quickshell.env("SWAYSOCK") !== ""
-    property string displayName: usesBridge ? shell.nameForAppId(exported.state.appName,exported.state.title) : shell.activeName
-    property bool filesFocused:usesBridge ? exported.state.appName==="org.quickshell" && exported.state.title.startsWith("Files") : !!shell.active && shell.active.title.startsWith("Files")
+    readonly property bool ownedFilesContext:!!shell.ownedContext && !!shell.ownedContext.keyWindow && !!shell.ownedContext.mainWindow && shell.ownedContext.applicationId==="lumen-files"
+    property string displayName: ownedFilesContext ? "Files" : usesBridge ? shell.nameForAppId(exported.state.contextAppName || exported.state.appName,exported.state.title) : shell.activeName
+    property bool filesFocused:ownedFilesContext || (usesBridge ? exported.state.appName==="org.quickshell" && exported.state.title.startsWith("Files") : !!shell.active && shell.active.title.startsWith("Files"))
     property bool desktopFocused: usesBridge ? exported.state.windowId === 0 : !shell.active
     property bool special: ["Wi-Fi","Bluetooth","VPN","Sound","Controls","Focus","Date","Calendar","Now Playing","Files","Settings","Launcher"].includes(menu)
     FontMetrics {id:headingMetrics;font.family:Theme.font;font.pixelSize:13}
