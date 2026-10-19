@@ -102,8 +102,10 @@ try:
  call('grim',str(out/('calendar-'+a.theme+'.png')))
  target=json.loads(ipc('widgetPoint','calendar-open-related'));click((target['x'],target['y']));wait(lambda:state()['activations']==1);key('-k','space');wait(lambda:state()['activations']==2);time.sleep(.2);assert state()['activations']==2;checks.append('Calendar related-content pointer and keyboard activation each dispatch exactly once')
  for index in range(3):click(point('widget-add-clock'))
- for index in range(24):key('-k','Tab')
- wait(lambda:state()['scrollY']>0);checks.append('Keyboard traversal reveals controls below the widget editor viewport')
+ maximumScroll=0
+ for index in range(24):
+  key('-k','Tab');maximumScroll=max(maximumScroll,state()['scrollY'])
+ assert maximumScroll>0;checks.append('Keyboard traversal reveals controls below the widget editor viewport')
  assert not state()['error'],state()
  for name in ('shell.log','shell-restart.log'):
   text=(out/name).read_text();assert not any(marker in text for marker in ('TypeError:','ReferenceError:','Binding loop','Failed to load configuration','Cannot assign')),text
