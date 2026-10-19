@@ -116,3 +116,5 @@ InputSettingsPane 1.0 InputSettingsPane.qml
 WallpaperSettingsState 1.0 WallpaperSettingsState.qml
 WallpaperSettingsPane 1.0 WallpaperSettingsPane.qml
 LocalImageChooser 1.0 LocalImageChooser.qml
+DesktopWidgetItem 1.0 DesktopWidgetItem.qml
+DesktopWidgetEditor 1.0 DesktopWidgetEditor.qml
