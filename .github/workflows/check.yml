@@ -93,5 +93,10 @@ jobs:
             artifacts/spaces
             artifacts/power-provider
             artifacts/overview-lifecycle
+            artifacts/window-relationships-*
+            artifacts/owned-window-context-*
+            artifacts/status-clock
+            artifacts/portal-permissions
+            artifacts/text-sizing
             artifacts/application-lifecycle
             artifacts/network-provider.log
