@@ -41,7 +41,23 @@ class ActionIdentityTests(unittest.TestCase):
                 self.assertFalse(any(row['banner'] for row in server.rows))
                 server.Command(json.dumps({'action': 'dnd', 'enabled': False}))
                 self.assertFalse(any(row['banner'] for row in server.rows))
-                server.Command(json.dumps({'action': 'invoke', 'id': int(ident), 'key': 'open', 'delivery': current}))
+                old_clock=service.command_time_ms
+                try:
+                    service.command_time_ms=lambda:10000
+                    lease=json.loads(server.Snapshot())['commandUntil']
+                    self.assertEqual(lease,11000)
+                    command={'action':'invoke','id':int(ident),'key':'open','delivery':current,'instance':server.instance,'expires':lease}
+                    # A simulated suspend advances BOOTTIME while no host clock changes.
+                    service.command_time_ms=lambda:12000
+                    self.assertEqual(json.loads(server.Probe())['commandUntil'],13000)
+                    with self.assertRaises(ValueError):server.Command(json.dumps(command))
+                    self.assertEqual(actions,[])
+                    service.command_time_ms=lambda:10001
+                    for patch in ({'instance':'b'*32},{'expires':True},{'expires':10001},{'expires':2**53}):
+                        with self.assertRaises(ValueError):server.Command(json.dumps(dict(command,**patch)))
+                    self.assertEqual(actions,[])
+                    server.Command(json.dumps(command))
+                finally:service.command_time_ms=old_clock
                 self.assertEqual(actions, [(ident, 'open')])
                 server.Command(json.dumps({'action': 'invoke', 'id': int(ident), 'key': 'open', 'delivery': current}))
                 self.assertEqual(len(actions), 1)

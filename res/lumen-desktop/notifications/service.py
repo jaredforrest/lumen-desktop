@@ -22,6 +22,10 @@ from focus import Focus
 from session_lock import SessionLockAuthority, previews_allowed
 from transport import TransportOrder
 
+def command_time_ms():
+    # Includes time spent suspended; stale input must not regain life on resume.
+    return int(time.clock_gettime(time.CLOCK_BOOTTIME)*1000)
+
 BUS = 'org.freedesktop.Notifications'
 PATH = '/org/freedesktop/Notifications'
 UI = 'org.lumendesktop.Notifications'
@@ -191,7 +195,7 @@ class Server(dbus.service.Object):
         if not allowed:
             for row in rows:row.update(summary='Notification',body='',image='',icon='',actions=[])
         self.transport_revision+=1
-        return json.dumps({'instance':self.instance,'revision':self.transport_revision,'lock':lock,'previewsVisible':allowed,'ready':True,'dnd':self.dnd,'focus':self.focus.state(),'preview':self.preview,'policies':self.policies,'rows':rows},ensure_ascii=False)
+        return json.dumps({'instance':self.instance,'commandUntil':command_time_ms()+1000,'revision':self.transport_revision,'lock':lock,'previewsVisible':allowed,'ready':True,'dnd':self.dnd,'focus':self.focus.state(),'preview':self.preview,'policies':self.policies,'rows':rows},ensure_ascii=False)
 
     def changed(self, persist=True):
         if persist:
@@ -357,6 +361,10 @@ class Server(dbus.service.Object):
         pass
 
     @dbus.service.method(UI, in_signature='', out_signature='s')
+    def Probe(self):
+        return json.dumps({'instance':self.instance,'commandUntil':command_time_ms()+1000})
+
+    @dbus.service.method(UI, in_signature='', out_signature='s')
     def Snapshot(self):
         return self.state()
 
@@ -369,6 +377,12 @@ class Server(dbus.service.Object):
         data = json.loads(encoded)
         if not isinstance(data, dict):
             raise ValueError('Notification command must be an object')
+        # Owned transports carry the service-issued monotonic deadline unchanged.
+        # D-Bus timeouts cannot retract a message queued at a stopped service.
+        if 'instance' in data or 'expires' in data:
+            expires=data.get('expires')
+            if data.get('instance')!=self.instance or type(expires) is not int or not 0<expires<=2**53-1 or not command_time_ms()<expires<=command_time_ms()+1000:
+                raise ValueError('Expired notification command authority')
         action = data.get('action')
         if action not in ('hold', 'dnd', 'focus', 'policy', 'seen', 'dismiss', 'clear', 'hide', 'invoke'):
             raise ValueError('Unknown notification command')
@@ -472,9 +486,21 @@ def main():
                 value['transport']=generation
                 print(json.dumps(value,ensure_ascii=False), flush=True)
             api.connect_to_signal('Changed', output)
-            output(api.Snapshot())
+            output(api.Snapshot(timeout=1))
             pending = bytearray()
             loop = GLib.MainLoop()
+            def probe():
+                try:
+                    value=json.loads(str(api.Probe(timeout=1)))
+                    if not isinstance(value,dict) or value.get('instance')!=order.instance or type(value.get('commandUntil')) is not int or not 0<value['commandUntil']<=2**53-1:raise ValueError('Invalid service probe')
+                    value.update(liveness=True,transport=generation)
+                    print(json.dumps(value),flush=True)
+                except (dbus.DBusException,ValueError,TypeError):
+                    print(json.dumps({'error':'Notification service is unavailable','transport':generation}),flush=True)
+                    loop.quit()
+                    return False
+                return True
+            GLib.timeout_add(400,probe)
             def command(source, condition):
                 chunk = os.read(sys.stdin.fileno(), 65536)
                 if not chunk:
@@ -485,7 +511,7 @@ def main():
                     line, _, rest = pending.partition(b'\n')
                     pending[:] = rest
                     try:
-                        api.Command(line.decode('utf-8'))
+                        api.Command(line.decode('utf-8'),timeout=1)
                     except (dbus.DBusException, ValueError):
                         print(json.dumps({'error':'Notification request failed','transport':generation}), flush=True)
                 return True

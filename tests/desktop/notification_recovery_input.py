@@ -62,8 +62,9 @@ ShellRoot {
   D.NotificationCard {id:card;x:20;y:20;width:400;visible:notifications.rows.length>0;service:notifications;notification:notifications.rows[0] || ({id:0,app:"",summary:"",body:"",icon:"",image:"",actions:[],timestamp:0})}
  }
  IpcHandler {target:"recoveryAudit"
-  function status():string{return JSON.stringify({available:notifications.available,instance:notifications.instance,revision:notifications.revision,rows:notifications.rows,layout:widgets.preferences,probes:root.probes});}
+  function status():string{return JSON.stringify({available:notifications.available,instance:notifications.instance,revision:notifications.revision,rows:notifications.rows,layout:widgets.preferences,probes:root.probes,lease:notifications.commandUntil});}
   function activate():void{card.activate();}
+  function activateWithLease(value:string):void{const current=notifications.commandUntil;notifications.commandUntil=Number(value);card.activate();notifications.commandUntil=current;}
   function focusProbe():void{probe.forceActiveFocus();}
   function configure():void{widgets.addWidget("clock");const item=widgets.desktopItems[0];widgets.positionWidget(item.id,"HEADLESS-1",0.25,0.4);}
  }
@@ -115,6 +116,18 @@ GLib.MainLoop().run()
   activate();time.sleep(.2);assert not actions(first_log)
   checks=['Actual producer SIGKILL revokes actions without removing retained history']
   second,second_log=producer('Watcher restart action');wait(lambda:ui_state()['rows'][0]['summary']=='Watcher restart action')
+  # A stopped watcher still owns its pipes: no process-exit signal can help UI.
+  old_lease=ui_state()['lease'];old_watcher=wait(child_watcher);os.kill(old_watcher,signal.SIGSTOP)
+  activate();time.sleep(.2);assert not actions(second_log)
+  wait(lambda:not ui_state()['available'] and not ui_state()['rows']);probe_control()
+  os.kill(old_watcher,signal.SIGCONT)
+  wait(lambda:child_watcher() not in (None,old_watcher) and ui_state()['available'])
+  assert not actions(second_log)
+  call('quickshell','-p',str(fixture),'ipc','call','recoveryAudit','activateWithLease',str(old_lease))
+  time.sleep(.2);assert not actions(second_log)
+  wait(lambda:ui_state()['available'])
+  checks.append('Delayed owned action retains its captured expired lease even after a fresh transport lease arrives')
+  checks.append('Stopped transport becomes unavailable while other keyboard controls and layout stay usable; resume never replays its pending action')
   old_watcher=wait(child_watcher);os.kill(old_watcher,signal.SIGSTOP)
   activate();time.sleep(.2);assert not actions(second_log)
   os.kill(old_watcher,signal.SIGKILL)
@@ -123,6 +136,12 @@ GLib.MainLoop().run()
   activate();wait(lambda:len(actions(second_log))==1);time.sleep(.25);assert len(actions(second_log))==1
   checks.append('Stopped transport with queued action is killed; reconnect drops stale command and fresh action dispatches once')
   third,third_log=producer('Service restart action');wait(lambda:ui_state()['rows'][0]['summary']=='Service restart action')
+  os.kill(server.pid,signal.SIGSTOP);activate()
+  wait(lambda:not ui_state()['available'] and not ui_state()['rows']);probe_control()
+  os.kill(server.pid,signal.SIGCONT)
+  wait(lambda:ui_state()['available'] and ui_state()['rows'][0]['summary']=='Service restart action')
+  assert not actions(third_log)
+  checks.append('Stopped server times out without freezing owned controls; queued expired action is rejected after resume and transport reconnects')
   old_instance=snapshot()['instance'];crash(server);wait(lambda:not ui_state()['available'] and not ui_state()['rows']);probe_control()
   server=launch([sys.executable,env['LUMEN_NOTIFICATION_HELPER'],'serve'],'notifications-restart.log')
   wait(lambda:snapshot()['instance']!=old_instance and snapshot()['lock']=={'known':True,'locked':False})
