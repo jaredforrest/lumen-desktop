@@ -3,6 +3,10 @@ let
   python = (import ../../packages/python-runtime.nix { inherit pkgs; }).withPackages (ps: [ ps.dbus-python ps.pygobject3 ps.icalendar ps.recurring-ical-events ps.astral ps.pillow ]);
   typelibs = pkgs.lib.makeSearchPath "lib/girepository-1.0" (map pkgs.lib.getLib [ pkgs.gobject-introspection pkgs.pango pkgs.gdk-pixbuf pkgs.atk pkgs.harfbuzz pkgs.glib pkgs.gtk3 pkgs.libical pkgs.evolution-data-server pkgs.gnome-online-accounts ]);
 in pkgs.writeShellScriptBin "desktop-test-python" ''
+  # AF_UNIX paths are bounded to 107 bytes on Linux. CI's nested TMPDIR plus
+  # compositor/Qt IPC suffixes can exceed that even with short fixture names.
+  # Each fixture still creates its own private, automatically cleaned directory.
+  export TMPDIR=/tmp
   export GI_TYPELIB_PATH=${typelibs}
   export XDG_DATA_DIRS=${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:"''${XDG_DATA_DIRS:-}"
   export DESKTOP_TEST_PINNED_RUNTIME=1

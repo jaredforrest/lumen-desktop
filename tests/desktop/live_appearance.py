@@ -35,7 +35,7 @@ theme('light');qml=out/'shell.qml'
 qml.write_text('''import QtQuick
 import Quickshell
 import Quickshell.Io
-import "file:'''+str(repo/'res/lumen-desktop/shell')+'''" as D
+import '''+json.dumps(os.path.relpath(repo/'res/lumen-desktop/shell',out))+''' as D
 ShellRoot {
  QtObject {id:stub;property string popupOwner:"";signal dismissPopups(string owner);function claimPopup(owner){popupOwner=owner;dismissPopups(owner);}}
  D.HelpWindow {id:help;shell:stub}
