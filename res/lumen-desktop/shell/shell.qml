@@ -56,7 +56,7 @@ ShellRoot {
         windowLayoutMenu.event(JSON.stringify({lumen_layout:1,id:id,x:output.x+Math.min(180,output.width/2),y:output.y+Theme.barHeight}));
         windowLayoutMenu.open();
     }
-    SessionOptions {id:sessionOptions}
+    SessionOptions {id:sessionOptions;lifecycle:applicationLifecycle}
     HelpWindow {id:helpWindow;shell:root}
     function sessionAction(action){claimPopup("");sessionOptions.show(action);focusOwnedWindow("Session Options");}
     function openHelp(){claimPopup("");helpWindow.show();focusOwnedWindow("Desktop Help");}

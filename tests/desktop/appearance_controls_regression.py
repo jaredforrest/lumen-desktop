@@ -122,7 +122,7 @@ try:
  assert ipc('colour').startswith('PASS')
  ipc('sessionShow','reboot');time.sleep(.3);call('grim',str(run/'session-confirmation.png'));call('swaymsg','[title="Session Options"] focus');call('wtype','-s','200','-k','Escape');assert not json.loads(ipc('state'))['sessionVisible'];assert not json.loads(ipc('state'))['confirmed']
  ipc('sessionShow','reboot');time.sleep(.3);call('swaymsg','[title="Session Options"] focus');call('wtype','-s','200','-k','Return');assert not json.loads(ipc('state'))['sessionVisible'];assert not json.loads(ipc('state'))['confirmed']
- ipc('sessionShow','logout');ipc('sessionConfirm');assert json.loads(ipc('state'))['confirmed']=='logout'
+ ipc('sessionShow','logout');ipc('sessionConfirm');assert not json.loads(ipc('state'))['confirmed'] and json.loads(ipc('state'))['sessionVisible'];call('wtype','-s','200','-k','Escape')
  ipc('helpShow');time.sleep(.3);call('swaymsg','[title="Desktop Help"] focus');call('wtype','-s','400','remote keyboard');wait(lambda:json.loads(ipc('state'))['helpMatches']==1);call('grim',str(run/'help-search.png'));ipc('helpClose')
  ipc('stackShow',str(docs));wait(lambda:json.loads(ipc('state'))['stackTotal']==20);assert json.loads(ipc('state'))['stackRows']==14;call('grim',str(run/'downloads-stack.png'));ipc('stackClose')
  time.sleep(1.7);assert json.loads(ipc('state'))['scrollOpacity']==0,'Automatic scrollbar did not hide at rest'
@@ -141,7 +141,7 @@ try:
  for scale in (1.5,2):
   call('swaymsg','output HEADLESS-1 resolution 1920x1080 scale '+str(scale));ipc('toolShow','Colours');time.sleep(.4);call('grim',str(run/('colours-scale-'+str(scale)+'.png')));ipc('toolClose')
 
- (run/'result.json').write_text(json.dumps(dict(passed=True,checks=['media source selection, bounded seek and capability checks','destructive button keyboard activation','combo keyboard selection commits highlighted row','colour RGB and alpha round trip','automatic scrollbar idle hide','session cancellation and whitelisted confirmation without execution','Help search via real keyboard','Downloads preview reports all twenty files and limits visible rows to fourteen','isolated preview, inspector, utilities and display fixtures in light/dark with 150/200 percent captures']),indent=2))
+ (run/'result.json').write_text(json.dumps(dict(passed=True,checks=['media source selection, bounded seek and capability checks','destructive button keyboard activation','combo keyboard selection commits highlighted row','colour RGB and alpha round trip','automatic scrollbar idle hide','session cancellation and unavailable observation blocks termination','Help search via real keyboard','Downloads preview reports all twenty files and limits visible rows to fourteen','isolated preview, inspector, utilities and display fixtures in light/dark with 150/200 percent captures']),indent=2))
  logs=(run/'ui.log').read_text()
  assert not any(marker in logs for marker in ('ReferenceError:','TypeError:','Binding loop','Failed to load configuration','Unable to assign','Cannot assign [undefined]')),logs
  print(run/'result.json')

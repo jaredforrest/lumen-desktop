@@ -78,6 +78,8 @@ jobs:
           nix develop --command desktop-test-python tests/desktop/accessibility_protocol.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/accessibility --full-shell
           nix develop --command desktop-test-python tests/desktop/spaces_placement.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/spaces
           nix develop --command desktop-test-python tests/desktop/application_lifecycle_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/application-lifecycle
+          nix develop --command desktop-test-python tests/desktop/session_end_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/session-end
+          nix develop --command desktop-test-python tests/desktop/session_end_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --effects --output artifacts/session-end-effects
       - run: |
           nix build .#test-network-provider --out-link artifacts/network-provider --option abort-on-warn true
           nix develop --command desktop-test-python tests/desktop/network_locations_provider.py --provider "$PWD/artifacts/network-provider" | tee artifacts/network-provider.log
@@ -112,4 +114,5 @@ jobs:
             artifacts/portal-permissions
             artifacts/text-sizing
             artifacts/application-lifecycle
+            artifacts/session-end*
             artifacts/network-provider.log

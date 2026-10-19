@@ -196,16 +196,21 @@ class CooperativeApplication:
     def revalidate(self,app,process,owner):
         current=self.lifecycle.exact_process(app)
         if current is not process or str(self.bus.get_name_owner(app))!=owner:raise ValueError('Application changed before dispatch')
-    def quit(self,app):
+    def prepare_quit(self,app):
         process,owner,proxy=self.endpoint(app)
         actions=proxy.List(dbus_interface='org.gtk.Actions',timeout=2)
         if 'quit' not in actions:raise ValueError('This application does not advertise a cooperative Quit action')
         description=proxy.Describe('quit',dbus_interface='org.gtk.Actions',timeout=2)
         if len(description)!=3 or not description[0] or str(description[1]):raise ValueError('The advertised Quit action is unavailable or requires unsupported parameters')
         self.revalidate(app,process,owner)
+        return (app,process,owner,proxy)
+    def dispatch_quit(self,prepared):
+        app,process,owner,proxy=prepared
+        self.revalidate(app,process,owner)
         import dbus
         proxy.Activate('quit',dbus.Array([],signature='v'),dbus.Dictionary({},signature='sv'),dbus_interface='org.gtk.Actions',timeout=2)
         return {'requested':True,'protocol':'org.gtk.Actions','status':'requested-not-confirmed-exited'}
+    def quit(self,app):return self.dispatch_quit(self.prepare_quit(app))
 
 
 def receive(stream):
@@ -226,7 +231,9 @@ def send(stream,kind,value=''):
     data=value.encode();stream.sendall(b'i3-ipc'+struct.pack('<II',len(data),kind)+data)
 
 def watch():
-    lifecycle=Lifecycle();last=None;store=None
+    from session_end import SessionEnd
+    lifecycle=Lifecycle();last=None;store=None;nodes=[]
+    session=SessionEnd(lifecycle,CooperativeApplication(lifecycle),shell_pid=os.getppid())
     def emit(available,error='',result=None):
         nonlocal last
         recovery=False
@@ -236,7 +243,7 @@ def watch():
                 try:store.invalidate()
                 except OSError:pass
                 error='Application observations could not be saved for shell recovery.'
-        value={'available':available,'applications':lifecycle.rows() if available else [],'error':error,'recoveryAvailable':recovery}
+        value={'available':available,'applications':lifecycle.rows() if available else [],'error':error,'recoveryAvailable':recovery,'session':session.state()}
         if result is not None:value['result']=result
         encoded=json.dumps(value,sort_keys=True)
         if encoded!=last:print(encoded,flush=True);last=encoded
@@ -250,10 +257,11 @@ def watch():
             if not isinstance(ack,dict) or ack.get('success') is not True:raise ValueError('Compositor subscription failed')
             query.settimeout(5);query.connect(address)
             def refresh():
+                nonlocal nodes
                 send(query,4);_,tree=receive(query)
                 if runtime_epoch(address)!=epoch:raise ValueError('Compositor session changed')
-                lifecycle.refresh(epoch,window_nodes(tree));emit(True)
-            lifecycle.recover(epoch,store.load());refresh();events.settimeout(None)
+                nodes=window_nodes(tree);lifecycle.refresh(epoch,nodes);session.tick(nodes);emit(True)
+            lifecycle.recover(epoch,store.load());refresh();events.settimeout(None);input_buffer=b''
             while True:
                 handles=[p['handle'] for p in lifecycle.processes.values()]
                 ready,_,_=select.select([events,sys.stdin]+handles,[],[],1)
@@ -263,22 +271,34 @@ def watch():
                     if kind==0x80000003 and isinstance(event,dict):lifecycle.observe(event.get('container'))
                     refresh()
                 if sys.stdin in ready:
-                    line=sys.stdin.readline(65537)
-                    if not line:return
-                    if len(line)>65536:raise ValueError('Application request exceeds limit')
-                    try:
-                        data=json.loads(line)
-                        if isinstance(data,dict) and data.get('action')=='status':emit(True);continue
-                        if not isinstance(data,dict) or data.get('action')!='quit' or not isinstance(data.get('appId'),str):raise ValueError('Unsupported application command')
-                        result=CooperativeApplication(lifecycle).quit(data['appId']);result['appId']=data['appId']
-                    except Exception:
-                        result={'requested':False,'error':'Cooperative Quit is unavailable or the application changed. Use its own Quit command; Force Quit is a separate action.'}
-                    emit(True,result=result)
-                lifecycle.prune();emit(True)
+                    chunk=os.read(sys.stdin.fileno(),65537)
+                    if not chunk:return
+                    input_buffer+=chunk
+                    if len(input_buffer)>65536 and b'\n' not in input_buffer:raise ValueError('Application request exceeds limit')
+                    lines=input_buffer.split(b'\n');input_buffer=lines.pop()
+                    for line in lines:
+                        if len(line)>65536:raise ValueError('Application request exceeds limit')
+                        data=None
+                        try:
+                            data=json.loads(line)
+                            if isinstance(data,dict) and data.get('action')=='status':emit(True);continue
+                            if isinstance(data,dict) and data.get('action') in ('session_begin','session_cancel','session_authorize'):
+                                command=data['action']
+                                if command=='session_cancel':session.cancel();emit(True);continue
+                                refresh()
+                                if command=='session_begin':session.begin(data.get('sessionAction'),nodes);emit(True);continue
+                                authorization=session.authorize(data.get('token'),nodes);emit(True,result={'sessionAuthorization':authorization});continue
+                            if not isinstance(data,dict) or data.get('action')!='quit' or not isinstance(data.get('appId'),str):raise ValueError('Unsupported application command')
+                            result=CooperativeApplication(lifecycle).quit(data['appId']);result['appId']=data['appId']
+                        except Exception:
+                            if isinstance(data,dict) and str(data.get('action','')).startswith('session_'):session.fail('Session confirmation failed. The session remains open; cancel and start again.')
+                            result={'requested':False,'error':'Cooperative Quit is unavailable or the application changed. Use its own Quit command; Force Quit is a separate action.'}
+                        emit(True,result=result)
+                lifecycle.prune();session.tick(nodes);emit(True)
     except (OSError,ValueError,KeyError,EOFError,TypeError,subprocess.SubprocessError):
         emit(False,'Application lifecycle observation is unavailable; window-based state remains available.')
     finally:
-        lifecycle.close()
+        session.cancel();lifecycle.close()
         if store is not None:store.close()
 
 def main():
