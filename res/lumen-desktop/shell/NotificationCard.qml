@@ -15,6 +15,7 @@ PanelSurface {
     Accessible.role:Accessible.Button
     onNotificationChanged:timeLabel=stamp()
     Accessible.name:notification.app+", "+notification.summary+(expandStack?", "+stackCount+" notifications. Expand stack":expanded?", details expanded":"")
+    Accessible.onPressAction:activate()
     Keys.onReturnPressed:activate()
     Keys.onSpacePressed:activate()
     function activate(){if(expandStack)expandRequested();else if(notification.actions.some(a=>a.id==="default"))service.invoke(notification,"default");else detailsRequested();}

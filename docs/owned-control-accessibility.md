@@ -19,6 +19,14 @@ controls, keyboard input, focus restoration, reading order and assistive input:
   request without a host action. The separate native session-end fixture verifies
   actual application-owned dirty-document Save, Discard and Cancel.
 
+Notification cards also expose their existing primary/stack activation through
+AT-SPI Press rather than advertising an inert button. Launcher preview/grid
+controls are keyboard-focusable checkboxes with real checked/enabled state,
+visible focus indication and assistive actions. Tab order includes both controls;
+Escape closes the launcher while either is focused. These checks use synthetic
+notification actions and a no-launch search service, not personal notifications,
+clipboard history or host commands.
+
 `tests/desktop/accessibility_protocol.py` runs a private activation-free session
 bus, explicitly launched private AT-SPI bus/registry, private runtime and native
 headless compositor. It records actual protocol trees, checks keyboard and

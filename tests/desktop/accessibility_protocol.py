@@ -78,7 +78,23 @@ ShellRoot {id:mock;property int disabledPresses:0
  QtObject {id:sessionLifecycle;property bool available:true;property var session:({phase:"idle",token:"",error:""});property var commands:[];signal sessionAuthorized(var authorization);function sessionCommand(action,value){commands=commands.concat([{action:action,value:value}]);if(action==="session_cancel")session={phase:"idle",token:"",error:""};return true;}}
  D.SessionOptions {id:sessionWindow;lifecycle:sessionLifecycle;executeActions:false;onConfirmed:mock.finalActions++}
  property int finalActions:0
+ QtObject {id:noticeService;property bool available:true;property var expandedCards:({});property var invocations:[];property var commands:[];function invoke(notification,action){invocations=invocations.concat([{id:notification.id,action:action}]);}function command(value){commands=commands.concat([value]);}function toggleExpanded(id){}}
+ QtObject {id:searchService;property var files:[];property var preview:({});property bool searching:false;property bool opening:false;property bool scanning:false;property int indexed:0;property bool limited:false;property bool unreadable:false;property bool more:false;property string error:"";signal opened();function search(value){}function requestPreview(value){}}
+ QtObject {id:launchShell;property var search:searchService;property var entries:[];property var notifications:({dnd:false,available:false});property var audioState:({muted:false,available:false});property var exportedMenu:({state:{menu:null},label:function(value){return value;}});property date currentDate:new Date();function appLabel(entry){return entry.name;}function appIcon(entry){return "";}}
+ FloatingWindow {id:actionsWindow;visible:false;title:"Shell action accessibility";implicitWidth:950;implicitHeight:800
+  Column {anchors.fill:parent;spacing:18
+   D.AppLauncher {id:launcher;shell:launchShell;onCloseRequested:actionsWindow.visible=false}
+   D.NotificationCard {id:notice;width:600;service:noticeService;notification:({id:77,app:"Fixture",summary:"Protocol subject",body:"Protocol body",icon:"",image:"",timestamp:Date.now(),actions:[{id:"default",label:"Open"}]});onExpandRequested:mock.expansions++}
+  }
+ }
+ property int expansions:0
  IpcHandler {target:"a11yFixture";function status():string {return JSON.stringify({visible:window.visible,focus:focus.active,profile:service.focusState.profiles[0],disabledPresses:mock.disabledPresses});}function close():void {window.visible=false;}
+ function actionsShow():void {actionsWindow.visible=true;}
+ function actionsStatus():string {return JSON.stringify({visible:actionsWindow.visible,preview:launcher.previewOpen,grid:launcher.gridMode,invocations:noticeService.invocations,expansions:mock.expansions});}
+ function actionsDisableApps():void {D.Theme.searchPreferences={disabledProviders:["applications"]};}
+ function actionsEnableApps():void {D.Theme.searchPreferences={disabledProviders:[]};}
+ function actionsStack():void {notice.expandStack=true;notice.stackCount=3;}
+ function actionsClose():void {actionsWindow.visible=false;}
  function widgetsShow():void {widgetWindow.visible=true;}
  function widgetsClose():void {widgetWindow.visible=false;}
  function widgetsStatus():string {return JSON.stringify(widgets.desktopItems);}
@@ -238,6 +254,36 @@ try:
     wait(lambda:not json.loads(ipc('sessionStatus'))['visible'],'keyboard cancels waiting session')
     assert json.loads(ipc('sessionStatus'))['commands'][-1]['action']=='session_cancel'
     assert json.loads(ipc('sessionStatus'))['finalActions']==0
+    ipc('actionsShow')
+    card,row=wait(lambda:named('Fixture, Protocol subject'),'notification accessible primary action');assert row['role']=='push button',row
+    assert interface(card,'org.a11y.atspi.Action').DoAction(0,timeout=2)
+    wait(lambda:len(json.loads(ipc('actionsStatus'))['invocations'])==1,'AT-SPI invokes notification primary action')
+    assert interface(card,'org.a11y.atspi.Component').GrabFocus(timeout=2);call('wtype','-s','200','-k','Return')
+    wait(lambda:len(json.loads(ipc('actionsStatus'))['invocations'])==2,'keyboard notification primary action')
+    assert json.loads(ipc('actionsStatus'))['invocations']==[dict(id=77,action='default')]*2
+    ipc('actionsStack');stack,row=wait(lambda:named('Fixture, Protocol subject, 3 notifications. Expand stack'),'notification stack action context')
+    assert interface(stack,'org.a11y.atspi.Action').DoAction(0,timeout=2)
+    wait(lambda:json.loads(ipc('actionsStatus'))['expansions']==1,'assistive stack expansion')
+    assert len(json.loads(ipc('actionsStatus'))['invocations'])==2
+    preview,row=named('Toggle preview');assert row['role']=='check box' and not row['checked'],row
+    last_filter,row=named('Clipboard');assert interface(last_filter,'org.a11y.atspi.Component').GrabFocus(timeout=2)
+    call('wtype','-s','200','-k','Tab');wait(lambda:named('Toggle preview')[1]['focused'],'Tab reaches preview toolbar control')
+    call('wtype','-s','200','-k','Tab');wait(lambda:named('Application grid')[1]['focused'],'Tab reaches grid toolbar control')
+    call('wtype','-s','200','-M','shift','-k','Tab','-m','shift');wait(lambda:named('Toggle preview')[1]['focused'],'reverse Tab returns to preview')
+    call('wtype','-s','200','-k','space');wait(lambda:json.loads(ipc('actionsStatus'))['preview'],'Space toggles launcher preview')
+    wait(lambda:named('Toggle preview')[1]['checked'],'preview check state through AT-SPI')
+    assert named('Toggle preview')[1]['focused'];call('wtype','-s','200','-k','space');wait(lambda:not json.loads(ipc('actionsStatus'))['preview'],'second Space preserves focus and reverses preview')
+    assert interface(preview,'org.a11y.atspi.Action').DoAction(0,timeout=2);wait(lambda:json.loads(ipc('actionsStatus'))['preview'],'assistive preview toggle')
+    grid,row=named('Application grid');assert row['role']=='check box' and not row['checked'],row
+    assert interface(grid,'org.a11y.atspi.Action').DoAction(0,timeout=2)
+    wait(lambda:json.loads(ipc('actionsStatus'))['grid'],'assistive action toggles application grid')
+    wait(lambda:named('Application grid')[1]['checked'],'grid mode check state through AT-SPI')
+    ipc('actionsDisableApps');wait(lambda:not named('Application grid')[1]['enabled'],'disabled provider disables grid action')
+    interface(grid,'org.a11y.atspi.Action').DoAction(0,timeout=2);assert not json.loads(ipc('actionsStatus'))['grid'] and not named('Application grid')[1]['checked']
+    (out/'shell-action-controls-tree.json').write_text(json.dumps([row for _,row in tree()],indent=2))
+    ipc('actionsEnableApps');wait(lambda:named('Application grid')[1]['enabled'],'restored provider enables grid action')
+    assert interface(grid,'org.a11y.atspi.Component').GrabFocus(timeout=2);call('wtype','-s','200','-k','Escape')
+    wait(lambda:not json.loads(ipc('actionsStatus'))['visible'],'Escape closes launcher from toolbar control')
     full_checks=[]
     if a.full_shell:
         shutil.copyfile(production_source/'window_overview.py',source/'window_overview.py')
@@ -272,7 +318,7 @@ try:
         assert 'qt.accessibility.atspi:' not in text,text
         assert not any(message in text for message in ('Failed to load configuration','ReferenceError:','TypeError:')),text
     (out/'final-tree.json').write_text(json.dumps([row for _,row in tree()],indent=2))
-    (out/'result.json').write_text(json.dumps(dict(passed=True,bus=address,status={str(k):bool(v) for k,v in status.items()},events=events,checks=['private AT-SPI bus','actual roles and names','protocol focus reflected in state','physical Space activates controls','checked state propagated','widget row role/context/read order and keyboard selection','removed widget restores focus','Overview group Return and AT-SPI dispatch exact fresh intents','Overview dialog returns focus to opener','session dialog role/context/read order and disabled waiting action','keyboard session cancellation without host action']+full_checks),indent=2))
+    (out/'result.json').write_text(json.dumps(dict(passed=True,bus=address,status={str(k):bool(v) for k,v in status.items()},events=events,checks=['private AT-SPI bus','actual roles and names','protocol focus reflected in state','physical Space activates controls','checked state propagated','widget row role/context/read order and keyboard selection','removed widget restores focus','Overview group Return and AT-SPI dispatch exact fresh intents','Overview dialog returns focus to opener','session dialog role/context/read order and disabled waiting action','keyboard session cancellation without host action','notification primary and stack actions work through AT-SPI and keyboard','launcher toolbar toggles expose checkbox state and accept keyboard and assistive actions','disabled application provider blocks grid action','Escape closes launcher from toolbar focus']+full_checks),indent=2))
     print(out/'result.json')
 finally:
     for proc in reversed(processes):

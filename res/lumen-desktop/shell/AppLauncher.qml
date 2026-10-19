@@ -4,6 +4,7 @@ import Quickshell
 PanelSurface {
     id: root
     required property var shell
+    Keys.onEscapePressed:root.closeRequested()
     signal closeRequested()
     readonly property var disabledProviders: Theme.searchPreferences.disabledProviders || []
     readonly property var providerChoices: ["All","Applications","Files","Actions","Clipboard"].filter(name=>name==="All" || !disabledProviders.includes(name.toLowerCase()))
@@ -169,17 +170,19 @@ PanelSurface {
             }
         }
         Row {anchors.right:parent.right;anchors.rightMargin:18;spacing:4
-            Rectangle {
-                width:28;height:25;radius:6;color:root.previewOpen?Theme.selection:"transparent"
-                SystemGlyph {anchors.centerIn:parent;name:"info";width:16;height:16}
-                MouseArea {anchors.fill:parent;onClicked:{root.previewOpen=!root.previewOpen;search.forceActiveFocus();}}
-                Accessible.name:"Toggle preview"
+            AbstractButton {
+                width:28;height:25;leftPadding:6;rightPadding:6;topPadding:4.5;bottomPadding:4.5;checkable:true;checked:root.previewOpen
+                contentItem:SystemGlyph {name:"info";width:16;height:16;Accessible.ignored:true}
+                background:Rectangle {radius:6;color:root.previewOpen?Theme.selection:"transparent";border.width:parent.activeFocus?2:0;border.color:Theme.colors.accent}
+                onClicked:root.previewOpen=!root.previewOpen
+                Accessible.name:"Toggle preview";Accessible.role:Accessible.CheckBox
             }
-            Rectangle {
-                width:28;height:25;radius:6;color:root.gridMode?Theme.selection:"transparent"
-                SystemGlyph {anchors.centerIn:parent;name:root.gridMode?"list":"grid";width:16;height:16}
-                MouseArea {anchors.fill:parent;onClicked:{if(root.providerEnabled("Applications")){root.provider="Applications";root.gridMode=!root.gridMode;}search.forceActiveFocus();}}
-                Accessible.name:root.gridMode?"List view":"Application grid"
+            AbstractButton {
+                width:28;height:25;leftPadding:6;rightPadding:6;topPadding:4.5;bottomPadding:4.5;checkable:true;checked:root.gridMode;enabled:root.providerEnabled("Applications")
+                contentItem:SystemGlyph {name:root.gridMode?"list":"grid";width:16;height:16;Accessible.ignored:true}
+                background:Rectangle {radius:6;color:root.gridMode?Theme.selection:"transparent";border.width:parent.activeFocus?2:0;border.color:Theme.colors.accent}
+                onClicked:{if(root.providerEnabled("Applications")){root.provider="Applications";root.gridMode=!root.gridMode;}}
+                Accessible.name:"Application grid";Accessible.role:Accessible.CheckBox
             }
         }
     }
