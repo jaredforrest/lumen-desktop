@@ -1,0 +1,309 @@
+{
+  "version": 1,
+  "bindings": [
+    {
+      "id": "default.1",
+      "action": "shell.app_switcher",
+      "chord": "Mod4+Tab",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Desktop menu or corresponding control"
+    },
+    {
+      "id": "default.2",
+      "action": "shell.app_switcher.reverse",
+      "chord": "Mod4+Shift+Tab",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Desktop menu or corresponding control"
+    },
+    {
+      "id": "default.3",
+      "action": "shell.app_switcher.commit",
+      "chord": "--release Super_L",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Desktop menu or corresponding control"
+    },
+    {
+      "id": "default.4",
+      "action": "shell.app_switcher.commit",
+      "chord": "--release Super_R",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Desktop menu or corresponding control"
+    },
+    {
+      "id": "default.5",
+      "action": "spaces.switch-previous",
+      "chord": "Control+Left",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Desktop menu or corresponding control"
+    },
+    {
+      "id": "default.6",
+      "action": "spaces.switch-next",
+      "chord": "Control+Right",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Desktop menu or corresponding control"
+    },
+    {
+      "id": "default.7",
+      "action": "shell.overview",
+      "chord": "Control+Up",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Desktop menu or corresponding control"
+    },
+    {
+      "id": "default.8",
+      "action": "shell.app_windows",
+      "chord": "Control+Down",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Desktop menu or corresponding control"
+    },
+    {
+      "id": "default.9",
+      "action": "shell.dock_focus",
+      "chord": "Mod4+Control+Shift+d",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Desktop menu or corresponding control"
+    },
+    {
+      "id": "default.10",
+      "action": "shell.notification_centre.toggle",
+      "chord": "Mod4+Control+Shift+n",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Desktop menu or corresponding control"
+    },
+    {
+      "id": "default.11",
+      "action": "shell.control_centre.toggle",
+      "chord": "Mod4+Control+Shift+c",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Desktop menu or corresponding control"
+    },
+    {
+      "id": "default.12",
+      "action": "shell.show_desktop",
+      "chord": "Mod4+Control+d",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Desktop menu or corresponding control"
+    },
+    {
+      "id": "default.13",
+      "action": "window.layout_menu",
+      "chord": "Mod4+Control+l",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Desktop menu or corresponding control"
+    },
+    {
+      "id": "default.14",
+      "action": "shell.window_next",
+      "chord": "Mod4+grave",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Desktop menu or corresponding control"
+    },
+    {
+      "id": "default.15",
+      "action": "shell.window_previous",
+      "chord": "Mod4+Shift+grave",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Desktop menu or corresponding control"
+    },
+    {
+      "id": "default.16",
+      "action": "shell.text_tools",
+      "chord": "Mod4+Mod1+t",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Desktop menu or corresponding control"
+    },
+    {
+      "id": "default.17",
+      "action": "shell.notification_centre.toggle",
+      "chord": "Mod4+n",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Desktop menu or corresponding control"
+    },
+    {
+      "id": "default.18",
+      "action": "shell.dock_focus",
+      "chord": "Control+F3",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Desktop menu or corresponding control"
+    },
+    {
+      "id": "default.19",
+      "action": "audio.key.up",
+      "chord": "XF86AudioRaiseVolume",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Desktop menu or corresponding control"
+    },
+    {
+      "id": "default.20",
+      "action": "audio.key.down",
+      "chord": "XF86AudioLowerVolume",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Desktop menu or corresponding control"
+    },
+    {
+      "id": "default.21",
+      "action": "audio.key.mute",
+      "chord": "XF86AudioMute",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Desktop menu or corresponding control"
+    },
+    {
+      "id": "default.22",
+      "action": "media.key.play-pause",
+      "chord": "XF86AudioPlay",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Desktop menu or corresponding control"
+    },
+    {
+      "id": "default.23",
+      "action": "media.key.next",
+      "chord": "XF86AudioNext",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Desktop menu or corresponding control"
+    },
+    {
+      "id": "default.24",
+      "action": "media.key.previous",
+      "chord": "XF86AudioPrev",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Desktop menu or corresponding control"
+    },
+    {
+      "id": "application.slot.1",
+      "action": "application.command_slot.1",
+      "chord": "Mod4+Mod1+F1",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Text Tools > Shortcuts"
+    },
+    {
+      "id": "application.slot.2",
+      "action": "application.command_slot.2",
+      "chord": "Mod4+Mod1+F2",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Text Tools > Shortcuts"
+    },
+    {
+      "id": "application.slot.3",
+      "action": "application.command_slot.3",
+      "chord": "Mod4+Mod1+F3",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Text Tools > Shortcuts"
+    },
+    {
+      "id": "application.slot.4",
+      "action": "application.command_slot.4",
+      "chord": "Mod4+Mod1+F4",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Text Tools > Shortcuts"
+    },
+    {
+      "id": "application.slot.5",
+      "action": "application.command_slot.5",
+      "chord": "Mod4+Mod1+F5",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Text Tools > Shortcuts"
+    },
+    {
+      "id": "application.slot.6",
+      "action": "application.command_slot.6",
+      "chord": "Mod4+Mod1+F6",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Text Tools > Shortcuts"
+    },
+    {
+      "id": "application.slot.7",
+      "action": "application.command_slot.7",
+      "chord": "Mod4+Mod1+F7",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Text Tools > Shortcuts"
+    },
+    {
+      "id": "application.slot.8",
+      "action": "application.command_slot.8",
+      "chord": "Mod4+Mod1+F8",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Text Tools > Shortcuts"
+    },
+    {
+      "id": "application.slot.9",
+      "action": "application.command_slot.9",
+      "chord": "Mod4+Mod1+F9",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Text Tools > Shortcuts"
+    },
+    {
+      "id": "application.slot.10",
+      "action": "application.command_slot.10",
+      "chord": "Mod4+Mod1+F10",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Text Tools > Shortcuts"
+    },
+    {
+      "id": "application.slot.11",
+      "action": "application.command_slot.11",
+      "chord": "Mod4+Mod1+F11",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Text Tools > Shortcuts"
+    },
+    {
+      "id": "application.slot.12",
+      "action": "application.command_slot.12",
+      "chord": "Mod4+Mod1+F12",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Text Tools > Shortcuts"
+    },
+    {
+      "id": "window.fill",
+      "action": "window.fill",
+      "chord": "Mod4+Control+Shift+f",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Window layout menu > Fill"
+    },
+    {
+      "id": "window.fullscreen.toggle",
+      "action": "window.fullscreen.toggle",
+      "chord": "Mod4+Control+f",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Window menu or green window control"
+    }
+  ]
+}

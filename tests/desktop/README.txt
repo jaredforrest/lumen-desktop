@@ -105,3 +105,21 @@ is insufficient. The test closes each fixture before the next capture, rejects
 blank interiors from measured pixels, and rejects QML binding/image errors.
 Screenshots and result.json are acceptance evidence for software rendering,
 not a claim of reference-platform visual equivalence or hardware rendering.
+
+Semantic palette and typography acceptance:
+  nix build .#test-typography --out-link /tmp/lumen-type-probe
+  nix build .#shell --out-link /tmp/lumen-type-shell
+  nix develop --command desktop-test-python tests/desktop/typography_corpus.py --launcher /tmp/lumen-type-shell/bin/lumen-desktop-shell --probe /tmp/lumen-type-probe/bin/typography-probe --output /tmp/lumen-type-corpus
+The probe compiles with warnings as errors and uses declared distributable
+Interlude, DejaVu, FreeFont and Noto Emoji fonts, independent of host font dirs.
+It records actual Qt glyph-run family ownership, missing glyphs, shaped tabular
+advances, and painted light/dark 1x/2x cases. Ordinary digits/text presentation
+must not select Emoji; explicit emoji sequences must select the emoji font.
+It does not certify reference font metrics or private consumer overrides.
+  nix develop --command desktop-test-python tests/desktop/test_semantic_palette.py
+  nix develop --command desktop-test-python tests/desktop/test_semantic_states_qml.py
+  nix develop --command desktop-test-python tests/desktop/live_appearance.py --launcher /tmp/lumen-type-shell/bin/lumen-desktop-shell --sway /path/to/compositor/bin/sway --output /tmp/lumen-live-appearance
+Live appearance tests keep six real owned windows mapped through atomic
+light/dark/light file changes, verify stable native window ID/geometry and
+reject stale palette rectangles from screenshot pixels. No real session input,
+files, accounts or system actions are used by these fixtures.

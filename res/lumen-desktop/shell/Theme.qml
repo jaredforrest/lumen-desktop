@@ -11,7 +11,7 @@ Singleton {
     property var notificationsPreferences: ({preview:"always"})
     property var searchPreferences: ({disabledProviders:[]})
     property string font: "Interlude Variable"
-    property var colors: ({background:"#f2f2f4",surface:"#ffffff",field:"#e5e5e8",text:"#202023",muted:"#6b6b70",border:"#c8c8ce",hover:"#dedee3",accent:"#007aff",selectedText:"#ffffff"})
+    property var colors: ({background:"#f2f2f4",surface:"#ffffff",field:"#e5e5e8",text:"#202023",muted:"#626267",border:"#c8c8ce",hover:"#dedee3",accent:"#007aff",selectedText:"#000000"})
     readonly property color backgroundTone: colors.background
     readonly property bool dark: backgroundTone.hslLightness < 0.5
     readonly property string iconAppearance: preferences.iconAppearance || "auto"

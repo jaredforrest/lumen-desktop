@@ -49,6 +49,15 @@ def valid(key,value):
             key=='accent' and isinstance(value,str) and value in ACCENTS or
             key in ('switchToAppSpace','dockMagnification','reduceMotion','reduceTransparency','increaseContrast','dockRecentApps','dockIndicators','dockAutoHide') and type(value) is bool)
 
+def luminance(color):
+    channels=[int(color[i:i+2],16)/255 for i in (1,3,5)]
+    linear=[value/12.92 if value<=.04045 else ((value+.055)/1.055)**2.4 for value in channels]
+    return sum(value*weight for value,weight in zip(linear,(.2126,.7152,.0722)))
+
+def contrast(first,second):
+    low,high=sorted((luminance(first),luminance(second)))
+    return (high+.05)/(low+.05)
+
 def resolve_palette(palettes,mode,prefs):
     """Semantic foregrounds and boundaries shared by all owned surfaces."""
     colors=dict(palettes[mode])
@@ -58,6 +67,8 @@ def resolve_palette(palettes,mode,prefs):
         colors.update(text='#ffffff' if mode=='dark' else '#000000',
                       muted='#e0e0e0' if mode=='dark' else '#393939',
                       border='#a8a8ac' if mode=='dark' else '#626266')
+    if contrast(colors['selectedText'],colors['accent'])<4.5:
+        colors['selectedText']=max(('#ffffff','#000000'),key=lambda foreground:contrast(foreground,colors['accent']))
     return colors
 
 def valid_desktop(key,value):

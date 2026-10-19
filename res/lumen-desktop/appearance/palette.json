@@ -1,5 +1,5 @@
 {
   "font": "Interlude Variable",
-  "light": {"background":"#f2f2f4","surface":"#ffffff","field":"#e5e5e8","text":"#202023","muted":"#6b6b70","border":"#c8c8ce","hover":"#dedee3","accent":"#007aff","selectedText":"#ffffff"},
-  "dark": {"background":"#28282b","surface":"#343437","field":"#1e1e21","text":"#f5f5f7","muted":"#aeaeb5","border":"#55555b","hover":"#45454b","accent":"#0a84ff","selectedText":"#ffffff"}
+  "light": {"background":"#f2f2f4","surface":"#ffffff","field":"#e5e5e8","text":"#202023","muted":"#626267","border":"#c8c8ce","hover":"#dedee3","accent":"#007aff","selectedText":"#000000"},
+  "dark": {"background":"#28282b","surface":"#343437","field":"#1e1e21","text":"#f5f5f7","muted":"#b3b3ba","border":"#55555b","hover":"#45454b","accent":"#0a84ff","selectedText":"#000000"}
 }

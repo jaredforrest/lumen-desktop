@@ -2,6 +2,9 @@ name: Checks
 on: [push, pull_request]
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   contracts-and-units:
     runs-on: ubuntu-latest
@@ -27,8 +30,12 @@ jobs:
           mkdir -p artifacts
           nix build .#compositor --out-link artifacts/compositor-effects --option abort-on-warn true
           nix build .#shell-runtime --out-link artifacts/shell-runtime --option abort-on-warn true
+          nix build .#test-typography --out-link artifacts/typography-probe --option abort-on-warn true
+          nix develop --command desktop-test-python tests/desktop/typography_corpus.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --probe "$PWD/artifacts/typography-probe/bin/typography-probe" --output artifacts/typography
           nix build .#compositor-basic --out-link artifacts/compositor --option abort-on-warn true
+          nix develop --command desktop-test-python tests/desktop/live_appearance.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/live-appearance
           LUMEN_TEST_SHELL_LAUNCHER="$PWD/artifacts/shell-package/bin/lumen-desktop-shell" LUMEN_TEST_COMPOSITOR="$PWD/artifacts/compositor/bin/sway" nix develop --command desktop-test-python tests/desktop/window_layout_menu_qml.py
+          nix develop --command desktop-test-python tests/desktop/window_overview_lifecycle.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/overview-lifecycle
           nix develop --command desktop-test-python tests/desktop/smoke_installed.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/shell
       - run: |
           nix build .#test-pointer --out-link artifacts/pointer --option abort-on-warn true
@@ -63,5 +70,8 @@ jobs:
             artifacts/edge-layouts
             artifacts/file-drag
             artifacts/surfaces-*
+            artifacts/typography
+            artifacts/live-appearance
             artifacts/spaces
+            artifacts/overview-lifecycle
             artifacts/network-provider.log

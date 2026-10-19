@@ -16,6 +16,34 @@ in {
     user = lib.mkOption { type = lib.types.str; description = "Desktop login user."; };
     displayName = lib.mkOption { type = lib.types.str; default = cfg.user; description = "Name shown by the greeter and lock screen."; };
     settingsPackage = lib.mkOption { type = lib.types.package; description = "Host settings command implementing the settings JSON contract."; };
+    shortcuts = {
+      applicationBindings = lib.mkOption {
+        default = [];
+        description = "Selected application adapter shortcuts used for overlap validation; does not rewrite application input.";
+        type = lib.types.listOf (lib.types.submodule {
+          options = {
+            id = lib.mkOption { type = lib.types.str; };
+            action = lib.mkOption { type = lib.types.str; };
+            chord = lib.mkOption { type = lib.types.str; };
+            appId = lib.mkOption { type = lib.types.str; description = "Exact application identity for this adapter."; };
+            mode = lib.mkOption { type = lib.types.str; default = "default"; };
+            enabled = lib.mkOption { type = lib.types.bool; default = true; };
+          };
+        });
+      };
+      reservedBindings = lib.mkOption {
+        default = [];
+        description = "Consumer reservations, including security shortcuts. Any overlapping active binding fails validation.";
+        type = lib.types.listOf (lib.types.submodule {
+          options = {
+            id = lib.mkOption { type = lib.types.str; };
+            action = lib.mkOption { type = lib.types.str; };
+            chord = lib.mkOption { type = lib.types.str; };
+            mode = lib.mkOption { type = lib.types.str; default = "default"; };
+          };
+        });
+      };
+    };
     appearance = {
       icons = lib.mkOption { type = lib.types.nullOr lib.types.path; default = null; description = "Optional icon directory; supplied by the consumer, never bundled by this module."; };
       brandMark = lib.mkOption { type = lib.types.nullOr lib.types.path; default = null; };
@@ -77,6 +105,52 @@ in {
       rofiPackage = config.programs.rofi.package;
     };
     inherit (session) hotCorners spaces networkLocations quickshell nixSettings appearance qtTheme qtTheme5 palette menuRuntime personalServices fileClipboard displayLayout fileOperations focusWindow desktopState clipboardHistory launchApp shellLauncher audioKey mediaKey notifications menuCommand desktopDoctor desktopAction appLauncher filesLauncher remoteDesktopLauncher calendarLauncher settingsLauncher;
+    desktopKeybindings = {
+      "Mod4+Tab" = "exec ${desktopAction}/bin/lumen-desktop-action app-switcher";
+      "Mod4+Shift+Tab" = "exec ${desktopAction}/bin/lumen-desktop-action app-switcher-reverse";
+      "--release Super_L" = "exec ${desktopAction}/bin/lumen-desktop-action app-switcher-commit";
+      "--release Super_R" = "exec ${desktopAction}/bin/lumen-desktop-action app-switcher-commit";
+      "Control+Left" = "exec ${spaces}/bin/lumen-spaces switch previous";
+      "Control+Right" = "exec ${spaces}/bin/lumen-spaces switch next";
+      "Control+Up" = "exec ${desktopAction}/bin/lumen-desktop-action overview";
+      "Control+Down" = "exec ${desktopAction}/bin/lumen-desktop-action app-windows";
+      "Mod4+Control+Shift+d" = "exec ${desktopAction}/bin/lumen-desktop-action dock";
+      "Mod4+Control+Shift+n" = "exec ${desktopAction}/bin/lumen-desktop-action notifications-toggle";
+      "Mod4+Control+Shift+c" = "exec ${desktopAction}/bin/lumen-desktop-action controls";
+      "Mod4+Control+Shift+f" = "exec ${hostSwayPackage}/bin/swaymsg lumen_window fill";
+      "Mod4+Control+d" = "exec ${desktopAction}/bin/lumen-desktop-action show-desktop";
+      "Mod4+Control+l" = "exec ${desktopAction}/bin/lumen-desktop-action window-layout";
+      "Mod4+Control+f" = "exec ${hostSwayPackage}/bin/swaymsg fullscreen toggle";
+      "Mod4+grave" = "exec ${desktopAction}/bin/lumen-desktop-action window-next";
+      "Mod4+Shift+grave" = "exec ${desktopAction}/bin/lumen-desktop-action window-previous";
+      "Mod4+Mod1+t" = "exec ${desktopAction}/bin/lumen-desktop-action text-tools";
+      "Mod4+n" = "exec ${desktopAction}/bin/lumen-desktop-action notifications-toggle";
+      "Control+F3" = "exec ${desktopAction}/bin/lumen-desktop-action dock";
+      "XF86AudioRaiseVolume" = "exec ${audioKey}/bin/lumen-audio-key up";
+      "XF86AudioLowerVolume" = "exec ${audioKey}/bin/lumen-audio-key down";
+      "XF86AudioMute" = "exec ${audioKey}/bin/lumen-audio-key mute";
+      "XF86AudioPlay" = "exec ${mediaKey}/bin/lumen-media-key play-pause";
+      "XF86AudioNext" = "exec ${mediaKey}/bin/lumen-media-key next";
+      "XF86AudioPrev" = "exec ${mediaKey}/bin/lumen-media-key previous";
+    } // builtins.listToAttrs (map (n: { name = "Mod4+Mod1+F${toString n}"; value = "exec ${menuCommand}/bin/lumen-menu-command slot ${toString n}"; }) (lib.range 1 12));
+    shortcutDefaults = (builtins.fromJSON (builtins.readFile ../res/lumen-desktop/runtime/shortcut-defaults.json)).bindings;
+    effectiveShortcutBindings = lib.mapAttrsToList (key: command:
+      let known = lib.findFirst (item: item.chord == key) null shortcutDefaults;
+          owned = builtins.hasAttr key desktopKeybindings && command == desktopKeybindings.${key};
+      in { id = "sway:" + key; chord = key; scope = "global";
+        action = if owned && known != null then known.action else "consumer.binding";
+        owner = if owned then "desktop" else "consumer";
+        fallback = if owned && known != null then known.fallback else "Consumer-defined binding";
+      }) (lib.filterAttrs (_: command: command != null) config.wayland.windowManager.sway.config.keybindings);
+    shortcutRegistryInput = pkgs.writeText "lumen-shortcut-declarations.json" (builtins.toJSON {
+      version = 1;
+      bindings = effectiveShortcutBindings ++ map (item: item // { scope = "application"; owner = "application-adapter"; }) cfg.shortcuts.applicationBindings
+        ++ map (item: item // { scope = "global"; owner = "reserved"; }) cfg.shortcuts.reservedBindings;
+    });
+    shortcutRegistry = pkgs.runCommand "lumen-effective-shortcuts.json" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+      python3 ${../res/lumen-desktop/runtime/shortcuts.py} ${../res/lumen-desktop/runtime/shortcut-defaults.json} > /dev/null
+      python3 ${../res/lumen-desktop/runtime/shortcuts.py} ${shortcutRegistryInput} --output "$out"
+    '';
   in {
     # Session UI only: the consumer retains all authentication policy.
     wayland.windowManager.sway.config.startup = lib.optionals cfg.integrations.authorization.enable [
@@ -163,34 +237,11 @@ in {
       terminal = false;
     };
     xdg.configFile."foot/foot.ini".source = "${assets}/foot.ini";
-    wayland.windowManager.sway.config.keybindings = lib.mkOptionDefault ({
-      "Mod4+Tab" = "exec ${desktopAction}/bin/lumen-desktop-action app-switcher";
-      "Mod4+Shift+Tab" = "exec ${desktopAction}/bin/lumen-desktop-action app-switcher-reverse";
-      "--release Super_L" = "exec ${desktopAction}/bin/lumen-desktop-action app-switcher-commit";
-      "--release Super_R" = "exec ${desktopAction}/bin/lumen-desktop-action app-switcher-commit";
-      "Control+Left" = "exec ${spaces}/bin/lumen-spaces switch previous";
-      "Control+Right" = "exec ${spaces}/bin/lumen-spaces switch next";
-      "Control+Up" = "exec ${desktopAction}/bin/lumen-desktop-action overview";
-      "Control+Down" = "exec ${desktopAction}/bin/lumen-desktop-action app-windows";
-      "Mod4+Control+Shift+d" = "exec ${desktopAction}/bin/lumen-desktop-action dock";
-      "Mod4+Control+Shift+n" = "exec ${desktopAction}/bin/lumen-desktop-action notifications-toggle";
-      "Mod4+Control+Shift+c" = "exec ${desktopAction}/bin/lumen-desktop-action controls";
-      "Mod4+Control+Shift+f" = "exec ${hostSwayPackage}/bin/swaymsg lumen_window fill";
-      "Mod4+Control+d" = "exec ${desktopAction}/bin/lumen-desktop-action show-desktop";
-      "Mod4+Control+l" = "exec ${desktopAction}/bin/lumen-desktop-action window-layout";
-      "Mod4+Control+f" = "exec ${hostSwayPackage}/bin/swaymsg fullscreen toggle";
-      "Mod4+grave" = "exec ${desktopAction}/bin/lumen-desktop-action window-next";
-      "Mod4+Shift+grave" = "exec ${desktopAction}/bin/lumen-desktop-action window-previous";
-      "Mod4+Mod1+t" = "exec ${desktopAction}/bin/lumen-desktop-action text-tools";
-      "Mod4+n" = lib.mkForce "exec ${desktopAction}/bin/lumen-desktop-action notifications-toggle";
-      "Control+F3" = "exec ${desktopAction}/bin/lumen-desktop-action dock";
-      "XF86AudioRaiseVolume" = "exec ${audioKey}/bin/lumen-audio-key up";
-      "XF86AudioLowerVolume" = "exec ${audioKey}/bin/lumen-audio-key down";
-      "XF86AudioMute" = "exec ${audioKey}/bin/lumen-audio-key mute";
-      "XF86AudioPlay" = "exec ${mediaKey}/bin/lumen-media-key play-pause";
-      "XF86AudioNext" = "exec ${mediaKey}/bin/lumen-media-key next";
-      "XF86AudioPrev" = "exec ${mediaKey}/bin/lumen-media-key previous";
-    } // builtins.listToAttrs (map (n: { name = "Mod4+Mod1+F${toString n}"; value = "exec ${menuCommand}/bin/lumen-menu-command slot ${toString n}"; }) (lib.range 1 12)));
+    wayland.windowManager.sway.config.keybindings = lib.mkOptionDefault (desktopKeybindings // {
+      "Mod4+n" = lib.mkForce desktopKeybindings."Mod4+n";
+    });
+    xdg.configFile."lumen-desktop/shortcuts.json".source = shortcutRegistry;
+
     # Use HM's Qt plugin discovery, but let the patched adapter choose its style
     # dynamically. HM's gnome preset requires a static QT_STYLE_OVERRIDE.
     qt.enable = true;

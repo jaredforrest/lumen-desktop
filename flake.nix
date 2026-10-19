@@ -38,6 +38,7 @@
         test-network-provider = pkgs.gvfs;
         test-session-lock = import ./tests/desktop/session_lock_driver.nix { inherit pkgs; };
         test-constraint-client = import ./tests/desktop/constraint_client.nix { inherit pkgs; };
+        test-typography = import ./tests/desktop/typography_probe.nix { inherit pkgs; };
         shell-runtime = quickshell;
         test-pointer = import ./tests/desktop/pointer_driver.nix { inherit pkgs; };
         inherit (office) wordcraft gridcraft deckcraft;
@@ -45,6 +46,7 @@
         prism = import ./packages/prism-nix-profile.nix { inherit pkgs profileBridge; };
       };
       checks.${system} = {
+        shortcut-registry = import ./tests/project/shortcuts.nix { inherit nixpkgs system; };
         javascript-models = pkgs.runCommand "lumen-javascript-models" { nativeBuildInputs = [ pkgs.nodejs ]; } ''
           cd ${self}
           for test in ${self}/tests/desktop/test_*.cjs; do
