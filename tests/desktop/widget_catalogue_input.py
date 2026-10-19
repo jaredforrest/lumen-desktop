@@ -28,6 +28,7 @@ ShellRoot {
  property int activations:0
  property int backgroundClicks:0
  property var captured:null
+ property var capturedEditor:null
  property alias widgetService:widgets
  D.WidgetState {id:widgets}
  QtObject {id:menu;property var state:({windowId:0})}
@@ -45,10 +46,10 @@ ShellRoot {
  }
  function find(item,name){if(item.objectName===name)return item;for(const child of item.children || []){const result=find(child,name);if(result)return result;}return null;}
  IpcHandler {target:"widgetAudit"
-  function state():string{return JSON.stringify({preferences:widgets.preferences,error:widgets.error,outputs:Object.keys(stub.widgetSurfaces).filter(name=>stub.widgetSurfaces[name]).map(name=>({name:name,items:stub.widgetSurfaces[name].status()})),activations:fixture.activations,background:fixture.backgroundClicks,same:!fixture.captured || widgets.desktopItems.length>0 && stub.widgetSurfaces["HEADLESS-1"].findWidget(widgets.desktopItems[0].id)===fixture.captured});}
+  function state():string{return JSON.stringify({preferences:widgets.preferences,error:widgets.error,outputs:Object.keys(stub.widgetSurfaces).filter(name=>stub.widgetSurfaces[name]).map(name=>({name:name,items:stub.widgetSurfaces[name].status()})),activations:fixture.activations,background:fixture.backgroundClicks,sameEditor:!fixture.capturedEditor || find(body,"widget-size-"+widgets.desktopItems[0].id)===fixture.capturedEditor,same:!fixture.captured || widgets.desktopItems.length>0 && stub.widgetSurfaces["HEADLESS-1"].findWidget(widgets.desktopItems[0].id)===fixture.captured});}
   function point(name:string):string{const item=find(body,name);if(!item)throw Error("Missing "+name);const p=item.mapToItem(body,item.width/2,item.height/2);return JSON.stringify({x:p.x,y:p.y});}
   function widgetPoint(name:string):string{const card=stub.widgetSurfaces["HEADLESS-1"].findWidget(widgets.desktopItems[0].id);const target=find(card,name);if(!target)throw Error("Missing widget control "+name);const p=target.mapToItem(card,target.width/2,target.height/2);return JSON.stringify({x:card.x+p.x,y:card.y+p.y});}
-  function capture():void{fixture.captured=stub.widgetSurfaces["HEADLESS-1"].findWidget(widgets.desktopItems[0].id);}
+  function capture():void{fixture.capturedEditor=find(body,"widget-size-"+widgets.desktopItems[0].id);fixture.captured=stub.widgetSurfaces["HEADLESS-1"].findWidget(widgets.desktopItems[0].id);}
  }
 }''')
 processes=[]
@@ -93,7 +94,7 @@ try:
  clock=card();start=(clock['x']+clock['width']-25,clock['y']+14);move(*start);command('p');move(start[0]+100,start[1]+60);command('r');wait(lambda:'HEADLESS-1' in item()['positions']);assert 'HEADLESS-2' not in item()['positions'];assert state()['same'];checks.append('Pointer release saves only the touched display without recreating the widget')
  original=dict(item()['positions']['HEADLESS-1']);key('-k','space','-k','Right','-k','Escape');assert item()['positions']['HEADLESS-1']==original
  key('-k','space','-k','Right','-k','Return');wait(lambda:item()['positions']['HEADLESS-1']['x']>original['x']);checks.append('Keyboard move previews cancel or commit against the same captured instance')
- identifier=item()['id'];click(point('widget-size-'+identifier));key('-k','Home','-k','Return');wait(lambda:item()['size']=='small' and card()['width']==214);assert state()['same'];checks.append('Size control updates both surfaces while preserving component identity')
+ identifier=item()['id'];click(point('widget-size-'+identifier));key('-k','Home','-k','Return');wait(lambda:item()['size']=='small' and card()['width']==214);assert state()['same'] and state()['sameEditor'];checks.append('Size control updates both surfaces while preserving component identity')
  call('grim',str(out/('widgets-'+a.theme+'.png')))
  saved=dict(item());os.killpg(shell.pid,signal.SIGTERM);shell.wait(timeout=5);shell=launch(['quickshell','-p',str(qml)],'shell-restart.log');wait(lambda:state()['preferences'].get('desktopItems') and item()['id']==saved['id']);assert item()==saved;checks.append('Restart restores the exact instance, size and independent positions')
  click(point('widget-remove-'+identifier));wait(lambda:state()['preferences']['desktopItems']==[] and all(not output['items'] for output in state()['outputs']));checks.append('Removing the last instance preserves an explicitly empty layout')

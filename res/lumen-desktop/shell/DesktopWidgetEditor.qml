@@ -1,9 +1,25 @@
 import QtQuick
+import QtQml.Models
 import Quickshell
 Column {
     id:root
     required property var service
     width:300;spacing:10
+    property bool initialized:false
+    readonly property var items:service.desktopItems
+    function syncItems(){
+        const ids=items.map(item=>item.id);
+        for(let i=stable.count-1;i>=0;i--)if(!ids.includes(stable.get(i).widget.id))stable.remove(i);
+        for(let index=0;index<items.length;index++){
+            let previous=-1;
+            for(let i=index;i<stable.count;i++)if(stable.get(i).widget.id===items[index].id){previous=i;break;}
+            if(previous<0)stable.insert(index,{widget:items[index]});
+            else {if(previous!==index)stable.move(previous,index,1);if(JSON.stringify(stable.get(index).widget)!==JSON.stringify(items[index]))stable.setProperty(index,"widget",items[index]);}
+        }
+    }
+    onItemsChanged:if(initialized)syncItems()
+    Component.onCompleted:{initialized=true;syncItems();}
+    ListModel {id:stable;dynamicRoles:true}
     readonly property var displays:[{key:"*",label:"Every display"}].concat(Quickshell.screens.map(screen=>({key:screen.name,label:screen.name})))
     PanelLabel {width:parent.width;text:"Desktop widget catalogue";font.weight:Font.DemiBold}
     PanelLabel {width:parent.width;text:"Calendar and local time widgets. Right-click a desktop widget to return here. Move its handle by pointer or keyboard.";wrapMode:Text.Wrap;color:Theme.colors.muted;font.pixelSize:Theme.textSize(11)}
@@ -11,9 +27,9 @@ Column {
         DialogButton {objectName:"widget-add-calendar";text:"Add Calendar";enabled:root.service.desktopItems.length<16;onClicked:root.service.addWidget("calendar")}
         DialogButton {objectName:"widget-add-clock";text:"Add Local Time";enabled:root.service.desktopItems.length<16;onClicked:root.service.addWidget("clock")}
     }
-    Repeater {model:root.service.desktopItems
+    Repeater {model:stable
         delegate:PanelSurface {
-            id:row;required property var modelData;required property int index
+            id:row;required property var widget;readonly property var modelData:widget;required property int index
             width:root.width;implicitHeight:form.height+20;radius:10
             readonly property var outputChoices:root.displays.some(display=>display.key===modelData.output)?root.displays:root.displays.concat([{key:modelData.output,label:modelData.output+" (disconnected)"}])
             Column {id:form;x:10;y:10;width:parent.width-20;spacing:7
