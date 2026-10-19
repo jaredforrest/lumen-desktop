@@ -96,7 +96,7 @@
 +#include <wlr/types/wlr_xdg_dialog_v1.h>
 +#include "sway/server.h"
  #include <wlr/util/edges.h>
-@@ -21,1 +23,56 @@
+@@ -21,1 +23,72 @@
 +static void lumen_relationship_changed(struct sway_view *view) {
 +	if (!view || !view->surface || !view->container) return;
 +	if (view->container->pending.workspace) arrange_workspace(view->container->pending.workspace);
@@ -139,11 +139,27 @@
 +	wl_signal_add(&dialog->events.destroy, &watch->destroy);
 +}
 +
++struct lumen_dialog_manager_watch {
++	struct wl_listener new_dialog;
++	struct wl_listener destroy;
++};
++
++static void lumen_dialog_manager_destroy(struct wl_listener *listener, void *data) {
++	(void)data;
++	struct lumen_dialog_manager_watch *watch = wl_container_of(listener, watch, destroy);
++	wl_list_remove(&watch->new_dialog.link);
++	wl_list_remove(&watch->destroy.link);
++	free(watch);
++}
++
 +void lumen_xdg_dialog_init(struct wl_display *display) {
 +	struct wlr_xdg_wm_dialog_v1 *manager = wlr_xdg_wm_dialog_v1_create(display, 1);
-+	static struct wl_listener new_dialog;
-+	new_dialog.notify = lumen_new_dialog;
-+	wl_signal_add(&manager->events.new_dialog, &new_dialog);
++	struct lumen_dialog_manager_watch *watch = calloc(1, sizeof(*watch));
++	if (!watch) return;
++	watch->new_dialog.notify = lumen_new_dialog;
++	watch->destroy.notify = lumen_dialog_manager_destroy;
++	wl_signal_add(&manager->events.new_dialog, &watch->new_dialog);
++	wl_signal_add(&manager->events.destroy, &watch->destroy);
 +}
 +
 +static void lumen_set_parent(struct wl_listener *listener, void *data) {
