@@ -124,12 +124,29 @@ def drag(start,dx,dy=0,cancel=False):
     if cancel:
         snapshots=[state()];key('-k','Escape');snapshots.append(state());command('m 8 0');snapshots.append(state());(out/'cancellation-state.json').write_text(json.dumps(snapshots,indent=2))
     command('r')
+def capture_until(name,probe):
+    # Logical state can precede presentation independently on each output.
+    def painted():
+        call('grim',str(out/name))
+        with Image.open(out/name) as source:image=source.convert('RGB')
+        mismatches=probe(image)
+        (out/(Path(name).stem+'-pixels.json')).write_text(json.dumps(mismatches,indent=2))
+        return not mismatches
+    wait(painted)
+
+def clock_painted(image):
+    rect=json.loads(ipc('geometry','clock-large','HEADLESS-2','widget-clock-content'))
+    area=(round(rect['x']+12),round(rect['y']+8),round(rect['x']+rect['width']-12),round(rect['y']+65))
+    variation=max(ImageStat.Stat(image.crop(area)).stddev)
+    return [] if variation>10 else [dict(output='HEADLESS-2',clockTextVariation=variation,minimum=10)]
+
 def colour_capture(name,coloured):
     rect=json.loads(ipc('geometry','calendar-medium','HEADLESS-1','calendar-day-2026-11-01'))
-    def painted():
-        call('grim',str(out/name));image=Image.open(out/name).convert('RGB');pixel=image.getpixel((round(rect['x']+rect['width']/2-7),round(rect['y']+(rect['height']-4)/2)))
-        return (pixel[0]>pixel[1]+40 and pixel[0]>pixel[2]+40) if coloured else max(pixel)-min(pixel)<30
-    wait(painted)
+    def probe(image):
+        pixel=image.getpixel((round(rect['x']+rect['width']/2-7),round(rect['y']+(rect['height']-4)/2)))
+        matches=(pixel[0]>pixel[1]+40 and pixel[0]>pixel[2]+40) if coloured else max(pixel)-min(pixel)<30
+        return ([] if matches else [dict(output='HEADLESS-1',calendarPixel=pixel,coloured=coloured)])+clock_painted(image)
+    capture_until(name,probe)
 
 def contrast(style):
     def luminance(value):
@@ -161,8 +178,15 @@ try:
     checks.append('Hide releases widget input mask to background; showing preserves exact widget identity and manual calendar selection')
     ipc('update','calendar-small','{"output":"HEADLESS-2"}');wait(lambda:any(row['id']=='calendar-small' and row['output']=='HEADLESS-2' for row in state()['rows']));assert not any(row['id']=='calendar-small' and row['output']=='HEADLESS-1' for row in state()['rows']);ipc('update','calendar-small','{"output":"HEADLESS-1"}');wait(lambda:any(row['id']=='calendar-small' and row['output']=='HEADLESS-1' for row in state()['rows']))
     checks.append('Per-display preference routes its selected widget to the chosen display and removes the old target')
-    ipc('preference','desktopColor','"monochrome"');ipc('preference','reduceTransparency','true');wait(lambda:all(row['opaque'] and row['alpha']==1 and row['opacity']==1 for row in state()['rows']));call('grim',str(out/'opaque-monochrome.png'))
-    image=Image.open(out/'opaque-monochrome.png').convert('RGB');clock=next(row for row in state()['rows'] if row['id']=='clock-large');sample=image.getpixel((round(clock['screenX']+clock['x']+130),round(clock['screenY']+clock['y']+15)));assert max(abs(sample[i]-[40,40,43][i]) for i in range(3))<=2,sample
+    ipc('preference','desktopColor','"monochrome"');ipc('preference','reduceTransparency','true');wait(lambda:all(row['opaque'] and row['alpha']==1 and row['opacity']==1 for row in state()['rows']))
+    def opaque_pixels(image):
+        mismatches=clock_painted(image)
+        for identifier in ('calendar-large','clock-large'):
+            row=next(row for row in state()['rows'] if row['id']==identifier)
+            sample=image.getpixel((round(row['screenX']+row['x']+130),round(row['screenY']+row['y']+15)))
+            if max(abs(sample[i]-[40,40,43][i]) for i in range(3))>2:mismatches.append(dict(output=row['output'],widget=identifier,pixel=sample,expected=[40,40,43],tolerance=2))
+        return mismatches
+    capture_until('opaque-monochrome.png',opaque_pixels)
     checks.append('Reduce Transparency makes calendar and clock outer materials fully opaque without opacity-based dimming, confirmed by compositor pixels')
     ipc('preference','reduceTransparency','false');appearance.write_text(json.dumps(dict(font=palettes['font'],palette=palettes['dark'],preferences=dict(textScale=1.5,reduceTransparency=True))));wait(lambda:all(row['opaque'] and row['alpha']==1 and row['opacity']==1 for row in state()['rows']))
     before=len(state()['actions'])
