@@ -10,12 +10,14 @@ Item {
     property string error:""
     property string warning:""
     property var preferences:Theme.preferences
+    property var desktopPreferences:Theme.desktopPreferences
     property var windowsPreferences:Theme.windowsPreferences
     property var notificationsPreferences:Theme.notificationsPreferences
     property var searchPreferences:Theme.searchPreferences
     property var appearance:({})
     property var system:({})
     function refresh() {if(!worker.running){worker.command=["lumen-appearance","--settings"];worker.running=true;}}
+    function setDesktopPreference(key,value){queue("desktop",key,value);}
     function setWindowPreference(key,value){queue("windows",key,value);}
     function setNotificationPreference(key,value){queue("notifications",key,value);}
     function setSearchPreference(key,value){queue("search",key,value);}
@@ -29,7 +31,7 @@ Item {
     function drain() {
         if(worker.running || pending.length===0)return;
         const edit=pending[0];pending=pending.slice(1);
-        error="";warning="";worker.command=["lumen-appearance",edit.section==="search"?"--set-search":edit.section==="notifications"?"--set-notifications":edit.section==="windows"?"--set-windows":"--set",edit.key,JSON.stringify(edit.value)];worker.running=true;
+        error="";warning="";worker.command=["lumen-appearance",edit.section==="search"?"--set-search":edit.section==="notifications"?"--set-notifications":edit.section==="windows"?"--set-windows":edit.section==="desktop"?"--set-desktop":"--set",edit.key,JSON.stringify(edit.value)];worker.running=true;
     }
     onActiveChanged:if(active)refresh()
     Process {
@@ -40,7 +42,7 @@ Item {
             try{
                 const data=JSON.parse(text);worker.received=true;
                 if(data.error){root.error=data.error;return;}
-                root.preferences=data.preferences;root.searchPreferences=data.searchPreferences || ({disabledProviders:[]});root.notificationsPreferences=data.notificationsPreferences || ({preview:"always"});root.windowsPreferences=data.windowsPreferences || ({tileMargins:true,titlebarDoubleClick:"fill"});root.appearance=data.appearance;root.system=data.system;
+                root.preferences=data.preferences;root.searchPreferences=data.searchPreferences || ({disabledProviders:[]});root.notificationsPreferences=data.notificationsPreferences || ({preview:"always"});root.windowsPreferences=data.windowsPreferences || ({tileMargins:true,titlebarDoubleClick:"fill"});root.desktopPreferences=data.desktopPreferences || ({showFiles:false,fileSort:"name",fileDescending:false});root.appearance=data.appearance;root.system=data.system;
                 root.available=true;root.error="";root.warning=data.warning || "";
             }catch(e){root.error="Unable to read desktop preferences";}
         }}

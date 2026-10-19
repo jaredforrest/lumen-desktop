@@ -2,7 +2,7 @@
 // Keep app identity and order stable as windows open and close.
 function canonical(id) { return id ? id.replace(/\.desktop$/, "") : ""; }
 function sameEntry(a,b) { return canonical(a)===canonical(b); }
-function build(reference, entries, running, pins, recent, showRecent, folders) {
+function build(reference, entries, running, pins, recent, showRecent, folders, files) {
     const aliases = {writer:"ai.storyteller.wordcraft",calc:"ai.storyteller.gridcraft",impress:"ai.storyteller.deckcraft",obsidian:"obsidian",contacts:"org.gnome.Contacts"};
     const lookup = id => entries.find(e => sameEntry(e.id,id));
     const result = reference.map(item => {
@@ -28,8 +28,9 @@ function build(reference, entries, running, pins, recent, showRecent, folders) {
     };
     for (const entry of running) append(entry,"running");
     if(showRecent)for(const entry of (recent || []).filter(entry=>!apps.some(item=>item.entry && sameEntry(item.entry.id,entry.id))).slice(0,3))append(entry,"recent");
-    const stacks=(folders || []).map(folder=>({key:"folder:"+folder.path,name:folder.path.split("/").filter(Boolean).pop() || "/",action:"folder",folder:folder,canvas:68,bottom:13,image:""}));
-    return apps.concat(stacks).concat(tail).map((item,index,array) => Object.assign({},item,{center:(index+0.5)*2142/array.length}));
+    const stacks=(folders || []).map(folder=>({key:"folder:"+folder.path,name:folder.path.split("/").filter(Boolean).pop() || "/",action:"folder",section:"documents",folder:folder,canvas:68,bottom:13,image:""}));
+    const fileAliases=(files || []).map(path=>({key:"file:"+path,name:path.split("/").pop(),action:"file",section:"documents",path:path,canvas:68,bottom:13,image:""}));
+    return apps.concat(stacks).concat(fileAliases).concat(tail.map(item=>Object.assign({},item,{section:"documents"}))).map((item,index,array) => Object.assign({},item,{center:(index+0.5)*2142/array.length,separatorBefore:index>0 && ["recent","documents"].includes(item.section) && array[index-1].section!==item.section}));
 }
 function configuredPins(reference, entries, pins) {
     if(Array.isArray(pins))return pins.slice();

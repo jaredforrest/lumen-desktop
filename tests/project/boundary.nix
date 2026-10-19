@@ -12,11 +12,21 @@ let
     }) ];
   };
   c = evaluated.config;
+  optedIn = (evaluated.extendModules {
+    modules = [ { services.lumen-desktop.integrations.authorization.enable = true; } ];
+  }).config;
+  defaultHome = c.home-manager.users.test-user { config = {}; lib = nixpkgs.lib; };
+  optedInHome = optedIn.home-manager.users.test-user { config = {}; lib = nixpkgs.lib; };
 in
 assert c.boot.kernel.sysctl."vm.swappiness" == 73;
 assert !c.hardware.i2c.enable;
 assert !c.programs.hyprland.enable;
 assert !c.services.greetd.enable;
+assert !c.services.lumen-desktop.integrations.authorization.enable;
+assert defaultHome.wayland.windowManager.sway.config.startup == [];
+assert builtins.length optedInHome.wayland.windowManager.sway.config.startup == 1;
+assert optedIn.security.polkit.enable == c.security.polkit.enable;
+assert optedIn.security.polkit.extraConfig == c.security.polkit.extraConfig;
 assert !c.services.blueman.enable;
 assert !c.services.gnome.gnome-online-accounts.enable;
 assert !c.services.gnome.evolution-data-server.enable;

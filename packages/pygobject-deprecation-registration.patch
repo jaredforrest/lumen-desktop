@@ -1,0 +1,20 @@
+--- a/gi/overrides/__init__.py
++++ b/gi/overrides/__init__.py
+@@ -252,7 +252,16 @@
+     :param str replacement:
+         The replacement text which will be included in the warning.
+     """
+-    _deprecated_attrs.setdefault(namespace, []).append((attr, replacement))
++    # Platform overrides can replace an existing compatibility alias. Register
++    # each attribute once so loading overrides never reads its own deprecated
++    # proxy attribute while installing a second descriptor.
++    attributes = _deprecated_attrs.setdefault(namespace, [])
++    for index, (name, _) in enumerate(attributes):
++        if name == attr:
++            attributes[index] = (attr, replacement)
++            break
++    else:
++        attributes.append((attr, replacement))
+ 
+ 
+ def deprecated_init(

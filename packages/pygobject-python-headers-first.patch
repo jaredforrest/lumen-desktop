@@ -1,0 +1,12 @@
+--- a/meson.build
++++ b/meson.build
+@@ -168,7 +168,8 @@
+   main_c_args = cc.get_supported_arguments(main_c_args)
+ endif
+ 
+-pyext_c_args = ['-DPY_SSIZE_T_CLEAN']
++# Python feature-test macros must precede all system and platform headers.
++pyext_c_args = ['-DPY_SSIZE_T_CLEAN', '-include', 'Python.h']
+ 
+ cdata = configuration_data()
+ 

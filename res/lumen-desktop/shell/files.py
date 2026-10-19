@@ -98,11 +98,11 @@ def handle(data):
     action=data.get('action')
     if action in ('preferences', 'save-preferences'):
         import fcntl, tempfile
-        file=Path(os.environ.get('XDG_STATE_HOME',str(Path.home()/'.local/state')))/'lumen-desktop/session/files.json'
-        file.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
-        with file.with_suffix('.lock').open('a') as lock:
+        preference_file=Path(os.environ.get('XDG_STATE_HOME',str(Path.home()/'.local/state')))/'lumen-desktop/session/files.json'
+        preference_file.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
+        with preference_file.with_suffix('.lock').open('a') as lock:
             fcntl.flock(lock,fcntl.LOCK_EX)
-            try:prefs=json.loads(file.read_text())
+            try:prefs=json.loads(preference_file.read_text())
             except (OSError,ValueError):prefs={}
             if not isinstance(prefs,dict):prefs={}
             if action=='save-preferences':
@@ -125,9 +125,9 @@ def handle(data):
                     if value not in allowed[key] or (key in ('descending','hidden','foldersFirst') and type(value) is not bool):
                         raise ValueError('Invalid file preference: '+key)
                 prefs.update(incoming)
-                fd,temp=tempfile.mkstemp(dir=file.parent)
+                fd,temp=tempfile.mkstemp(dir=preference_file.parent)
                 with os.fdopen(fd,'w') as stream:json.dump(prefs,stream);stream.flush();os.fsync(stream.fileno())
-                os.replace(temp,file)
+                os.replace(temp,preference_file)
             return dict(preferences=prefs)
     if action=='column-list':return listing(data)
     if action in ('job-start', 'job-status', 'job-cancel'):return job_request(data)

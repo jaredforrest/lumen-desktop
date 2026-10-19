@@ -78,3 +78,8 @@ ControlCentre 1.0 ControlCentre.qml
 
 WidgetState 1.0 WidgetState.qml
 DesktopWidgets 1.0 DesktopWidgets.qml
+
+ForceQuitDialog 1.0 ForceQuitDialog.qml
+
+DesktopFiles 1.0 DesktopFiles.qml
+DesktopFilesSurface 1.0 DesktopFilesSurface.qml

@@ -114,3 +114,28 @@ metadata storage is disclosed. Links are not followed; the editor refuses an
 item replaced since it opened. Copies preserve tag metadata, and a destination
 that cannot preserve existing tags fails while retaining source data. Custom
 named tags and interoperability with other metadata formats remain unsupported.
+
+## Optional desktop file surface
+
+`desktop.showFiles` defaults to false. Enabling it displays the configured XDG
+Desktop folder on the primary display, behind application windows. Missing
+folders are disclosed and are never created automatically; the user-folder
+convention that disables Desktop by pointing it to the home directory is
+respected. Desktop sort/order are separate from Files window preferences.
+
+Selection supports pointer, modifier and keyboard navigation. Opening, renaming,
+creating folders, clipboard operations and Trash use the existing Files service.
+Delete opens confirmation with Cancel focused; Escape or disabling the surface
+cannot execute the pending deletion. Confirmed Trash remains recoverable through
+Files. External directory changes update the view. The nested compositor test
+uses only disposable files and verifies actual pointer selection, physical
+Delete/Escape, rename, directory events and confirmed Trash.
+
+Desktop stacks/grouping, drag placement, network locations, arbitrary named tags
+and complete reference desktop interactions remain outside this first functional
+surface. This implementation is not a claim of complete desktop-file parity.
+
+`appearance.dockFiles` is a unique list of absolute local file paths. Settings
+adds and removes these references; removing a Dock reference does not remove its
+file. Missing or unsupported targets must report an activation error through the
+file-alias adapter rather than launching a folder or silently substituting one.

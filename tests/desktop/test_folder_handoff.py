@@ -80,7 +80,9 @@ class FolderHandoffTest(unittest.TestCase):
 
     def test_gio_desktop_entry_expands_urls_into_separate_literal_arguments(self):
         try:
-            from gi.repository import Gio
+            import gi
+            gi.require_version("GioUnix", "2.0")
+            from gi.repository import Gio, GioUnix
         except ImportError:
             self.skipTest("PyGObject required for desktop entry launch integration")
         desktop = self.root / "test-folder.desktop"
@@ -89,7 +91,7 @@ class FolderHandoffTest(unittest.TestCase):
             f"Exec={sys.executable} {HELPER} --quickshell {self.stub} --shell /test/shell -- %U\n"
             "MimeType=inode/directory;\nTerminal=false\n"
         )
-        app = Gio.DesktopAppInfo.new_from_filename(str(desktop))
+        app = GioUnix.DesktopAppInfo.new_from_filename(str(desktop))
         self.assertIsNotNone(app)
         context = Gio.AppLaunchContext()
         context.setenv("FOLDER_HANDOFF_LOG", str(self.log))

@@ -3,6 +3,8 @@ import os,json,subprocess as sp,time,tempfile,signal,sys,argparse,re,shutil
 from pathlib import Path
 parser=argparse.ArgumentParser()
 parser.add_argument('--sway',required=True)
+parser.add_argument('--launcher')
+parser.add_argument('--core-only',action='store_true')
 parser.add_argument('--output',type=Path,required=True)
 parser.add_argument('--pointer-tool',default=os.environ.get('LUMEN_TEST_POINTER'))
 parser.add_argument('--inside',action='store_true')
@@ -19,7 +21,12 @@ if not a.inside:
 env=dict(os.environ,GSETTINGS_BACKEND='keyfile',GTK_THEME='WhiteSur-Light',WLR_BACKENDS='headless',WLR_RENDERER='gles2' if a.effects else 'pixman',WLR_RENDERER_ALLOW_SOFTWARE='1',WLR_LIBINPUT_NO_DEVICES='1',GDK_BACKEND='wayland',QT_QPA_PLATFORM='wayland',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
 for k in ['SWAYSOCK','WAYLAND_DISPLAY','DISPLAY']:env.pop(k,None)
 for k in ['CONFIG','STATE','CACHE','DATA']:env['XDG_'+k+'_HOME']=str(out/('test-'+k.lower()))
-appearance=Path(shutil.which('lumen-appearance')).read_text()
+if a.launcher:
+ prefix=re.split(r'\n[ \t]*exec quickshell ',Path(a.launcher).read_text(),maxsplit=1)[0]
+ raw=sp.check_output(['bash','-c',prefix+'\nexec env -0'],env=env)
+ env.update(dict(v.decode().split('=',1) for v in raw.split(b'\0') if b'=' in v))
+ env.update(QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
+appearance=Path(shutil.which('lumen-appearance',path=env.get('PATH'))).read_text()
 prefix=re.split(r'\n[ \t]*exec ',appearance,maxsplit=1)[0]
 raw=sp.check_output(['bash','-c',prefix+'\nexec env -0'],env=env)
 env.update(dict(v.decode().split('=',1) for v in raw.split(b'\0') if b'=' in v))
@@ -191,6 +198,7 @@ try:
  ipc('[title="^Tiled [AB]$"] lumen_window close');wait(lambda:not leaves())
  print('PASS: hide/unhide keeps independent minimisation and original placements.')
  print('PASS: minimizing one tiled sibling restores both placements.')
+ if a.core_only:raise SystemExit(0)
 
 
  call('gsettings','set','org.gnome.desktop.wm.preferences','button-layout',':')

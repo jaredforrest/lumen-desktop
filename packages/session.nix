@@ -25,6 +25,19 @@ let
         exec ${menuRuntime}/bin/global-menu-python ${assets}/shell/file_jobs.py
       '';
     };
+    applicationControl = pkgs.writeShellApplication {
+      name = "lumen-application-control";
+      runtimeInputs = [ pkgs.sway ];
+      text = ''
+        exec ${pkgs.python3}/bin/python3 ${assets}/runtime/application_control.py "$@"
+      '';
+    };
+    fileAlias = pkgs.writeShellScriptBin "lumen-file-alias" ''
+      if [ "''${LUMEN_LAUNCH_SCOPES:-}" = 1 ]; then
+        exec ${launchApp}/bin/lumen-launch-app -- ${menuRuntime}/bin/global-menu-python ${assets}/runtime/file_alias.py "$@"
+      fi
+      exec ${menuRuntime}/bin/global-menu-python ${assets}/runtime/file_alias.py "$@"
+    '';
     dockDrop = pkgs.writeShellScriptBin "lumen-dock-drop" ''
       if [ "''${LUMEN_LAUNCH_SCOPES:-}" = 1 ]; then
         exec ${launchApp}/bin/lumen-launch-app -- ${menuRuntime}/bin/global-menu-python ${assets}/runtime/app_drop.py "$@"
@@ -72,7 +85,7 @@ let
       # Desktop entries launched through Rofi inherit this service's PATH.
       # Entries such as ChatGPT use `env` from coreutils in their Exec command.
       runtimeInputs = [ pkgs.remmina pkgs.fontconfig pkgs.hyprpicker personalServices pkgs.rembg pkgs.whisper-cpp pkgs.pipewire (pkgs.tesseract.override { enableLanguages = [ "eng" ]; }) (pkgs.aspellWithDicts (d: [ d.en ])) pkgs.wordnet pkgs.espeak-ng pkgs.wtype pkgs.poppler-utils pkgs.ffmpeg-headless pkgs.util-linux fileClipboard pkgs.wl-clipboard pkgs.glib pkgs.udisks2 launchApp pkgs.ddcutil pkgs.blueman pkgs.coreutils pkgs.jq pkgs.sway focusWindow pkgs.quickshell pkgs.foot pkgs.wireplumber pkgs.pavucontrol
-        clipboardHistory desktopState shellIpc dockDrop auth.lock pkgs.swaylock pkgs.xdg-utils pkgs.trash-cli appearance nixSettings rofiPackage ];
+        clipboardHistory desktopState shellIpc dockDrop applicationControl fileAlias auth.lock pkgs.swaylock pkgs.xdg-utils pkgs.trash-cli appearance nixSettings rofiPackage ];
       text = ''
         # The systemd service does not inherit the interactive login PATH.
         # Desktop entries may name installed commands without absolute paths.
@@ -180,4 +193,4 @@ let
     settingsLauncher = pkgs.writeShellScriptBin "lumen-system-settings" ''
       exec ${shellIpc}/bin/lumen-shell-ipc call desktop settings ""
     '';
-in { inherit nixSettings appearance qtTheme qtTheme5 palette menuRuntime personalServices fileClipboard displayLayout fileOperations focusWindow dockDrop desktopState shellIpc clipboardHistory launchApp shellLauncher audioKey mediaKey notifications menuCommand desktopDoctor desktopAction appLauncher filesLauncher remoteDesktopLauncher calendarLauncher settingsLauncher; }
+in { inherit nixSettings appearance qtTheme qtTheme5 palette menuRuntime personalServices fileClipboard displayLayout fileOperations focusWindow dockDrop applicationControl fileAlias desktopState shellIpc clipboardHistory launchApp shellLauncher audioKey mediaKey notifications menuCommand desktopDoctor desktopAction appLauncher filesLauncher remoteDesktopLauncher calendarLauncher settingsLauncher; }

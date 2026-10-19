@@ -17,6 +17,14 @@ class FileViewActions(unittest.TestCase):
             self.assertEqual([row['name'] for row in rows if row['group']=='Images'],['a.png','c.jpg'])
             with self.assertRaises(ValueError):files.listing({**request,'groupBy':'unknown'})
             with self.assertRaises(ValueError):files.listing({**request,'foldersFirst':1})
+    def test_real_rename_and_move_do_not_confuse_preference_file_with_gio_factory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);source=root/'source.txt';source.write_text('keep');destination=root/'folder';destination.mkdir()
+            result=files.handle({'action':'rename','path':str(source),'name':'renamed.txt'})
+            renamed=root/'renamed.txt';self.assertEqual(result['selected'],str(renamed));self.assertFalse(source.exists())
+            moved=files.handle({'action':'move','path':str(renamed),'destination':str(destination)})
+            self.assertEqual(Path(moved['selected']).read_text(),'keep');self.assertFalse(renamed.exists())
+
     def test_link_is_distinct_and_collision_safe_with_recoverable_broken_result(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);item=root/'original.txt';item.write_text('source')

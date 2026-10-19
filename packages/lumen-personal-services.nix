@@ -1,7 +1,7 @@
 { pkgs, timeZone ? "Europe/London" }:
 let
   assets = ../res/lumen-desktop/shell;
-  calendarPython = pkgs.python3.withPackages (ps: [ ps.icalendar ps.recurring-ical-events ps.pygobject3 ]);
+  calendarPython = (import ./python-runtime.nix { inherit pkgs; }).withPackages (ps: [ ps.icalendar ps.recurring-ical-events ps.pygobject3 ]);
   calendar = pkgs.stdenvNoCC.mkDerivation {
     name = "lumen-calendar-runtime";
     dontUnpack = true;

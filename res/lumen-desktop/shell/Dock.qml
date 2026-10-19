@@ -49,25 +49,33 @@ PanelWindow {
     function clearPointer() { if (!keyboardMode) { hovered = -1; pointerSlot = -1; } }
     readonly property real artworkScale: iconSize/68
     property var contextEntry: null
+    property var contextAlias:null
     property real contextX: 0
     property real contextY:0
     property int contextIndex:-1
+    function openContext(item,index){
+        dock.keyboardMode=false;contextEntry=item.entry || null;contextAlias=item.entry?null:item;
+        contextY=((screen?screen.height:1000)-height)/2+12+(index+0.5)*slot;
+        contextX=((screen?screen.width:1440)-width)/2+12+(index+0.5)*slot;
+    }
+    onContextAliasChanged:{contextIndex=-1;if(contextAlias)shell.claimPopup("dock:"+outputName);else if(!contextEntry){if(shell.popupOwner==="dock:"+outputName)shell.popupOwner="";hideTimer.restart();}}
     function stepContext(delta) {
         const count=contextItems.count;if(!count)return;
         contextIndex=contextIndex<0?(delta>0?0:count-1):(contextIndex+delta+count)%count;
         contextScroll.contentY=Math.max(0,Math.min(contextScroll.contentHeight-contextScroll.height,contextIndex*(Theme.menuRowHeight+2)-contextScroll.height/2));
     }
     function activateContext(row) {
-        if(row.enabled===false)return;
-        const entry=contextEntry;contextEntry=null;
-        if(row.win)shell.focusWindow(row.win);else if(row.action==="new")shell.activate(entry,true);else if(["pin","remove","earlier","later"].includes(row.action))shell.updateDockPin(entry,row.action);else shell.windowsFor(entry).forEach(w=>w.close());
+        if(!row || row.enabled===false)return;
+        const entry=contextEntry,alias=contextAlias;contextEntry=null;contextAlias=null;
+        if(alias){if(row.action==="alias-open")shell.activateDock(alias,false,outputName);else if(row.action==="alias-reveal")shell.revealDockAlias(alias);else if(row.action==="alias-remove")shell.removeDockAlias(alias);return;}
+        if(row.win)shell.focusWindow(row.win);else if(row.action==="new")shell.activate(entry,true);else if(row.action==="force-quit")shell.forceQuit(entry);else if(["pin","remove","earlier","later"].includes(row.action))shell.updateDockPin(entry,row.action);else shell.windowsFor(entry).forEach(w=>w.close());
     }
     onContextEntryChanged: {
         contextIndex=-1;
         if(contextEntry)shell.claimPopup("dock:"+outputName);
         else {if(shell.popupOwner==="dock:"+outputName)shell.popupOwner="";hideTimer.restart();}
     }
-    Connections {target:shell; function onDismissPopups(owner) {if(owner!=="dock:"+dock.outputName){dock.contextEntry=null;dock.keyboardMode=false;dock.hovered=-1;hideTimer.restart();}} }
+    Connections {target:shell; function onDismissPopups(owner) {if(owner!=="dock:"+dock.outputName){dock.contextEntry=null;dock.contextAlias=null;dock.keyboardMode=false;dock.hovered=-1;hideTimer.restart();}} }
     readonly property real slot: (surface.width-24)/Math.max(1,shell.referenceDock.length)
     readonly property real iconSize: Math.max(12,Math.min(requestedSize,slot-8))
     anchors { bottom:!dock.vertical;left:dock.position==="left";right:dock.position==="right" }
@@ -77,7 +85,7 @@ PanelWindow {
     implicitWidth: vertical?panelThickness:Math.min((screen?screen.width:1440)-48,shell.referenceDock.length*(requestedSize+10)+24)
     implicitHeight: vertical?Math.min((screen?screen.height:1000)-64,shell.referenceDock.length*(requestedSize+10)+24):panelThickness
     exclusiveZone: autoHide?0:shelfThickness+7
-    Timer {id:hideTimer;interval:500;onTriggered:if(dock.autoHide && !dock.keyboardMode && !dock.contextEntry && !dock.dragging)dock.revealed=false}
+    Timer {id:hideTimer;interval:500;onTriggered:if(dock.autoHide && !dock.keyboardMode && !dock.contextEntry && !dock.contextAlias && !dock.dragging)dock.revealed=false}
     onAutoHideChanged:{revealed=true;if(autoHide)hideTimer.restart();}
     onKeyboardModeChanged:if(keyboardMode){revealed=true;hideTimer.stop();}
     color: "transparent"
@@ -96,7 +104,7 @@ PanelWindow {
                 dock.keyboardIndex=event.key===Qt.Key_Home?0:event.key===Qt.Key_End?n-1:(dock.keyboardIndex+([Qt.Key_Right,Qt.Key_Down].includes(event.key)?1:-1)+n)%n;
                 dock.hovered=dock.keyboardIndex;event.accepted=true;
             } else if(event.key===Qt.Key_Return || event.key===Qt.Key_Space){const item=shell.referenceDock[dock.keyboardIndex];dock.leaveKeyboard();shell.activateDock(item,!!(event.modifiers & Qt.ShiftModifier),dock.outputName,event.modifiers);event.accepted=true;}
-            else if(event.key===Qt.Key_Menu || (!dock.vertical && event.key===Qt.Key_Up) || (dock.vertical && event.key===(dock.position==="left"?Qt.Key_Right:Qt.Key_Left))){const item=shell.referenceDock[dock.keyboardIndex];if(item.entry){dock.keyboardMode=false;dock.contextEntry=item.entry;dock.contextY=((dock.screen?dock.screen.height:1000)-dock.height)/2+12+(dock.keyboardIndex+0.5)*dock.slot;dock.contextX=((dock.screen?dock.screen.width:1440)-dock.width)/2+12+(dock.keyboardIndex+0.5)*dock.slot;}event.accepted=true;}
+            else if(event.key===Qt.Key_Menu || (!dock.vertical && event.key===Qt.Key_Up) || (dock.vertical && event.key===(dock.position==="left"?Qt.Key_Right:Qt.Key_Left))){const item=shell.referenceDock[dock.keyboardIndex];if(item.entry || ["file","folder"].includes(item.action))dock.openContext(item,dock.keyboardIndex);event.accepted=true;}
         }
     }
     // Keep the shelf/icon hit region stable while moving between neighbours.
@@ -140,14 +148,14 @@ PanelWindow {
                 required property int index
                 x:12+(dock.position==="right"?shell.referenceDock.length-1-index:index)*dock.slot; width:dock.slot; height:dock.shelfThickness
                 readonly property var appWindows: shell.dockWindows(modelData)
-                Rectangle {visible:tile.modelData.key==="downloads" || (tile.modelData.section==="recent" && (tile.index===0 || shell.referenceDock[tile.index-1].section!=="recent"));x:-5;y:15;width:1;height:42;color:Theme.outline}
+                Rectangle {visible:tile.modelData.separatorBefore===true || (tile.modelData.key==="downloads" && tile.modelData.separatorBefore===undefined);x:-5;y:15;width:1;height:42;color:Theme.outline}
                 readonly property real magnification: !Theme.preferences.dockMagnification || dock.hovered<0 ? 0 : Math.max(0,1-Math.abs(index-dock.pointerSlot)*0.48)
                 Rectangle {anchors.fill:parent;anchors.margins:2;radius:10;color:"transparent";border.width:2;border.color:Theme.colors.accent;visible:dock.keyboardMode && dock.keyboardIndex===tile.index}
                 AppIcon {
                     id: icon
                     rotation:-surface.rotation;anchors.horizontalCenter:parent.horizontalCenter; anchors.bottom:parent.bottom; anchors.bottomMargin:13
                     width:tile.modelData.canvas*dock.artworkScale+18*tile.magnification; height:width
-                    iconSource:(tile.modelData.key==="downloads" || tile.modelData.action==="folder") ? Qt.resolvedUrl("icons/folder.svg") : tile.modelData.image ? Qt.resolvedUrl("reference-icons/"+tile.modelData.image) : Quickshell.iconPath(tile.modelData.entry.icon,true)
+                    iconSource:(tile.modelData.key==="downloads" || tile.modelData.action==="folder") ? Qt.resolvedUrl("icons/folder.svg") : tile.modelData.action==="file"?Quickshell.iconPath("text-x-generic",true): tile.modelData.image ? Qt.resolvedUrl("reference-icons/"+tile.modelData.image) : Quickshell.iconPath(tile.modelData.entry.icon,true)
                     calendarDate:shell.currentDate
 
                     Behavior on width { NumberAnimation { duration:Theme.preferences.reduceMotion?0:150; easing.type:Easing.OutCubic } }
@@ -164,8 +172,8 @@ PanelWindow {
         }
     }
     Rectangle {visible:dock.dragging && dock.hovered>=0;x:12+(dock.position==="right"?shell.referenceDock.length-1-dock.hovered:dock.hovered)*dock.slot;y:54;width:2;height:60;radius:1;color:Theme.colors.accent}
-    PanelSurface {visible:!!dock.dropError;x:Math.max(0,(dock.width-width)/2);y:0;width:Math.min(420,dock.width);height:44
-        PanelLabel {anchors.fill:parent;anchors.margins:8;text:dock.dropError;wrapMode:Text.WordWrap;font.pixelSize:11;color:Theme.colors.text}
+    PanelSurface {visible:!!(dock.dropError || shell.aliasError);x:Math.max(0,(dock.width-width)/2);y:0;width:Math.min(420,dock.width);height:44
+        PanelLabel {anchors.fill:parent;anchors.margins:8;text:dock.dropError || shell.aliasError || "";wrapMode:Text.WordWrap;font.pixelSize:11;color:Theme.colors.text}
     }
     // A single stable hit area avoids pointer-grab and region transitions between tiles.
     MouseArea {
@@ -203,17 +211,15 @@ PanelWindow {
             const item = DockInteraction.releaseTarget(shell.referenceDock,dock.pressedKey,index);
             dock.pressedKey="";
             if (!item) return;
-            if ((mouse.button === Qt.RightButton || (mouse.modifiers & Qt.ControlModifier)) && item.entry) {
-                dock.contextEntry = item.entry;
-                dock.contextY=((dock.screen?dock.screen.height:1000)-dock.height)/2+12+(index+0.5)*dock.slot;
-                dock.contextX = ((dock.screen ? dock.screen.width : 1440) - dock.width) / 2 + 12 + (index + 0.5) * dock.slot;
+            if ((mouse.button === Qt.RightButton || (mouse.modifiers & Qt.ControlModifier)) && (item.entry || ["file","folder"].includes(item.action))) {
+                dock.openContext(item,index);
             } else shell.activateDock(item, !!(mouse.modifiers & Qt.ShiftModifier), dock.outputName, mouse.modifiers);
         }
     }
 
     }
     PanelWindow {
-        screen:dock.screen;visible:dock.hovered>=0 && (!dock.autoHide || dock.revealed) && !dock.dragging && !dock.contextEntry
+        screen:dock.screen;visible:dock.hovered>=0 && (!dock.autoHide || dock.revealed) && !dock.dragging && !dock.contextEntry && !dock.contextAlias
         anchors {top:true;bottom:true;left:true;right:true}
         exclusionMode:ExclusionMode.Ignore;color:"transparent";mask:Region {}
         WlrLayershell.layer:WlrLayer.Overlay;WlrLayershell.namespace:"lumen-dock-tooltip"
@@ -226,13 +232,13 @@ PanelWindow {
         }
     }
     PanelWindow {
-        screen:dock.screen; visible:dock.contextEntry!==null
+        screen:dock.screen; visible:dock.contextEntry!==null || dock.contextAlias!==null
         anchors {top:true;bottom:true;left:true;right:true}
         exclusionMode:ExclusionMode.Ignore; color:"transparent"
         WlrLayershell.layer:WlrLayer.Overlay; WlrLayershell.namespace:"lumen-dock-popup"
         WlrLayershell.keyboardFocus:WlrKeyboardFocus.Exclusive
-        MouseArea {anchors.fill:parent;onClicked:dock.contextEntry=null}
-        Item {anchors.fill:parent;focus:true;Keys.onEscapePressed:dock.contextEntry=null
+        MouseArea {anchors.fill:parent;onClicked:{dock.contextEntry=null;dock.contextAlias=null;}}
+        Item {anchors.fill:parent;focus:true;Keys.onEscapePressed:{dock.contextEntry=null;dock.contextAlias=null;}
             Keys.onDownPressed:dock.stepContext(1)
             Keys.onUpPressed:dock.stepContext(-1)
             Keys.onReturnPressed:if(dock.contextIndex>=0)dock.activateContext(contextItems.model[dock.contextIndex])
@@ -249,7 +255,7 @@ PanelWindow {
                 id:contextColumn;spacing:2
                 Repeater {
                     id:contextItems
-                    model:dock.contextEntry ? [{label:"Open New",action:"new"}].concat(shell.windowsFor(dock.contextEntry).map(w=>({label:(w.minimized?"Minimized — ":"")+(w.title || "Window"),win:w}))).concat(!shell.canConfigureDockEntry(dock.contextEntry)?[]:shell.dockPreferencesBusy?[{label:"Saving Dock settings…",enabled:false}]:shell.isDockPinned(dock.contextEntry)?[{label:"Remove from Dock",action:"remove"},{label:"Move Earlier",action:"earlier"},{label:"Move Later",action:"later"}]:[{label:"Keep in Dock",action:"pin"}]).concat([{label:"Close Windows",action:"close"}]) : []
+                    model:dock.contextAlias?[{label:"Open",action:"alias-open"},{label:"Show in Files",action:"alias-reveal"},{label:"Remove from Dock",action:"alias-remove",enabled:!shell.dockPreferencesBusy}]:dock.contextEntry ? [{label:"Open New",action:"new"}].concat(shell.windowsFor(dock.contextEntry).map(w=>({label:(w.minimized?"Minimized — ":"")+(w.title || "Window"),win:w}))).concat(!shell.canConfigureDockEntry(dock.contextEntry)?[]:shell.dockPreferencesBusy?[{label:"Saving Dock settings…",enabled:false}]:shell.isDockPinned(dock.contextEntry)?[{label:"Remove from Dock",action:"remove"},{label:"Move Earlier",action:"earlier"},{label:"Move Later",action:"later"}]:[{label:"Keep in Dock",action:"pin"}]).concat([{label:"Close Windows",action:"close"}]).concat(shell.canForceQuit(dock.contextEntry)?[{label:"Force Quit…",action:"force-quit"}]:[]) : []
                     Rectangle {
                         required property var modelData
                         required property int index

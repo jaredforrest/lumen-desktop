@@ -66,6 +66,15 @@ class NixSettingsTest(unittest.TestCase):
             with self.subTest(value=value),self.assertRaises(ValueError):settings.transaction(section,value,merge=True)
             self.assertEqual(self.source.read_bytes(),original)
 
+    def test_desktop_opt_in_and_file_aliases_are_typed(self):
+        values=settings.transaction('desktop',{'showFiles':True,'fileSort':'modified','fileDescending':True})
+        self.assertTrue(values['desktop']['showFiles'])
+        self.assertEqual(settings.transaction('appearance',{'dockFiles':['/fixture/report.pdf']},merge=True)['appearance']['dockFiles'],['/fixture/report.pdf'])
+        original=self.source.read_bytes()
+        for section,value in [('desktop',{'showFiles':1}),('desktop',{'fileSort':'unknown'}),('appearance',{'dockFiles':['relative']}),('appearance',{'dockFiles':['/same','/same']}),('appearance',{'dockFiles':['/control\tpath']})]:
+            with self.subTest(value=value),self.assertRaises(ValueError):settings.transaction(section,value,merge=True)
+            self.assertEqual(self.source.read_bytes(),original)
+
     def test_window_preferences_are_typed(self):
         values=settings.transaction('windows',{'tileMargins':False,'titlebarDoubleClick':'minimize'})
         self.assertEqual(values['windows'],{'tileMargins':False,'titlebarDoubleClick':'minimize'})

@@ -169,3 +169,61 @@ identity checks as the normal menu. This is an explicit narrow-screen adaptation
 not a claim of an identical reference overflow presentation. Software-rendered
 sessions use canvas status glyphs and plain surfaces instead of unsupported shader
 effects, preserving visible controls rather than merely valid scene geometry.
+
+## Confirmed application termination
+
+Force Quit is a separate confirmation dialog; opening an application context
+menu never terminates it. Preparation resolves each exact selected window in the
+owned compositor session. Ambiguous titles, legacy client-reported process IDs,
+the desktop shell, and processes owning unselected windows are rejected.
+Confirmations are private runtime receipts, expire after 60 seconds, and are
+consumed before dispatch. Cancellation removes a receipt without signalling.
+
+Confirmation rechecks the compositor instance and window/container/process
+association, then opens Linux pidfds and rechecks each process start time and
+executable identity before any signal. It sends SIGKILL through those handles,
+never through broad application names or a reusable PID alone. All selected
+identities must validate before any signal is sent. A changed/exited process
+requires a fresh selection. The response reports termination requests rather
+than asserting that a process has already finished exiting. The UI serializes
+requests and binds replies to selection generations; a delayed result for an
+older app cannot populate another app's confirmation.
+
+`appearance.dockFiles` contains file references only. Context removal edits the
+reference list, never the resource. Opening uses a validated, readable regular
+file path and the configured GIO default application outside the shell service
+cgroup; unavailable targets display an error. These explicit path references do
+not claim filesystem-wide tracking of a target moved elsewhere.
+
+### Scoped introspection runtime corrections
+
+Desktop Python runtimes deduplicate repeated deprecated-attribute registration in
+PyGObject while retaining the latest replacement target. Importing current GLib
+and GioUnix APIs is quiet; deliberately accessing a legacy alias still diagnoses
+its deprecation. Python extension compilation includes Python.h before system
+headers so Python's feature-test macros initialize before the newer C library's
+defaults. The dbus-python repeated-import test follows the same header ordering.
+
+PyGObject's bundled introspection subproject also defines a standalone WarnLib
+scanner fixture with deliberately malformed declarations. Binding tests do not use
+that namespace. Its library and GIR targets remain explicitly buildable but are
+not default build artifacts; no tests or warning diagnostics are disabled. A build
+guard asserts that only those target defaults change, required binding typelibs
+remain dependencies, no binding test begins using WarnLib and upstream tests stay
+enabled. Dependency changes fail this guard for review rather than silently
+omitting a newly required fixture.
+
+## Authorization dialog integration boundary
+
+`integrations.authorization.enable` opts into the packaged session authorization
+agent. It defaults to false. The integration adds a Sway session startup entry;
+it does not change authorization rules, authentication methods or privileged
+host access. Consumers retain that policy. Existing sessions are not interrupted
+when the declaration is rebuilt or the compositor configuration is reloaded.
+
+The GTK appearance bridge is loaded only by the agent wrapper and follows live
+interface theme and color-scheme settings. Password visibility controls are
+provided by the existing agent patch. `authorization-agent` exposes the package;
+`checks.x86_64-linux.authorization-appearance` compiles the synthetic GTK fixture
+with warnings treated as errors and checks light/dark/default propagation under
+a private virtual display, without authenticating or handling credentials.

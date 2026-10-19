@@ -50,6 +50,9 @@ ShellRoot {
     TextToolsWindow {id:textTools;shell:root}
     property alias textToolsWindow:textTools
     AppSwitcher {id:applicationSwitcher;shell:root}
+    ForceQuitDialog {id:forceQuitDialog;shell:root}
+    function canForceQuit(entry){const matches=windowsFor(entry);return matches.length>0 && matches.every(window=>window.appId!=="org.quickshell");}
+    function forceQuit(entry){forceQuitDialog.show(appLabel(entry),windowsFor(entry).map(window=>({appId:window.appId,title:window.title || ""})));}
     WindowOverview {id:overview;shell:root}
     property alias overviewWindow:overview
     function openTextTools(){textTools.show();focusOwnedWindow("Text Tools");}
@@ -118,7 +121,7 @@ ShellRoot {
     readonly property var recentApps:recentAppIds.map(id=>entries.find(entry=>DockModel.sameEntry(id,entry.id))).filter(Boolean)
     readonly property bool dockPreferencesBusy:settingsState.busy
     readonly property var configuredDockPins:DockModel.configuredPins(ReferenceDock.items,entries,Theme.preferences.dockPins)
-    property var referenceDock: DockModel.build(ReferenceDock.items, entries, runningExtras, Theme.preferences.dockPins, recentApps, Theme.preferences.dockRecentApps!==false,Theme.preferences.dockFolders)
+    property var referenceDock: DockModel.build(ReferenceDock.items, entries, runningExtras, Theme.preferences.dockPins, recentApps, Theme.preferences.dockRecentApps!==false,Theme.preferences.dockFolders,Theme.preferences.dockFiles)
     function canConfigureDockEntry(entry){return !DockModel.sameEntry(entry.id,"lumen-files");}
     function isDockPinned(entry){return configuredDockPins.some(id=>DockModel.sameEntry(id,entry.id));}
     function updateDockPin(entry,action){if(!dockPreferencesBusy)settingsState.setPreference("dockPins",DockModel.updatePins(configuredDockPins,entry.id,action));}
@@ -126,6 +129,19 @@ ShellRoot {
     function updateFolderStack(path,patch){
         const folders=Theme.preferences.dockFolders || [];
         if(folders.some(folder=>folder.path===path))settingsState.setPreference("dockFolders",folders.map(folder=>folder.path===path?Object.assign({},folder,patch):folder));
+    }
+    function removeDockAlias(item){
+        if(dockPreferencesBusy)return;
+        if(item.action==="file")settingsState.setPreference("dockFiles",(Theme.preferences.dockFiles || []).filter(path=>path!==item.path));
+        else if(item.action==="folder")settingsState.setPreference("dockFolders",(Theme.preferences.dockFolders || []).filter(folder=>folder.path!==item.folder.path));
+    }
+    function revealDockAlias(item){if(item.action==="folder")openFiles(item.folder.path);else {filesState.nextSelection=item.path;openFiles(item.path.slice(0,item.path.lastIndexOf("/")) || "/");}}
+    property string aliasError:""
+    function openFileAlias(path){if(fileAliasWorker.running){aliasError="Wait for the current file to open";aliasErrorTimer.restart();return;}aliasError="";fileAliasWorker.command=["lumen-file-alias",path];fileAliasWorker.running=true;}
+    Timer {id:aliasErrorTimer;interval:6000;onTriggered:root.aliasError=""}
+    Process {id:fileAliasWorker;property bool received:false;onRunningChanged:if(running)received=false
+        stdout:StdioCollector {onStreamFinished:{try{const result=JSON.parse(text);fileAliasWorker.received=true;root.aliasError=result.error || "";}catch(error){root.aliasError="The file alias could not be opened";}aliasErrorTimer.restart();}}
+        onExited:(code,status)=>{if(!received){root.aliasError="The file alias service is unavailable";aliasErrorTimer.restart();}}
     }
     function dockWindows(item) { if(item.action==="calendar")return windows.filter(w=>w.appId==="org.quickshell" && w.title==="Calendar");if(item.action==="files")return windows.filter(w=>w.appId==="org.quickshell" && w.title.startsWith("Files"));if(item.action==="settings")return windows.filter(w=>w.appId==="org.quickshell" && w.title==="System Settings");return item.entry ? windowsFor(item.entry) : []; }
     function dockLabel(item) { return item.entry ? appLabel(item.entry) : item.name; }
@@ -144,6 +160,7 @@ ShellRoot {
             }
         }
         if (item.entry) activate(item.entry, newWindow);
+        else if (item.action === "file") openFileAlias(item.path);
         else if (item.action === "folder") downloadsStack.show(item.folder.path,outputName || preferredOutput(),item.folder);
         else if (item.key === "downloads") downloadsStack.show(Quickshell.env("HOME")+"/Downloads",outputName || preferredOutput());
         else if (item.key === "trash") openFiles("trash:");
@@ -278,6 +295,7 @@ ShellRoot {
         model: Quickshell.screens
         Scope {
             required property var modelData
+            DesktopFilesSurface {screen:modelData;outputName:modelData.name;shell:root;showFiles:Theme.desktopPreferences.showFiles===true && Quickshell.screens.length>0 && modelData.name===Quickshell.screens[0].name}
             DesktopWidgets {screen:modelData;outputName:modelData.name;shell:root}
             MenuBar { screen: modelData; shell: root; clockDate: clock.date }
             Dock { screen: modelData; shell: root }

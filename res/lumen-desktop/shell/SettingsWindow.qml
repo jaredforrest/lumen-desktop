@@ -222,6 +222,10 @@ FloatingWindow {
                 }
                 Column {
                     visible:root.page==="Desktop & Dock";width:parent.width;spacing:12
+                    PanelLabel {text:"Desktop files";font.weight:Font.DemiBold}
+                    SettingsToggle {width:parent.width;text:"Show files on the desktop";detail:"Display the configured Desktop folder on the primary display";checked:root.service.desktopPreferences.showFiles===true;enabled:root.service.available && !root.service.busy;onClicked:root.service.setDesktopPreference("showFiles",checked)}
+                    DesktopComboBox {width:parent.width;model:["Name","Modified","Size","Kind"];currentIndex:["name","modified","size","kind"].indexOf(root.service.desktopPreferences.fileSort || "name");enabled:root.service.available && !root.service.busy;Accessible.name:"Sort desktop files";onActivated:index=>root.service.setDesktopPreference("fileSort",["name","modified","size","kind"][index])}
+                    SettingsToggle {width:parent.width;text:"Descending desktop order";checked:root.service.desktopPreferences.fileDescending===true;enabled:root.service.available && !root.service.busy;onClicked:root.service.setDesktopPreference("fileDescending",checked)}
                     PanelLabel {text:"Windows";font.weight:Font.DemiBold}
                     SettingsToggle {width:parent.width;text:"Leave margins around tiled windows";checked:root.service.windowsPreferences.tileMargins!==false;enabled:root.service.available && !root.service.busy;onClicked:root.service.setWindowPreference("tileMargins",checked)}
                     PanelLabel {text:"Double-click a title bar to"}
@@ -231,6 +235,17 @@ FloatingWindow {
                     PanelLabel {text:"Dock size"}
                     DesktopComboBox {width:parent.width;model:["Small","Medium","Large"];currentIndex:(root.service.preferences.dockSize || 48)<40?0:(root.service.preferences.dockSize || 48)>60?2:1;enabled:root.service.available && !root.service.busy;Accessible.name:"Dock size";onActivated:index=>root.service.setPreference("dockSize",[32,48,72][index])}
                     SettingsToggle {width:parent.width;text:"Automatically hide the Dock";checked:!!root.service.preferences.dockAutoHide;enabled:root.service.available && !root.service.busy;onClicked:root.service.setPreference("dockAutoHide",checked)}
+                    PanelLabel {text:"Dock files";font.weight:Font.DemiBold}
+                    Repeater {model:root.service.preferences.dockFiles || []
+                        Row {required property string modelData;required property int index;width:parent.width;spacing:8
+                            PanelLabel {width:parent.width-90;height:30;verticalAlignment:Text.AlignVCenter;text:modelData;textFormat:Text.PlainText;elide:Text.ElideMiddle}
+                            DialogButton {width:82;text:"Remove";enabled:root.service.available && !root.service.busy;onClicked:root.service.setPreference("dockFiles",root.service.preferences.dockFiles.filter((_,i)=>i!==index))}
+                        }
+                    }
+                    Row {width:parent.width;spacing:8
+                        TextField {id:dockFilePath;width:parent.width-90;placeholderText:"/absolute/file/path";Accessible.name:"Add file to Dock";color:Theme.colors.text;background:Rectangle {radius:6;color:Theme.colors.field;border.color:dockFilePath.activeFocus?Theme.colors.accent:Theme.hairline}}
+                        DialogButton {width:82;text:"Add File";enabled:root.service.available && !root.service.busy && dockFilePath.text.startsWith("/") && !(root.service.preferences.dockFiles || []).includes(dockFilePath.text);onClicked:{root.service.setPreference("dockFiles",(root.service.preferences.dockFiles || []).concat([dockFilePath.text]));dockFilePath.text="";}}
+                    }
                     PanelLabel {text:"Dock folders";font.weight:Font.DemiBold}
                     Repeater {model:root.service.preferences.dockFolders || []
                         Column {required property var modelData;required property int index;width:parent.width;spacing:4

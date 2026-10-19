@@ -1,0 +1,18 @@
+--- a/subprojects/gobject-introspection-tests/meson.build
++++ b/subprojects/gobject-introspection-tests/meson.build
+@@ -159,6 +159,7 @@
+ libwarnlib = library(
+     'warnlib',
+     warnlib_sources,
++    build_by_default: false,
+     dependencies: [glib_dep, gobject_dep, gio_dep],
+     gnu_symbol_visibility: 'hidden',
+     install: install,
+@@ -168,6 +169,7 @@
+ # in gnome.generate_gir(). See https://github.com/mesonbuild/meson/issues/5876
+ warnlib_gir = gnome.generate_gir(
+     libwarnlib,
++    build_by_default: false,
+     includes: ['Gio-2.0'],
+     sources: warnlib_sources,
+     namespace: 'WarnLib',

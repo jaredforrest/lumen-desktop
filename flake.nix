@@ -15,7 +15,7 @@
       privateBus = pkgs.writeShellScriptBin "dbus-run-session" ''
         exec ${pkgs.dbus}/bin/dbus-run-session --config-file=${pkgs.dbus}/share/dbus-1/session.conf "$@"
       '';
-      python = pkgs.python3.withPackages (p: [ p.pygobject3 p.dbus-python p.astral p.icalendar p.recurring-ical-events p.pillow ]);
+      python = (import ./packages/python-runtime.nix { inherit pkgs; }).withPackages (p: [ p.pygobject3 p.dbus-python p.astral p.icalendar p.recurring-ical-events p.pillow ]);
     in {
       nixosModules.default = import ./modules/desktop.nix;
       lib = {
@@ -27,6 +27,7 @@
         default = session.shellLauncher;
         shell = session.shellLauncher;
         settings-adapter = settings;
+        authorization-agent = import ./packages/lumen-authorization-agent.nix { inherit pkgs; };
         compositor = import ./packages/sway-window-controls.nix { pkgs = compositorPkgs; effects = true; };
         compositor-basic = import ./packages/sway-window-controls.nix { pkgs = compositorPkgs; effects = false; };
         utilities = import ./packages/utilities.nix { inherit pkgs; };
@@ -39,6 +40,7 @@
         prism = import ./packages/prism-nix-profile.nix { inherit pkgs profileBridge; };
       };
       checks.${system} = {
+        authorization-appearance = import ./tests/auth/polkit-appearance.nix { inherit pkgs; };
         asset-overrides = let
           icons = ./tests/project/fixtures/icons;
           mark = ./tests/project/fixtures/mark.svg;
@@ -74,7 +76,7 @@
         '';
       };
       devShells.${system}.default = pkgs.mkShell {
-        packages = [ privateBus runtime settings pkgs.nix pkgs.git pkgs.dbus pkgs.quickshell pkgs.sway pkgs.grim pkgs.wtype pkgs.gitleaks ];
+        packages = [ privateBus runtime settings pkgs.nix pkgs.git pkgs.dbus pkgs.quickshell pkgs.sway pkgs.grim pkgs.wtype pkgs.foot pkgs.imagemagick pkgs.gitleaks ];
         shellHook = ''
           export PYTHONDONTWRITEBYTECODE=1
           export LUMEN_TEST_SETTINGS_COMMAND=${settings}/bin/lumen-nix-settings

@@ -23,9 +23,10 @@ Item {
     property string sort:"name"
     property string viewMode:"grid"
     property bool preferencesLoaded:false
+    property bool persistViewPreferences:true
     property var columns:[]
     property var columnRequests:({})
-    function savePreferences(){if(preferencesLoaded)send("save-preferences",{preferences:{view:viewMode,sort:sort,descending:descending,hidden:hidden,foldersFirst:foldersFirst,groupBy:groupBy,favorites:favorites}});}
+    function savePreferences(){if(preferencesLoaded && persistViewPreferences)send("save-preferences",{preferences:{view:viewMode,sort:sort,descending:descending,hidden:hidden,foldersFirst:foldersFirst,groupBy:groupBy,favorites:favorites}});}
     function loadColumns(){
         columnRequests={};columns=[];if(viewMode!=="columns" || path==="trash:")return;
         const ancestors=breadcrumbs.slice(-3);columns=ancestors.map(c=>({path:c.path,name:c.name,rows:[]}));
@@ -103,7 +104,7 @@ Item {
         jobs=data.jobs || [];jobStates=states;if(data.historyWarning)error=data.historyWarning;for(const job of jobs){if(job.state==="interrupted")error=job.errors.join("\n");}canUndo=!!data.canUndo;
         if(changed)refresh();
     }
-    onActiveChanged:if(active){if(!preferencesLoaded)send("preferences");send("job-status");send("volumes");}
+    onActiveChanged:if(active){if(persistViewPreferences && !preferencesLoaded)send("preferences");send("job-status");send("volumes");}
     Timer {id:watchRefresh;interval:200;onTriggered:root.refresh()}
     Timer {interval:600;running:root.ready && (root.active || root.working);repeat:true;onTriggered:root.send("job-status")}
     Timer {interval:10000;running:root.ready && root.active;repeat:true;onTriggered:root.send("volumes")}

@@ -30,7 +30,8 @@ its bin/desktop-test-python for tests/desktop/run_backend_tests.py --output /new
 Each backend file gets a separate process and private D-Bus session. The runner
 clears production deployment settings and retains only the evaluator dependency.
 
-window_frames_render.py --sway /candidate/bin/sway --effects --output /new/dir
+window_frames_render.py --sway /candidate/bin/sway --pointer-tool /pointer/bin/wlrctl --launcher /candidate-shell/bin/lumen-desktop-shell --effects --output /new/dir
+Use --core-only for the native pointer/placement suite without installed GTK/Qt/Electron application fixtures.
 checks close, canceled clicks, minimize/restore for tiled siblings and floating
 windows across workspaces, reversible fill, disabled utility actions, scale 2,
 rounded corner pixels, shadow pixels and GTK/Qt/Electron window loading.

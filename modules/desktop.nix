@@ -7,6 +7,7 @@ let
   hostSwayPackage = config.programs.sway.package;
   assets = import ../packages/assets.nix { inherit pkgs; inherit (cfg.appearance) icons wallpaper brandMark; };
   desktopTimeZone = config.time.timeZone;
+  authorizationAgent = import ../packages/lumen-authorization-agent.nix { inherit pkgs; };
   auth = import ../packages/lumen-auth.nix { inherit pkgs lib assets; inherit (cfg.integrations.greeter) greeterExtraConfig allowUnsupportedGpu; user = desktopUser; displayName = cfg.displayName; swayPackage = config.programs.sway.package; };
 in {
   options.services.lumen-desktop = {
@@ -31,6 +32,7 @@ in {
         retentionSeconds = lib.mkOption { type = lib.types.nullOr (lib.types.ints.between 60 86400); default = null; description = "Consumer-selected ephemeral history lifetime; required when enabled."; };
         maxItems = lib.mkOption { type = lib.types.nullOr (lib.types.ints.between 1 1000); default = null; description = "Consumer-selected history bound; required when enabled."; };
       };
+      authorization.enable = lib.mkEnableOption "session authorization dialog appearance integration";
       calendar.enable = lib.mkEnableOption "calendar account services";
       bluetooth.enable = lib.mkEnableOption "Bluetooth UI integration";
       accessibility.enable = lib.mkEnableOption "desktop accessibility bus";
@@ -70,6 +72,10 @@ in {
     };
     inherit (session) nixSettings appearance qtTheme qtTheme5 palette menuRuntime personalServices fileClipboard displayLayout fileOperations focusWindow desktopState clipboardHistory launchApp shellLauncher audioKey mediaKey notifications menuCommand desktopDoctor desktopAction appLauncher filesLauncher remoteDesktopLauncher calendarLauncher settingsLauncher;
   in {
+    # Session UI only: the consumer retains all authentication policy.
+    wayland.windowManager.sway.config.startup = lib.optionals cfg.integrations.authorization.enable [
+      { command = "${authorizationAgent}/libexec/polkit-gnome-authentication-agent-1"; }
+    ];
     # Own the theme declaratively, rather than keeping temporary config links.
     wayland.windowManager.sway.extraConfig = lib.mkAfter (builtins.readFile ../res/lumen-desktop/sway.conf + ''
       # libinput exposes three-finger swipes; two-finger edge gestures are not available in Sway.

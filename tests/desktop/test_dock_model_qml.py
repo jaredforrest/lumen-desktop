@@ -42,6 +42,8 @@ Timer {
  if(JSON.stringify(DockModel.movePin(["a","b"],"a","missing"))!==JSON.stringify(["a","b"]))throw Error("Invalid drag target changed pins");
  const stacked=DockModel.build(reference,entries,[],[],[],false,[{path:"/fixture/Reports",sort:"name",descending:false,presentation:"list"}]);
  if(stacked[1].action!=="folder" || stacked[1].folder.path!=="/fixture/Reports" || stacked[stacked.length-1].key!=="trash")throw Error("Custom folder stack placement lost");
+ const fileAliases=DockModel.build(reference,entries,[],[],[],false,[],["/fixture/Literal # report.txt"]);
+ if(fileAliases[1].action!=="file" || fileAliases[1].path!=="/fixture/Literal # report.txt" || fileAliases[fileAliases.length-1].key!=="trash")throw Error("File alias identity lost");
  if(DockModel.recentApplications([entries[0],entries[2]],entries[0],2).length!==2)throw Error("Recent dedup lost entry");
  console.log("PASS dynamic Dock identity, deduplication, working pins and terminal tail");
  } catch(e){console.error("FAIL "+e)}Qt.quit();}

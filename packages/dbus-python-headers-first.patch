@@ -1,0 +1,14 @@
+--- a/test/import-repeatedly.c
++++ b/test/import-repeatedly.c
+@@ -4,9 +4,9 @@
+  * SPDX-License-Identifier: MIT
+  */
+ 
++#include <Python.h>
++
+ #include <stdio.h>
+-
+-#include <Python.h>
+ 
+ #include "dbus_bindings-internal.h"
+ 

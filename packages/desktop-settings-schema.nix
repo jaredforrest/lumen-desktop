@@ -24,6 +24,7 @@ let
             dockPosition = mkOption { type = types.enum [ "bottom" "left" "right" ]; default = "bottom"; };
             dockAutoHide = mkOption { type = types.bool; default = false; };
             dockSize = mkOption { type = types.ints.between 32 72; default = 48; };
+            dockFiles = mkOption { type = types.addCheck (types.listOf (types.addCheck (types.strMatching "/[^[:cntrl:]]*") (path: lib.stringLength path <= 4096))) (paths: lib.length paths == lib.length (lib.unique paths)); default = []; };
             dockFolders = mkOption {
               type = types.addCheck (types.listOf (types.submodule { options = {
                 path = mkOption { type = types.addCheck (types.strMatching "/[^[:cntrl:]]*") (path: lib.stringLength path <= 4096); };
@@ -47,6 +48,14 @@ let
             reduceMotion = mkOption { type = types.bool; default = false; };
           };
         };
+        default = {};
+      };
+      desktop = mkOption {
+        type = types.submodule { options = {
+          showFiles = mkOption { type = types.bool; default = false; };
+          fileSort = mkOption { type = types.enum [ "name" "modified" "size" "kind" ]; default = "name"; };
+          fileDescending = mkOption { type = types.bool; default = false; };
+        }; };
         default = {};
       };
       windows = mkOption {
