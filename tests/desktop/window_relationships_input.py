@@ -8,7 +8,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'res/lumen-desktop/run
 from window_context import contexts,tree_context
 processes=[]
 with tempfile.TemporaryDirectory(prefix='lumen-window-relations-') as private:
- env=dict(os.environ,HOME=private,XDG_RUNTIME_DIR=private,WLR_BACKENDS='headless',WLR_RENDERER='gles2' if a.effects else 'pixman',WLR_RENDERER_ALLOW_SOFTWARE='1',LIBGL_ALWAYS_SOFTWARE='1',WLR_LIBINPUT_NO_DEVICES='1')
+ env=dict(os.environ,HOME=private,XDG_RUNTIME_DIR=private,WLR_BACKENDS='headless',WLR_RENDERER='gles2' if a.effects else 'pixman',WLR_RENDERER_FORCE_SOFTWARE='1' if a.effects else '0',WLR_RENDERER_ALLOW_SOFTWARE='1',LIBGL_ALWAYS_SOFTWARE='1',WLR_LIBINPUT_NO_DEVICES='1')
  for key in ('WAYLAND_DISPLAY','DISPLAY','SWAYSOCK','DBUS_SESSION_BUS_ADDRESS'):env.pop(key,None)
  def launch(cmd,log,**kw):
   with (a.output/log).open('w') as stream:process=sp.Popen(cmd,env=env,stdout=stream,stderr=sp.STDOUT,start_new_session=True,**kw)

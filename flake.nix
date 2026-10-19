@@ -105,6 +105,7 @@
         packages = [ privateBus runtime settings pkgs.nix pkgs.git pkgs.dbus quickshell pkgs.sway pkgs.grim pkgs.wtype pkgs.foot pkgs.imagemagick pkgs.gitleaks ];
         shellHook = ''
           export PYTHONDONTWRITEBYTECODE=1
+          export __EGL_VENDOR_LIBRARY_FILENAMES=${pkgs.mesa}/share/glvnd/egl_vendor.d/50_mesa.json
           export LUMEN_TEST_SETTINGS_COMMAND=${settings}/bin/lumen-nix-settings
           echo "Lumen development shell. See CONTRIBUTING.md for isolated test commands."
         '';

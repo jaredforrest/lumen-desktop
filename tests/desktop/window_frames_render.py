@@ -22,7 +22,7 @@ if not a.inside:
  bus_config.write_text('<busconfig><type>session</type><listen>unix:tmpdir='+env['XDG_RUNTIME_DIR']+'</listen><policy context="default"><allow own="*"/><allow send_destination="*"/><allow receive_sender="*"/></policy></busconfig>')
  try:raise SystemExit(sp.call(['dbus-run-session','--config-file='+str(bus_config),'--',sys.executable,__file__,*sys.argv[1:],'--inside'],env=env))
  finally:shutil.rmtree(env['XDG_RUNTIME_DIR'],ignore_errors=True)
-env=dict(os.environ,GSETTINGS_BACKEND='keyfile',GTK_THEME='WhiteSur-Light',WLR_BACKENDS='headless',WLR_RENDERER='gles2' if a.effects else 'pixman',WLR_RENDERER_ALLOW_SOFTWARE='1',WLR_LIBINPUT_NO_DEVICES='1',GDK_BACKEND='wayland',QT_QPA_PLATFORM='wayland',QT_QUICK_BACKEND='software',QT_QPA_PLATFORMTHEME='generic',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
+env=dict(os.environ,GSETTINGS_BACKEND='keyfile',GTK_THEME='WhiteSur-Light',WLR_BACKENDS='headless',WLR_RENDERER='gles2' if a.effects else 'pixman',WLR_RENDERER_FORCE_SOFTWARE='1' if a.effects else '0',WLR_RENDERER_ALLOW_SOFTWARE='1',WLR_LIBINPUT_NO_DEVICES='1',GDK_BACKEND='wayland',QT_QPA_PLATFORM='wayland',QT_QUICK_BACKEND='software',QT_QPA_PLATFORMTHEME='generic',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
 for k in ['SWAYSOCK','WAYLAND_DISPLAY','DISPLAY']:env.pop(k,None)
 for k in ['CONFIG','STATE','CACHE','DATA']:env['XDG_'+k+'_HOME']=str(out/('test-'+k.lower()))
 if a.launcher:

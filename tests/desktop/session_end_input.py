@@ -14,7 +14,7 @@ with tempfile.TemporaryDirectory(prefix='lumen-end-') as private:
   if key in installed:env[key]=installed[key]
  source=Path(installed['LUMEN_NOTIFICATION_HELPER']).parent.parent
  assert (source/'runtime/session_end.py').is_file(), 'Build a shell containing cooperative session preflight first'
- env.update(WLR_BACKENDS='headless',WLR_RENDERER='gles2' if a.effects else 'pixman',WLR_RENDERER_ALLOW_SOFTWARE='1',LIBGL_ALWAYS_SOFTWARE='1',WLR_LIBINPUT_NO_DEVICES='1',QT_QPA_PLATFORM='wayland',QT_QUICK_BACKEND='software',QT_QPA_PLATFORMTHEME='generic',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none',GDK_BACKEND='wayland')
+ env.update(WLR_BACKENDS='headless',WLR_RENDERER='gles2' if a.effects else 'pixman',WLR_RENDERER_FORCE_SOFTWARE='1' if a.effects else '0',WLR_RENDERER_ALLOW_SOFTWARE='1',LIBGL_ALWAYS_SOFTWARE='1',WLR_LIBINPUT_NO_DEVICES='1',QT_QPA_PLATFORM='wayland',QT_QUICK_BACKEND='software',QT_QPA_PLATFORMTHEME='generic',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none',GDK_BACKEND='wayland')
  binary=root/'bin';binary.mkdir();env['PATH']=str(binary)+':'+env['PATH']
  # The final host command is intercepted inside this disposable fixture only.
  marker=a.output/'host-actions';stub=binary/'systemctl';stub.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "'+str(marker)+'"\n');stub.chmod(0o700)

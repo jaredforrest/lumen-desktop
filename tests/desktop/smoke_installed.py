@@ -37,7 +37,7 @@ installed=dict(v.decode().split('=',1) for v in raw.split(b'\0') if b'=' in v)
 env=dict(os.environ)
 for key in ('PATH','GLOBAL_MENU_PYTHON','GLOBAL_MENU_BRIDGE','QT_PLUGIN_PATH','QML_IMPORT_PATH','QT_QPA_PLATFORMTHEME','QT_LINUX_ACCESSIBILITY_ALWAYS_ON'):
     if key in installed:env[key]=installed[key]
-env.update(XDG_RUNTIME_DIR=str(runtime),XDG_CONFIG_HOME=str(run/'config'),XDG_STATE_HOME=str(run/'state'),XDG_CACHE_HOME=str(run/'cache'),XDG_DATA_HOME=str(run/'data'),WLR_BACKENDS='headless',WLR_RENDERER='gles2' if args.effects else 'pixman',WLR_RENDERER_ALLOW_SOFTWARE='1',WLR_LIBINPUT_NO_DEVICES='1',QT_QPA_PLATFORM='wayland',GDK_BACKEND='wayland',LUMEN_FILE_SERVICE='0',LUMEN_LAUNCH_SCOPES='0',GLOBAL_MENU_ENABLED='0')
+env.update(XDG_RUNTIME_DIR=str(runtime),XDG_CONFIG_HOME=str(run/'config'),XDG_STATE_HOME=str(run/'state'),XDG_CACHE_HOME=str(run/'cache'),XDG_DATA_HOME=str(run/'data'),WLR_BACKENDS='headless',WLR_RENDERER='gles2' if args.effects else 'pixman',WLR_RENDERER_FORCE_SOFTWARE='1' if args.effects else '0',WLR_RENDERER_ALLOW_SOFTWARE='1',LIBGL_ALWAYS_SOFTWARE='1',WLR_LIBINPUT_NO_DEVICES='1',QT_QPA_PLATFORM='wayland',GDK_BACKEND='wayland',LUMEN_FILE_SERVICE='0',LUMEN_LAUNCH_SCOPES='0',GLOBAL_MENU_ENABLED='0')
 env.update(QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
 env.pop('AT_SPI_BUS_ADDRESS',None)
 if not args.effects:env['QT_QUICK_BACKEND']='software'
@@ -55,7 +55,9 @@ fixture_calendar.write_text('#!'+sys.executable+'\nimport json,sys\nr=json.loads
 fixture_calendar.chmod(0o700);env['PATH']=str(fixture_bin)+':'+env['PATH']
 procs=[]
 def launch(command,name):
- p=sp.Popen(command,env=env,stdout=(run/(name+'.log')).open('w'),stderr=sp.STDOUT,start_new_session=True);procs.append(p);return p
+ with (run/(name+'.log')).open('w') as stream:
+  p=sp.Popen(command,env=env,stdout=stream,stderr=sp.STDOUT,start_new_session=True)
+ procs.append(p);return p
 def call(*command):return sp.check_output(command,env=env,text=True,timeout=10)
 def wait(fn):
  end=time.monotonic()+20
@@ -88,7 +90,7 @@ try:
  conf=run/'sway.conf';conf.write_text('output HEADLESS-1 resolution 1440x1000\nxwayland disable\ndefault_border none\nfor_window [app_id="org.quickshell"] floating enable\n')
  if args.effects:
   with conf.open('a') as stream:stream.write('corner_radius 12\nshadows enable\nshadow_blur_radius 28\nanimation_duration_ms 0\nblur enable\nblur_xray disable\nlayer_effects "lumen-dock" "blur enable; corner_radius 22"\nlayer_effects "lumen-menu-popup" "blur enable; blur_ignore_transparent enable"\n')
- launch([args.sway,'--unsupported-gpu','-c',str(conf)],'sway');wait(lambda:list(runtime.glob('sway-ipc*.sock')))
+ launch([args.sway,'--unsupported-gpu',*(['-d'] if args.effects else []),'-c',str(conf)],'sway');wait(lambda:list(runtime.glob('sway-ipc*.sock')))
  env['SWAYSOCK']=str(next(runtime.glob('sway-ipc*.sock')));env['WAYLAND_DISPLAY']=next(p.name for p in runtime.glob('wayland-*') if not p.name.endswith('.lock'))
  capabilities=json.loads(call('swaymsg','-t','get_version','-r'))
  env['LUMEN_NATIVE_WINDOW_CONTROLS']='1' if capabilities.get('native_window_controls') else '0'
@@ -208,6 +210,9 @@ try:
  sway_log=(run/'sway.log').read_text()
  assert 'Unknown/invalid command' not in sway_log,sway_log
  if args.effects:
+  for proof in ('Using software rendering','Creating scenefx FX renderer','FX RENDERER: Shaders Initialized Successfully','Created GL FBO for buffer'):
+   assert proof in sway_log,(proof,'Effects renderer proof missing',sway_log)
+  checks.append('Explicit software Scenefx renderer initialized FX shaders and effect framebuffers')
   from PIL import ImageStat
   for capture,area in (('files.png',(470,260,1000,700)),('controls.png',(1130,100,1420,450))):
    mean=ImageStat.Stat(Image.open(run/capture).convert('RGB').crop(area)).mean
@@ -220,5 +225,5 @@ finally:
   if process.poll() is None:
    os.killpg(process.pid,signal.SIGTERM)
    try:process.wait(timeout=5)
-   except sp.TimeoutExpired:os.killpg(process.pid,signal.SIGKILL)
+   except sp.TimeoutExpired:os.killpg(process.pid,signal.SIGKILL);process.wait(timeout=5)
  shutil.rmtree(runtime,ignore_errors=True)
