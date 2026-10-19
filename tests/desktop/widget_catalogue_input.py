@@ -28,9 +28,10 @@ ShellRoot {
  property int activations:0
  property int backgroundClicks:0
  property var captured:null
+ property alias widgetService:widgets
  D.WidgetState {id:widgets}
  QtObject {id:menu;property var state:({windowId:0})}
- QtObject {id:stub;property var widgets:widgets;property var exportedMenu:menu;property var widgetSurfaces:({});property date currentDate:new Date(2026,9,19,13,5);function showMenu(kind,output){fixture.activations++;}function openSettings(page){}function openCalendarAt(day,event){fixture.activations++;}}
+ QtObject {id:stub;property var widgets:fixture.widgetService;property var exportedMenu:menu;property var widgetSurfaces:({});property date currentDate:new Date(2026,9,19,13,5);function showMenu(kind,output){fixture.activations++;}function openSettings(page){}function openCalendarAt(day,event){fixture.activations++;}}
  Variants {model:Quickshell.screens
   Scope {required property var modelData
    PanelWindow {screen:modelData;anchors {top:true;bottom:true;left:true;right:true};color:"#303030";exclusiveZone:0;WlrLayershell.layer:WlrLayer.Background;MouseArea {anchors.fill:parent;onClicked:fixture.backgroundClicks++}}
@@ -39,7 +40,7 @@ ShellRoot {
  }
  FloatingWindow {id:window;title:"Widget Catalogue";visible:true;implicitWidth:420;implicitHeight:680
   Rectangle {id:body;anchors.fill:parent;color:D.Theme.colors.background
-   Flickable {anchors.fill:parent;anchors.margins:20;contentHeight:editor.implicitHeight;clip:true;D.DesktopWidgetEditor {id:editor;width:parent.width;service:widgets}}
+   Flickable {id:scroll;anchors.fill:parent;anchors.margins:20;contentWidth:width;contentHeight:editor.implicitHeight;clip:true;D.DesktopWidgetEditor {id:editor;width:scroll.width;service:widgets}}
   }
  }
  function find(item,name){if(item.objectName===name)return item;for(const child of item.children || []){const result=find(child,name);if(result)return result;}return null;}
