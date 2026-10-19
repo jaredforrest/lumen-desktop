@@ -122,6 +122,10 @@ def private_service_test():
                     # Exercise normal persistence through the actual D-Bus API.
                     interface.Command(json.dumps({'action': 'seen'}))
                     assert not json.loads(interface.Snapshot())['rows'][0]['unread']
+                except Exception as error:
+                    output.flush()
+                    details=(folder / ('service-%s.log' % iteration)).read_text()
+                    raise AssertionError('Private notification service failed:\n'+details) from error
                 finally:
                     proc.terminate()
                     proc.wait(timeout=5)

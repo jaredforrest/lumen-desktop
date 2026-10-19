@@ -18,6 +18,13 @@ async def value():
     return 23
 with asyncio.Runner(loop_factory=events.GLibEventLoop) as runner:
     assert runner.run(value()) == 23
+from gi.repository import GLib
+main = GLib.MainLoop()
+def quit():
+    main.quit()
+    return False
+GLib.idle_add(quit)
+main.run()
 assert "GLibEventLoopPolicy" not in vars(events)
 ''')
 

@@ -1,16 +1,23 @@
 --- a/gi/events.py
 +++ b/gi/events.py
-@@ -35,6 +35,9 @@
+@@ -35,6 +35,16 @@
  
  from gi.repository import GLib
  
 +# Loop ownership is independent of the deprecated policy interface.
 +_context_loops = {}
 +
++
++def _get_registered_event_loop(context):
++    if context is None:
++        return None
++    loop = _context_loops.get(hash(context))
++    return loop if loop is not None and not loop.is_closed() else None
++
  try:
      g_main_loop_run = super(GLib.MainLoop, GLib.MainLoop).run
  except AttributeError:
-@@ -344,17 +347,17 @@
+@@ -344,17 +354,17 @@
          # Only permit a new EventLoop, if any old one is closed already
          if (
              ctx is not None
@@ -33,7 +40,7 @@
  
          if hash(ctx) != hash(self._context):
              GLib.MainContext.push_thread_default(self._context)
-@@ -366,7 +369,7 @@
+@@ -366,7 +376,7 @@
          self._loop_enter_count -= 1
          if self._loop_enter_count == 0:
              if not self._loop_was_set:
@@ -42,7 +49,7 @@
              if self._ctx_was_set:
                  GLib.MainContext.pop_thread_default(self._context)
              self._loop_was_set = False
-@@ -796,186 +799,198 @@
+@@ -796,186 +806,198 @@
              self._source.disable()
  
  
@@ -420,3 +427,16 @@
 +
 +def __dir__():
 +    return sorted(set(globals()) | {"GLibEventLoopPolicy"})
+--- a/gi/_ossighelper.py
++++ b/gi/_ossighelper.py
+@@ -267,7 +267,9 @@
+         # It is removed in python 3.16 and we cannot properly check if one was
+         # set by the user. Also, it is fair to assume that if one is set, then
+         # it will be ours.
+-        loop = events.GLibEventLoopPolicy._get_event_loop()
++        legacy_policy = events.__dict__.get("GLibEventLoopPolicy")
++        loop = (legacy_policy._get_event_loop() if legacy_policy is not None
++                else events._get_registered_event_loop(ctx))
+ 
+     if (
+         isinstance(loop, events.GLibEventLoop)
