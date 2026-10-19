@@ -1,4 +1,7 @@
 singleton Theme 1.0 Theme.qml
+BatteryState 1.0 BatteryState.qml
+BatteryGlyph 1.0 BatteryGlyph.qml
+BatteryMenuButton 1.0 BatteryMenuButton.qml
 Dock 1.0 Dock.qml
 GlobalMenu 1.0 GlobalMenu.qml
 MenuBar 1.0 MenuBar.qml

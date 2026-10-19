@@ -3,6 +3,7 @@ import json, os, re, socket, subprocess, sys, tempfile, time, fcntl
 import dbus
 from pathlib import Path
 import bluetooth_power
+import battery_power
 
 class Wireless:
     def __init__(self):
@@ -101,7 +102,7 @@ def main():
             wireless = wifi.status()
         except (OSError, RuntimeError):
             wireless = {"available": False, "networks": []}
-        return {"wifi": wireless, "bluetoothRadios": bluetooth_power.status()}
+        return {"wifi": wireless, "bluetoothRadios": bluetooth_power.status(), "power": battery_power.status()}
     if action == "wifi-connect":
         ident = sys.argv[2]
         if not ident.isdigit() or ident not in {n["id"] for n in wifi.status()["networks"]}:

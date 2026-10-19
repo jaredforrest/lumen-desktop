@@ -5,6 +5,8 @@ Item {
     id: root
     property var wifi: ({available:false,networks:[]})
     property var bluetoothRadios: ({})
+    BatteryState {id:powerState}
+    readonly property var power:powerState.status
     property string error: ""
     property int revision: 0
     readonly property bool busy: writer.running
@@ -21,7 +23,7 @@ Item {
         id: reader
         property int requestRevision:0
         command:[root.python,root.helper,"status"]
-        stdout: StdioCollector {onStreamFinished:{if(reader.requestRevision!==root.revision)return;try{const s=JSON.parse(text);if(s.wifi)root.wifi=s.wifi;if(s.bluetoothRadios)root.bluetoothRadios=s.bluetoothRadios;}catch(e){root.error="Unable to read system controls";}}}
+        stdout: StdioCollector {onStreamFinished:{if(reader.requestRevision!==root.revision)return;try{const s=JSON.parse(text);powerState.publish(s.power);if(s.wifi)root.wifi=s.wifi;if(s.bluetoothRadios)root.bluetoothRadios=s.bluetoothRadios;}catch(e){powerState.clear();root.error="Unable to read system controls";}}}
     }
     Process {
         id: writer

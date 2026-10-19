@@ -28,6 +28,7 @@ PanelWindow {
         if(width<720 && shell.notifications.dnd)result.push({label:"Focus",action:"status:Focus"});
         if(width<800)result.push({label:"Search",action:"apps"});
         if(width<860)result.push({label:"VPN",action:"status:VPN"});
+        if(width<960 && shell.systemState && shell.systemState.power && shell.systemState.power.present)result.push({label:"Battery",action:"status:Controls"});
         return result;
     }
     readonly property real menuBudget:Math.max(0,statusIcons.x-28)
@@ -115,6 +116,7 @@ PanelWindow {
     Row {
         id:statusIcons
         anchors.right: parent.right; anchors.rightMargin: clockButton.width+12; anchors.verticalCenter: parent.verticalCenter; spacing: 0
+        BatteryMenuButton {power:bar.shell.systemState && bar.shell.systemState.power?bar.shell.systemState.power:null;visible:bar.width>=960 && validated.available && validated.present;onClicked:bar.toggle("Controls",bar.width-340)}
         MenuButton {visible:bar.width>=640; text: ""; iconName: shell.volume.includes("MUTED") ? "muted" : "sound"; onClicked: bar.toggle("Sound", bar.width-370) }
         MenuButton {visible:bar.width>=720 && shell.notifications.dnd;text:"";iconName:"moon";onClicked:bar.toggle("Controls",bar.width-340)}
         MenuButton {visible:bar.width>=800; text: ""; iconName: "search"; onClicked: shell.launchApps() }

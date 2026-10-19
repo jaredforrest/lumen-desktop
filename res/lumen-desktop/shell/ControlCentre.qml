@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import Quickshell.Io
 import Quickshell.Bluetooth
+import "BatteryModel.js" as BatteryModel
 Column {
     id:root
     required property var shell
@@ -9,6 +10,7 @@ Column {
     signal settingsRequested()
     width:300;spacing:10
     property bool editing:false
+    readonly property var power:root.shell.systemState && root.shell.systemState.power?root.shell.systemState.power:null
     property var preferences:Theme.controlCentrePreferences
     property var pending:({})
     property string error:""
@@ -20,6 +22,13 @@ Column {
     function toggle(id){let hidden=preferences.hidden.slice();const at=hidden.indexOf(id);if(at>=0)hidden.splice(at,1);else hidden.push(id);update("hidden",hidden);}
     Connections {target:Theme;function onControlCentrePreferencesChanged(){if(!writer.running && !Object.keys(root.pending).length)root.preferences=Theme.controlCentrePreferences;}}
     Process {id:writer;stdout:StdioCollector {} stderr:StdioCollector {}onExited:(code,status)=>{root.error=code===0?"":"Control layout was not saved. Try again.";Qt.callLater(root.flush);}}
+    Row {visible:!root.editing && !!root.power && root.power.available && root.power.present;width:parent.width;spacing:8
+        BatteryGlyph {anchors.verticalCenter:parent.verticalCenter;percentage:root.power?root.power.percentage:0;charging:!!root.power && root.power.state==="charging"}
+        Column {width:parent.width-32
+            PanelLabel {width:parent.width;text:root.power?BatteryModel.description(root.power):"";elide:Text.ElideRight}
+            PanelLabel {width:parent.width;visible:text!=="";text:root.power?BatteryModel.estimate(root.power):"";color:Theme.colors.muted;font.pixelSize:11;elide:Text.ElideRight}
+        }
+    }
     Flow {visible:!root.editing;width:parent.width;spacing:10
         Repeater {model:root.preferences.order.filter(id=>!root.preferences.hidden.includes(id))
             delegate:Loader {required property string modelData;width:["brightness","sound"].includes(modelData)?root.width:(root.width-10)/2;height:modelData==="media"?130:62

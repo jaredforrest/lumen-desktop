@@ -129,3 +129,18 @@ Uses a private headless compositor/bus/HOME and a synthetic GTK application with
 two dirty in-memory documents. Verifies retained zero-window pidfd identity, Dock
 and switcher activation, cooperative app-owned cancel/save/discard, and exit cleanup.
 It never sends input to the user's compositor or uses a personal document.
+
+Power status
+-----------
+The battery backend reads the currently owned UPower aggregate device without
+activating a missing service. Enabling UPower remains consumer host policy.
+Unavailable, absent and malformed snapshots carry no percentage; a ten-second
+frontend expiry also clears stalled results. Percentage zero remains a valid
+empty battery. The compact menu button opens the supported Control Centre facts.
+
+Reproduce real provider transitions, owner loss during a reply and replacement:
+  nix develop --command desktop-test-python tests/desktop/battery_provider.py --output /tmp/lumen-power-proof
+This creates its own D-Bus daemon. It never contacts a physical power device.
+Python/QML backend tests and the JavaScript model check cover data bounds, low
+battery text semantics, accessible descriptions and frontend timeout/removal.
+Physical charging/discharging and exact reference geometry remain unverified.
