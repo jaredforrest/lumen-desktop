@@ -362,7 +362,7 @@
  #include "list.h"
  #include "log.h"
  #include "util.h"
-@@ -96,6 +98,253 @@
+@@ -96,6 +98,263 @@
  	con->transform = box;
  }
  
@@ -514,7 +514,10 @@
 +
 +void container_lumen_hide(struct sway_container *con) {
 + if (!container_lumen_action_enabled(con, 0) || con->lumen_app_hidden) return;
-+ if (!con->scratchpad) {
++ if (con->lumen_desktop_hidden) {
++  con->lumen_hidden = con->lumen_desktop_hidden;
++  con->lumen_desktop_hidden = NULL;
++ } else if (!con->scratchpad) {
 +  con->lumen_hidden = lumen_save(con);
 +  if (!con->lumen_hidden) return;
 +  root_scratchpad_add_container(con, NULL);
@@ -535,6 +538,13 @@
 +
 +void container_lumen_minimize(struct sway_container *con) {
 + if (!container_lumen_action_enabled(con, 1)) return;
++ if (con->lumen_desktop_hidden) {
++  con->lumen_minimized = con->lumen_desktop_hidden;
++  con->lumen_desktop_hidden = NULL;
++  node_set_dirty(&con->node);
++  if (con->view->foreign_toplevel) wlr_foreign_toplevel_handle_v1_set_minimized(con->view->foreign_toplevel, true);
++  return;
++ }
 + if (con->scratchpad) { root_scratchpad_hide(con); return; }
 + con->lumen_minimized = lumen_save(con);
 + if (!con->lumen_minimized) return;

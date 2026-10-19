@@ -22,14 +22,14 @@ if not a.inside:
  bus_config.write_text('<busconfig><type>session</type><listen>unix:tmpdir='+env['XDG_RUNTIME_DIR']+'</listen><policy context="default"><allow own="*"/><allow send_destination="*"/><allow receive_sender="*"/></policy></busconfig>')
  try:raise SystemExit(sp.call(['dbus-run-session','--config-file='+str(bus_config),'--',sys.executable,__file__,*sys.argv[1:],'--inside'],env=env))
  finally:shutil.rmtree(env['XDG_RUNTIME_DIR'],ignore_errors=True)
-env=dict(os.environ,GSETTINGS_BACKEND='keyfile',GTK_THEME='WhiteSur-Light',WLR_BACKENDS='headless',WLR_RENDERER='gles2' if a.effects else 'pixman',WLR_RENDERER_ALLOW_SOFTWARE='1',WLR_LIBINPUT_NO_DEVICES='1',GDK_BACKEND='wayland',QT_QPA_PLATFORM='wayland',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
+env=dict(os.environ,GSETTINGS_BACKEND='keyfile',GTK_THEME='WhiteSur-Light',WLR_BACKENDS='headless',WLR_RENDERER='gles2' if a.effects else 'pixman',WLR_RENDERER_ALLOW_SOFTWARE='1',WLR_LIBINPUT_NO_DEVICES='1',GDK_BACKEND='wayland',QT_QPA_PLATFORM='wayland',QT_QUICK_BACKEND='software',QT_QPA_PLATFORMTHEME='generic',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
 for k in ['SWAYSOCK','WAYLAND_DISPLAY','DISPLAY']:env.pop(k,None)
 for k in ['CONFIG','STATE','CACHE','DATA']:env['XDG_'+k+'_HOME']=str(out/('test-'+k.lower()))
 if a.launcher:
  prefix=re.split(r'\n[ \t]*exec quickshell ',Path(a.launcher).read_text(),maxsplit=1)[0]
  raw=sp.check_output(['bash','-c',prefix+'\nexec env -0'],env=env)
  env.update(dict(v.decode().split('=',1) for v in raw.split(b'\0') if b'=' in v))
- env.update(QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
+ env.update(QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none',QT_QUICK_BACKEND='software',QT_QPA_PLATFORMTHEME='generic')
 appearance=Path(shutil.which('lumen-appearance',path=env.get('PATH'))).read_text()
 prefix=re.split(r'\n[ \t]*exec ',appearance,maxsplit=1)[0]
 raw=sp.check_output(['bash','-c',prefix+'\nexec env -0'],env=env)
@@ -72,7 +72,7 @@ try:
  launch([swaypath,'--unsupported-gpu','-c',str(config)],'nested-sway.log')
  wait(lambda:list(Path(env['XDG_RUNTIME_DIR']).glob('sway-ipc.*.sock')))
  env['SWAYSOCK']=str(next(Path(env['XDG_RUNTIME_DIR']).glob('sway-ipc.*.sock')))
- assert json.loads(call('swaymsg','-t','get_version','-r'))['native_window_controls']
+ wait(lambda:json.loads(call('swaymsg','-t','get_version','-r')).get('native_window_controls') is True)
  ipc('lumen_window margins disable')
  env['WAYLAND_DISPLAY']=next(x.name for x in Path(env['XDG_RUNTIME_DIR']).glob('wayland-*') if not x.name.endswith('.lock'))
  launch(['foot','--title=Frame Test','sh','-c','sleep 600'],'foot.log');wait(lambda:any(n['name']=='Frame Test' for n in leaves()))
@@ -163,6 +163,9 @@ try:
  print('PASS: native title bar is 32px; close, minimise/restore placement fullscreen and reversible fill work.')
  launch(['foot','--title=Floating Frame Test','sh','-c','sleep 600'],'floating-foot.log');wait(lambda:any(n['name']=='Floating Frame Test' for n in leaves()))
  ipc('[title="^Floating Frame Test$"] floating enable, resize set width 500 px height 320 px, move position 150 px 170 px')
+ # Mapping and client configure acknowledgements are asynchronous under load.
+ # Capture the requested settled placement, not the previous tiled transaction.
+ wait(lambda:any(n['name']=='Floating Frame Test' and n['type']=='floating_con' and n['rect']['width']<600 and n['rect']['height']<450 for n in leaves()))
  before=next(n for n in leaves() if n['name']=='Floating Frame Test')
  ipc('[title="^Floating Frame Test$"] lumen_window minimize')
  ipc('workspace 2');ipc('[title="^Floating Frame Test$"] scratchpad show')
@@ -242,6 +245,19 @@ try:
  ipc(f'output {second} disable')
  ipc('focus output HEADLESS-1')
  print('PASS: desktop reveal restores visible windows independently on two outputs.')
+ ipc('lumen_window show-desktop-on')
+ ipc('[title="^Tiled B$"] lumen_window hide')
+ ipc('lumen_window show-desktop-off')
+ changed=next(n for n in leaves() if n['name']=='Tiled B')
+ assert changed['lumen_state']['hidden'] and not changed['lumen_state']['desktop_hidden'] and changed['scratchpad_state']!='none'
+ ipc('[title="^Tiled B$"] lumen_window unhide')
+ ipc('lumen_window show-desktop-on')
+ ipc('[title="^Tiled B$"] lumen_window minimize')
+ ipc('lumen_window show-desktop-off')
+ changed=next(n for n in leaves() if n['name']=='Tiled B')
+ assert changed['lumen_state']['minimised'] and not changed['lumen_state']['desktop_hidden'] and changed['scratchpad_state']!='none'
+ ipc('[title="^Tiled B$"] scratchpad show')
+ print('PASS: hide/minimise requests during desktop reveal persist after reveal restoration.')
  ipc('[title="^Tiled A$"] scratchpad show')
  assert {n['name']:n['rect'] for n in leaves()}==before
  ipc('[title="^Tiled [AB]$"] lumen_window close');wait(lambda:not leaves())
