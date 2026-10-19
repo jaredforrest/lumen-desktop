@@ -85,6 +85,13 @@ try:
  config=out/'sway.conf';config.write_text('output HEADLESS-1 resolution 1280x900 position 0 0\noutput HEADLESS-2 resolution 1280x900 position 1280 0\nxwayland disable\nfocus_follows_mouse no\nfor_window [all] floating enable, border pixel 0\n')
  launch([a.sway,'--unsupported-gpu','-c',str(config)],'sway.log');runtime=Path(env['XDG_RUNTIME_DIR']);env['SWAYSOCK']=str(wait(lambda:next(runtime.glob('sway-ipc*.sock'),None)));env['WAYLAND_DISPLAY']=wait(lambda:next((path.name for path in runtime.glob('wayland-*') if not path.name.endswith('.lock')),None))
  shell=launch(['quickshell','-p',str(qml)],'shell.log');wait(lambda:len(state()['outputs'])==2)
+ document=out/'synthetic-document.txt'
+ document_process=launch(['foot','--app-id=lumen-recovery-document','--title=Recovery document','-e','sh','-c','cat > "$1"','fixture',str(document)],'document.log')
+ def document_nodes():return [node for node in nodes(json.loads(call('swaymsg','-r','-t','get_tree'))) if node.get('app_id')=='lumen-recovery-document']
+ document_node=wait(lambda:next(iter(document_nodes()),None));document_identity=(document_node['id'],document_node['pid'])
+ call('swaymsg','[con_id='+str(document_identity[0])+']','move container to workspace recovery-document')
+ call('swaymsg','workspace','1')
+
  launch(['wtype','-s','60000'],'keyboard.log');pointer=sp.Popen([a.pointer_tool,'pointer','move','0','0'],env=env,stdin=sp.PIPE,text=True,start_new_session=True);processes.append(pointer);time.sleep(.2)
  click(point('widget-add-clock'));wait(lambda:state()['preferences'].get('desktopItems') and all(len(output['items'])==1 for output in state()['outputs']))
  checks=['Actual catalogue click creates one stable instance on both outputs']
@@ -94,6 +101,24 @@ try:
  clock=card();start=(clock['x']+clock['width']-25,clock['y']+14);move(*start);command('p');move(start[0]+100,start[1]+60);command('r');wait(lambda:'HEADLESS-1' in item()['positions']);assert 'HEADLESS-2' not in item()['positions'];assert state()['same'];checks.append('Pointer release saves only the touched display without recreating the widget')
  original=dict(item()['positions']['HEADLESS-1']);key('-k','space','-k','Right','-k','Escape');assert item()['positions']['HEADLESS-1']==original
  key('-k','space','-k','Right','-k','Return');wait(lambda:item()['positions']['HEADLESS-1']['x']>original['x']);checks.append('Keyboard move previews cancel or commit against the same captured instance')
+ # Kill the actual shell while a native move owns the pointer. The last committed
+ # layout survives; preview coordinates and input grabs belong to the dead process.
+ saved_before_crash=json.loads(json.dumps(item()));clock=card();start=(clock['x']+clock['width']-25,clock['y']+14)
+ move(*start);command('p');move(start[0]+80,start[1]+40);wait(lambda:card()['moving'])
+ os.kill(shell.pid,signal.SIGKILL);shell.wait(timeout=5);command('r')
+ shell=launch(['quickshell','-p',str(qml)],'shell-crash-restart.log')
+ wait(lambda:state()['preferences'].get('desktopItems') and item()['id']==saved_before_crash['id'])
+ assert item()==saved_before_crash and not card()['moving']
+ assert [(node['id'],node['pid']) for node in document_nodes()]==[document_identity]
+ call('swaymsg','[con_id='+str(document_identity[0])+']','focus')
+ key('recovery-document-still-editable','-k','Return')
+ wait(lambda:document.exists() and 'recovery-document-still-editable' in document.read_text())
+ call('swaymsg','workspace','1')
+
+ click((20,850));wait(lambda:state()['background']==1)
+ clock=card();click((clock['x']+90,clock['y']+70));wait(lambda:state()['activations']==1)
+ time.sleep(.2);assert state()['activations']==1
+ ipc('capture');checks.append('SIGKILL during held native movement preserves committed layout, surviving editable document identity, click-through and one fresh activation')
  identifier=item()['id'];click(point('widget-size-'+identifier));key('-k','Home','-k','Return');wait(lambda:item()['size']=='small' and card()['width']==214);assert state()['same'] and state()['sameEditor'];checks.append('Size control updates both surfaces while preserving component identity')
  call('grim',str(out/('widgets-'+a.theme+'.png')))
  saved=dict(item());os.killpg(shell.pid,signal.SIGTERM);shell.wait(timeout=5);shell=launch(['quickshell','-p',str(qml)],'shell-restart.log');wait(lambda:state()['preferences'].get('desktopItems') and item()['id']==saved['id']);assert item()==saved;checks.append('Restart restores the exact instance, size and independent positions')
@@ -107,7 +132,7 @@ try:
   key('-k','Tab');maximumScroll=max(maximumScroll,state()['scrollY'])
  assert maximumScroll>0;checks.append('Keyboard traversal reveals controls below the widget editor viewport')
  assert not state()['error'],state()
- for name in ('shell.log','shell-restart.log'):
+ for name in ('shell.log','shell-restart.log','shell-crash-restart.log'):
   text=(out/name).read_text();assert not any(marker in text for marker in ('TypeError:','ReferenceError:','Binding loop','Failed to load configuration','Cannot assign')),text
  (out/'result.json').write_text(json.dumps(dict(passed=True,checks=checks,final=state(),scope='Two private native outputs, synthetic date, real pointer and keyboard; no live accounts/settings'),indent=2)+'\n')
 finally:
