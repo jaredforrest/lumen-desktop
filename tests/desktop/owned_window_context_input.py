@@ -3,16 +3,21 @@ import argparse,json,os,re,shutil,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
 p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--launcher',type=Path,required=True);p.add_argument('--sway',required=True);p.add_argument('--full-shell',action='store_true');p.add_argument('--inside',action='store_true');a=p.parse_args()
 if not a.inside:
- with tempfile.TemporaryDirectory(prefix='lumen-owned-window-',ignore_cleanup_errors=True) as private:
-  env=dict(os.environ,HOME=private,XDG_RUNTIME_DIR=private)
+ with tempfile.TemporaryDirectory(prefix='lumen-owned-window-') as private:
+  env=dict(os.environ,HOME=private,XDG_RUNTIME_DIR=private,DBUS_SYSTEM_BUS_ADDRESS='unix:path='+str(Path(private)/'no-system-bus'))
   for key in ('CONFIG','STATE','CACHE','DATA'):env['XDG_'+key+'_HOME']=str(Path(private)/key.lower())
   for key in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK','DBUS_SESSION_BUS_ADDRESS','AT_SPI_BUS_ADDRESS'):env.pop(key,None)
-  raise SystemExit(sp.call(['dbus-run-session','--',sys.executable,__file__,*sys.argv[1:],'--inside'],env=env))
+  bus_config=Path(private)/'bus.conf'
+  # No activation directories: owned UI tests must never start portal/FUSE services.
+  bus_config.write_text('<busconfig><type>session</type><listen>unix:tmpdir='+private+'</listen><auth>EXTERNAL</auth><policy context="default"><allow send_destination="*"/><allow receive_sender="*"/><allow own="*"/></policy></busconfig>')
+  raise SystemExit(sp.call(['dbus-run-session','--config-file='+str(bus_config),'--',sys.executable,__file__,*sys.argv[1:],'--inside'],env=env))
 repo=Path(__file__).resolve().parents[2];out=a.output.resolve();out.mkdir(parents=True,exist_ok=False)
 prefix=re.split(r'\n[ \t]*exec quickshell ',a.launcher.read_text(),maxsplit=1)[0]
 env=dict(value.decode().split('=',1) for value in sp.check_output(['bash','-c',prefix+'\nexec env -0']).split(b'\0') if b'=' in value)
-env.update(WLR_BACKENDS='headless',WLR_RENDERER='pixman',WLR_LIBINPUT_NO_DEVICES='1',QT_QPA_PLATFORM='wayland',QT_QPA_PLATFORMTHEME='generic',QT_QUICK_BACKEND='software',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',LUMEN_FILE_SERVICE='0',LUMEN_NATIVE_WINDOW_CONTROLS='0',LUMEN_NATIVE_WINDOW_ACTIONS='0')
+env.update(WLR_BACKENDS='headless',WLR_RENDERER='pixman',WLR_LIBINPUT_NO_DEVICES='1',QT_QPA_PLATFORM='wayland',QT_QPA_PLATFORMTHEME='generic',QT_QUICK_BACKEND='software',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',LUMEN_FILE_SERVICE='0',LUMEN_LAUNCH_SCOPES='0',QT_NO_XDG_DESKTOP_PORTAL='1',LUMEN_NATIVE_WINDOW_CONTROLS='0',LUMEN_NATIVE_WINDOW_ACTIONS='0')
 for key in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK','AT_SPI_BUS_ADDRESS'):env.pop(key,None)
+activatable=sp.check_output(['dbus-send','--session','--print-reply','--dest=org.freedesktop.DBus','/org/freedesktop/DBus','org.freedesktop.DBus.ListActivatableNames'],env=env,text=True)
+assert set(re.findall(r'string "([^"]+)"',activatable))<={'org.freedesktop.DBus'},activatable
 folder=Path(env['HOME'])/'First';folder.mkdir();document=folder/'selected.txt';document.write_text('Synthetic document for main/utility ownership')
 applications=Path(env['XDG_DATA_HOME'])/'applications';applications.mkdir(parents=True,exist_ok=True);(applications/'lumen-files.desktop').write_text('[Desktop Entry]\nType=Application\nName=Files\nExec=true\nIcon=folder\n')
 shutil.copytree(repo/'res/lumen-desktop',out/'assets')

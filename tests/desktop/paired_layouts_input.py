@@ -124,7 +124,10 @@ with tempfile.TemporaryDirectory(prefix='lumen-pair-') as private:
   ipc(f'lumen_pair create {aa} {parent_id}');ipc(f'[con_id={parent_id}] move container to workspace 7');assert workspace(dialog['id'])=='7' and workspace(parent_id)=='7';ipc(f'lumen_pair leave {aa}')
   # Explicit protocol parent removal clears captured ownership at arrange time.
   ipc(f'lumen_pair create {aa} {parent_id}');parent_client.stdin.write('n\n');parent_client.stdin.flush();time.sleep(.15)
-  ipc('output HEADLESS-1 resolution 1280x720');assert workspace(dialog['id'])!=workspace(parent_id) and find(dialog['id'])['lumen_pair']['eligible']
+  if query('get_version').get('native_window_relationships'):
+   wait(lambda:workspace(dialog['id'])!=workspace(parent_id) and find(dialog['id'])['lumen_pair']['eligible'])
+  else:ipc('output HEADLESS-1 resolution 1280x720')
+  assert workspace(dialog['id'])!=workspace(parent_id) and find(dialog['id'])['lumen_pair']['eligible']
   ipc(f'lumen_pair leave {parent_id}');ipc(f'lumen_pair leave {aa}')
   parent_client.stdin.write('d\n');parent_client.stdin.flush();wait(lambda:app('constraint-dialog') is None)
   ipc(f'lumen_pair create {aa} {parent_id}');parent_client.stdin.write('f\n');parent_client.stdin.flush();wait(lambda:app('constraint-dialog'));dialog=app('constraint-dialog')

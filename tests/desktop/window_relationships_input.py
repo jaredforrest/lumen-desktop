@@ -20,7 +20,10 @@ with tempfile.TemporaryDirectory(prefix='lumen-window-relations-') as private:
    time.sleep(.03)
   raise AssertionError('Native relationship fixture timeout: '+str(a.output))
  swaymsg=str(Path(a.sway).parent/'swaymsg')
- def ipc(*args):return json.loads(sp.check_output([swaymsg,'-r',*args],env=env,timeout=4))
+ def ipc(*args,allow_error=False):
+  response=sp.run([swaymsg,'-r',*args],env=env,text=True,capture_output=True,timeout=4)
+  assert allow_error or response.returncode==0,(args,response.stdout,response.stderr)
+  return json.loads(response.stdout)
  def nodes(node):
   yield node
   for child in node.get('nodes',[])+node.get('floating_nodes',[]):yield from nodes(child)
@@ -68,7 +71,17 @@ with tempfile.TemporaryDirectory(prefix='lumen-window-relations-') as private:
   checks.append('Dynamic unset/reparent/set modal updates actual focus scope')
   command('unparent');wait(lambda:observed()[2]['lumen_relationships']['parent'] is None);focus(0);focus(1);focus(2)
   assert tree_context(tree())[panel]['application_hint']=='org.example.Utility'
+  # Parentless modal is still a protocol dialog, never an admitted primary pane.
+  before_pair={key:dict(observed()[key]['rect']) for key in (2,3)}
+  rejected=ipc(f'lumen_pair create {other} {panel}',allow_error=True);assert all(not row['success'] for row in rejected),rejected
+  assert not observed()[2]['lumen_pair']['eligible'] and all(observed()[key]['rect']==before_pair[key] for key in (2,3))
+  checks.append('Parentless modal dialog rejects paired-primary admission atomically')
   command('destroy-dialog');wait(lambda:observed()[2]['lumen_relationships']['modal'] is None);focus(0)
+  assert observed()[2]['lumen_pair']['eligible']
+  accepted=ipc(f'lumen_pair create {other} {panel}');assert all(row['success'] for row in accepted),accepted
+  assert observed()[2]['lumen_pair']['partner']==other
+  for member in (panel,other):assert all(row['success'] for row in ipc(f'lumen_pair leave {member}'))
+  checks.append('Removing dialog hint restores independent pairing eligibility without stale ownership')
   command('reparent');command('modal');focus(1,2)
   command('close-second');wait(lambda:1 not in observed());assert observed()[2]['lumen_relationships']['parent'] is None;focus(2);focus(3)
   checks.append('Unparenting, dialog object destruction, parentless modal and live orphan panel retain exact protocol scope')
