@@ -351,3 +351,12 @@ applications, lock screen, or display power off. Display power off does not
 suspend the machine. No arbitrary command execution is accepted. Screensaver and
 notes actions have no implemented provider and are not offered. The watcher
 reloads validated configuration on entry without restarting the compositor.
+
+## Native paired placement observations
+
+A compatible compositor supplies `lumen_pair` facts. The observer validates exact
+member and partner IDs, opposite sides, a finite ratio, and reciprocal two-window
+membership in the same desktop/output before reporting `placement: paired` and
+its title-free `pair` object. A full-screen survivor is reported independently.
+Absent compositor facts remain unknown. These fields do not create a command
+broker or promote advertised application IDs into verified application identity.

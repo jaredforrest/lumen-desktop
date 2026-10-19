@@ -1,0 +1,766 @@
+--- /dev/null
++++ b/include/sway/tree/lumen_pair.h
+@@ -0,0 +1,28 @@
++#ifndef SWAY_LUMEN_PAIR_H
++#define SWAY_LUMEN_PAIR_H
++#include <stdbool.h>
++#include <stdint.h>
++#include <json-c/json.h>
++#include <wayland-server-protocol.h>
++struct sway_lumen_placement;
++struct sway_container;
++struct sway_view;
++struct sway_workspace;
++struct sway_seat;
++struct cmd_results;
++struct cmd_results *cmd_lumen_pair(int argc, char **argv);
++void lumen_pair_follow_dialogs(struct sway_container *con);
++void lumen_pair_detach(struct sway_container *con);
++void lumen_pair_destroy(struct sway_container *con);
++bool lumen_pair_revealed(struct sway_container *con);
++void lumen_pair_prepare_action(struct sway_container *con);
++void lumen_pair_restore_revealed(struct sway_container *con,struct sway_lumen_placement *saved);
++bool lumen_pair_fullscreen(struct sway_container *con, int mode);
++void lumen_pair_arrange(struct sway_container *con);
++bool lumen_pair_transient(struct sway_view *view,struct sway_container *parent);
++struct sway_workspace *lumen_pair_map_workspace(struct sway_view *view,struct sway_workspace *space);
++json_object *lumen_pair_json(struct sway_container *con);
++bool lumen_pair_button(struct sway_seat *seat, uint32_t time, uint32_t button,
++ enum wl_pointer_button_state state);
++bool lumen_pair_cancel_resize(struct sway_seat *seat);
++#endif
+--- /dev/null
++++ b/sway/tree/lumen_pair.c
+@@ -0,0 +1,400 @@
++/* Paired full-output placement. Client identity and restore state stay native. */
++#include <errno.h>
++#include <float.h>
++#include <linux/input-event-codes.h>
++#include <math.h>
++#include <stdlib.h>
++#include <stdio.h>
++#include <string.h>
++#include <wlr/types/wlr_cursor.h>
++#include <wlr/types/wlr_xdg_shell.h>
++#include <wlr/types/wlr_xdg_dialog_v1.h>
++#include "sway/commands.h"
++#include "sway/config.h"
++#include "sway/criteria.h"
++#include "sway/desktop/transaction.h"
++#include "sway/input/cursor.h"
++#include "sway/input/seat.h"
++#include "sway/input/input-manager.h"
++#include "sway/output.h"
++#include "sway/server.h"
++#include "sway/tree/arrange.h"
++#include "sway/tree/container.h"
++#include "sway/tree/lumen_pair.h"
++#include "sway/tree/root.h"
++#include "sway/tree/view.h"
++#include "sway/tree/workspace.h"
++
++struct lumen_pair_member {
++ struct sway_container *con;
++ struct sway_lumen_placement *restore;
++};
++struct sway_lumen_pair {
++ struct wl_list link;
++ struct sway_container *parent;
++ struct lumen_pair_member members[2];
++ double ratio;
++ uint32_t last_click;
++};
++static struct wl_list pairs = {&pairs,&pairs};
++static int changing;
++static bool matches(struct sway_container *con, void *data) {return con->node.id==*(uint64_t*)data;}
++static struct sway_container *find(uint64_t id) {return root_find_container(matches,&id);}
++static bool identity(const char *text,uint64_t *id) {
++ if (!text || !*text || *text=='-' || *text=='+') return false;
++ char *end;errno=0;unsigned long long value=strtoull(text,&end,10);
++ if (errno || *end || !value) return false;
++ *id=value;return true;
++}
++struct dialog_search { struct sway_container *owner; list_t *dialogs; bool any; };
++static void collect_dialogs(struct sway_container *con,void *data) {
++ struct dialog_search *search=data;
++ if(con==search->owner || !con->view || con->node.destroying)return;
++ if(con->lumen_pair_dialog_owner==search->owner->node.id){
++  if(search->dialogs)list_add(search->dialogs,con);
++ } else if(search->owner->view && view_is_transient_for(con->view,search->owner->view))search->any=true;
++}
++static bool owns_untagged_dialog(struct sway_container *con) {
++ struct dialog_search search={.owner=con};root_for_each_container(collect_dialogs,&search);return search.any;
++}
++static int moving_dialogs;
++static void follow_dialogs(struct sway_container *owner,struct sway_workspace *target,bool orphan) {
++ if(moving_dialogs || !target || !owner->view)return;
++ struct dialog_search search={.owner=owner,.dialogs=create_list()};
++ root_for_each_container(collect_dialogs,&search);moving_dialogs++;changing++;
++ for(int i=0;i<search.dialogs->length;i++){
++  struct sway_container *dialog=search.dialogs->items[i];struct sway_workspace *old=dialog->pending.workspace;
++  if(orphan)dialog->lumen_pair_dialog_owner=0;
++  if(old==target)continue;
++  workspace_add_floating(target,dialog);container_floating_move_to_center(dialog);
++  if(old && !old->node.destroying)arrange_workspace(old);
++ }
++ changing--;moving_dialogs--;list_free(search.dialogs);
++}
++void lumen_pair_follow_dialogs(struct sway_container *con) {follow_dialogs(con,con->pending.workspace,false);}
++static bool primary_candidate(struct sway_container *con) {
++ if(con->lumen_pair_dialog_owner)return false;
++ if(con->view->type!=SWAY_VIEW_XDG_SHELL)return true;
++ struct wlr_xdg_toplevel *top=con->view->wlr_xdg_toplevel;
++ if(!top)return false;
++ struct wlr_xdg_dialog_v1 *dialog=wlr_xdg_dialog_v1_try_from_wlr_xdg_toplevel(top);
++ return !top->parent && !(dialog && dialog->modal);
++}
++static bool eligible(struct sway_container *con) {
++ return con && con->view && primary_candidate(con) && !con->node.destroying && con->pending.workspace &&
++  !con->scratchpad && !con->lumen_app_hidden && !con->lumen_minimized &&
++  !con->lumen_desktop_hidden && !owns_untagged_dialog(con) && container_lumen_action_enabled(con,2);
++}
++/* Native configure geometry includes decoration. Reserve it for client limits. */
++static void limits(struct sway_container *con,double *minimum,double *maximum,
++ double *minheight,double *maxheight) {
++ view_get_constraints(con->view,minimum,maximum,minheight,maxheight);
++ double border=con->pending.border==B_NORMAL ? config->font_height+config->titlebar_v_padding*2 : 0;
++ *minimum+=4;*maximum+=4;*minheight+=border+2;*maxheight+=border+2;
++}
++static bool ratio_range(struct sway_container *left,struct sway_container *right,
++ double width,double height,double *low,double *high) {
++ if (!eligible(left) || !eligible(right) || left==right || width<=0 || height<=0) return false;
++ double amin,amax,ahmin,ahmax,bmin,bmax,bhmin,bhmax;
++ limits(left,&amin,&amax,&ahmin,&ahmax);limits(right,&bmin,&bmax,&bhmin,&bhmax);
++ if (height<ahmin || height>ahmax || height<bhmin || height>bhmax) return false;
++ *low=fmax(amin/width,1-bmax/width);*high=fmin(amax/width,1-bmin/width);
++ return *low<=*high && *low>0 && *high<1;
++}
++static bool pair_ratio(struct sway_lumen_pair *pair,double ratio) {
++ double low,high;struct sway_container *parent=pair->parent;
++ if (!ratio_range(pair->members[0].con,pair->members[1].con,parent->pending.width,
++   parent->pending.height,&low,&high)) return false;
++ pair->ratio=fmax(low,fmin(high,ratio));
++ pair->members[0].con->width_fraction=pair->ratio;
++ pair->members[1].con->width_fraction=1-pair->ratio;
++ return true;
++}
++static void finish_parent(struct sway_lumen_pair *pair) {
++ struct sway_container *parent=pair->parent;
++ container_end_mouse_operation(parent);
++ parent->lumen_pair=NULL;wl_list_remove(&pair->link);free(pair);
++ if (!parent->node.destroying) container_reap_empty(parent);
++}
++static void restore_member(struct lumen_pair_member *member,bool focus) {
++ struct sway_container *con=member->con;
++ con->lumen_pair=NULL;
++ if (!con->node.destroying) container_lumen_restore_snapshot(con,member->restore,focus);
++ container_lumen_placement_free(member->restore);member->restore=NULL;
++}
++static void exit_all(struct sway_lumen_pair *pair) {
++ changing++;
++ container_fullscreen_disable(pair->parent);
++ restore_member(&pair->members[1],false);restore_member(&pair->members[0],true);
++ finish_parent(pair);changing--;
++}
++static void leave(struct sway_container *con,bool restore) {
++ struct sway_lumen_pair *pair=con->lumen_pair;
++ if (!pair || pair->parent==con) return;
++ int index=pair->members[1].con==con;
++ struct lumen_pair_member exiting=pair->members[index],survivor=pair->members[1-index];
++ struct sway_workspace *space=pair->parent->pending.workspace;
++ changing++;
++ container_fullscreen_disable(pair->parent);
++ con->lumen_pair=NULL;survivor.con->lumen_pair=NULL;
++ container_detach(con);container_detach(survivor.con);
++ workspace_add_tiling(space,survivor.con);
++ survivor.con->lumen_pair_restore=survivor.restore;
++ container_set_fullscreen(survivor.con,FULLSCREEN_WORKSPACE);
++ if (restore && !con->node.destroying) container_lumen_restore_snapshot(con,exiting.restore,true);
++ if(con->node.destroying){
++  struct sway_workspace *target=workspace_by_name(exiting.restore->workspace);
++  if(!target)target=workspace_create(space->output,exiting.restore->workspace);
++  follow_dialogs(con,target,true);
++ }
++ container_lumen_placement_free(exiting.restore);
++ finish_parent(pair);arrange_workspace(space);changing--;
++}
++void lumen_pair_detach(struct sway_container *con) {
++ if (changing || con->lumen_desktop_hidden) return;
++ if(con->lumen_pair && lumen_pair_revealed(con))container_lumen_show_desktop(0);
++ if (con->lumen_pair && con->lumen_pair->parent!=con) leave(con,false);
++ else if (con->lumen_pair && con->node.destroying) exit_all(con->lumen_pair);
++ else if (con->lumen_pair_restore && con->pending.workspace) {
++  if(con->node.destroying){
++   struct sway_workspace *target=workspace_by_name(con->lumen_pair_restore->workspace);
++   if(!target)target=workspace_create(con->pending.workspace->output,con->lumen_pair_restore->workspace);
++   follow_dialogs(con,target,true);
++  }
++  container_lumen_placement_free(con->lumen_pair_restore);con->lumen_pair_restore=NULL;
++ }
++}
++bool lumen_pair_revealed(struct sway_container *con) {
++ for(struct sway_container *parent=con;parent;parent=parent->pending.parent)if(parent->lumen_desktop_hidden)return true;
++ return false;
++}
++void lumen_pair_prepare_action(struct sway_container *con) {
++ if(changing || !con || (!con->lumen_pair && !con->lumen_pair_restore))return;
++ if(lumen_pair_revealed(con))container_lumen_show_desktop(0);
++ if(con->lumen_pair && con->lumen_pair->parent!=con)leave(con,true);
++ else if(con->lumen_pair_restore)lumen_pair_fullscreen(con,FULLSCREEN_NONE);
++}
++void lumen_pair_restore_revealed(struct sway_container *con,struct sway_lumen_placement *saved) {
++ changing++;container_lumen_restore_snapshot(con,saved,false);changing--;
++ if(con->pending.workspace)arrange_workspace(con->pending.workspace);
++}
++void lumen_pair_destroy(struct sway_container *con) {
++ if (con->lumen_pair_restore) container_lumen_placement_free(con->lumen_pair_restore);
++ con->lumen_pair_restore=NULL;
++}
++bool lumen_pair_fullscreen(struct sway_container *con,int mode) {
++ if (changing || con->lumen_desktop_hidden) return false;
++ if (con->lumen_pair) {
++  if (con->lumen_pair->parent==con) {if (mode==FULLSCREEN_NONE) exit_all(con->lumen_pair);else return false;}
++  else leave(con,true);
++  return true;
++ }
++ if (con->lumen_pair_restore && mode==FULLSCREEN_NONE) {
++  struct sway_lumen_placement *restore=con->lumen_pair_restore;con->lumen_pair_restore=NULL;
++  changing++;container_fullscreen_disable(con);container_lumen_restore_snapshot(con,restore,true);
++  container_lumen_placement_free(restore);changing--;return true;
++ }
++ return false;
++}
++/* Relationship hints may change after map. Never retain stale dialog ownership. */
++static void refresh_dialog_owner(struct sway_container *con) {
++ if(!con->lumen_pair_dialog_owner || !con->view || moving_dialogs)return;
++ struct sway_container *old=find(con->lumen_pair_dialog_owner);
++ if(!old || !old->view){con->lumen_pair_dialog_owner=0;return;}
++ if(old->node.destroying || view_is_transient_for(con->view,old->view))return;
++ struct sway_container *owner=NULL;
++ if(con->view->type==SWAY_VIEW_XDG_SHELL && con->view->wlr_xdg_toplevel && con->view->wlr_xdg_toplevel->parent){
++  struct sway_view *view=view_from_wlr_surface(con->view->wlr_xdg_toplevel->parent->base->surface);
++  if(view)owner=view->container;
++ }
++ struct sway_workspace *target=owner?owner->pending.workspace:old->pending.workspace;
++ struct sway_lumen_placement *saved=old->lumen_pair_restore;
++ if(old->lumen_pair && old->lumen_pair->parent!=old){
++  int index=old->lumen_pair->members[1].con==old;saved=old->lumen_pair->members[index].restore;
++ }
++ if(!owner && saved && target){
++  struct sway_workspace *ordinary=workspace_by_name(saved->workspace);
++  if(!ordinary)ordinary=workspace_create(target->output,saved->workspace);
++  target=ordinary;
++ }
++ con->lumen_pair_dialog_owner=owner?owner->node.id:0;
++ if(target && target!=con->pending.workspace){
++  struct sway_workspace *source=con->pending.workspace;changing++;moving_dialogs++;
++  workspace_add_floating(target,con);container_floating_move_to_center(con);
++  if(source && !source->node.destroying)arrange_workspace(source);
++  arrange_workspace(target);moving_dialogs--;changing--;
++ }
++}
++static void collect_tracked_dialogs(struct sway_container *con,void *data) {
++ if(con->lumen_pair_dialog_owner && !con->node.destroying)list_add(data,con);
++}
++void lumen_pair_arrange(struct sway_container *con) {
++ if(!changing){
++  refresh_dialog_owner(con);
++  /* Fullscreen arrangement normally skips the workspace floating list. */
++  if(con->lumen_pair || con->lumen_pair_restore){
++   list_t *dialogs=create_list();root_for_each_container(collect_tracked_dialogs,dialogs);
++   for(int i=0;i<dialogs->length;i++)refresh_dialog_owner(dialogs->items[i]);
++   list_free(dialogs);
++  }
++ }
++ if (changing || con->lumen_desktop_hidden || !con->lumen_pair || con->lumen_pair->parent!=con) return;
++ struct sway_lumen_pair *pair=con->lumen_pair;
++ if(con->pending.children->length!=2 || con->pending.children->items[0]!=pair->members[0].con ||
++    con->pending.children->items[1]!=pair->members[1].con || !pair_ratio(pair,pair->ratio)) exit_all(pair);
++}
++bool lumen_pair_transient(struct sway_view *view,struct sway_container *parent) {
++ if(view && parent && parent->lumen_pair_restore && parent->view)return view_is_transient_for(view,parent->view);
++ struct sway_lumen_pair *pair=parent?parent->lumen_pair:NULL;
++ if(!view || !pair || pair->parent!=parent)return false;
++ return view_is_transient_for(view,pair->members[0].con->view) || view_is_transient_for(view,pair->members[1].con->view);
++}
++struct sway_workspace *lumen_pair_map_workspace(struct sway_view *view,struct sway_workspace *space) {
++ if(!space || !space->fullscreen)return space;
++ struct sway_container *fullscreen=space->fullscreen;
++ struct sway_lumen_pair *pair=fullscreen->lumen_pair;
++ struct sway_lumen_placement *restore=pair?pair->members[0].restore:fullscreen->lumen_pair_restore;
++ if(!restore)return space;
++ if(config->popup_during_fullscreen==POPUP_SMART && lumen_pair_transient(view,fullscreen)){
++  struct sway_container *owner=fullscreen;
++  if(pair)owner=view_is_transient_for(view,pair->members[0].con->view)?pair->members[0].con:pair->members[1].con;
++  view->container->lumen_pair_dialog_owner=owner->node.id;
++  return space;
++ }
++ const char *name=restore->workspace;
++ struct sway_workspace *target=workspace_by_name(name);
++ if(target && target->fullscreen && target->fullscreen->lumen_pair)target=NULL;
++ if(!target){
++  char *fallback=workspace_by_name(name)?workspace_next_name(space->output->wlr_output->name):NULL;
++  target=workspace_create(space->output,fallback?fallback:name);free(fallback);
++ }
++ if(!target)return space;
++ list_t *no_focus=criteria_for_view(view,CT_NO_FOCUS);bool activate=no_focus->length==0;list_free(no_focus);
++ if(activate && output_get_active_workspace(space->output)==space)workspace_switch(target);
++ return target;
++}
++static bool create(struct sway_container *left,struct sway_container *right) {
++ if (!eligible(left)||!eligible(right)||left->lumen_pair||right->lumen_pair||left->lumen_pair_restore||right->lumen_pair_restore) return false;
++ struct sway_workspace *original=left->pending.workspace,*right_space=right->pending.workspace;struct sway_output *output=original->output;
++ double low,high;if(!output || !ratio_range(left,right,output->width,output->height,&low,&high))return false;
++ struct sway_lumen_pair *pair=calloc(1,sizeof(*pair));if(!pair)return false;
++ pair->members[0]=(struct lumen_pair_member){left,container_lumen_snapshot(left)};
++ pair->members[1]=(struct lumen_pair_member){right,container_lumen_snapshot(right)};
++ if(!pair->members[0].restore||!pair->members[1].restore){container_lumen_placement_free(pair->members[0].restore);container_lumen_placement_free(pair->members[1].restore);free(pair);return false;}
++ pair->members[0].restore->fullscreen=FULLSCREEN_NONE;pair->members[1].restore->fullscreen=FULLSCREEN_NONE;
++ struct sway_container *parent=container_create(NULL);
++ if(!parent){container_lumen_placement_free(pair->members[0].restore);container_lumen_placement_free(pair->members[1].restore);free(pair);return false;}
++ char name[96];size_t suffix=0;
++ do {snprintf(name,sizeof(name),"paired-%llu-%zu",(unsigned long long)parent->node.id,suffix++);} while(workspace_by_name(name));
++ struct sway_workspace *space=workspace_create(output,name);
++ if(!space){container_begin_destroy(parent);container_lumen_placement_free(pair->members[0].restore);container_lumen_placement_free(pair->members[1].restore);free(pair);return false;}
++ changing++;
++ if(left->pending.fullscreen_mode!=FULLSCREEN_NONE)container_fullscreen_disable(left);
++ if(right->pending.fullscreen_mode!=FULLSCREEN_NONE)container_fullscreen_disable(right);
++ container_detach(left);container_detach(right);
++ parent->pending.layout=L_HORIZ;workspace_add_tiling(space,parent);
++ container_add_child(parent,left);container_add_child(parent,right);
++ parent->pending.width=output->width;parent->pending.height=output->height;
++ pair->parent=parent;parent->lumen_pair=pair;left->lumen_pair=pair;right->lumen_pair=pair;
++ pair_ratio(pair,.5);wl_list_insert(&pairs,&pair->link);
++ container_set_fullscreen(parent,FULLSCREEN_WORKSPACE);workspace_switch(space);
++ seat_set_focus(input_manager_current_seat(),&left->node);
++ if(!original->node.destroying)arrange_workspace(original);
++ if(right_space!=original && !right_space->node.destroying)arrange_workspace(right_space);
++ arrange_workspace(space);changing--;return true;
++}
++static bool replace(struct sway_container *kept,struct sway_container *replacement) {
++ struct sway_lumen_pair *pair=kept?kept->lumen_pair:NULL;
++ if (!pair || pair->parent==kept || !eligible(replacement) || replacement->lumen_pair || replacement->lumen_pair_restore) return false;
++ if(lumen_pair_revealed(kept))container_lumen_show_desktop(0);
++ int index=pair->members[0].con==kept ? 1 : 0;
++ double low,high;
++ struct sway_container *left=index==0?replacement:kept,*right=index==1?replacement:kept;
++ if(!ratio_range(left,right,pair->parent->pending.width,pair->parent->pending.height,&low,&high))return false;
++ struct sway_lumen_placement *saved=container_lumen_snapshot(replacement);if(!saved)return false;
++ saved->fullscreen=FULLSCREEN_NONE;
++ struct lumen_pair_member old=pair->members[index];
++ struct sway_workspace *replacement_space=replacement->pending.workspace;
++ changing++;if(replacement->pending.fullscreen_mode!=FULLSCREEN_NONE)container_fullscreen_disable(replacement);container_detach(replacement);
++ restore_member(&old,false);
++ pair->members[index]=(struct lumen_pair_member){replacement,saved};replacement->lumen_pair=pair;
++ container_insert_child(pair->parent,replacement,index);pair_ratio(pair,pair->ratio);
++ seat_set_focus(input_manager_current_seat(),&kept->node);
++ if(!replacement_space->node.destroying)arrange_workspace(replacement_space);
++ arrange_workspace(pair->parent->pending.workspace);changing--;return true;
++}
++json_object *lumen_pair_json(struct sway_container *con) {
++ json_object *state=json_object_new_object();
++ json_object_object_add(state,"version",json_object_new_int(1));
++ json_object_object_add(state,"eligible",json_object_new_boolean(eligible(con)));
++ json_object_object_add(state,"survivor",json_object_new_boolean(con->lumen_pair_restore!=NULL));
++ struct sway_lumen_pair *pair=con->lumen_pair;
++ if(pair && pair->parent!=con){int index=pair->members[1].con==con;
++  json_object_object_add(state,"id",json_object_new_int64(pair->parent->node.id));
++  json_object_object_add(state,"partner",json_object_new_int64(pair->members[1-index].con->node.id));
++  json_object_object_add(state,"side",json_object_new_string(index?"right":"left"));
++  json_object_object_add(state,"ratio",json_object_new_double(pair->ratio));
++ }
++ return state;
++}
++struct resize_operation {struct sway_lumen_pair *pair;double original;};
++static const struct sway_seatop_impl resize_impl;
++static void resize_motion(struct sway_seat *seat,uint32_t time) {
++ (void)time;struct resize_operation *op=seat->seatop_data;struct sway_container *parent=op->pair->parent;
++ if(pair_ratio(op->pair,(seat->cursor->cursor->x-parent->pending.x)/parent->pending.width)) {
++  arrange_container(parent);transaction_commit_dirty();
++ }
++}
++static void resize_button(struct sway_seat *seat,uint32_t time,struct wlr_input_device *device,uint32_t button,enum wl_pointer_button_state state) {
++ (void)time;(void)device;(void)button;(void)state;
++ if(!seat->cursor->pressed_button_count)seatop_begin_default(seat);
++}
++static void resize_unref(struct sway_seat *seat,struct sway_container *con) {
++ struct resize_operation *op=seat->seatop_data;
++ if(con==op->pair->parent||con==op->pair->members[0].con||con==op->pair->members[1].con)seatop_begin_default(seat);
++}
++static const struct sway_seatop_impl resize_impl={.pointer_motion=resize_motion,.button=resize_button,.unref=resize_unref};
++bool lumen_pair_cancel_resize(struct sway_seat *seat) {
++ if(seat->seatop_impl!=&resize_impl)return false;
++ struct resize_operation *op=seat->seatop_data;pair_ratio(op->pair,op->original);arrange_container(op->pair->parent);seatop_begin_default(seat);transaction_commit_dirty();return true;
++}
++bool lumen_pair_button(struct sway_seat *seat,uint32_t time,uint32_t button,enum wl_pointer_button_state state) {
++ if(button!=BTN_LEFT||state!=WL_POINTER_BUTTON_STATE_PRESSED||server.session_lock.lock||seat->cursor->active_constraint)return false;
++ double x=seat->cursor->cursor->x,y=seat->cursor->cursor->y;
++ struct sway_lumen_pair *pair;
++ wl_list_for_each(pair,&pairs,link){struct sway_container *parent=pair->parent;
++  if(!parent->pending.workspace || parent->pending.workspace->fullscreen!=parent ||
++    output_get_active_workspace(parent->pending.workspace->output)!=parent->pending.workspace)continue;
++  double divider=parent->pending.x+parent->pending.width*pair->ratio;
++  if(fabs(x-divider)>6||y<parent->pending.y||y>=parent->pending.y+parent->pending.height)continue;
++  if(pair->last_click && time-pair->last_click<300){pair->last_click=0;pair_ratio(pair,.5);arrange_container(parent);transaction_commit_dirty();return true;}
++  pair->last_click=time;
++  struct resize_operation *op=calloc(1,sizeof(*op));if(!op)return true;
++  op->pair=pair;op->original=pair->ratio;seatop_end(seat);seat->seatop_impl=&resize_impl;seat->seatop_data=op;
++  wlr_seat_pointer_notify_clear_focus(seat->wlr_seat);return true;
++ }
++ return false;
++}
++struct cmd_results *cmd_lumen_pair(int argc,char **argv) {
++ if(argc<2)return cmd_results_new(CMD_INVALID,"Select exact paired window identities");
++ uint64_t first;if(!identity(argv[1],&first))return cmd_results_new(CMD_INVALID,"Invalid window identity");
++ struct sway_container *con=find(first);bool ok=false;
++ if(argc==3 && (!strcmp(argv[0],"create")||!strcmp(argv[0],"replace"))){uint64_t second;
++  if(!identity(argv[2],&second))return cmd_results_new(CMD_INVALID,"Invalid partner identity");
++  ok=!strcmp(argv[0],"create")?create(con,find(second)):replace(con,find(second));
++ }else if(argc==2&&!strcmp(argv[0],"leave")&&con){
++  if((con->lumen_pair || con->lumen_pair_restore) && lumen_pair_revealed(con))container_lumen_show_desktop(0);
++  if(con->lumen_pair&&con->lumen_pair->parent!=con){leave(con,true);ok=true;}
++  else if(con->lumen_pair_restore)ok=lumen_pair_fullscreen(con,FULLSCREEN_NONE);
++ }else if(argc==2&&!strcmp(argv[0],"swap")&&con&&con->lumen_pair&&con->lumen_pair->parent!=con){
++  if(lumen_pair_revealed(con))container_lumen_show_desktop(0);
++  struct sway_lumen_pair *pair=con->lumen_pair;struct lumen_pair_member old=pair->members[0];pair->members[0]=pair->members[1];pair->members[1]=old;
++  void *child=pair->parent->pending.children->items[0];pair->parent->pending.children->items[0]=pair->parent->pending.children->items[1];pair->parent->pending.children->items[1]=child;
++  pair_ratio(pair,pair->ratio);arrange_container(pair->parent);ok=true;
++ }else if(argc==3&&!strcmp(argv[0],"ratio")&&con&&con->lumen_pair&&con->lumen_pair->parent!=con){
++  char *end;errno=0;double value=strtod(argv[2],&end);
++  if(!errno&&!*end&&isfinite(value)&&value>0&&value<1){if(lumen_pair_revealed(con))container_lumen_show_desktop(0);ok=pair_ratio(con->lumen_pair,value);if(ok)arrange_container(con->lumen_pair->parent);}
++ }
++ if(!ok)return cmd_results_new(CMD_INVALID,"The selected windows cannot perform this paired layout action");
++ transaction_commit_dirty();return cmd_results_new(CMD_SUCCESS,NULL);
++}
+--- a/include/sway/tree/container.h
++++ b/include/sway/tree/container.h
+@@ -7,6 +7,7 @@
+ #include "list.h"
+ #include "sway/tree/node.h"
+ 
++struct sway_lumen_pair;
+ struct sway_view;
+ struct sway_seat;
+ 
+@@ -145,6 +146,9 @@
+ 	bool scratchpad;
+  struct sway_lumen_placement *lumen_minimized, *lumen_filled, *lumen_hidden, *lumen_desktop_hidden;
+  bool lumen_app_hidden;
++ uint64_t lumen_pair_dialog_owner;
++ struct sway_lumen_pair *lumen_pair;
++ struct sway_lumen_placement *lumen_pair_restore;
+ 
+ 	// Stores last output size and position for adjusting coordinates of
+ 	// scratchpad windows.
+@@ -178,6 +182,7 @@
+ void container_lumen_hide(struct sway_container *con);
+ void container_lumen_unhide(struct sway_container *con);
+ void container_lumen_placement_free(struct sway_lumen_placement *placement);
++void container_lumen_restore_snapshot(struct sway_container *con,struct sway_lumen_placement *placement,bool focus);
+ 
+ void container_begin_destroy(struct sway_container *con);
+ 
+--- a/sway/tree/root.c
++++ b/sway/tree/root.c
+@@ -15,6 +15,7 @@
+ #include "sway/tree/root.h"
+ #include "sway/tree/workspace.h"
+ #include "sway/tree/view.h"
++#include "sway/tree/lumen_pair.h"
+ #include "list.h"
+ #include "log.h"
+ #include "util.h"
+@@ -106,6 +107,7 @@
+ bool container_lumen_action_enabled(struct sway_container *con, int action) {
+  if (!con || con->node.destroying || !con->view || !con->view->surface) return false;
+  if (action == 0) return true;
++ if(action==1 && (con->lumen_pair || con->lumen_pair_restore))return false;
+  if (action == 2) {
+   double minw,maxw,minh,maxh;view_get_constraints(con->view,&minw,&maxw,&minh,&maxh);
+   if (minw==maxw || minh==maxh) return false;
+@@ -203,7 +205,7 @@
+ 
+ static void lumen_desktop_collect(struct sway_container *con, void *data) {
+  list_t *targets = data;
+- if (!con->view || con->node.destroying) return;
++ if ((!con->view && !con->lumen_pair) || con->node.destroying || (con->view && con->lumen_pair)) return;
+  if (lumen_desktop_revealed) {
+   if (con->lumen_desktop_hidden) list_add(targets, con);
+  } else if (!con->scratchpad && con->pending.workspace && workspace_is_visible(con->pending.workspace)) {
+@@ -234,7 +236,8 @@
+   } else {
+    struct sway_lumen_placement *saved = con->lumen_desktop_hidden;
+    con->lumen_desktop_hidden = NULL;
+-   lumen_restore(con, saved, false);
++   if(con->lumen_pair || con->lumen_pair_restore)lumen_pair_restore_revealed(con,saved);
++   else lumen_restore(con, saved, false);
+    container_lumen_placement_free(saved);
+   }
+   node_set_dirty(&con->node);
+@@ -249,6 +252,7 @@
+ }
+ 
+ void container_lumen_hide(struct sway_container *con) {
++ lumen_pair_prepare_action(con);
+  if (!container_lumen_action_enabled(con, 0) || con->lumen_app_hidden) return;
+  if (con->lumen_desktop_hidden) {
+   con->lumen_hidden = con->lumen_desktop_hidden;
+@@ -351,7 +355,10 @@
+  else if (lumen_titlebar_action == 2) container_lumen_minimize(con);
+ }
+ 
++void container_lumen_restore_snapshot(struct sway_container *con,struct sway_lumen_placement *placement,bool focus) { lumen_restore(con,placement,focus); }
++
+ void container_lumen_restore(struct sway_container *con) {
++ lumen_pair_prepare_action(con);
+  if (!con || !con->lumen_filled) return;
+  struct sway_lumen_placement *p = con->lumen_filled;
+  con->lumen_filled = NULL;
+@@ -361,6 +368,7 @@
+ }
+ 
+ void container_lumen_tile(struct sway_container *con, int column, int row, int columns, int rows) {
++ lumen_pair_prepare_action(con);
+  if (!container_lumen_action_enabled(con, 2) || !con->pending.workspace || con->scratchpad) return;
+  if (columns < 1 || rows < 1 || column < 0 || row < 0 || column >= columns || row >= rows) return;
+  struct sway_workspace *ws = con->pending.workspace;
+@@ -379,6 +387,7 @@
+ }
+ 
+ void container_lumen_fill(struct sway_container *con) {
++ lumen_pair_prepare_action(con);
+  if (!container_lumen_action_enabled(con, 2)) return;
+  if (con->pending.fullscreen_mode != FULLSCREEN_NONE) { container_fullscreen_disable(con); return; }
+  if (con->lumen_filled) {
+@@ -454,7 +463,7 @@
+ }
+ 
+ void root_scratchpad_show(struct sway_container *con) {
+- if (con->lumen_desktop_hidden) {
++ if (lumen_pair_revealed(con)) {
+   container_lumen_show_desktop(0);
+   seat_set_focus(input_manager_current_seat(), &con->node);
+   return;
+--- a/sway/tree/container.c
++++ b/sway/tree/container.c
+@@ -1,3 +1,4 @@
++#include "sway/tree/lumen_pair.h"
+ #include <assert.h>
+ #include <drm_fourcc.h>
+ #include <stdint.h>
+@@ -468,6 +469,7 @@
+ }
+ 
+ void container_destroy(struct sway_container *con) {
++ lumen_pair_destroy(con);
+ 	if (!sway_assert(con->node.destroying,
+ 				"Tried to free container which wasn't marked as destroying")) {
+ 		return;
+@@ -501,6 +503,7 @@
+ }
+ 
+ void container_begin_destroy(struct sway_container *con) {
++ if(con->view && (con->lumen_pair || con->lumen_pair_restore) && lumen_pair_revealed(con))lumen_pair_prepare_action(con);
+ 	if (con->view) {
+ 		ipc_event_window(con, "close");
+ 	}
+@@ -967,6 +970,7 @@
+ }
+ 
+ void container_set_floating(struct sway_container *container, bool enable) {
++ if(container->view && !container->lumen_desktop_hidden)lumen_pair_prepare_action(container);
+ 	if (container_is_floating(container) == enable) {
+ 		return;
+ 	}
+@@ -1272,6 +1276,7 @@
+ }
+ 
+ void container_fullscreen_disable(struct sway_container *con) {
++ if (lumen_pair_fullscreen(con,FULLSCREEN_NONE)) return;
+ 	if (!sway_assert(con->pending.fullscreen_mode != FULLSCREEN_NONE,
+ 				"Expected a fullscreen container")) {
+ 		return;
+@@ -1325,6 +1330,7 @@
+ 
+ void container_set_fullscreen(struct sway_container *con,
+ 		enum sway_fullscreen_mode mode) {
++ if (lumen_pair_fullscreen(con,mode)) return;
+ 	if (con->pending.fullscreen_mode == mode) {
+ 		return;
+ 	}
+@@ -1406,6 +1412,7 @@
+ }
+ 
+ void container_handle_fullscreen_reparent(struct sway_container *con) {
++	lumen_pair_follow_dialogs(con);
+ 	if (con->pending.fullscreen_mode != FULLSCREEN_WORKSPACE || !con->pending.workspace ||
+ 			con->pending.workspace->fullscreen == con) {
+ 		return;
+@@ -1466,6 +1473,7 @@
+ }
+ 
+ void container_detach(struct sway_container *child) {
++ lumen_pair_detach(child);
+ 	if (child->pending.fullscreen_mode == FULLSCREEN_WORKSPACE) {
+ 		child->pending.workspace->fullscreen = NULL;
+ 	}
+@@ -1593,6 +1601,7 @@
+ 
+ bool container_is_transient_for(struct sway_container *child,
+ 		struct sway_container *ancestor) {
++	if (config->popup_during_fullscreen == POPUP_SMART && child->view && lumen_pair_transient(child->view,ancestor)) return true;
+ 	return config->popup_during_fullscreen == POPUP_SMART &&
+ 		child->view && ancestor->view &&
+ 		view_is_transient_for(child->view, ancestor->view);
+--- a/sway/tree/view.c
++++ b/sway/tree/view.c
+@@ -1,3 +1,4 @@
++#include "sway/tree/lumen_pair.h"
+ #include <stdlib.h>
+ #include <strings.h>
+ #include <wayland-server-core.h>
+@@ -704,6 +705,8 @@
+ 		return true;
+ 	}
+ 
++	if(map_ws && map_ws->fullscreen && config->popup_during_fullscreen==POPUP_SMART && lumen_pair_transient(view,map_ws->fullscreen)) return true;
++
+ 	// View opened "under" fullscreen view should not be given focus.
+ 	if (root->fullscreen_global || !map_ws || map_ws->fullscreen) {
+ 		return false;
+@@ -839,6 +842,7 @@
+ 		ws = select_workspace(view);
+ 	}
+ 
++	ws = lumen_pair_map_workspace(view,ws);
+ 	if (ws && ws->output) {
+ 		// Once the output is determined, we can notify the client early about
+ 		// scale to reduce startup jitter.
+@@ -872,6 +876,7 @@
+ 		}
+ 	}
+ 
++	if (ws && ws->fullscreen && ws->fullscreen->lumen_pair) target_sibling = NULL;
+ 	struct wlr_ext_foreign_toplevel_handle_v1_state foreign_toplevel_state = {
+ 		.app_id = view_get_app_id(view),
+ 		.title = view_get_title(view),
+@@ -907,7 +912,8 @@
+ 		view_update_csd_from_client(view, decoration);
+ 	}
+ 
+-	if (view->impl->wants_floating && view->impl->wants_floating(view)) {
++	if ((ws && ws->fullscreen && lumen_pair_transient(view,ws->fullscreen)) ||
++			(view->impl->wants_floating && view->impl->wants_floating(view))) {
+ 		view->container->pending.border = config->floating_border;
+ 		view->container->pending.border_thickness = config->floating_border_thickness;
+ 		container_set_floating(view->container, true);
+--- a/sway/tree/arrange.c
++++ b/sway/tree/arrange.c
+@@ -1,3 +1,4 @@
++#include "sway/tree/lumen_pair.h"
+ #include <ctype.h>
+ #include <stdbool.h>
+ #include <stdlib.h>
+@@ -247,6 +248,7 @@
+ }
+ 
+ void arrange_container(struct sway_container *container) {
++ lumen_pair_arrange(container);
+ 	if (config->reloading) {
+ 		return;
+ 	}
+--- a/sway/ipc-json.c
++++ b/sway/ipc-json.c
+@@ -1,3 +1,4 @@
++#include "sway/tree/lumen_pair.h"
+ #include <ctype.h>
+ #include <float.h>
+ #include <json.h>
+@@ -227,6 +228,7 @@
+ 	json_object *version = json_object_new_object();
+ 
+ 	json_object_object_add(version, "native_file_drag_state", json_object_new_boolean(true));
++	json_object_object_add(version,"native_paired_layouts",json_object_new_boolean(true));
+ 	sscanf(SWAY_VERSION, "%d.%d.%d", &major, &minor, &patch);
+ 
+ 	json_object_object_add(version, "human_readable", json_object_new_string(SWAY_VERSION));
+@@ -748,6 +750,7 @@
+ 	// sway doesn't track if window was resized in scratchpad, so we can't use "changed"
+ 	json_object_object_add(object, "scratchpad_state",
+ 			json_object_new_string(!c->scratchpad ? "none" : "fresh"));
++	json_object_object_add(object,"lumen_pair",lumen_pair_json(c));
+ 	json_object *lumen_state = json_object_new_object();
+ 	json_object_object_add(lumen_state, "minimised",
+ 		json_object_new_boolean(c->lumen_minimized != NULL));
+--- a/sway/input/seatop_default.c
++++ b/sway/input/seatop_default.c
+@@ -1,3 +1,4 @@
++#include "sway/tree/lumen_pair.h"
+ #include <float.h>
+ #include <libevdev/libevdev.h>
+ #include <wlr/types/wlr_cursor.h>
+@@ -353,6 +354,7 @@
+ static void handle_button(struct sway_seat *seat, uint32_t time_msec,
+ 		struct wlr_input_device *device, uint32_t button,
+ 		enum wl_pointer_button_state state) {
++ if (lumen_pair_button(seat,time_msec,button,state)) return;
+ 	struct sway_cursor *cursor = seat->cursor;
+ 
+ 	// Determine what's under the cursor
+--- a/sway/input/keyboard.c
++++ b/sway/input/keyboard.c
+@@ -1,3 +1,4 @@
++#include "sway/tree/lumen_pair.h"
+ #include <assert.h>
+ #include <limits.h>
+ #include <strings.h>
+@@ -454,7 +455,7 @@
+ 	update_keyboard_state(keyboard, event->keycode, event->state, &keyinfo);
+  if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
+   for (size_t i=0;i<keyinfo.translated_keysyms_len;++i) {
+-   if (keyinfo.translated_keysyms[i]==XKB_KEY_Escape && seatop_lumen_cancel_drag(seat)) {
++   if (keyinfo.translated_keysyms[i]==XKB_KEY_Escape && (lumen_pair_cancel_resize(seat) || seatop_lumen_cancel_drag(seat))) {
+     free(device_identifier);return;
+    }
+   }
+--- a/sway/input/cursor.c
++++ b/sway/input/cursor.c
+@@ -1,3 +1,4 @@
++#include "sway/tree/lumen_pair.h"
+ #include <assert.h>
+ #include <json-c/json.h>
+ #include <wlr/types/wlr_output_layout.h>
+@@ -339,7 +340,7 @@
+ void cursor_hot_corners_lock_changed(void) {
+ 	struct sway_seat *seat;
+ 	wl_list_for_each(seat, &server.input->seats, link) {
+-		if (server.session_lock.lock) seatop_lumen_cancel_drag(seat);
++		if (server.session_lock.lock) { lumen_pair_cancel_resize(seat); seatop_lumen_cancel_drag(seat); }
+ 		/* Preserve occupancy across lock/unlock: returning cannot re-enter. */
+ 		hot_corner_emit(seat->cursor, hot_corner_output(seat->cursor), 0, false);
+ 	}
+--- a/sway/commands.c
++++ b/sway/commands.c
+@@ -1,3 +1,4 @@
++#include "sway/tree/lumen_pair.h"
+ #include <ctype.h>
+ #include <stdarg.h>
+ #include <stdlib.h>
+@@ -121,6 +122,7 @@
+ 	{ "inhibit_idle", cmd_inhibit_idle },
+ 	{ "kill", cmd_kill },
+ 	{ "layout", cmd_layout },
++ { "lumen_pair", cmd_lumen_pair },
+  { "lumen_window", cmd_lumen_window },
+ 	{ "mark", cmd_mark },
+ 	{ "max_render_time", cmd_max_render_time },
+--- a/sway/meson.build
++++ b/sway/meson.build
+@@ -213,6 +213,7 @@
+ 	'tree/container.c',
+ 	'tree/node.c',
+ 	'tree/root.c',
++ 'tree/lumen_pair.c',
+ 	'tree/view.c',
+ 	'tree/workspace.c',
+ 	'tree/output.c',

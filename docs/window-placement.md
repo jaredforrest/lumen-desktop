@@ -31,10 +31,9 @@ older compositor explains that the updated session is needed and disables layout
 choices instead of sending unsupported commands. Installing a compositor binary
 does not replace the running compositor; it takes effect at the next login.
 
-This implementation does not yet provide edge-drag layout previews, full-screen
-paired layouts, or application-declared preferred-content Zoom. These are
-unfinished implementation or adapter requirements, not substitutes for the
-implemented half/quarter commands.
+Full-screen paired placement has a separate native lifecycle and partner chooser;
+see [paired-layouts.md](paired-layouts.md). Application-declared preferred-content
+Zoom remains an unfinished adapter requirement.
 
 Show Desktop uses `lumen_window show-desktop` (toggle),
 `show-desktop-on` and `show-desktop-off` (idempotent). Super+Control+D and the

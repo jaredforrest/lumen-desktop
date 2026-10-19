@@ -34,6 +34,8 @@ ShellRoot {
     RemoteDesktopWindow {id:remoteDesktopWindow;shell:root}
     function openRemoteDesktop(){remoteDesktopWindow.show();focusOwnedWindow("Remote Desktop");}
     WindowLayoutMenu {id:windowLayoutMenu;shell:root}
+    WindowPairPicker {id:windowPairPicker;shell:root}
+    function pairWindow(id,side){windowPairPicker.open(id,side);}
     readonly property bool nativeShowDesktop:windowLayoutMenu.showDesktopSupported
     function revealDesktop() {
         if(!nativeShowDesktop)return "unsupported";

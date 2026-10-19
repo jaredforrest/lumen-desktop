@@ -37,7 +37,7 @@ static void global(void *d,struct wl_registry *r,uint32_t n,const char *i,uint32
 static void removed(void*d,struct wl_registry*r,uint32_t n){(void)d;(void)r;(void)n;}
 static const struct wl_registry_listener registry_listener={global,removed};
 static void configured(void*d,struct xdg_surface*s,uint32_t serial){
- (void)d;xdg_surface_ack_configure(s,serial);wl_surface_attach(surface,buffer,0,0);wl_surface_damage(surface,0,0,400,300);wl_surface_commit(surface);puts("mapped");fflush(stdout);
+ struct wl_surface *target=d?d:surface;xdg_surface_ack_configure(s,serial);wl_surface_attach(target,buffer,0,0);wl_surface_damage(target,0,0,400,300);wl_surface_commit(target);puts("mapped");fflush(stdout);
 }
 static const struct xdg_surface_listener surface_listener={configured};
 static void active_lock(void*d,struct zwp_locked_pointer_v1*p){(void)d;(void)p;puts("locked");fflush(stdout);}
@@ -71,6 +71,7 @@ int main(int argc,char **argv){
  if(argc>1&&!strcmp(argv[1],"fixed")){xdg_toplevel_set_min_size(top,400,300);xdg_toplevel_set_max_size(top,400,300);}
  if(argc>1&&!strcmp(argv[1],"bounded")){xdg_toplevel_set_min_size(top,200,100);xdg_toplevel_set_max_size(top,500,1000);}
  wl_surface_commit(surface);wl_display_roundtrip(display);
+ struct wl_surface *dialog=NULL;struct xdg_surface *dialog_xdg=NULL;struct xdg_toplevel *dialog_top=NULL;
  struct pollfd fds[2]={{wl_display_get_fd(display),POLLIN,0},{STDIN_FILENO,POLLIN,0}};
  for(;;){
   wl_display_dispatch_pending(display);wl_display_flush(display);if(poll(fds,2,-1)<0)break;
@@ -80,6 +81,10 @@ int main(int argc,char **argv){
    if(c=='l'){locked_pointer=zwp_pointer_constraints_v1_lock_pointer(constraints,surface,pointer,NULL,ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_PERSISTENT);zwp_locked_pointer_v1_add_listener(locked_pointer,&lock_listener,NULL);wl_surface_commit(surface);}
    if(c=='c'){confined_pointer=zwp_pointer_constraints_v1_confine_pointer(constraints,surface,pointer,NULL,ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_PERSISTENT);zwp_confined_pointer_v1_add_listener(confined_pointer,&confine_listener,NULL);wl_surface_commit(surface);}
    if(c=='u'){if(locked_pointer){zwp_locked_pointer_v1_destroy(locked_pointer);locked_pointer=NULL;}if(confined_pointer){zwp_confined_pointer_v1_destroy(confined_pointer);confined_pointer=NULL;}wl_surface_commit(surface);}
+   if((c=='t'||c=='f')&&top&&!dialog){dialog=wl_compositor_create_surface(compositor);dialog_xdg=xdg_wm_base_get_xdg_surface(wm,dialog);xdg_surface_add_listener(dialog_xdg,&surface_listener,dialog);dialog_top=xdg_surface_get_toplevel(dialog_xdg);xdg_toplevel_add_listener(dialog_top,&top_listener,NULL);xdg_toplevel_set_parent(dialog_top,top);xdg_toplevel_set_app_id(dialog_top,"constraint-dialog");xdg_toplevel_set_title(dialog_top,"Transient fixture");if(c=='t'){xdg_toplevel_set_min_size(dialog_top,200,150);xdg_toplevel_set_max_size(dialog_top,200,150);}xdg_surface_set_window_geometry(dialog_xdg,0,0,200,150);wl_surface_commit(dialog);}
+   if(c=='d'&&dialog){xdg_toplevel_destroy(dialog_top);xdg_surface_destroy(dialog_xdg);wl_surface_destroy(dialog);dialog=NULL;puts("dialog-closed");fflush(stdout);}
+   if(c=='n'&&dialog){xdg_toplevel_set_parent(dialog_top,NULL);wl_surface_commit(dialog);puts("dialog-independent");fflush(stdout);}
+   if(c=='p'&&top){xdg_toplevel_destroy(top);top=NULL;xdg_surface_destroy(xdg);wl_surface_destroy(surface);surface=NULL;puts("parent-closed");fflush(stdout);}
    if(c=='q')break;
   }
  }

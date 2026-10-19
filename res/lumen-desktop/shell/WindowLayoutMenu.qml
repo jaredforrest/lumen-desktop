@@ -17,6 +17,7 @@ PanelWindow {
     property bool supported: false
     property bool showDesktopSupported: false
     property bool edgeTilingSupported: false
+    property bool pairedLayoutsSupported:false
     property double target: 0
     property real anchorX: 0
     property real anchorY: 0
@@ -30,7 +31,11 @@ PanelWindow {
         {label:"Top Left",action:"top-left"},{label:"Top Right",action:"top-right"},
         {label:"Bottom Left",action:"bottom-left"},{label:"Bottom Right",action:"bottom-right"},
         {label:"Restore Previous Size",action:"restore"}
-    ]
+    ].concat(pairedLayoutsSupported?[
+        {label:"Pair Full Screen on Left",action:"pair-left"},
+        {label:"Pair Full Screen on Right",action:"pair-right"},
+        {label:"Manage Paired Windows",action:"pair-manage"}
+    ]:[])
     function dismiss() { opening.stop(); leaving.stop();visible=false;target=0;if(shell.popupOwner==="window-layout")shell.popupOwner=""; }
     function event(payload) {
         let data;
@@ -54,6 +59,7 @@ PanelWindow {
         if(!supported || index<0 || index>=choices.length || !Number.isSafeInteger(target) || target<=0)return;
         const id=target,action=choices[index].action;
         dismiss();
+        if(action.startsWith("pair-")){root.shell.pairWindow(id,action.substring(5));return;}
         Quickshell.execDetached(["swaymsg","[con_id="+id+"] lumen_window "+action]);
     }
     function updateCapabilities(raw) {
@@ -62,7 +68,8 @@ PanelWindow {
             supported=version.native_window_layouts===true;
             showDesktopSupported=version.native_show_desktop===true;
             edgeTilingSupported=version.native_edge_tiling===true;
-        } catch(error) { supported=false;showDesktopSupported=false;edgeTilingSupported=false; }
+            pairedLayoutsSupported=version.native_paired_layouts===true;
+        } catch(error) { supported=false;showDesktopSupported=false;edgeTilingSupported=false;pairedLayoutsSupported=false; }
     }
     Process {
         running:!!Quickshell.env("SWAYSOCK")

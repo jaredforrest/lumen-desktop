@@ -103,3 +103,5 @@ SidebarResizeHandle 1.0 SidebarResizeHandle.qml
 
 StatusStrip 1.0 StatusStrip.qml
 ClockSettings 1.0 ClockSettings.qml
+
+WindowPairPicker 1.0 WindowPairPicker.qml

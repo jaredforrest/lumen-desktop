@@ -28,9 +28,10 @@ def snapshot(tree, outputs, epoch):
     windows, spaces, seen = [], [], set()
     seen_spaces=set()
     extension_seen = False
+    pair_extension_seen = False
 
     def walk(node, workspace=None, output=None, floating=False):
-        nonlocal extension_seen
+        nonlocal extension_seen, pair_extension_seen
         if not isinstance(node, dict):
             raise ProtocolError('Invalid compositor node')
         for key in ('nodes','floating_nodes'):
@@ -65,12 +66,23 @@ def snapshot(tree, outputs, epoch):
                 if 'desktop_hidden' in extension and type(extension['desktop_hidden']) is not bool:raise ProtocolError('Invalid desktop reveal state')
                 extension_seen = True
             if type(node.get('fullscreen_mode',0)) is not int or node.get('fullscreen_mode',0) not in (0,1,2):raise ProtocolError('Invalid fullscreen state')
+            pairing=node.get('lumen_pair')
+            pair=None
+            if pairing is not None:
+                if not isinstance(pairing,dict) or type(pairing.get('version')) is not int or pairing['version']!=1 or any(type(pairing.get(key)) is not bool for key in ('eligible','survivor')):
+                    raise ProtocolError('Invalid paired placement extension')
+                pair_extension_seen=True
+                if any(key in pairing for key in ('id','partner','side','ratio')):
+                    if any(type(pairing.get(key)) is not int or pairing[key]<=0 or pairing[key]==container for key in ('id','partner')) or pairing.get('side') not in ('left','right') or type(pairing.get('ratio')) not in (int,float) or not math.isfinite(pairing['ratio']) or not 0<pairing['ratio']<1 or pairing['survivor']:
+                        raise ProtocolError('Invalid paired member identity or ratio')
+                    pair=dict(id='p-'+str(pairing['id']),partner='w-'+str(pairing['partner']),side=pairing['side'],ratio=pairing['ratio'])
             app = node.get('app_id') or properties.get('class')
             windows.append(dict(id='w-' + str(container), app_hint=app,
                 identity_assurance='advertised_unverified', main_window=None,
                 key=bool(node.get('focused')), minimised=extension['minimised'] if extension else None,
                 app_hidden=extension.get('hidden') if extension else None, desktop_hidden=extension.get('desktop_hidden') if extension else None, occluded=None,
-                placement='fullscreen' if node.get('fullscreen_mode', 0) else 'filled' if extension and extension['filled'] else 'floating' if floating else 'layout_managed',
+                pair=pair,paired_fullscreen_survivor=pairing['survivor'] if pairing is not None else None,
+                placement='paired' if pair else 'fullscreen' if node.get('fullscreen_mode', 0) or pairing and pairing['survivor'] else 'filled' if extension and extension['filled'] else 'floating' if floating else 'layout_managed',
                 space='s-' + workspace if workspace is not None else None,
                 output=output, bounds=bounds(node.get('rect')),
                 frame_owner='client' if node.get('border') == 'csd' else 'compositor' if node.get('border') in ('normal','pixel') else 'unknown',
@@ -99,6 +111,14 @@ def snapshot(tree, outputs, epoch):
     live_ids={o['id'] for o in live_outputs}
     for sp in spaces:
         if not sp['internal'] and sp['output'] not in live_ids:raise ProtocolError('Workspace references unavailable output')
+    groups={}
+    for window in windows:
+        if window['pair']:groups.setdefault(window['pair']['id'],[]).append(window)
+    for members in groups.values():
+        if len(members)!=2:raise ProtocolError('Incomplete paired membership')
+        first,second=members
+        if first['pair']['partner']!=second['id'] or second['pair']['partner']!=first['id'] or first['pair']['side']==second['pair']['side'] or first['pair']['ratio']!=second['pair']['ratio'] or first['space']!=second['space'] or first['output']!=second['output']:
+            raise ProtocolError('Inconsistent paired membership')
     keys = [w['id'] for w in windows if w['key']]
     if len(keys) > 1:
         raise ProtocolError('Ambiguous key-window snapshot')
@@ -106,7 +126,7 @@ def snapshot(tree, outputs, epoch):
         observation='sequential IPC samples; not an atomic revisioned broker snapshot',
         windows=windows, spaces=spaces, outputs=live_outputs,
         focus=dict(key_window=keys[0] if keys else None, seat='backend_default'),
-        capabilities=dict(read_only=True, placement_extension=extension_seen,
+        capabilities=dict(read_only=True, placement_extension=extension_seen, paired_placement_extension=pair_extension_seen,
                           application_registry=False, atomic_snapshot=False,
                           per_seat_focus=False, app_main_window=False),
         unavailable=['Application lifetime and main-window identity require an application adapter',

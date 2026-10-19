@@ -88,6 +88,23 @@ class StateValidation(unittest.TestCase):
         window['lumen_state']['desktop_hidden']='false'
         with self.assertRaises(protocol.ProtocolError):state.snapshot(tree,outputs,'fixture')
 
+    def test_paired_membership_and_ratio_are_compositor_facts(self):
+        tree,outputs,window,workspace=compositor_fixture()
+        partner={**window,'id':8,'focused':False}
+        window['lumen_pair']={'version':1,'eligible':True,'survivor':False,'id':9,'partner':8,'side':'left','ratio':0.5}
+        partner['lumen_pair']={'version':1,'eligible':True,'survivor':False,'id':9,'partner':7,'side':'right','ratio':0.5}
+        workspace['nodes'].append(partner)
+        observed=state.snapshot(tree,outputs,'fixture')
+        self.assertTrue(observed['capabilities']['paired_placement_extension'])
+        self.assertEqual([w['placement'] for w in observed['windows']],['paired','paired'])
+        self.assertEqual(observed['windows'][0]['pair']['partner'],'w-8')
+        for field,value in (('partner',True),('ratio',float('nan')),('side','middle'),('survivor',True),('version',True)):
+            old=window['lumen_pair'][field];window['lumen_pair'][field]=value
+            with self.subTest(field=field),self.assertRaises(protocol.ProtocolError):state.snapshot(tree,outputs,'fixture')
+            window['lumen_pair'][field]=old
+        workspace['nodes'].pop()
+        with self.assertRaisesRegex(protocol.ProtocolError,'Incomplete'):state.snapshot(tree,outputs,'fixture')
+
     def test_malformed_children_and_window_properties_are_rejected(self):
         for field,value in (('nodes',5),('floating_nodes',{}),('window_properties','invalid')):
             tree,outputs,window,_=compositor_fixture();window[field]=value
