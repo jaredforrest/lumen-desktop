@@ -123,3 +123,9 @@ Live appearance tests keep six real owned windows mapped through atomic
 light/dark/light file changes, verify stable native window ID/geometry and
 reject stale palette rectangles from screenshot pixels. No real session input,
 files, accounts or system actions are used by these fixtures.
+Application lifecycle native protocol proof:
+  desktop-test-python tests/desktop/application_lifecycle_input.py --launcher /path/to/lumen-desktop-shell --sway /path/to/sway --output /absolute/new/test-directory
+Uses a private headless compositor/bus/HOME and a synthetic GTK application with
+two dirty in-memory documents. Verifies retained zero-window pidfd identity, Dock
+and switcher activation, cooperative app-owned cancel/save/discard, and exit cleanup.
+It never sends input to the user's compositor or uses a personal document.

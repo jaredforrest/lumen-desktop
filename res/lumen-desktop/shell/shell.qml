@@ -107,6 +107,14 @@ ShellRoot {
     }
     function filesAction(action){claimPopup("");filesActionTimer.action=action;filesActionTimer.restart();}
     Timer {id:filesActionTimer;property string action;interval:100;onTriggered:filesWindow.dispatch(action)}
+    ApplicationLifecycleState {id:applicationLifecycle;onResultReady:result=>{root.applicationCommandError=result.error || "";}}
+    property string applicationCommandError:""
+    onApplicationCommandErrorChanged:if(applicationCommandError)applicationCommandTimer.restart()
+    Timer {id:applicationCommandTimer;interval:8000;onTriggered:root.applicationCommandError=""}
+    readonly property var runningApplications:applicationLifecycle.applications
+    function runningFor(entry){return !!entry && (windowsFor(entry).length>0 || runningApplications.some(app=>{const candidate=entryFor({appId:app.appId,title:""});return candidate && candidate.id===entry.id;}));}
+    function applicationInstanceKey(entry){let ids=[];for(const app of runningApplications){const candidate=entryFor({appId:app.appId,title:""});if(candidate && candidate.id===entry.id)ids=ids.concat(app.instanceIds || []);}return ids.sort().join(":");}
+    function quitApplication(entry){const app=runningApplications.find(app=>{const candidate=entryFor({appId:app.appId,title:""});return candidate && candidate.id===entry.id;});if(!app || !applicationLifecycle.quit(app.appId))applicationCommandError="Use the application’s own Quit command. Cooperative Quit is unavailable.";}
     property var windowCreationOrder:[]
     property var windows: ToplevelManager.toplevels.values
     onWindowsChanged:windowCreationOrder=SwitcherModel.creationOrder(windowCreationOrder,windows)
@@ -117,8 +125,9 @@ ShellRoot {
     }
     property var active: ToplevelManager.activeToplevel
     property var activationHistory: []
+    property var applicationActivationHistory:[]
     onActiveChanged: {
-        if (active) {activationHistory=[active].concat(activationHistory.filter(w=>w!==active && windows.includes(w)));const recent=entryFor(active);if(recent)recentAppIds=[recent.id].concat(recentAppIds.filter(id=>!DockModel.sameEntry(id,recent.id))).slice(0,12);}
+        if (active) {activationHistory=[active].concat(activationHistory.filter(w=>w!==active && windows.includes(w)));const recent=entryFor(active);const identity=recent?recent.id:active.appId;if(identity)applicationActivationHistory=[identity].concat(applicationActivationHistory.filter(id=>id!==identity)).slice(0,512);if(recent)recentAppIds=[recent.id].concat(recentAppIds.filter(id=>!DockModel.sameEntry(id,recent.id))).slice(0,12);}
     }
     property var entries: DesktopEntries.applications.values
     property var runningExtras: {
@@ -127,6 +136,7 @@ ShellRoot {
             const e = entryFor(w);
             if (e && !result.some(x => x.id === e.id)) result.push(e);
         }
+        for(const app of runningApplications){const e=entryFor({appId:app.appId,title:""});if(e && !result.some(x=>x.id===e.id))result.push(e);}
         return result;
     }
     property var dockApps: referenceDock.filter(item=>item.entry).map(item=>item.entry)
@@ -270,7 +280,7 @@ ShellRoot {
         function remoteDesktop():void {root.openRemoteDesktop();}
         function calendar():void {root.openCalendar();}
         target: "desktop"
-        function status(): string { return JSON.stringify({screens: Quickshell.screens.map(s=>({name:s.name,width:s.width,height:s.height})), active:root.activeName, referenceDock:root.referenceDock.map(e=>({key:e.key,center:e.center,assigned:!!e.entry || !!e.action})), apps:root.dockApps.map(e=>({id:e.id,name:e.name,icon:e.icon,windows:root.windowsFor(e).length})), windows:root.windows.map(w=>({appId:w.appId,title:w.title,active:w.activated})), volume:root.volume}); }
+        function status(): string { return JSON.stringify({screens: Quickshell.screens.map(s=>({name:s.name,width:s.width,height:s.height})), active:root.activeName, referenceDock:root.referenceDock.map(e=>({key:e.key,center:e.center,assigned:!!e.entry || !!e.action})), apps:root.dockApps.map(e=>({id:e.id,name:e.name,icon:e.icon,windows:root.windowsFor(e).length,running:root.runningFor(e)})),runningApplications:root.runningApplications, windows:root.windows.map(w=>({appId:w.appId,title:w.title,active:w.activated})), volume:root.volume}); }
         function activate(id: string): string { const e=DesktopEntries.byId(id); if (!e) return "missing"; root.activate(e,false); return "requested"; }
         function menu(name: string): void { root.showMenu(name); }
         function layout():string {return JSON.stringify(Object.values(root.bars).filter(b=>b && typeof b.popupLayout==="function").map(b=>b.popupLayout()));}

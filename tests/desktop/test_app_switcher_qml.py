@@ -31,6 +31,9 @@ Timer {interval:50;running:true
  if(Model.validSelection(items,1,[a1,b2],identity)!==items[1])throw Error("Same app replacement lost");
  if(Model.validSelection(items,9,[a1,b1],identity)!==null)throw Error("Invalid index accepted");
  if(JSON.stringify(items.map(i=>i.key))!==JSON.stringify(["a","b","c"]))throw Error("Snapshot mutated");
+ const background={key:"zero",window:null},visible={key:"visible",window:a1};
+ const appOrder=Model.applicationOrder([visible,background],["gone","zero","visible"]);
+ if(appOrder[0]!==background || appOrder[1]!==visible)throw Error("Zero-window application MRU slot lost");
  const creation=Model.creationOrder([a1,b1],[b1,a1,a2]);
  if(creation[0]!==a1 || creation[1]!==b1 || creation[2]!==a2)throw Error("Creation order follows tree reorder");
  if(Model.cycleWindow(creation,[a1,a2,b1],a1,identity,1)!==a2)throw Error("Window cycle crossed app");

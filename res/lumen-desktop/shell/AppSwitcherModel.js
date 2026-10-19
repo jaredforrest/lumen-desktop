@@ -27,3 +27,10 @@ function cycleWindow(order, windows, active, identity, delta) {
     const current=candidates.indexOf(active);
     return current<0 ? null : candidates[step(current,candidates.length,delta)];
 }
+
+// Retained zero-window applications keep their application-level MRU slot.
+function applicationOrder(items, history) {
+    const result=[];
+    for(const key of history || []){const item=items.find(item=>item.key===key);if(item && !result.includes(item))result.push(item);}
+    return result.concat(items.filter(item=>!result.includes(item)));
+}

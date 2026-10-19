@@ -35,6 +35,14 @@ PanelWindow {
                     label:entry?shell.appLabel(entry):shell.nameForAppId(item.window.appId,item.window.title),
                     icon:entry?shell.appIcon(entry):Qt.resolvedUrl("icons/application.svg")};
             });
+            const background=[];
+            for(const app of shell.runningApplications || []){
+                if(!app.zeroWindows)continue;
+                const entry=shell.entryFor({appId:app.appId,title:""});
+                if(!entry || items.some(item=>item.key===entry.id) || background.some(item=>item.key===entry.id))continue;
+                background.push({key:entry.id,window:null,entry:entry,instanceKey:shell.applicationInstanceKey(entry),label:shell.appLabel(entry),icon:shell.appIcon(entry)});
+            }
+            items=SwitcherModel.applicationOrder(items.concat(background),shell.applicationActivationHistory || []);
             if(!items.length)return;
             const output=shell.preferredOutput();
             screen=Quickshell.screens.find(s=>s.name===output) || Quickshell.screens[0];
@@ -47,7 +55,9 @@ PanelWindow {
     }
     function commit(){
         if(!visible)return;
-        const item=SwitcherModel.validSelection(items,selected,shell.windows,identity);
+        const captured=selected>=0 && selected<items.length?items[selected]:null;
+        const background=captured && !captured.window && captured.entry && shell.runningFor(captured.entry) && captured.instanceKey===shell.applicationInstanceKey(captured.entry);
+        const item=background?captured:SwitcherModel.validSelection(items,selected,shell.windows,identity);
         visible=false;phase=item?"committed":"cancelled";
         if(!item)return;
         const epoch=shell.focusEpoch;
@@ -56,7 +66,11 @@ PanelWindow {
         Qt.callLater(()=>{
             const live=shell.windows.filter(w=>identity(w)===item.key);
             if(epoch!==shell.focusEpoch){if(!visible)phase="cancelled";return;}
-            if(!live.length){phase="cancelled";return;}
+            if(!live.length){
+                if(item.entry && shell.runningFor(item.entry) && item.instanceKey===shell.applicationInstanceKey(item.entry)){++commits;phase="committed";shell.activate(item.entry,false);}
+                else phase="cancelled";
+                return;
+            }
             const entry=shell.entryFor(live[0]);
             ++commits;phase="committed";
             if(entry)shell.activate(entry,false);

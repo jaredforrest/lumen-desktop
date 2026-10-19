@@ -64,11 +64,12 @@ PanelWindow {
         contextIndex=contextIndex<0?(delta>0?0:count-1):(contextIndex+delta+count)%count;
         contextScroll.contentY=Math.max(0,Math.min(contextScroll.contentHeight-contextScroll.height,contextIndex*(Theme.menuRowHeight+2)-contextScroll.height/2));
     }
+    function applicationRunning(entry){return typeof shell.runningFor==="function"?shell.runningFor(entry):shell.windowsFor(entry).length>0;}
     function activateContext(row) {
         if(!row || row.enabled===false)return;
         const entry=contextEntry,alias=contextAlias;contextEntry=null;contextAlias=null;
         if(alias){if(row.action==="alias-open")shell.activateDock(alias,false,outputName);else if(row.action==="alias-reveal")shell.revealDockAlias(alias);else if(row.action==="alias-remove")shell.removeDockAlias(alias);return;}
-        if(row.win)shell.focusWindow(row.win);else if(row.action==="new")shell.activate(entry,true);else if(row.action==="force-quit")shell.forceQuit(entry);else if(["pin","remove","earlier","later"].includes(row.action))shell.updateDockPin(entry,row.action);else shell.windowsFor(entry).forEach(w=>w.close());
+        if(row.win)shell.focusWindow(row.win);else if(row.action==="new")shell.activate(entry,true);else if(row.action==="force-quit")shell.forceQuit(entry);else if(row.action==="quit")shell.quitApplication(entry);else if(["pin","remove","earlier","later"].includes(row.action))shell.updateDockPin(entry,row.action);else shell.windowsFor(entry).forEach(w=>w.close());
     }
     onContextEntryChanged: {
         contextIndex=-1;
@@ -160,7 +161,7 @@ PanelWindow {
 
                     Behavior on width { NumberAnimation { duration:Theme.preferences.reduceMotion?0:150; easing.type:Easing.OutCubic } }
                 }
-                Rectangle { anchors.horizontalCenter:parent.horizontalCenter; y:dock.shelfThickness-8; width:4; height:4; radius:2; color:Theme.colors.text; visible:Theme.preferences.dockIndicators!==false && tile.appWindows.length>0 }
+                Rectangle { anchors.horizontalCenter:parent.horizontalCenter; y:dock.shelfThickness-8; width:4; height:4; radius:2; color:Theme.colors.text; visible:Theme.preferences.dockIndicators!==false && (tile.appWindows.length>0 || (!!tile.modelData.entry && dock.applicationRunning(tile.modelData.entry))) }
                 DropArea {anchors.fill:parent;keys:["text/uri-list"]
                     enabled:!!tile.modelData.entry && !dock.dragging
                     onEntered:drag=>{if(!drag.hasUrls || !(drag.supportedActions & Qt.CopyAction))drag.accepted=false;}
@@ -172,8 +173,8 @@ PanelWindow {
         }
     }
     Rectangle {visible:dock.dragging && dock.hovered>=0;x:12+(dock.position==="right"?shell.referenceDock.length-1-dock.hovered:dock.hovered)*dock.slot;y:54;width:2;height:60;radius:1;color:Theme.colors.accent}
-    PanelSurface {visible:!!(dock.dropError || shell.aliasError);x:Math.max(0,(dock.width-width)/2);y:0;width:Math.min(420,dock.width);height:44
-        PanelLabel {anchors.fill:parent;anchors.margins:8;text:dock.dropError || shell.aliasError || "";wrapMode:Text.WordWrap;font.pixelSize:11;color:Theme.colors.text}
+    PanelSurface {visible:!!(dock.dropError || shell.aliasError || shell.applicationCommandError);x:Math.max(0,(dock.width-width)/2);y:0;width:Math.min(420,dock.width);height:44
+        PanelLabel {anchors.fill:parent;anchors.margins:8;text:shell.applicationCommandError || dock.dropError || shell.aliasError || "";wrapMode:Text.WordWrap;font.pixelSize:11;color:Theme.colors.text}
     }
     // A single stable hit area avoids pointer-grab and region transitions between tiles.
     MouseArea {
@@ -255,7 +256,7 @@ PanelWindow {
                 id:contextColumn;spacing:2
                 Repeater {
                     id:contextItems
-                    model:dock.contextAlias?[{label:"Open",action:"alias-open"},{label:"Show in Files",action:"alias-reveal"},{label:"Remove from Dock",action:"alias-remove",enabled:!shell.dockPreferencesBusy}]:dock.contextEntry ? [{label:"Open New",action:"new"}].concat(shell.windowsFor(dock.contextEntry).map(w=>({label:(w.minimized?"Minimized — ":"")+(w.title || "Window"),win:w}))).concat(!shell.canConfigureDockEntry(dock.contextEntry)?[]:shell.dockPreferencesBusy?[{label:"Saving Dock settings…",enabled:false}]:shell.isDockPinned(dock.contextEntry)?[{label:"Remove from Dock",action:"remove"},{label:"Move Earlier",action:"earlier"},{label:"Move Later",action:"later"}]:[{label:"Keep in Dock",action:"pin"}]).concat([{label:"Close Windows",action:"close"}]).concat(shell.canForceQuit(dock.contextEntry)?[{label:"Force Quit…",action:"force-quit"}]:[]) : []
+                    model:dock.contextAlias?[{label:"Open",action:"alias-open"},{label:"Show in Files",action:"alias-reveal"},{label:"Remove from Dock",action:"alias-remove",enabled:!shell.dockPreferencesBusy}]:dock.contextEntry ? [{label:"Open New",action:"new"}].concat(shell.windowsFor(dock.contextEntry).map(w=>({label:(w.minimized?"Minimized — ":"")+(w.title || "Window"),win:w}))).concat(!shell.canConfigureDockEntry(dock.contextEntry)?[]:shell.dockPreferencesBusy?[{label:"Saving Dock settings…",enabled:false}]:shell.isDockPinned(dock.contextEntry)?[{label:"Remove from Dock",action:"remove"},{label:"Move Earlier",action:"earlier"},{label:"Move Later",action:"later"}]:[{label:"Keep in Dock",action:"pin"}]).concat([{label:"Close Windows",action:"close",enabled:shell.windowsFor(dock.contextEntry).length>0},{label:"Request Quit",action:"quit",enabled:dock.applicationRunning(dock.contextEntry)}]).concat(shell.canForceQuit(dock.contextEntry)?[{label:"Force Quit…",action:"force-quit"}]:[]) : []
                     Rectangle {
                         required property var modelData
                         required property int index

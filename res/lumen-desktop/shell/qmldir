@@ -93,3 +93,4 @@ DesktopLayoutState 1.0 DesktopLayoutState.qml
 
 HotCornerSettings 1.0 HotCornerSettings.qml
 NativeFileDragState 1.0 NativeFileDragState.qml
+ApplicationLifecycleState 1.0 ApplicationLifecycleState.qml
