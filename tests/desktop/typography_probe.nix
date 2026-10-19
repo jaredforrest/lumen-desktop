@@ -1,6 +1,6 @@
 { pkgs }:
 let
-  fontConfig = pkgs.makeFontsConf {
+  fontConfig = (import ../../packages/font-configuration.nix { inherit pkgs; }) {
     fontDirectories = [
       "${pkgs.callPackage ../../packages/interlude.nix {}}/share/fonts"
       "${pkgs.dejavu_fonts}/share/fonts"

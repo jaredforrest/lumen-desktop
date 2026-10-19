@@ -6,7 +6,7 @@ let
     cp ${assets}/auth/*.qml $out/
     ln -s ${assets}/shell/wallpaper.png $out/wallpaper.png
   '';
-  fontConfig = pkgs.makeFontsConf {
+  fontConfig = (import ./font-configuration.nix { inherit pkgs; }) {
     fontDirectories = [
       "${pkgs.callPackage ./interlude.nix {}}/share/fonts"
       "${pkgs.dejavu_fonts}/share/fonts"

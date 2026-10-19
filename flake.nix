@@ -77,6 +77,7 @@
           test -s ${assets}/auth/lock.qml
           touch "$out"
         '';
+        font-configuration = import ./tests/project/font-configuration.nix { inherit pkgs; };
         consumer-boundary = assert import ./tests/project/boundary.nix { inherit nixpkgs system; }; pkgs.writeText "lumen-consumer-boundary" "passed";
         source-contracts = pkgs.runCommand "lumen-source-contracts" { nativeBuildInputs = [ pkgs.python3 ]; } ''
           python3 ${./tests/project/source_contracts.py} ${self}
