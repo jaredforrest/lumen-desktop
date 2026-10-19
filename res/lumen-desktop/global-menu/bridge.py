@@ -101,7 +101,7 @@ class Bridge(dbus.service.Object):
         # Recovery only; normal focus and menu changes are event driven.
         GLib.timeout_add_seconds(2, self.poll)
         self.queue_refresh()
-        GLib.io_add_watch(sys.stdin, GLib.IO_IN | GLib.IO_HUP, self.input)
+        GLib.io_add_watch(sys.stdin, GLib.PRIORITY_DEFAULT, GLib.IO_IN | GLib.IO_HUP, self.input)
         self.publish()
 
     def queue_refresh(self):
@@ -125,7 +125,7 @@ class Bridge(dbus.service.Object):
             stdout=subprocess.PIPE, stderr=sys.stderr)
         os.set_blocking(self.events.stdout.fileno(), False)
         self.event_buffer = b''
-        GLib.io_add_watch(self.events.stdout, GLib.IO_IN | GLib.IO_HUP | GLib.IO_ERR, self.focus_event)
+        GLib.io_add_watch(self.events.stdout, GLib.PRIORITY_DEFAULT, GLib.IO_IN | GLib.IO_HUP | GLib.IO_ERR, self.focus_event)
 
     def focus_event(self, source, condition):
         try:

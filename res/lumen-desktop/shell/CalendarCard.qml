@@ -15,6 +15,8 @@ PanelSurface {
     property bool agendaOnly:false
     property bool reduceTransparency:false
     property bool monochrome:false
+    function textSize(base){return compact?Theme.textSize(base):base;}
+    readonly property int dayDiameter:Math.max(26,textSize(12)+12)
     property bool followingToday:true
     property int firstDayOfWeek:Qt.locale().firstDayOfWeek
     property string calendarTimeZone:"Europe/London"
@@ -103,7 +105,7 @@ PanelSurface {
     readonly property bool busy:worker.running
     readonly property int weekCount: Math.ceil((CalendarLogic.offset(month,firstDayOfWeek)+new Date(month.getFullYear(),month.getMonth()+1,0).getDate())/7)
     color:compact && Theme.compositorEffects && !root.reduceTransparency?Qt.alpha(Theme.colors.background,.91):Theme.colors.background;radius:22
-    implicitHeight:(editing?editor.height:content.height)+36+(compact?34:0)
+    implicitHeight:(editing?editor.height:content.height)+36+(compact?relatedLink.height+4:0)
     function iso(d) {return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
     function send(data) {
         if(worker.running){if(data.action==="list")refreshPending=true;return;}
@@ -130,14 +132,14 @@ PanelSurface {
         Row {
             visible:!root.detailsOnly && !root.agendaOnly
             width:parent.width
-            PanelLabel {text:Qt.formatDateTime(root.month,"MMMM yyyy");font.weight:Font.DemiBold;width:parent.width-58;height:26;verticalAlignment:Text.AlignVCenter}
+            PanelLabel {text:Qt.formatDateTime(root.month,"MMMM yyyy");font.weight:Font.DemiBold;width:parent.width-2*Math.max(29,root.textSize(20)+8);height:Math.max(26,root.textSize(20)+6);verticalAlignment:Text.AlignVCenter}
             Repeater {
                 model:[-1,1]
                 delegate:AbstractButton {
                     required property int modelData
-                    width:29;height:26;enabled:!root.busy
+                    width:Math.max(29,root.textSize(20)+8);height:Math.max(26,root.textSize(20)+6);enabled:!root.busy
                     Accessible.name:modelData<0?"Previous month":"Next month"
-                    contentItem:PanelLabel {text:parent.modelData<0?"‹":"›";font.pixelSize:20;horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter}
+                    contentItem:PanelLabel {text:parent.modelData<0?"‹":"›";font.pixelSize:root.textSize(20);horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter}
                     background:Rectangle {radius:5;color:parent.hovered || parent.activeFocus?Theme.colors.hover:"transparent"}
                     onClicked:root.changeMonth(modelData)
                 }
@@ -151,14 +153,14 @@ PanelSurface {
             Accessible.role:Accessible.Pane
             Accessible.name:"Calendar, "+Qt.formatDateTime(root.selected,"dddd d MMMM yyyy")
             Keys.onPressed:event=>{if(root.moveDate(event.key))event.accepted=true;}
-            Repeater {model:CalendarLogic.weekdayNames(Qt.locale(),root.firstDayOfWeek,Locale.ShortFormat);PanelLabel {required property string modelData;width:parent.width/7;height:18;text:modelData;horizontalAlignment:Text.AlignHCenter;color:Theme.colors.muted;font.pixelSize:11}}
+            Repeater {model:CalendarLogic.weekdayNames(Qt.locale(),root.firstDayOfWeek,Locale.ShortFormat);PanelLabel {required property string modelData;width:parent.width/7;height:Math.max(18,implicitHeight);text:modelData;horizontalAlignment:Text.AlignHCenter;color:Theme.colors.muted;font.pixelSize:root.textSize(11)}}
             Repeater {
                 model:7*root.weekCount
                 delegate:AbstractButton {
                     id:cell
                     objectName:valid?"calendar-day-"+root.iso(dateValue):""
                     required property int index
-                    width:parent.width/7;height:30
+                    width:parent.width/7;height:root.dayDiameter+4
                     readonly property int day:index-CalendarLogic.offset(root.month,root.firstDayOfWeek)+1
                     readonly property bool valid:day>0 && day<=new Date(root.month.getFullYear(),root.month.getMonth()+1,0).getDate()
                     readonly property date dateValue:new Date(root.month.getFullYear(),root.month.getMonth(),day)
@@ -175,17 +177,17 @@ PanelSurface {
                     onCanceled:activationDate=null
                     onClicked:{const day=activationDate || new Date(dateValue);activationDate=null;root.selectDate(day);dateGrid.forceActiveFocus();}
                     background:Item {
-                        Rectangle {anchors.horizontalCenter:parent.horizontalCenter;width:26;height:26;radius:13;color:cell.current?(root.monochrome?Theme.colors.muted:Theme.dark?"#ff453a":"#ff3b30"):cell.selected?(root.monochrome?Theme.colors.muted:Theme.colors.accent):cell.hovered?Theme.colors.hover:"transparent";border.width:cell.activeFocus || (dateGrid.activeFocus && cell.selected)?2:0;border.color:Theme.colors.text}
-                        Row {anchors.horizontalCenter:parent.horizontalCenter;y:28;spacing:2;visible:cell.valid;Repeater {model:cell.valid?root.dayColors(cell.dateValue):[];Rectangle {required property string modelData;width:3;height:3;radius:2;color:root.monochrome?Theme.colors.muted:modelData}}}
+                        Rectangle {anchors.horizontalCenter:parent.horizontalCenter;width:root.dayDiameter;height:root.dayDiameter;radius:width/2;color:cell.current?(root.monochrome?Theme.colors.muted:Theme.dark?"#ff453a":"#ff3b30"):cell.selected?(root.monochrome?Theme.colors.muted:Theme.colors.accent):cell.hovered?Theme.colors.hover:"transparent";border.width:cell.activeFocus || (dateGrid.activeFocus && cell.selected)?2:0;border.color:Theme.colors.text}
+                        Row {anchors.horizontalCenter:parent.horizontalCenter;y:root.dayDiameter+2;spacing:2;visible:cell.valid;Repeater {model:cell.valid?root.dayColors(cell.dateValue):[];Rectangle {required property string modelData;width:3;height:3;radius:2;color:root.monochrome?Theme.colors.muted:modelData}}}
                     }
-                    contentItem:PanelLabel {height:26;text:cell.valid?cell.day:"";color:cell.current || cell.selected?"white":Theme.colors.text;font.pixelSize:12;horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignTop;topPadding:5}
+                    contentItem:PanelLabel {height:root.dayDiameter;text:cell.valid?cell.day:"";color:cell.current || cell.selected?(root.monochrome && Theme.dark?"#111216":"white"):Theme.colors.text;font.pixelSize:root.textSize(12);horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignTop;topPadding:5}
                 }
             }
         }
         Row {
             width:parent.width
-            PanelLabel {width:parent.width-58;text:Qt.formatDateTime(root.selected,Qt.locale().dateFormat(root.compact?Locale.LongFormat:Locale.ShortFormat));font.pixelSize:root.compact?15:13;font.weight:Font.DemiBold;verticalAlignment:Text.AlignVCenter;height:24}
-            AbstractButton {width:58;height:24;enabled:!root.busy;text:"Today";Accessible.name:"Go to today";contentItem:PanelLabel {text:parent.text;color:(root.monochrome?Theme.colors.muted:Theme.colors.accent);horizontalAlignment:Text.AlignRight;verticalAlignment:Text.AlignVCenter} onClicked:root.goToday()}
+            PanelLabel {width:parent.width-58;text:Qt.formatDateTime(root.selected,Qt.locale().dateFormat(root.compact?Locale.LongFormat:Locale.ShortFormat));font.pixelSize:root.textSize(root.compact?15:13);font.weight:Font.DemiBold;verticalAlignment:Text.AlignVCenter;height:Math.max(24,root.textSize(15)+8)}
+            AbstractButton {width:58;height:Math.max(24,root.textSize(15)+8);enabled:!root.busy;text:"Today";Accessible.name:"Go to today";contentItem:PanelLabel {text:parent.text;color:(root.monochrome?Theme.colors.muted:Theme.colors.accent);horizontalAlignment:Text.AlignRight;verticalAlignment:Text.AlignVCenter} onClicked:root.goToday()}
         }
         PanelLabel {visible:root.events.length===0;width:parent.width;wrapMode:Text.WordWrap;color:Theme.colors.muted;text:!root.loaded?(root.busy?"Loading calendar…":"Calendar unavailable"):!root.configured?"Connect a calendar to see your appointments here.":!root.lastSuccess?"Calendars are configured, but no successful sync has completed.":"No events on this day"}
         ScrollView {
@@ -206,7 +208,7 @@ PanelSurface {
                         background:Rectangle {radius:6;color:parent.hovered || parent.activeFocus?Theme.colors.hover:Theme.colors.surface;Rectangle {width:3;anchors.top:parent.top;anchors.bottom:parent.bottom;anchors.margins:5;radius:2;color:root.tint(eventButton.modelData)}}
                         contentItem:Column {id:eventText;spacing:2
                             PanelLabel {width:eventButton.width-24;text:eventButton.modelData.title;textFormat:Text.PlainText;wrapMode:Text.WordWrap;maximumLineCount:2;elide:Text.ElideRight;font.weight:Font.Medium}
-                            PanelLabel {width:eventButton.width-24;font.pixelSize:11;color:Theme.colors.muted;text:root.timeLabel(eventButton.modelData)+" · "+eventButton.modelData.provider+" · "+eventButton.modelData.calendar;textFormat:Text.PlainText;elide:Text.ElideRight}
+                            PanelLabel {width:eventButton.width-24;font.pixelSize:root.textSize(11);color:Theme.colors.muted;text:root.timeLabel(eventButton.modelData)+" · "+eventButton.modelData.provider+" · "+eventButton.modelData.calendar;textFormat:Text.PlainText;elide:Text.ElideRight}
                         }
                         onPressed:{activationEvent=Object.assign({},modelData);activationDay=new Date(root.selected);}
                         onCanceled:{activationEvent=null;activationDay=null;}
@@ -215,13 +217,13 @@ PanelSurface {
                 }
             }
         }
-        PanelLabel {visible:!root.compact && root.total>root.events.length;width:parent.width;wrapMode:Text.WordWrap;color:Theme.colors.muted;font.pixelSize:11;text:"Showing the first 100 events of "+root.total}
+        PanelLabel {visible:!root.compact && root.total>root.events.length;width:parent.width;wrapMode:Text.WordWrap;color:Theme.colors.muted;font.pixelSize:root.textSize(11);text:"Showing the first 100 events of "+root.total}
         Column {
             visible:!!root.detail;width:parent.width;spacing:4
             PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:root.detail?root.detail.title:"";textFormat:Text.PlainText;font.weight:Font.DemiBold}
-            PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:root.detail?root.detail.provider+" · "+root.detail.calendar+(root.detail.location?" · "+root.detail.location:""):"";textFormat:Text.PlainText;color:Theme.colors.muted;font.pixelSize:11}
+            PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:root.detail?root.detail.provider+" · "+root.detail.calendar+(root.detail.location?" · "+root.detail.location:""):"";textFormat:Text.PlainText;color:Theme.colors.muted;font.pixelSize:root.textSize(11)}
             ScrollView {visible:!!root.detail && !!root.detail.notes;width:parent.width;height:Math.min(90,noteText.implicitHeight);clip:true;ScrollBar.horizontal.policy:ScrollBar.AlwaysOff
-                PanelLabel {id:noteText;width:content.width;wrapMode:Text.WordWrap;text:root.detail?root.detail.notes:"";textFormat:Text.PlainText;font.pixelSize:12}
+                PanelLabel {id:noteText;width:content.width;wrapMode:Text.WordWrap;text:root.detail?root.detail.notes:"";textFormat:Text.PlainText;font.pixelSize:root.textSize(12)}
             }
         }
         Row {
@@ -229,9 +231,9 @@ PanelSurface {
             DialogButton {width:(parent.width-8)/2;text:root.detail && root.detail.recurring?"Edit Occurrence…":"Edit…";enabled:!root.busy && !!root.detail && root.detail.editable;onClicked:root.startEdit(root.detail)}
             DialogButton {width:(parent.width-8)/2;text:root.deletePending?"Confirm Delete":"Delete…";enabled:!root.busy && !!root.detail && root.detail.editable;onClicked:{if(!root.deletePending){root.deletePending=true;return;}root.send({action:"delete",accountGeneration:root.detail.accountGeneration,calendarId:root.detail.calendarId,eventId:root.detail.eventId,recurrenceId:root.detail.recurrenceId,etag:root.detail.etag,confirmDelete:true});}}
         }
-        PanelLabel {visible:!!root.detail && root.detail.provider==="Google" && (!root.detail.editable || root.deletePending || root.detail.recurring);width:parent.width;wrapMode:Text.WordWrap;color:Theme.colors.muted;font.pixelSize:11;text:root.deletePending?"Delete only this selected event/occurrence from Google?":root.detail && !root.detail.editable?"Some event details require Google Calendar; use Open Google below.":"Changes apply only to this occurrence."}
+        PanelLabel {visible:!!root.detail && root.detail.provider==="Google" && (!root.detail.editable || root.deletePending || root.detail.recurring);width:parent.width;wrapMode:Text.WordWrap;color:Theme.colors.muted;font.pixelSize:root.textSize(11);text:root.deletePending?"Delete only this selected event/occurrence from Google?":root.detail && !root.detail.editable?"Some event details require Google Calendar; use Open Google below.":"Changes apply only to this occurrence."}
         DialogButton {visible:!root.compact && root.writableCalendars.length>0;width:parent.width;text:"New Event…";enabled:!root.busy;onClicked:root.startEdit(null)}
-        PanelLabel {visible:!!root.mutationWarning;width:parent.width;wrapMode:Text.WordWrap;text:root.mutationWarning;color:Theme.colors.muted;font.pixelSize:11}
+        PanelLabel {visible:!!root.mutationWarning;width:parent.width;wrapMode:Text.WordWrap;text:root.mutationWarning;color:Theme.colors.muted;font.pixelSize:root.textSize(11)}
         DialogButton {visible:!root.compact && root.optionsOpen && root.configured;width:parent.width;text:root.busy && root.request.action==="sync"?"Refreshing calendars…":"Refresh Calendars";enabled:!root.busy;onClicked:root.send({action:"sync"})}
         Row {visible:!root.compact && root.optionsOpen;width:parent.width;spacing:8
             DialogButton {width:(parent.width-8)/2;text:"iCloud Accounts…";enabled:!root.busy;onClicked:root.accountsRequested()}
@@ -242,38 +244,38 @@ PanelSurface {
             delegate:Column {
                 required property var modelData
                 width:content.width;spacing:3
-                PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:modelData.name+(modelData.lastSuccess?(modelData.id==="google"?" · Updated ":" · Synced ")+Qt.formatDateTime(new Date(modelData.lastSuccess),"MMM d, h:mm AP"):" · Waiting for first sync");color:Theme.colors.muted;font.pixelSize:10}
+                PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:modelData.name+(modelData.lastSuccess?(modelData.id==="google"?" · Updated ":" · Synced ")+Qt.formatDateTime(new Date(modelData.lastSuccess),"MMM d, h:mm AP"):" · Waiting for first sync");color:Theme.colors.muted;font.pixelSize:root.textSize(10)}
                 DialogButton {width:parent.width;text:"Open "+modelData.name;onClicked:AppLaunch.run(["xdg-open",modelData.id==="icloud"?"https://www.icloud.com/calendar/":"https://calendar.google.com/"])}
             }
         }
-        PanelLabel {visible:!!root.syncError || !!root.warning || !!root.backgroundError;width:parent.width;wrapMode:Text.WordWrap;text:root.syncError || root.warning || root.backgroundError;textFormat:Text.PlainText;color:Theme.colors.muted;font.pixelSize:11}
-        PanelLabel {visible:!!root.error;width:parent.width;wrapMode:Text.WordWrap;text:root.error;textFormat:Text.PlainText;color:Theme.colors.muted;font.pixelSize:12}
+        PanelLabel {visible:!!root.syncError || !!root.warning || !!root.backgroundError;width:parent.width;wrapMode:Text.WordWrap;text:root.syncError || root.warning || root.backgroundError;textFormat:Text.PlainText;color:Theme.colors.muted;font.pixelSize:root.textSize(11)}
+        PanelLabel {visible:!!root.error;width:parent.width;wrapMode:Text.WordWrap;text:root.error;textFormat:Text.PlainText;color:Theme.colors.muted;font.pixelSize:root.textSize(12)}
         DialogButton {visible:!root.compact && !!root.error;width:parent.width;text:"Retry";enabled:!root.busy;onClicked:root.refresh()}
         Row {visible:!root.compact;width:parent.width;spacing:8
             DialogButton {width:32;text:"…";Accessible.name:"Calendar accounts and refresh";onClicked:root.optionsOpen=!root.optionsOpen}
         }
-        PanelLabel {visible:!root.compact && root.optionsOpen;width:parent.width;text:"Google syncs in the background · iCloud read-only · "+root.calendarTimeZone;color:Theme.colors.muted;font.pixelSize:10;wrapMode:Text.WordWrap}
+        PanelLabel {visible:!root.compact && root.optionsOpen;width:parent.width;text:"Google syncs in the background · iCloud read-only · "+root.calendarTimeZone;color:Theme.colors.muted;font.pixelSize:root.textSize(10);wrapMode:Text.WordWrap}
     }
     // Compact content stays read-only; navigation hands off to the Calendar app.
-    ControlRow {objectName:"calendar-open-related";visible:root.compact;width:parent.width-36;x:18;y:content.y+content.height+4;height:30;property var activationDate:null;text:root.events.length>3?"Show all "+root.total+" events in Calendar":"Open Calendar";onPressed:activationDate=new Date(root.selected);onCanceled:activationDate=null;onClicked:{const day=activationDate || new Date(root.selected);activationDate=null;root.openCalendar(day);}}
+    ControlRow {id:relatedLink;objectName:"calendar-open-related";visible:root.compact;width:parent.width-36;x:18;y:content.y+content.height+4;property var activationDate:null;text:root.events.length>3?"Show all "+root.total+" events in Calendar":"Open Calendar";onPressed:activationDate=new Date(root.selected);onCanceled:activationDate=null;onClicked:{const day=activationDate || new Date(root.selected);activationDate=null;root.openCalendar(day);}}
     component CalendarField: TextField {
-        height:30;font.family:Theme.font;font.pixelSize:12;color:Theme.colors.text;placeholderTextColor:Theme.colors.muted
+        height:30;font.family:Theme.font;font.pixelSize:root.textSize(12);color:Theme.colors.text;placeholderTextColor:Theme.colors.muted
         selectionColor:(root.monochrome?Theme.colors.muted:Theme.colors.accent);selectedTextColor:Theme.colors.selectedText
         background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?(root.monochrome?Theme.colors.muted:Theme.colors.accent):Theme.hairline}
     }
     Column {
         id:editor;visible:root.editing;x:18;y:18;width:parent.width-36;spacing:8
         PanelLabel {text:root.editEvent?(root.editEvent.recurring?"Edit this occurrence":"Edit event"):"New event";font.weight:Font.DemiBold}
-        PanelLabel {text:"Calendar";color:Theme.colors.muted;font.pixelSize:11}
+        PanelLabel {text:"Calendar";color:Theme.colors.muted;font.pixelSize:root.textSize(11)}
         DesktopComboBox {id:calendarChoice;width:parent.width;model:root.writableCalendars;textRole:"name";enabled:!root.busy && !root.editEvent;Accessible.name:"Event calendar"}
         CalendarField {id:editTitle;width:parent.width;placeholderText:"Event title";enabled:!root.busy;Accessible.name:"Event title";selectByMouse:true}
         CalendarField {id:editLocation;width:parent.width;placeholderText:"Location";enabled:!root.busy;Accessible.name:"Event location";selectByMouse:true}
         SettingsToggle {id:allDay;width:parent.width;height:36;text:"All day";enabled:!root.busy;onClicked:{if(checked){editStart.text=editStart.text.slice(0,10);editEnd.text=editEnd.text.slice(0,10);}else{editStart.text=editStart.text.slice(0,10)+"T09:00";editEnd.text=editEnd.text.slice(0,10)+"T10:00";}}}
-        PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:allDay.checked?"All-day dates include the final day.":"Times in "+root.calendarTimeZone;color:Theme.colors.muted;font.pixelSize:11}
+        PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:allDay.checked?"All-day dates include the final day.":"Times in "+root.calendarTimeZone;color:Theme.colors.muted;font.pixelSize:root.textSize(11)}
         DateTimeField {id:editStart;width:parent.width;label:"Starts";allDay:allDay.checked;enabled:!root.busy}
         DateTimeField {id:editEnd;width:parent.width;label:"Ends";allDay:allDay.checked;enabled:!root.busy}
-        ScrollView {width:parent.width;height:90;clip:true;TextArea {id:editNotes;font.family:Theme.font;font.pixelSize:12;color:Theme.colors.text;placeholderTextColor:Theme.colors.muted;selectionColor:(root.monochrome?Theme.colors.muted:Theme.colors.accent);selectedTextColor:Theme.colors.selectedText;background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?(root.monochrome?Theme.colors.muted:Theme.colors.accent):Theme.hairline} placeholderText:"Notes";enabled:!root.busy;wrapMode:TextEdit.Wrap;Accessible.name:"Event notes";selectByMouse:true}}
-        PanelLabel {visible:!!root.error;width:parent.width;wrapMode:Text.WordWrap;text:root.error;textFormat:Text.PlainText;color:Theme.colors.muted;font.pixelSize:11}
+        ScrollView {width:parent.width;height:90;clip:true;TextArea {id:editNotes;font.family:Theme.font;font.pixelSize:root.textSize(12);color:Theme.colors.text;placeholderTextColor:Theme.colors.muted;selectionColor:(root.monochrome?Theme.colors.muted:Theme.colors.accent);selectedTextColor:Theme.colors.selectedText;background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?(root.monochrome?Theme.colors.muted:Theme.colors.accent):Theme.hairline} placeholderText:"Notes";enabled:!root.busy;wrapMode:TextEdit.Wrap;Accessible.name:"Event notes";selectByMouse:true}}
+        PanelLabel {visible:!!root.error;width:parent.width;wrapMode:Text.WordWrap;text:root.error;textFormat:Text.PlainText;color:Theme.colors.muted;font.pixelSize:root.textSize(11)}
         Row {width:parent.width;spacing:8
             DialogButton {width:(parent.width-8)/2;text:"Cancel";enabled:!root.busy;onClicked:{root.editing=false;root.error="";}}
             DialogButton {width:(parent.width-8)/2;text:root.busy?"Saving…":"Save";primary:true;enabled:!root.busy;onClicked:root.saveEvent()}

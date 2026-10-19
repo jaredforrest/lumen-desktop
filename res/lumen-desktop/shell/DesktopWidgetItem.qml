@@ -13,13 +13,14 @@ FocusScope {
     required property real availableHeight
     required property bool active
     property bool monochrome:false
+    readonly property bool reduceTransparency:root.shell.widgets.preferences.reduceTransparency || !!Theme.preferences.reduceTransparency || Theme.increaseContrast
     property var preview:null
     property var gesture:null
     readonly property var geometry:Model.placed(descriptor,outputName,widgetIndex,availableWidth,availableHeight,Theme.barHeight)
     readonly property string label:descriptor.type==="clock"?"Local time":"Calendar"
     objectName:"desktop-widget-"+descriptor.id
     x:preview?preview.x:geometry.x;y:preview?preview.y:geometry.y;width:geometry.width;height:geometry.height
-    opacity:monochrome?0.84:1
+    opacity:monochrome && !reduceTransparency?0.84:1
     function cancelMove(){gesture=null;preview=null;}
     function beginMove(point){gesture={point:point,x:x,y:y};preview={x:x,y:y};}
     function moveTo(x,y){if(!gesture)return;preview=Model.placed(descriptor,outputName,widgetIndex,availableWidth,availableHeight,Theme.barHeight,{x:x/Math.max(1,availableWidth-width),y:y/Math.max(1,availableHeight-height-80)});}
@@ -28,15 +29,15 @@ FocusScope {
     onAvailableWidthChanged:cancelMove()
     onAvailableHeightChanged:cancelMove()
     Connections {target:root.shell.widgets;function onPreferencesChanged(){root.cancelMove();}}
-    PanelSurface {anchors.fill:parent;radius:18;clip:true
+    PanelSurface {objectName:"widget-material";anchors.fill:parent;radius:18;clip:true;color:root.reduceTransparency?Theme.colors.background:Theme.popoverMaterial
         FocusFlickable {anchors.fill:parent;anchors.topMargin:26;anchors.leftMargin:6;anchors.rightMargin:6;anchors.bottomMargin:10;visible:root.descriptor.type==="calendar";contentWidth:width;contentHeight:calendar.implicitHeight;clip:true;boundsBehavior:Flickable.StopAtBounds;ScrollBar.vertical:DesktopScrollBar {}
-            CalendarCard {id:calendar;objectName:"widget-calendar-content";width:parent.width;today:root.shell.currentDate;compact:true;agendaOnly:root.descriptor.size==="small" || root.descriptor.style==="agenda";monochrome:root.monochrome;reduceTransparency:root.shell.widgets.preferences.reduceTransparency || !!Theme.preferences.reduceTransparency;active:root.active && root.descriptor.type==="calendar"
+            CalendarCard {id:calendar;objectName:"widget-calendar-content";width:parent.width;today:root.shell.currentDate;compact:true;agendaOnly:root.descriptor.size==="small" || root.descriptor.style==="agenda";monochrome:root.monochrome;reduceTransparency:root.reduceTransparency;active:root.active && root.descriptor.type==="calendar"
                 onOpenCalendar:day=>root.shell.openCalendarAt(day,null)
                 onEventRequested:(event,day)=>root.shell.openCalendarAt(day,event)
                 onAccountsRequested:root.shell.openSettings("Internet Accounts")
             }
         }
-        AbstractButton {id:clock;visible:root.descriptor.type==="clock";x:12;y:30;width:parent.width-24;height:parent.height-38
+        AbstractButton {id:clock;objectName:"widget-clock-content";visible:root.descriptor.type==="clock";x:12;y:30;width:parent.width-24;height:parent.height-38
             readonly property string timeText:root.shell.currentDate.toLocaleTimeString(Qt.locale(Theme.menuBarPreferences.locale || ""),Clock.timePattern(Qt.locale(Theme.menuBarPreferences.locale || ""),{hourCycle:root.descriptor.hourCycle,showSeconds:false}))
             Accessible.name:"Local time "+timeText+". Open date panel"
             contentItem:Column {spacing:6
