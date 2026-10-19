@@ -12,3 +12,6 @@ assert.equal(context.category({...rows[0],tags:[{id:'red'},{id:'blue'}]},'tags',
 assert.equal(context.category({...rows[0],mtime:Date.now()/1000},'modified',Date.now()),'Today');
 assert.deepEqual(Array.from(context.point(-5,999,500,400,108,100)),[0,1]);
 console.log('DESKTOP_LAYOUT_MODEL_PASS');
+const anchored=context.build(rows,{grouping:'kind',positions:{},stacks:{'stack:kind:Documents':[.5,.4]}},['stack:kind:Documents'],1000,700,Date.now());
+const anchor=anchored.find(item=>item.stack&&item.label==='Documents'),anchoredChild=anchored.find(item=>item.parentStack===anchor.key);assert.equal(anchor.x,446);assert.equal(anchor.y,240);assert.equal(anchoredChild.x,anchor.x);assert.equal(anchoredChild.y,anchor.y+100);
+const resized=context.build(rows,{grouping:'kind',positions:{},stacks:{'stack:kind:Documents':[.5,.4]}},[],500,400,Date.now());assert.equal(resized.find(item=>item.stack&&item.label==='Documents').x,196);

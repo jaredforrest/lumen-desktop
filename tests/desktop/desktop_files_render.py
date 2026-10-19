@@ -1,7 +1,7 @@
 """Disposable nested desktop files: real directory events and keyboard confirmation."""
 import argparse,json,os,re,shutil,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
-parser=argparse.ArgumentParser();parser.add_argument('--output',type=Path,required=True);parser.add_argument('--sway',default='sway');parser.add_argument('--pointer-tool',required=True);parser.add_argument('--layer',choices=['bottom','top'],default='bottom');parser.add_argument('--layout',action='store_true');parser.add_argument('--inside',action='store_true');args=parser.parse_args()
+parser=argparse.ArgumentParser();parser.add_argument('--output',type=Path,required=True);parser.add_argument('--sway',default='sway');parser.add_argument('--pointer-tool',required=True);parser.add_argument('--layer',choices=['bottom','top'],default='bottom');parser.add_argument('--layout',action='store_true');parser.add_argument('--multi-drag',action='store_true');parser.add_argument('--inside',action='store_true');args=parser.parse_args()
 if not args.inside:
     runtime=tempfile.mkdtemp(prefix='desktop-files-')
     env=dict(os.environ,HOME=runtime,XDG_RUNTIME_DIR=runtime)
@@ -37,6 +37,7 @@ ShellRoot {
   function select(index:int):void {surface.content.choose(index,0);}
   function askTrash():void {surface.content.askTrash();}
   function confirmTrash():void {surface.content.confirmTrash();}
+  function selectAll():void {surface.content.selectedPaths=surface.content.service.rows.map(row=>row.path);surface.content.currentPath=surface.content.service.rows[1].path;surface.content.focusContents();}
   function group(mode:string):void {surface.content.grouping(mode);}
   function rename(name:string):void {surface.content.service.act("rename",{path:surface.content.currentPath,name:name});}
  }
@@ -79,6 +80,15 @@ try:
         dragged=state()['items'][1];assert dragged['x']<before['x']-200 and dragged['y']>before['y']+70,(before,dragged)
         assert (desktop/'one.txt').read_text()=='Disposable desktop fixture'
         call('grim',str(run/'dragged.png'))
+        if args.multi_drag:
+            ipc('selectAll');time.sleep(.7);old=state()['items'];rect=state()['geometry'];target=old[1]
+            call('swaymsg','seat','seat0','cursor','set',str(int(rect['x']+target['x']+50)),str(int(rect['y']+target['y']+40)))
+            pointer.stdin.write('m 1 1\n');pointer.stdin.flush();time.sleep(.15);pointer.stdin.write('p\n');pointer.stdin.flush();time.sleep(.15);pointer.stdin.write('m -30 20\n');pointer.stdin.flush();time.sleep(.15);pointer.stdin.write('m -150 100\n');pointer.stdin.flush();time.sleep(.2);pointer.stdin.write('r\n');pointer.stdin.flush()
+            wait(lambda:len(state()['layout']['positions'])==2)
+            moved=state()['items'];dx=moved[0]['x']-old[0]['x'];dy=moved[0]['y']-old[0]['y'];assert dx < -50 and dy>50,(old,moved)
+            assert abs((moved[1]['x']-old[1]['x'])-dx)<1 and abs((moved[1]['y']-old[1]['y'])-dy)<1,(old,moved)
+            assert (desktop/'Folder').is_dir() and (desktop/'one.txt').read_text()=='Disposable desktop fixture'
+            dragged=moved[1];call('grim',str(run/'multi-dragged.png'))
         # Empty desktop must reach the fixture background below the file layer.
         call('swaymsg','seat','seat0','cursor','set','400','500');pointer.stdin.write('m 1 1\n');pointer.stdin.flush();time.sleep(.15);pointer.stdin.write('p\n');pointer.stdin.flush();time.sleep(.15);pointer.stdin.write('r\n');pointer.stdin.flush()
         wait(lambda:state()['backgroundClicks']==1)
@@ -95,7 +105,17 @@ try:
         stack=next(item for item in state()['items'] if item['stack']);rect=state()['geometry'];call('swaymsg','seat','seat0','cursor','set',str(int(rect['x']+stack['x']+50)),str(int(rect['y']+stack['y']+40)))
         pointer.stdin.write('m 1 1\n');pointer.stdin.flush();time.sleep(.15);pointer.stdin.write('p\n');pointer.stdin.flush();time.sleep(.15);pointer.stdin.write('r\n');pointer.stdin.flush()
         wait(lambda:len(state()['items'])==3)
-        call('grim',str(run/'expanded-stack.png'));ipc('group','none');wait(lambda:state()['layout']['grouping']=='none')
+        call('grim',str(run/'expanded-stack.png'))
+        if args.multi_drag:
+            time.sleep(.7);oldStack=next(item for item in state()['items'] if item['stack']);rect=state()['geometry']
+            call('swaymsg','seat','seat0','cursor','set',str(int(rect['x']+oldStack['x']+50)),str(int(rect['y']+oldStack['y']+40)))
+            pointer.stdin.write('m 1 1\n');pointer.stdin.flush();time.sleep(.15);pointer.stdin.write('p\n');pointer.stdin.flush();time.sleep(.15);pointer.stdin.write('m -30 20\n');pointer.stdin.flush();time.sleep(.15);pointer.stdin.write('m -200 120\n');pointer.stdin.flush();time.sleep(.2);pointer.stdin.write('r\n');pointer.stdin.flush()
+            wait(lambda:bool(state()['layout'].get('stacks')))
+            positioned=state()['layout']['stacks'];newStack=next(item for item in state()['items'] if item['stack']);assert newStack['x']<oldStack['x']-100 and newStack['y']>oldStack['y']+50
+            child=next(item for item in state()['items'] if item.get('parentStack')==newStack['key']);assert abs(child['x']-newStack['x'])<1 and child['y']>newStack['y']
+            ipc('group','none');wait(lambda:state()['layout']['grouping']=='none');ipc('group','kind');wait(lambda:state()['layout']['grouping']=='kind');assert state()['layout']['stacks']==positioned
+            call('grim',str(run/'stack-dragged.png'))
+        ipc('group','none');wait(lambda:state()['layout']['grouping']=='none')
     (desktop/'new.txt').write_text('watcher fixture');wait(lambda:state()['count']==3)
     (desktop/'new.txt').unlink();wait(lambda:state()['count']==2)
     # Explicit confirmation only affects the selected disposable file.
@@ -103,6 +123,7 @@ try:
     assert (desktop/'Folder').is_dir(),'Unselected desktop item changed'
     result=dict(passed=True,checks=['configured Desktop directory','real bottom-layer click focus','physical Delete and Escape confirmation','rename','live add/remove events','explicit confirmed Trash','unselected item preserved'])
     if args.layout:result['checks']+=['real pointer freeform drag persisted','rename retained dragged identity','empty area click-through','kind stack real pointer expansion']
+    if args.multi_drag:result['checks']+=['real multi-item drag preserves offsets','whole expanded stack pointer drag','stack position survives grouping switch']
     (run/'result.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result))
 finally:
     for process in reversed(processes):

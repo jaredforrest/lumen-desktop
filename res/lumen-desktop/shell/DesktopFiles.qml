@@ -3,6 +3,7 @@ import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
 import "DesktopLayoutModel.js" as Layout
+import "DesktopDragModel.js" as DragModel
 
 // An opt-in owned surface. The surrounding layer chooses its output and mask.
 Item {
@@ -28,6 +29,12 @@ Item {
     property string anchorPath:""
     property var pendingTrash:[]
     property string pendingRename:""
+    property var dragSnapshot:[]
+    property var dragPreview:[]
+    function startDrag(key){dragProxy.x=0;dragProxy.y=0;dragSnapshot=DragModel.begin(displayItems,key,selectedPaths,arrangement.layout.grouping);dragPreview=[];}
+    function previewDrag(){dragPreview=DragModel.translate(dragSnapshot,dragProxy.x,dragProxy.y,stage.width,stage.height);}
+    function finishDrag(){const placement=dragPreview;dragSnapshot=[];dragPreview=[];if(placement.length)arrangement.place(placement,stage.width,stage.height);}
+    function cancelDrag(){dragSnapshot=[];dragPreview=[];}
     property bool keyboardActive:false
     readonly property var current:service.rows.find(row=>row.path===currentPath) || null
     readonly property alias inputArea:stage
@@ -63,7 +70,7 @@ Item {
     function submitName(){if(!nameField.text)return;service.act(editor.mode,{path:editor.mode==="rename"?pendingRename:directory,name:nameField.text});editor.close();}
     function context(){if(!current)return;actions.open();focusContents();}
     function activate(){if(!active)return;if(resolveDirectory){if(!location.running)location.running=true;}else if(directory && service===internalFiles)service.navigate(directory);}
-    onActiveChanged:{if(active)activate();else {selectedPaths=[];currentPath="";anchorPath="";trashConfirmation.close();editor.close();actions.close();leaveKeyboard();}}
+    onActiveChanged:{if(active)activate();else {cancelDrag();selectedPaths=[];currentPath="";anchorPath="";trashConfirmation.close();editor.close();actions.close();leaveKeyboard();}}
     Component.onCompleted:if(active)activate()
     onSortChanged:if(active && service===internalFiles)service.refresh()
     onDescendingChanged:if(active && service===internalFiles)service.refresh()
@@ -106,6 +113,7 @@ Item {
             else {event.accepted=false;return;}
             event.accepted=true;
         }
+        Item {id:dragProxy}
         Item {
             id:grid;anchors.fill:parent
             Repeater {model:root.displayItems
@@ -114,7 +122,8 @@ Item {
                     required property var modelData
                     required property int index
                     readonly property var fileRow:modelData.row || ({path:"",name:modelData.label,directory:false})
-                    x:modelData.x;y:modelData.y;width:modelData.width;height:modelData.height;visible:!modelData.overflow
+                    readonly property var draggedPoint:root.dragPreview.find(item=>item.key===modelData.key) || null
+                    x:draggedPoint?draggedPoint.x:modelData.x;y:draggedPoint?draggedPoint.y:modelData.y;width:modelData.width;height:modelData.height;visible:!modelData.overflow
                     Accessible.name:modelData.stack?modelData.label+" stack, "+modelData.children.length+" items":fileRow.name
                     onClicked:{if(modelData.stack){root.focusContents();arrangement.toggle(modelData.key);}else root.choose(modelData.sourceIndex,0);}
                     Keys.onPressed:event=>{if(modelData.stack && [Qt.Key_Return,Qt.Key_Enter,Qt.Key_Space].includes(event.key)){arrangement.toggle(modelData.key);event.accepted=true;}else event.accepted=false;}
@@ -126,13 +135,21 @@ Item {
                     }
                     MouseArea {
                         anchors.fill:parent;acceptedButtons:Qt.LeftButton|Qt.RightButton
-                        drag.target:!tile.modelData.stack && arrangement.layout.grouping==="none"?tile:null
-                        drag.minimumX:0;drag.maximumX:Math.max(0,stage.width-tile.width);drag.minimumY:0;drag.maximumY:Math.max(0,stage.height-tile.height);drag.threshold:8
+                        drag.target:tile.modelData.stack || arrangement.layout.grouping==="none"?dragProxy:null
+                        drag.threshold:8
                         property bool wasDragged:false
-                        onPositionChanged:if(drag.active)wasDragged=true
-                        onPressed:event=>{wasDragged=false;if(!tile.modelData.stack && (event.button!==Qt.RightButton || !root.selectedPaths.includes(tile.fileRow.path)))root.choose(tile.modelData.sourceIndex,event.modifiers);}
-                        onReleased:event=>{if(wasDragged){const key=tile.modelData.key,px=tile.x,py=tile.y;tile.x=Qt.binding(()=>tile.modelData.x);tile.y=Qt.binding(()=>tile.modelData.y);arrangement.move(key,px,py,stage.width,stage.height);}}
-                        onClicked:event=>{if(tile.modelData.stack){if(event.button===Qt.RightButton)root.desktopActions();else {root.focusContents();arrangement.toggle(tile.modelData.key);}}else if(event.button===Qt.RightButton){root.currentPath=tile.fileRow.path;root.context();}}
+                        onPositionChanged:if(drag.active){wasDragged=true;root.previewDrag();}
+                        onPressed:event=>{
+                            wasDragged=false;
+                            if(!tile.modelData.stack){
+                                if(!root.selectedPaths.includes(tile.fileRow.path) || event.modifiers)root.choose(tile.modelData.sourceIndex,event.modifiers);
+                                else {root.currentPath=tile.fileRow.path;root.focusContents();}
+                            }
+                            root.startDrag(tile.modelData.key);
+                        }
+                        onReleased:event=>{if(wasDragged)root.finishDrag();else root.cancelDrag();}
+                        onCanceled:root.cancelDrag()
+                        onClicked:event=>{if(wasDragged)return;if(tile.modelData.stack){if(event.button===Qt.RightButton)root.desktopActions();else {root.focusContents();arrangement.toggle(tile.modelData.key);}}else if(event.button===Qt.RightButton){root.currentPath=tile.fileRow.path;root.context();}}
                         onDoubleClicked:event=>{if(!tile.modelData.stack && event.button===Qt.LeftButton)root.openCurrent();}
                     }
                 }

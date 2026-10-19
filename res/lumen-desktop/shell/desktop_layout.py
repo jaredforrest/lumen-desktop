@@ -14,13 +14,20 @@ def key(value):
     return value
 
 def validate(data):
-    if not isinstance(data,dict) or set(data)!={'grouping','positions'} or data['grouping'] not in GROUPS or not isinstance(data['positions'],dict) or len(data['positions'])>MAX_ITEMS:raise ValueError('Invalid desktop arrangement')
+    if not isinstance(data,dict) or not {'grouping','positions'}<=set(data) or set(data)-{'grouping','positions','stacks'} or data['grouping'] not in GROUPS or not isinstance(data['positions'],dict) or len(data['positions'])>MAX_ITEMS:raise ValueError('Invalid desktop arrangement')
     positions={}
     for identity,point in data['positions'].items():
         key(identity)
         if not isinstance(point,list) or len(point)!=2 or any(isinstance(number,bool) or not isinstance(number,(int,float)) or not math.isfinite(number) or number<0 or number>1 for number in point):raise ValueError('Invalid desktop item position')
         positions[identity]=point
-    return {'grouping':data['grouping'],'positions':positions}
+    stacks=data.get('stacks',{})
+    if not isinstance(stacks,dict) or len(stacks)>64:raise ValueError('Invalid desktop stack arrangement')
+    for identity,point in stacks.items():
+        if not isinstance(identity,str) or not re.fullmatch(r'stack:(kind|modified|tags):[A-Za-z0-9 ,]{1,128}',identity):raise ValueError('Invalid desktop stack identity')
+        if not isinstance(point,list) or len(point)!=2 or any(isinstance(number,bool) or not isinstance(number,(int,float)) or not math.isfinite(number) or number<0 or number>1 for number in point):raise ValueError('Invalid desktop stack position')
+    result={'grouping':data['grouping'],'positions':positions}
+    if stacks:result['stacks']=stacks
+    return result
 
 def handle(request):
     if not isinstance(request,dict) or request.get('action') not in ('load','save','reset'):raise ValueError('Invalid desktop arrangement request')

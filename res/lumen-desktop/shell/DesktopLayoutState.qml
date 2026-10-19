@@ -24,11 +24,20 @@ Item {
         pending=pending.concat([value]);drain();
     }
     function drain(){if(worker.running || !pending.length)return;worker.request=pending[0];pending=pending.slice(1);worker.running=true;}
+    function place(items,width,height){
+        if(!ready || !items.length)return;
+        const positions=Object.assign({},layout.positions),stacks=Object.assign({},layout.stacks || {});
+        for(const item of items){
+            const target=item.stack?stacks:positions;
+            if(item.stack || layout.grouping==="none")target[item.key]=Layout.point(item.x,item.y,width,height,108,100);
+        }
+        layout={grouping:layout.grouping,positions:positions,stacks:stacks};request("save");
+    }
     function move(key,x,y,width,height){
         if(!ready || layout.grouping!=="none")return;
-        const positions=Object.assign({},layout.positions);positions[key]=Layout.point(x,y,width,height,108,100);layout={grouping:layout.grouping,positions:positions};request("save");
+        const positions=Object.assign({},layout.positions);positions[key]=Layout.point(x,y,width,height,108,100);layout={grouping:layout.grouping,positions:positions,stacks:layout.stacks || {}};request("save");
     }
-    function group(mode){if(!ready || !["none","kind","modified","tags"].includes(mode))return;layout={grouping:mode,positions:layout.positions};expanded=[];request("save");}
+    function group(mode){if(!ready || !["none","kind","modified","tags"].includes(mode))return;layout={grouping:mode,positions:layout.positions,stacks:layout.stacks || {}};expanded=[];request("save");}
     function toggle(key){expanded=expanded.includes(key)?expanded.filter(value=>value!==key):expanded.concat([key]);}
     function reload(){if(active && directory && !listingBusy)request("load");}
     onActiveChanged:if(active)reload();else {ready=false;pending=[];expanded=[];}

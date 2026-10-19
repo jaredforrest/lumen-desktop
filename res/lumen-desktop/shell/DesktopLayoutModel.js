@@ -27,20 +27,30 @@ function build(rows,layout,expanded,width,height,now) {
         else {const label=category(row,mode,now);if(!groups[label]){groups[label]=[];items.push({key:"stack:"+mode+":"+label,label:label,stack:true,children:groups[label]});}groups[label].push(item);}
     });
     const flattened=[];
-    for(const item of items){flattened.push(item);if(item.stack && expanded.includes(item.key))for(const child of item.children)flattened.push(child);}
+    for(const item of items){flattened.push(item);if(item.stack && expanded.includes(item.key))for(const child of item.children)flattened.push(Object.assign({},child,{parentStack:item.key}));}
     const cellWidth=108,cellHeight=100,columns=Math.max(1,Math.floor(width/cellWidth)),slots=Math.max(1,Math.floor(height/cellHeight)),occupied=new Set();
     function reserve(x,y){const column=Math.max(0,Math.min(columns-1,Math.floor(x/cellWidth))),row=Math.max(0,Math.min(slots-1,Math.floor(y/cellHeight)));occupied.add(column+":"+row);}
     // Saved placements claim their slots before automatic items are arranged.
-    if(mode==="none")for(const item of flattened)if(positions[item.key])reserve(bounded(positions[item.key][0])*Math.max(0,width-cellWidth),bounded(positions[item.key][1])*Math.max(0,height-cellHeight));
+    function savedPoint(item){return item.stack?(layout.stacks || {})[item.key]:mode==="none"?positions[item.key]:null;}
+    for(const item of flattened){const saved=savedPoint(item);if(saved)reserve(bounded(saved[0])*Math.max(0,width-cellWidth),bounded(saved[1])*Math.max(0,height-cellHeight));}
     let automatic=0;
+    const arranged={};
     return flattened.map(item=>{
-        let x,y;const saved=mode==="none"?positions[item.key]:null;
+        let x,y;const saved=savedPoint(item);
         if(saved){x=bounded(saved[0])*Math.max(0,width-cellWidth);y=bounded(saved[1])*Math.max(0,height-cellHeight);}
         else {
             while(occupied.has((columns-1-Math.floor(automatic/slots))+":"+(automatic%slots)) && automatic<columns*slots)automatic++;
             const column=columns-1-Math.floor(automatic/slots),row=automatic%slots;
             x=Math.max(0,column*cellWidth);y=row*cellHeight;reserve(x,y);automatic++;
         }
-        return Object.assign({},item,{x:x,y:y,width:cellWidth,height:cellHeight,overflow:automatic>columns*slots});
+        if(item.parentStack && arranged[item.parentStack]){
+            const parent=arranged[item.parentStack],siblings=groups[parent.label] || [],index=siblings.findIndex(child=>child.key===item.key)+1;
+            if((layout.stacks || {})[parent.key]){
+                const remaining=Math.max(1,Math.floor((height-parent.y)/cellHeight));
+                if(index<remaining){x=parent.x;y=parent.y+index*cellHeight;}
+                else {const column=1+Math.floor((index-remaining)/slots);x=parent.x-column*cellWidth;y=((index-remaining)%slots)*cellHeight;}
+            }
+        }
+        const result=Object.assign({},item,{x:x,y:y,width:cellWidth,height:cellHeight,overflow:x<0 || y+cellHeight>height || (!saved && automatic>columns*slots)});arranged[item.key]=result;return result;
     });
 }
