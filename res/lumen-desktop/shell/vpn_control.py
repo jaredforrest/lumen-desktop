@@ -29,7 +29,7 @@ def command(argv, *, input_text=None, timeout=TIMEOUT):
 
 def mullvad_status():
     status = {"installed": bool(shutil.which("mullvad")), "state": "unavailable", "account": False,
-              "location": "", "relay": ""}
+              "expires": "", "location": "", "relay": ""}
     if not status["installed"]:
         return status
     try:
@@ -41,7 +41,10 @@ def mullvad_status():
         status["error"] = str(exc)
     try:
         output = command(["mullvad", "account", "get"])
-        status["account"] = "Account number:" in output
+        status["account"] = bool(re.search(r"^\s*(?:Mullvad account|Account number)\s*:", output, re.I | re.M))
+        expiry = re.search(r"^\s*Expires at\s*:\s*(\d{4}-\d{2}-\d{2})", output, re.I | re.M)
+        if status["account"] and expiry:
+            status["expires"] = expiry.group(1)
     except RuntimeError as exc:
         if "Not logged in" not in str(exc):
             status["accountError"] = "Account status unavailable"

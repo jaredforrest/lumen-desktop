@@ -16,7 +16,7 @@ def fake_command(argv, **kwargs):
     if argv[:3] == ["mullvad", "status", "--json"]:
         return json.dumps({"state": "connected", "details": {"location": {"city": "London", "country": "United Kingdom", "ipv4": "private"}}})
     if argv[:3] == ["mullvad", "account", "get"]:
-        return "Account number: 1234567890123456\n"
+        return "Mullvad account:    1234567890123456\nExpires at:        2026-11-18 19:35:16 +00:00\n"
     if argv[:3] == ["mullvad", "relay", "get"]:
         return "Location: country gb\n"
     if argv[:3] == ["tailscale", "status", "--json"]:
@@ -30,6 +30,8 @@ with mock.patch.object(vpn.shutil, "which", return_value="/bin/fake"), mock.patc
     state = vpn.status()
     assert state["mullvad"]["state"] == "connected"
     assert state["mullvad"]["location"] == "London, United Kingdom"
+    assert state["mullvad"]["account"] is True
+    assert state["mullvad"]["expires"] == "2026-11-18"
     assert "1234567890123456" not in json.dumps(state)
     assert "private" not in state["mullvad"]["location"]
     assert state["tailscale"]["online"] and state["tailscale"]["peers"] == 1
