@@ -84,7 +84,7 @@ class CompositorObservation(unittest.TestCase):
     def test_unknown_is_not_inferred_from_scratchpad(self):
         tree,outputs,_=fixture();report=state.snapshot(tree,outputs,'epoch')
         w=report['windows'][0]
-        self.assertIsNone(w['minimised']);self.assertIsNone(w['app_hidden'])
+        self.assertIsNone(w['minimised']);self.assertIsNone(w['app_hidden']);self.assertIsNone(w['group_hidden'])
         self.assertFalse(report['capabilities']['application_registry'])
         self.assertNotIn('DO NOT EXPORT',str(report));self.assertNotIn('pid',w)
     def test_authoritative_extension_separates_minimised_and_filled(self):

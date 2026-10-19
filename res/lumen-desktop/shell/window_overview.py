@@ -7,6 +7,7 @@ import os
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "runtime"))
 from spaces import SpacePolicy
 from state import runtime_epoch
+from window_groups import Groups
 
 def policy():
     return SpacePolicy(Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "lumen-desktop/spaces.json")
@@ -28,8 +29,8 @@ def snapshot(*, include_overview=False):
             if include_overview or not (app=='org.quickshell' and node.get('name')=='Window Overview'):
                 windows.append(dict(id=node['id'],pid=node['pid'],app=app,application=SpacePolicy.application(node),group=group,title=title,workspace=workspace,output=output,focused=node.get('focused',False),fullscreen=node.get('fullscreen_mode',0),paired=bool((node.get('lumen_pair') or {}).get('id') or (node.get('lumen_pair') or {}).get('survivor')),pairRestore=(node.get('lumen_pair') or {}).get('restore_workspace'),restores=(node.get('lumen_state') or {}).get('restore_workspaces',[(node.get('lumen_state') or {}).get('restore_workspace')])))
         for child in node.get('nodes',[])+node.get('floating_nodes',[]):walk(child,workspace,output)
-    walk(run('-t','get_tree'))
-    return dict(windows=windows,workspaces=run('-t','get_workspaces'),outputs=[dict(name=o['name'],label=(o['model'] if o.get('model') not in (None,'','Unknown') else 'Display '+str(i+1))) for i,o in enumerate(run('-t','get_outputs')) if o.get('active')])
+    tree=run('-t','get_tree');walk(tree)
+    return dict(windowGroups=tree.get('window_groups'),windows=windows,workspaces=run('-t','get_workspaces'),outputs=[dict(name=o['name'],label=(o['model'] if o.get('model') not in (None,'','Unknown') else 'Display '+str(i+1))) for i,o in enumerate(run('-t','get_outputs')) if o.get('active')])
 
 
 def checked(command):
@@ -114,6 +115,10 @@ def remove_desktop(model, data, epoch):
 def handle(data):
     if not isinstance(data,dict):raise ValueError('Expected an action object')
     epoch=endpoint();state=snapshot();action=data.get('action','status')
+    if action=='window-groups':
+        check_epoch(data,epoch)
+        groups=Groups.read(state.get('windowGroups'));command=groups.command(data)
+        check_epoch(data,epoch);checked(command);return dict(ok=True)
     model=policy()
     with model.transaction():
         model.reconcile(state['workspaces'],run('-t','get_outputs'))

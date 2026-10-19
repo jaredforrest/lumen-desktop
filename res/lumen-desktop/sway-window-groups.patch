@@ -1,0 +1,397 @@
+diff --git a/include/sway/tree/container.h b/include/sway/tree/container.h
+index 6cd1610..73c8d7e 100644
+--- a/include/sway/tree/container.h
++++ b/include/sway/tree/container.h
+@@ -79,6 +79,7 @@ struct sway_lumen_placement {
+ };
+ 
+ struct sway_container {
++ uint64_t lumen_group_id;
+ 	struct sway_node node;
+ 	struct sway_view *view;
+ 
+diff --git a/include/sway/tree/lumen_groups.h b/include/sway/tree/lumen_groups.h
+new file mode 100644
+index 0000000..f86420d
+--- /dev/null
++++ b/include/sway/tree/lumen_groups.h
+@@ -0,0 +1,13 @@
++#ifndef SWAY_LUMEN_GROUPS_H
++#define SWAY_LUMEN_GROUPS_H
++#include <stdbool.h>
++#include <json-c/json.h>
++struct sway_container;
++struct cmd_results;
++void lumen_groups_reconcile(void);
++void lumen_groups_mask(void);
++bool lumen_groups_visible(struct sway_container *con);
++void lumen_groups_focus(struct sway_container *con);
++json_object *lumen_groups_json(void);
++struct cmd_results *lumen_groups_command(int argc, char **argv);
++#endif
+diff --git a/sway/commands/scratchpad.c b/sway/commands/scratchpad.c
+index 04c9c19..00729af 100644
+--- a/sway/commands/scratchpad.c
++++ b/sway/commands/scratchpad.c
+@@ -1,3 +1,4 @@
++#include "sway/tree/lumen_groups.h"
+ #include "log.h"
+ #include "sway/commands.h"
+ #include "sway/config.h"
+@@ -134,6 +135,7 @@ struct cmd_results *cmd_scratchpad(int argc, char **argv) {
+ }
+ 
+ struct cmd_results *cmd_lumen_window(int argc, char **argv) {
++ if (argc > 0 && strcmp(argv[0], "groups") == 0) return lumen_groups_command(argc - 1, argv + 1);
+  if (argc == 4 && strcmp(argv[0], "rehome") == 0) {
+   struct sway_container *con = config->handler_context.container;
+   if (!container_lumen_rehome(con, argv[1], argv[2], argv[3]))
+diff --git a/sway/desktop/transaction.c b/sway/desktop/transaction.c
+index 082fe20..ebf9326 100644
+--- a/sway/desktop/transaction.c
++++ b/sway/desktop/transaction.c
+@@ -7,6 +7,7 @@
+ #include "sway/scene_descriptor.h"
+ #include "sway/desktop/idle_inhibit_v1.h"
+ #include "sway/desktop/transaction.h"
++#include "sway/tree/lumen_groups.h"
+ #include "sway/input/cursor.h"
+ #include "sway/input/input-manager.h"
+ #include "sway/output.h"
+@@ -761,7 +762,9 @@ static void transaction_progress(void) {
+ 		return;
+ 	}
+ 	transaction_apply(server.queued_transaction);
++ lumen_groups_reconcile();
+ 	arrange_root(root);
++ lumen_groups_mask();
+ 	cursor_rebase_all();
+ 	transaction_destroy(server.queued_transaction);
+ 	server.queued_transaction = NULL;
+diff --git a/sway/input/seat.c b/sway/input/seat.c
+index 39fbeb9..f54147d 100644
+--- a/sway/input/seat.c
++++ b/sway/input/seat.c
+@@ -1,3 +1,4 @@
++#include "sway/tree/lumen_groups.h"
+ #include <assert.h>
+ #include <json-c/json.h>
+ #include <linux/input-event-codes.h>
+@@ -1184,6 +1185,7 @@ static void seat_set_workspace_focus(struct sway_seat *seat, struct sway_node *n
+ 			if (depth == 63) return;
+ 		}
+ 	}
++ if (node && node_is_view(node)) lumen_groups_focus(node->sway_container);
+ 	struct sway_node *last_focus = seat_get_focus(seat);
+ 	if (last_focus == node) {
+ 		return;
+diff --git a/sway/ipc-json.c b/sway/ipc-json.c
+index ceb4190..a97eabd 100644
+--- a/sway/ipc-json.c
++++ b/sway/ipc-json.c
+@@ -1,3 +1,4 @@
++#include "sway/tree/lumen_groups.h"
+ #include "sway/tree/lumen_pair.h"
+ #include <ctype.h>
+ #include <float.h>
+@@ -228,6 +229,7 @@ static const char *ipc_json_content_type_description(enum wp_content_type_v1_typ
+ json_object *ipc_json_get_version(void) {
+ 	int major = 0, minor = 0, patch = 0;
+ 	json_object *version = json_object_new_object();
++ json_object_object_add(version, "native_window_groups", json_object_new_boolean(true));
+ 	json_object_object_add(version, "desktop_rehome", json_object_new_boolean(true));
+ 	json_object_object_add(version, "native_window_relationships", json_object_new_boolean(true));
+ 
+@@ -773,6 +775,7 @@ static void ipc_json_describe_container(struct sway_container *c, json_object *o
+ 			json_object_new_string(!c->scratchpad ? "none" : "fresh"));
+ 	json_object_object_add(object,"lumen_pair",lumen_pair_json(c));
+ 	json_object *lumen_state = json_object_new_object();
++ json_object_object_add(lumen_state, "group_hidden", json_object_new_boolean(!lumen_groups_visible(c)));
+ 	json_object_object_add(lumen_state, "minimised",
+ 		json_object_new_boolean(c->lumen_minimized != NULL));
+ 	json_object_object_add(lumen_state, "filled",
+@@ -886,6 +889,7 @@ json_object *ipc_json_describe_node(struct sway_node *node) {
+ 
+ 	switch (node->type) {
+ 	case N_ROOT:
++  json_object_object_add(object, "window_groups", lumen_groups_json());
+ 		break;
+ 	case N_OUTPUT:
+ 		ipc_json_describe_enabled_output(node->sway_output, object);
+diff --git a/sway/meson.build b/sway/meson.build
+index 19774a6..3a640fc 100644
+--- a/sway/meson.build
++++ b/sway/meson.build
+@@ -214,6 +214,7 @@ sway_sources = files(
+ 	'tree/node.c',
+ 	'tree/root.c',
+  'tree/lumen_pair.c',
++ 'tree/lumen_groups.c',
+ 	'tree/view.c',
+ 	'tree/workspace.c',
+ 	'tree/output.c',
+diff --git a/sway/tree/lumen_groups.c b/sway/tree/lumen_groups.c
+new file mode 100644
+index 0000000..60bf41d
+--- /dev/null
++++ b/sway/tree/lumen_groups.c
+@@ -0,0 +1,242 @@
++/* Independent scene visibility; never changes document placement or hide reasons. */
++#include <errno.h>
++#include <inttypes.h>
++#include <stdlib.h>
++#include <string.h>
++#include <wlr/types/wlr_xdg_shell.h>
++#include "sway/commands.h"
++#include "sway/desktop/transaction.h"
++#include "sway/input/input-manager.h"
++#include "sway/input/seat.h"
++#include "sway/server.h"
++#include "sway/tree/container.h"
++#include "sway/tree/lumen_groups.h"
++#include "sway/tree/root.h"
++#include "sway/tree/view.h"
++#include "sway/tree/workspace.h"
++
++#define GROUP_LIMIT 256
++struct group {
++ uint64_t id, workspace, recent;
++ size_t members;
++ bool selected;
++};
++static struct group groups[GROUP_LIMIT];
++static bool enabled, changing;
++static uint64_t revision, counter, next_id;
++
++static bool con_id(struct sway_container *con, void *data) {
++ return !con->node.destroying && con->node.id == *(uint64_t *)data;
++}
++static bool ws_id(struct sway_workspace *ws, void *data) {
++ return !ws->node.destroying && ws->node.id == *(uint64_t *)data;
++}
++static struct sway_workspace *workspace(uint64_t id) {
++ return root_find_workspace(ws_id, &id);
++}
++static struct group *find(uint64_t id) {
++ for (size_t i = 0; i < GROUP_LIMIT; i++) if (groups[i].id == id && id) return &groups[i];
++ return NULL;
++}
++static struct sway_container *parent(struct sway_container *con) {
++ if (!con->view || con->view->type != SWAY_VIEW_XDG_SHELL) return NULL;
++ struct wlr_xdg_toplevel *p = con->view->wlr_xdg_toplevel->parent;
++ if (!p) return NULL;
++ struct sway_view *v = view_from_wlr_xdg_surface(p->base);
++ return v ? v->container : NULL;
++}
++static bool eligible(struct sway_container *con) {
++ if (!con->view || con->node.destroying || con->view->pid <= 0 ||
++     con->view->type != SWAY_VIEW_XDG_SHELL || !con->pending.workspace ||
++     con->pending.workspace->node.destroying || container_is_sticky_or_child(con)) return false;
++ const char *app = view_get_app_id(con->view);
++ return !app || strcmp(app, "org.quickshell") != 0;
++}
++struct suspension {struct sway_workspace *ws; bool suspended;};
++static void suspension_check(struct sway_container *con, void *data) {
++ struct suspension *s = data;
++ if (con->pending.workspace == s->ws &&
++     (con->pending.fullscreen_mode != FULLSCREEN_NONE || con->lumen_pair || con->lumen_pair_restore)) s->suspended = true;
++ if (con->lumen_desktop_hidden && !strcmp(con->lumen_desktop_hidden->workspace, s->ws->name)) s->suspended = true;
++}
++static bool suspended(uint64_t id) {
++ struct suspension s = {.ws = workspace(id)};
++ if (!s.ws || !s.ws->output || root->fullscreen_global) return true;
++ root_for_each_container(suspension_check, &s);
++ return s.suspended;
++}
++static struct group *allocate(uint64_t ws) {
++ for (size_t i = 0; i < GROUP_LIMIT; i++) if (!groups[i].id) {
++  groups[i] = (struct group){.id = ++next_id, .workspace = ws, .recent = ++counter};
++  revision++;
++  return &groups[i];
++ }
++ return NULL;
++}
++static void select_group(struct group *target) {
++ if (target->selected) return;
++ for (size_t i = 0; i < GROUP_LIMIT; i++) if (groups[i].workspace == target->workspace) groups[i].selected = false;
++ target->selected = true; target->recent = ++counter; revision++;
++}
++static void reconcile_member(struct sway_container *con, void *data) {
++ (void)data;
++ struct group *g = find(con->lumen_group_id);
++ if (g && !workspace(g->workspace)) {con->lumen_group_id = 0; g = NULL; revision++;}
++ if (!eligible(con)) {
++  /* Scratchpad members retain their identity without gaining visibility. */
++  if (g && con->view && !con->node.destroying && !con->pending.workspace) g->members++;
++  else if (con->lumen_group_id) {con->lumen_group_id = 0; revision++;}
++  return;
++ }
++ struct sway_container *owner = parent(con);
++ if (owner) return; /* Parents are assigned before descendants in a second pass. */
++ if (!g || g->workspace != con->pending.workspace->node.id) {
++  g = allocate(con->pending.workspace->node.id);
++  con->lumen_group_id = g ? g->id : 0;
++ }
++ if (g) g->members++;
++}
++static void reconcile_child(struct sway_container *con, void *data) {
++ (void)data;
++ if (!eligible(con)) return;
++ struct sway_container *owner = parent(con);
++ if (!owner) return;
++ unsigned depth = 0;
++ while (parent(owner) && depth++ < 64) owner = parent(owner);
++ struct group *g = depth < 64 ? find(owner->lumen_group_id) : NULL;
++ if (g && g->workspace != con->pending.workspace->node.id) g = NULL;
++ if (con->lumen_group_id != (g ? g->id : 0)) {con->lumen_group_id = g ? g->id : 0; revision++;}
++ if (g) g->members++;
++}
++void lumen_groups_reconcile(void) {
++ if (!enabled || changing) return;
++ changing = true;
++ for (size_t i = 0; i < GROUP_LIMIT; i++) groups[i].members = 0;
++ root_for_each_container(reconcile_member, NULL);
++ root_for_each_container(reconcile_child, NULL);
++ for (size_t i = 0; i < GROUP_LIMIT; i++) if (groups[i].id && !groups[i].members) {groups[i] = (struct group){0}; revision++;}
++ for (size_t i = 0; i < GROUP_LIMIT; i++) if (groups[i].id) {
++  bool selected = false;
++  for (size_t j = 0; j < GROUP_LIMIT; j++) if (groups[j].workspace == groups[i].workspace && groups[j].selected) selected = true;
++  if (!selected) select_group(&groups[i]);
++ }
++ changing = false;
++}
++bool lumen_groups_visible(struct sway_container *con) {
++ if (!enabled || !con || server.session_lock.lock) return true;
++ struct group *g = find(con->lumen_group_id);
++ return !g || g->selected || suspended(g->workspace);
++}
++static void mask(struct sway_container *con, void *data) {
++ (void)data;
++ if (con->scene_tree && !lumen_groups_visible(con)) wlr_scene_node_set_enabled(&con->scene_tree->node, false);
++}
++void lumen_groups_mask(void) {root_for_each_container(mask, NULL);}
++static void close_outgoing_popup(struct sway_container *con, void *data) {
++ (void)data;
++ if (con->view && !lumen_groups_visible(con)) view_close_popups(con->view);
++}
++void lumen_groups_focus(struct sway_container *con) {
++ if (!enabled || changing || server.session_lock.lock) return;
++ lumen_groups_reconcile();
++ struct group *g = find(con->lumen_group_id);
++ if (g && !g->selected && !suspended(g->workspace)) {
++  select_group(g); root_for_each_container(close_outgoing_popup, NULL);
++  node_set_dirty(&root->node);
++ }
++}
++static bool number(const char *text, uint64_t *value) {
++ if (!text || !*text || *text == '-' || *text == '+') return false;
++ for (const char *p = text; *p; p++) if (*p < '0' || *p > '9') return false;
++ errno = 0; char *end; *value = strtoull(text, &end, 10);
++ return !errno && !*end;
++}
++static void clear_member(struct sway_container *con, void *data) {(void)data; con->lumen_group_id = 0;}
++struct focus_candidate {struct group *group; struct sway_container *con;};
++static void candidate(struct sway_container *con, void *data) {
++ struct focus_candidate *f = data;
++ if (!f->con && con->lumen_group_id == f->group->id && eligible(con) && !con->lumen_app_hidden && !con->lumen_minimized) f->con = con;
++}
++static void focus_selected(struct group *g) {
++ struct focus_candidate f = {.group = g}; root_for_each_container(candidate, &f);
++ struct sway_seat *seat = input_manager_current_seat();
++ if (f.con) seat_set_focus_container(seat, f.con);
++ else {struct sway_workspace *ws = workspace(g->workspace); if (ws) seat_set_focus_workspace(seat, ws);}
++}
++static void repair_focus(struct group *g) {
++ struct sway_container *focused = seat_get_focused_container(input_manager_current_seat());
++ /* Unrelated shell controls keep their key focus during membership edits. */
++ if (focused && !lumen_groups_visible(focused)) focus_selected(g);
++}
++struct cmd_results *lumen_groups_command(int argc, char **argv) {
++ uint64_t expected;
++ lumen_groups_reconcile();
++ if (argc < 2 || !number(argv[0], &expected) || expected != revision)
++  return cmd_results_new(CMD_INVALID, "Window groups changed; refresh before acting");
++ if (server.session_lock.lock) return cmd_results_new(CMD_INVALID, "Window groups are unavailable while locked");
++ const char *action = argv[1];
++ if (argc == 2 && (!strcmp(action, "on") || !strcmp(action, "off"))) {
++  bool value = !strcmp(action, "on");
++  if (enabled != value) {
++   enabled = value; revision++;
++   if (!value) {memset(groups, 0, sizeof(groups)); root_for_each_container(clear_member, NULL);}
++   else {lumen_groups_reconcile(); struct sway_container *con = seat_get_focused_container(input_manager_current_seat()); if (con) lumen_groups_focus(con);}
++  }
++ } else {
++  if (!enabled) return cmd_results_new(CMD_INVALID, "Enable window groups first");
++  uint64_t gid;
++  if (argc < 3 || !number(argv[2], &gid)) return cmd_results_new(CMD_INVALID, "Invalid group target");
++  struct group *g = find(gid);
++  if (!g || suspended(g->workspace)) return cmd_results_new(CMD_INVALID, "Group is unavailable in the current presentation");
++  if (argc == 3 && !strcmp(action, "select")) {select_group(g); focus_selected(g);}
++  else if (argc == 5 && (!strcmp(action, "add") || !strcmp(action, "remove"))) {
++   uint64_t cid, pid;
++   if (!number(argv[3], &cid) || !number(argv[4], &pid)) return cmd_results_new(CMD_INVALID, "Invalid exact window identity");
++   struct sway_container *con = root_find_container(con_id, &cid);
++   if (!con || !eligible(con) || parent(con) || (uint64_t)con->view->pid != pid ||
++       con->pending.workspace->node.id != g->workspace || suspended(g->workspace))
++    return cmd_results_new(CMD_INVALID, "Window target changed or has unsupported ownership");
++   if (!strcmp(action, "remove")) {
++    if (con->lumen_group_id != g->id) return cmd_results_new(CMD_INVALID, "Window is not a member of the captured group");
++    struct group *fresh = allocate(g->workspace);
++    if (!fresh) return cmd_results_new(CMD_INVALID, "Window group limit reached");
++    con->lumen_group_id = fresh->id; select_group(fresh); repair_focus(fresh);
++   } else {con->lumen_group_id = g->id; select_group(g); repair_focus(g);}
++   revision++; lumen_groups_reconcile();
++  } else return cmd_results_new(CMD_INVALID, "Invalid window group action");
++ }
++ root_for_each_container(close_outgoing_popup, NULL);
++ node_set_dirty(&root->node); transaction_commit_dirty();
++ return cmd_results_new(CMD_SUCCESS, NULL);
++}
++struct member_json {json_object *array; uint64_t id;};
++static void append_member(struct sway_container *con, void *data) {
++ struct member_json *m = data;
++ if (con->lumen_group_id != m->id || !con->view || con->node.destroying) return;
++ json_object *row = json_object_new_object();
++ json_object_object_add(row, "id", json_object_new_int64(con->node.id));
++ json_object_object_add(row, "pid", json_object_new_int64(con->view->pid));
++ json_object_object_add(row, "group_hidden", json_object_new_boolean(!lumen_groups_visible(con)));
++ json_object_array_add(m->array, row);
++}
++json_object *lumen_groups_json(void) {
++ lumen_groups_reconcile();
++ json_object *state = json_object_new_object(), *items = json_object_new_array();
++ json_object_object_add(state, "version", json_object_new_int(1));
++ json_object_object_add(state, "enabled", json_object_new_boolean(enabled));
++ json_object_object_add(state, "revision", json_object_new_int64(revision));
++ json_object_object_add(state, "separate_displays", json_object_new_boolean(true));
++ json_object_object_add(state, "locked", json_object_new_boolean(server.session_lock.lock != NULL));
++ json_object_object_add(state, "groups", items);
++ for (size_t i = 0; i < GROUP_LIMIT; i++) if (groups[i].id) {
++  struct group *g = &groups[i]; json_object *row = json_object_new_object(), *members = json_object_new_array();
++  json_object_object_add(row, "id", json_object_new_int64(g->id));
++  json_object_object_add(row, "workspace", json_object_new_int64(g->workspace));
++  json_object_object_add(row, "selected", json_object_new_boolean(g->selected));
++  json_object_object_add(row, "recent", json_object_new_int64(g->recent));
++  json_object_object_add(row, "suspended", json_object_new_boolean(suspended(g->workspace)));
++  struct member_json m = {.array = members, .id = g->id}; root_for_each_container(append_member, &m);
++  json_object_object_add(row, "members", members); json_object_array_add(items, row);
++ }
++ return state;
++}
+diff --git a/sway/tree/view.c b/sway/tree/view.c
+index e66bcc0..662c628 100644
+--- a/sway/tree/view.c
++++ b/sway/tree/view.c
+@@ -1,3 +1,4 @@
++#include "sway/tree/lumen_groups.h"
+ #include "sway/tree/lumen_pair.h"
+ #include <stdlib.h>
+ #include <strings.h>
+@@ -1164,6 +1165,7 @@ void view_update_title(struct sway_view *view, bool force) {
+ }
+ 
+ bool view_is_visible(struct sway_view *view) {
++ if (!lumen_groups_visible(view->container)) return false;
+ 	if (view->container->node.destroying) {
+ 		return false;
+ 	}

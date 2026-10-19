@@ -64,6 +64,7 @@ def snapshot(tree, outputs, epoch):
                 if not isinstance(extension, dict) or any(type(extension.get(k)) is not bool for k in ('minimised', 'filled')):
                     raise ProtocolError('Invalid placement extension')
                 if 'hidden' in extension and type(extension['hidden']) is not bool:raise ProtocolError('Invalid hidden state')
+                if 'group_hidden' in extension and type(extension['group_hidden']) is not bool:raise ProtocolError('Invalid group visibility state')
                 if 'desktop_hidden' in extension and type(extension['desktop_hidden']) is not bool:raise ProtocolError('Invalid desktop reveal state')
                 extension_seen = True
             if type(node.get('fullscreen_mode',0)) is not int or node.get('fullscreen_mode',0) not in (0,1,2):raise ProtocolError('Invalid fullscreen state')
@@ -85,7 +86,7 @@ def snapshot(tree, outputs, epoch):
                 parent_supported=relation['parent_supported'] if relation else False,
                 modal=relation['modal'] if relation else None,
                 key=bool(node.get('focused')), minimised=extension['minimised'] if extension else None,
-                app_hidden=extension.get('hidden') if extension else None, desktop_hidden=extension.get('desktop_hidden') if extension else None, occluded=None,
+                group_hidden=extension.get('group_hidden') if extension else None, app_hidden=extension.get('hidden') if extension else None, desktop_hidden=extension.get('desktop_hidden') if extension else None, occluded=None,
                 pair=pair,paired_fullscreen_survivor=pairing['survivor'] if pairing is not None else None,
                 placement='paired' if pair else 'fullscreen' if node.get('fullscreen_mode', 0) or pairing and pairing['survivor'] else 'filled' if extension and extension['filled'] else 'floating' if floating else 'layout_managed',
                 space='s-' + workspace if workspace is not None else None,

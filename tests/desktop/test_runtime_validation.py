@@ -80,9 +80,9 @@ class CursorHighWater(unittest.TestCase):
 class StateValidation(unittest.TestCase):
     def test_desktop_reveal_is_independent_from_app_hiding_and_minimisation(self):
         tree,outputs,window,_=compositor_fixture()
-        window['lumen_state']={'minimised':False,'filled':False,'hidden':False,'desktop_hidden':True}
+        window['lumen_state']={'minimised':False,'filled':False,'hidden':False,'desktop_hidden':True,'group_hidden':True}
         observed=state.snapshot(tree,outputs,'fixture')['windows'][0]
-        self.assertTrue(observed['desktop_hidden'])
+        self.assertTrue(observed['desktop_hidden']);self.assertTrue(observed['group_hidden'])
         self.assertFalse(observed['app_hidden'])
         self.assertFalse(observed['minimised'])
         window['lumen_state']['desktop_hidden']='false'

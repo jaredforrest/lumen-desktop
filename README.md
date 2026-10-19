@@ -23,3 +23,4 @@ Saved portal decisions: [provider contract, scope and acceptance](docs/portal-pe
 Interface text sizing: [scope, layout contract and tests](docs/text-sizing.md).
 
 Per-device input preferences: [supported capabilities, identity scope and tests](docs/input-preferences.md).
+Window Groups provides optional native presentation groups; see [the workflow and current boundaries](docs/window-groups.md).

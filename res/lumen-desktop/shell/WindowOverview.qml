@@ -11,6 +11,10 @@ FloatingWindow {
     property var windows:[]
     property var workspaces:[]
     property var outputs:[]
+    property var windowGroups:null
+    readonly property var currentWindowGroup:windowGroups && current?windowGroups.groups.find(g=>g.members.some(m=>m.id===current.id && m.pid===current.pid)) || null:null
+    function captureGroupAction(action,groupId){if(!windowGroups)return null;const data={action:"window-groups",groupAction:action,groupId:groupId,groupRevision:windowGroups.revision,sessionEpoch:sessionEpoch};if(current){data.id=current.id;data.pid=current.pid;}return data;}
+    function groupAction(action,groupId){const data=captureGroupAction(action,groupId);if(data)send(data);}
     property bool autoReorder:true
     property bool removalSupported:false
     property int revision:0
@@ -87,6 +91,22 @@ FloatingWindow {
             DialogButton {width:80;text:"Save Order";visible:desktopStrip.editing;enabled:!root.busy;onClicked:desktopStrip.commit()}
             DialogButton {width:65;text:"Cancel";visible:desktopStrip.editing;onClicked:desktopStrip.cancel()}
         }
+        DialogButton {x:parent.width-148;y:176;width:128;objectName:"window-groups-open";text:"Window Groups";Accessible.name:"Manage window groups";enabled:!!root.windowGroups && !desktopStrip.editing;onClicked:groupsDialog.open()}
+        Dialog {id:groupsDialog;title:"Window Groups";header:PanelLabel {text:"Window Groups";padding:12;font.weight:Font.DemiBold;color:Theme.colors.text}modal:true;anchors.centerIn:parent;width:Math.min(480,parent.width-32);closePolicy:Popup.CloseOnEscape
+            background:Rectangle {radius:12;color:Theme.colors.background;border.color:Theme.outline}
+            contentItem:Column {spacing:10
+                SettingsToggle {objectName:"window-groups-toggle";property var captured:null;width:parent.width;text:"Window Groups";onPressed:captured=root.captureGroupAction(checked?"off":"on",0);checked:!!root.windowGroups && root.windowGroups.enabled;enabled:!root.busy && !!root.windowGroups && !root.windowGroups.locked;onToggled:if(captured)root.send(captured)}
+                PanelLabel {width:parent.width;wrapMode:Text.WordWrap;font.pixelSize:11;color:Theme.colors.muted;text:"Groups keep window placement intact. Full screen, paired layout and Show Desktop suspend grouping. Hidden and minimised windows remain hidden."}
+                DesktopComboBox {id:groupChoice;width:parent.width;textRole:"label";Accessible.name:"Window group";model:root.windowGroups?root.windowGroups.groups.map(g=>({label:"Group "+g.id+" · "+g.members.length+(g.members.length===1?" window":" windows")+(g.selected?" · selected":"")+(g.suspended?" · suspended":""),id:g.id,suspended:g.suspended})):[]}
+                Row {spacing:8
+                    DialogButton {objectName:"window-group-select";property var captured:null;text:"Select";enabled:!root.busy && groupChoice.count>0 && !groupChoice.model[groupChoice.currentIndex].suspended;onPressed:captured=root.captureGroupAction("select",groupChoice.model[groupChoice.currentIndex].id);onClicked:if(captured)root.send(captured)}
+                    DialogButton {objectName:"window-group-add";property var captured:null;text:"Add Window";enabled:!root.busy && groupChoice.count>0 && !!root.currentWindowGroup && !root.currentWindowGroup.suspended && !groupChoice.model[groupChoice.currentIndex].suspended;onPressed:captured=root.captureGroupAction("add",groupChoice.model[groupChoice.currentIndex].id);onClicked:if(captured)root.send(captured)}
+                    DialogButton {objectName:"window-group-create";property var captured:null;text:"New Group";enabled:!root.busy && !!root.currentWindowGroup && !root.currentWindowGroup.suspended && root.windowGroups.enabled;onPressed:{const g=root.windowGroups.groups.find(g=>g.members.some(m=>m.id===root.current.id && m.pid===root.current.pid));captured=g?root.captureGroupAction("remove",g.id):null;}onClicked:if(captured)root.send(captured)}
+                }
+                PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:root.current?"Selected window: "+root.current.title:"Select a window in Overview first";textFormat:Text.PlainText;font.pixelSize:11}
+                DialogButton {text:"Done";onClicked:groupsDialog.close()}
+            }
+        }
         PanelLabel {x:20;y:211;width:parent.width-40;height:16;font.pixelSize:10;color:Theme.colors.muted;text:desktopStrip.editing?"Manual order turns off recent-use ordering · Return to save · Escape to cancel":"Drag desktops to reorder · Control + Left/Right to preview order"}
         Dialog {id:removeDialog;title:"Remove Desktop";modal:true;anchors.centerIn:parent;width:Math.min(450,parent.width-40);closePolicy:Popup.CloseOnEscape
             background:Rectangle {radius:12;color:Theme.colors.background;border.color:Theme.outline}
@@ -126,11 +146,11 @@ FloatingWindow {
         SettingsToggle {x:parent.width-270;y:parent.height-48;width:250;height:36;text:"Recent desktop order";enabled:!root.busy;Accessible.name:"Order desktops by recent use";checked:root.autoReorder;onToggled:root.send({action:"ordering",enabled:checked})}
         PanelLabel {x:20;y:parent.height-44;width:parent.width-310;font.pixelSize:11;color:Theme.colors.muted;text:root.error || (root.draggedId>0?"Choose a desktop, then Move Window · Escape to cancel":"Arrow keys to select · Return to open · Escape to close");wrapMode:Text.WordWrap}
     }
-    Timer {interval:2000;running:root.visible && !desktopStrip.editing && !removeDialog.opened;repeat:true;onTriggered:root.send({action:"status"})}
+    Timer {interval:2000;running:root.visible && !desktopStrip.editing && !removeDialog.opened && !groupsDialog.opened;repeat:true;onTriggered:root.send({action:"status"})}
     Process {id:worker;stdinEnabled:true
         command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("window_overview.py").toString().replace("file://","")]
         onStarted:write(JSON.stringify(root.request)+"\n")
-        stdout:StdioCollector {onStreamFinished:{try{const data=JSON.parse(text);root.error=data.error || "";if(data.created)root.managedDesktopId=data.created.logicalId;if(data.windows){const selectedId=root.draggedId || (root.current?root.current.id:0);root.windows=data.windows;const index=root.matches.findIndex(w=>w.id===selectedId);root.selected=root.draggedId?index:Math.max(0,index);if(root.draggedId && index<0)root.error="The dragged window is no longer available";root.workspaces=data.workspaces;root.outputs=data.outputs;root.removalSupported=!!(data.capabilities || {}).desktop_removal;root.revision=data.revision;root.sessionEpoch=data.sessionEpoch;
+        stdout:StdioCollector {onStreamFinished:{try{const data=JSON.parse(text);root.error=data.error || "";if(data.created)root.managedDesktopId=data.created.logicalId;if(data.windows){const selectedId=root.draggedId || (root.current?root.current.id:0);root.windows=data.windows;root.windowGroups=data.windowGroups || null;const index=root.matches.findIndex(w=>w.id===selectedId);root.selected=root.draggedId?index:Math.max(0,index);if(root.draggedId && index<0)root.error="The dragged window is no longer available";root.workspaces=data.workspaces;root.outputs=data.outputs;root.removalSupported=!!(data.capabilities || {}).desktop_removal;root.revision=data.revision;root.sessionEpoch=data.sessionEpoch;
                     if(!root.workspaces.some(item=>item.logicalId===root.managedDesktopId)){const chosen=root.workspaces.find(item=>item.focused) || root.workspaces[0];root.managedDesktopId=chosen?chosen.logicalId:"";}
                     manageDesktop.currentIndex=Math.max(0,manageDesktop.model.findIndex(item=>item.logicalId===root.managedDesktopId));root.autoReorder=data.autoReorder;root.assignments=data.assignments;root.selected=Math.min(root.selected,Math.max(0,root.matches.length-1));}}catch(e){root.error="Unable to read desktop windows";}}}
         onExited:if(root.request.action!=="status" && root.visible)Qt.callLater(()=>root.send({action:"status"}))

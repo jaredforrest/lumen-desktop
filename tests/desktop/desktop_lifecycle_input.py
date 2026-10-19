@@ -95,13 +95,15 @@ import "assets/shell" as D
 ShellRoot {
  QtObject {id:stub;function claimPopup(owner){}}
  D.WindowOverview {id:overview;shell:stub}
- function find(item,name){if(item.objectName===name || (item.Accessible && item.Accessible.name===name))return item;for(const child of item.children || []){const found=find(child,name);if(found)return found;}return null;}
+ function find(item,name){if(item.objectName===name || (item.Accessible && item.Accessible.name===name))return item;for(const child of item.children || []){const found=find(child,name);if(found)return found;}if(item.contentItem && item.contentItem!==item){const found=find(item.contentItem,name);if(found)return found;}return null;}
  IpcHandler {target:"desktopAudit"
   function openOverview(id:string):bool{overview.showForWindow(Number(id));return overview.visible;}
   function refreshOverview():void{overview.send({action:"status"});}
-  function status():string{return JSON.stringify({visible:overview.visible,busy:overview.busy,error:overview.error,workspaces:overview.workspaces,revision:overview.revision,editing:find(overview.contentItem,"desktop-order-pointer").parent.editing,managed:overview.managedDesktopId});}
-  function geometry(name:string):string{const item=find(overview.contentItem,name);if(!item)return "null";const at=item.mapToItem(overview.contentItem,0,0);return JSON.stringify({x:at.x,y:at.y,width:item.width,height:item.height,title:overview.title});}
-  function click(name:string):bool{const item=find(overview.contentItem,name);if(!item || !item.enabled)return false;item.clicked();return true;}
+  function status():string{return JSON.stringify({visible:overview.visible,busy:overview.busy,error:overview.error,workspaces:overview.workspaces,revision:overview.revision,editing:find(overview.contentItem,"desktop-order-pointer").parent.editing,groups:overview.windowGroups,managed:overview.managedDesktopId});}
+  function geometry(name:string):string{const item=find(overview.contentItem.Window.window.contentItem,name);if(!item)return "null";const at=item.mapToItem(overview.contentItem,0,0);return JSON.stringify({x:at.x,y:at.y,width:item.width,height:item.height,title:overview.title});}
+  function selectWindow(id:string):bool{const index=overview.matches.findIndex(w=>w.id===Number(id));if(index<0)return false;overview.selected=index;return true;}
+  function focusControl(name:string):bool{const item=find(overview.contentItem.Window.window.contentItem,name);if(!item)return false;item.forceActiveFocus();return true;}
+  function click(name:string):bool{const item=find(overview.contentItem.Window.window.contentItem,name);if(!item || !item.enabled)return false;item.clicked();return true;}
  }
 }''')
   probe=private/'assets/shell/WindowOverview.qml';probe.write_text(probe.read_text().replace('Process {id:worker;stdinEnabled:true','Process {id:worker;stdinEnabled:true\n        stderr:StdioCollector {onStreamFinished:console.log("WORKER_STDERR:"+text)}').replace('stdout:StdioCollector {onStreamFinished:{try{','stdout:StdioCollector {onStreamFinished:{console.log("WORKER_STDOUT:"+text);try{'))
@@ -136,6 +138,23 @@ ShellRoot {
   reordered=order_now();checks.append('Native pointer release commits exact same-output order; no preview writes policy')
   assert ipc('click','Move desktop left')=='true';wait(lambda:ui()['editing']);key('-k','Escape');assert order_now()==reordered
   assert ipc('click','Move desktop left')=='true';key('-k','Return');wait(lambda:not ui()['editing']);wait(lambda:not ui()['busy']);wait(lambda:order_now()!=reordered);checks.append('Keyboard order preview cancels on Escape and commits on Return')
+  # The optional group workflow uses real production dialog controls.
+  move(point('window-groups-open'));press();release()
+  call('grim',str(a.output/'groups-open.png'))
+  wait(lambda:json.loads(ipc('geometry','window-groups-toggle')) is not None)
+  wait(lambda:not ui()['busy'])
+  move(point('window-groups-toggle'));press();release();wait(lambda:status()['windowGroups']['enabled']);wait(lambda:not ui()['busy'])
+  assert not ui()['error'];call('grim',str(a.output/'window-groups.png'))
+  groups=status()['windowGroups'];member=groups['groups'][0]['members'][0]
+  assert ipc('selectWindow',member['id'])=='true'
+  initial_revision=groups['revision'];start=point('window-group-create');move(start);press();move((start[0]+260,start[1]+70));release()
+  assert status()['windowGroups']['revision']==initial_revision
+  move(point('window-group-create'));press();release();wait(lambda:status()['windowGroups']['revision']>initial_revision);wait(lambda:not ui()['busy'])
+  assert any(m['id']==member['id'] and m['pid']==member['pid'] for g in status()['windowGroups']['groups'] for m in g['members'])
+  checks.append('Production New Group commits on release; releasing outside cancels without native membership writes')
+  assert ipc('focusControl','window-groups-toggle')=='true';key('-k','space');wait(lambda:not status()['windowGroups']['enabled']);wait(lambda:not ui()['busy'])
+  key('-k','Escape');assert ui()['visible']
+  checks.append('Production Window Groups dialog enables by native pointer and disables by native keyboard without closing Overview')
   # Production New and removal Cancel controls.
   count=len(status()['workspaces']);assert ipc('click','Create desktop')=='true';wait(lambda:len(status()['workspaces'])==count+1);wait(lambda:not ui()['busy']);ipc('refreshOverview');wait(lambda:not ui()['busy'])
   assert ipc('click','Remove desktop')=='true';key('-k','Escape');assert len(status()['workspaces'])==count+1
