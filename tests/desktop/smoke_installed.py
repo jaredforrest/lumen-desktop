@@ -67,6 +67,22 @@ def wait(fn):
 def ipc(method,*values):return call('quickshell','-p',str(assets),'ipc','call','desktop',method,*values)
 def state():return json.loads(ipc('filesStatus'))
 def key(*values):call('wtype','-s','150',*values)
+def window_capture(title, filename):
+ def nodes(node):
+  yield node
+  for child in node.get('nodes',[])+node.get('floating_nodes',[]):yield from nodes(child)
+ def rendered():
+  matches=[node for node in nodes(json.loads(call('swaymsg','-t','get_tree','-r'))) if node.get('app_id')=='org.quickshell' and node.get('name')==title and node.get('visible') and node.get('scratchpad_state')=='none']
+  if not matches:return False
+  rect=matches[0]['rect'];call('grim',str(run/filename))
+  from PIL import Image,ImageStat
+  image=Image.open(run/filename).convert('RGB')
+  area=(max(0,rect['x']+20),max(0,rect['y']+50),min(image.width,rect['x']+rect['width']-20),min(image.height,rect['y']+rect['height']-20))
+  if area[2]<=area[0] or area[3]<=area[1]:return False
+  statistics=ImageStat.Stat(image.crop(area))
+  # A mapped transparent/blank window must not pass a behavioural smoke.
+  return max(statistics.mean)>10 and max(statistics.stddev)>2
+ wait(rendered)
 try:
  conf=run/'sway.conf';conf.write_text('output HEADLESS-1 resolution 1440x1000\nxwayland disable\ndefault_border none\nfor_window [app_id="org.quickshell"] floating enable\n')
  if args.effects:
@@ -119,9 +135,9 @@ try:
   key('-M','ctrl','-k','Tab','-m','ctrl')
   wait(lambda:json.loads(ipc('textToolsStatus'))['page']==page)
  key('-k','Escape');ipc('focusDock');time.sleep(.3);key('-k','End','-k','Return');wait(lambda:state()['path']=='trash:')
- call('grim',str(run/'files.png'))
- ipc('settings','Appearance');time.sleep(.5);call('grim',str(run/'settings.png'))
- ipc('settings','VPN');wait(lambda:json.loads(ipc('settingsStatus'))['page']=='VPN');time.sleep(.5);call('grim',str(run/'vpn-settings.png'))
+ window_capture('Files — Trash','files.png')
+ ipc('settings','Appearance');window_capture('System Settings','settings.png')
+ ipc('settings','VPN');wait(lambda:json.loads(ipc('settingsStatus'))['page']=='VPN');window_capture('System Settings','vpn-settings.png')
  if capabilities.get('native_window_actions') and args.click_pointer:
   def allnodes(node):
    yield node

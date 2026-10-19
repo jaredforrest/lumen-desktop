@@ -60,12 +60,12 @@ FloatingWindow {
         background:Rectangle {radius:6;color:button.pressed?Theme.colors.field:button.hovered?Theme.colors.hover:"transparent"}
         contentItem:PanelLabel {id:caption;text:button.label;horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter;font.pixelSize:12}
     }
-    Rectangle {id:windowMask;width:root.width;height:root.height;radius:Theme.nativeWindowFrame?0:12;layer.enabled:true;visible:false}
+    Rectangle {id:windowMask;width:root.width;height:root.height;radius:Theme.nativeWindowFrame?0:12;layer.enabled:!Theme.nativeWindowFrame && GraphicsInfo.api !== GraphicsInfo.Software;visible:false}
     CalendarCard {id:previousMonth;followingToday:false;visible:false;today:root.shell.currentDate;month:new Date(root.month.getFullYear(),root.month.getMonth()-1,1);selected:month;active:root.visible && root.view==="Week" && root.weekStart<root.month;onMonthChanged:if(active)Qt.callLater(refresh)}
     CalendarCard {id:nextMonth;followingToday:false;visible:false;today:root.shell.currentDate;month:new Date(root.month.getFullYear(),root.month.getMonth()+1,1);selected:month;active:root.visible && root.view==="Week" && new Date(root.weekStart.getFullYear(),root.weekStart.getMonth(),root.weekStart.getDate()+6)>=month;onMonthChanged:if(active)Qt.callLater(refresh)}
     Item {
         id:content;anchors.fill:parent;focus:true
-        layer.enabled:true;layer.effect:MultiEffect {maskEnabled:true;maskSource:windowMask}
+        layer.enabled:!Theme.nativeWindowFrame && GraphicsInfo.api !== GraphicsInfo.Software;layer.effect:MultiEffect {maskEnabled:true;maskSource:windowMask}
         Rectangle {anchors.fill:parent;color:root.canvasColor}
         Keys.onPressed:event=>{
             if(event.key===Qt.Key_Escape){root.inspector=false;calendar.editing=false;event.accepted=true;}

@@ -68,9 +68,9 @@ FloatingWindow {
         historyIndex=next;page=history[next];
     }
     onPageChanged:scroller.contentY=0
-    Rectangle {id:windowMask;width:root.width;height:root.height;radius:Theme.nativeWindowFrame?0:12;layer.enabled:true;visible:false}
+    Rectangle {id:windowMask;width:root.width;height:root.height;radius:Theme.nativeWindowFrame?0:12;layer.enabled:!Theme.nativeWindowFrame && GraphicsInfo.api !== GraphicsInfo.Software;visible:false}
     Item {
-        layer.enabled:true
+        layer.enabled:!Theme.nativeWindowFrame && GraphicsInfo.api !== GraphicsInfo.Software
         layer.effect:MultiEffect {maskEnabled:true;maskSource:windowMask}
         id:content;anchors.fill:parent;focus:true
         Keys.onEscapePressed:root.visible=false
