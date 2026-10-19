@@ -84,6 +84,14 @@ ShellRoot {
   menu.event('{"lumen_layout":1,"id":-1,"x":20,"y":30}');check(menu.target===42,"reject negative target");
   menu.event('{"lumen_layout":1,"id":43,"x":"bad","y":30}');check(menu.target===42,"reject nonfinite coordinate");
   check(menu.choices.length===11,"layout choices");
+  menu.updateCapabilities('{"native_window_layouts":true,"native_show_desktop":true}');
+  check(menu.supported && menu.showDesktopSupported,"native capabilities accepted");
+  menu.updateCapabilities('{"native_window_layouts":"true","native_show_desktop":1}');
+  check(!menu.supported && !menu.showDesktopSupported,"nonboolean capabilities rejected");
+  menu.updateCapabilities('{"native_window_layouts":true,"native_show_desktop":true}');
+  menu.updateCapabilities('invalid');
+  check(!menu.supported && !menu.showDesktopSupported,"invalid capabilities reset both");
+  menu.updateCapabilities('{"native_window_layouts":true,"native_show_desktop":true}');
   stub.dismissPopups("other");check(menu.target===0,"cancel pending on other popup");
   menu.event('{"lumen_layout":1,"id":42,"x":20,"y":30}');menu.open();
   check(menu.visible,"layout menu opens on available screen");

@@ -15,6 +15,7 @@ PanelWindow {
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.keyboardFocus: visible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
     property bool supported: false
+    property bool showDesktopSupported: false
     property double target: 0
     property real anchorX: 0
     property real anchorY: 0
@@ -52,10 +53,17 @@ PanelWindow {
         dismiss();
         Quickshell.execDetached(["swaymsg","[con_id="+id+"] lumen_window "+action]);
     }
+    function updateCapabilities(raw) {
+        try {
+            const version=JSON.parse(raw);
+            supported=version.native_window_layouts===true;
+            showDesktopSupported=version.native_show_desktop===true;
+        } catch(error) { supported=false;showDesktopSupported=false; }
+    }
     Process {
         running:!!Quickshell.env("SWAYSOCK")
         command:["swaymsg","-r","-t","get_version"]
-        stdout:StdioCollector {onStreamFinished:{try {root.supported=JSON.parse(text).native_window_layouts===true;}catch(e){root.supported=false;}}}
+        stdout:StdioCollector {onStreamFinished:root.updateCapabilities(text)}
     }
     Timer { id:opening; interval:450; onTriggered:root.open() }
     Timer { id:leaving; interval:320; repeat:true; onTriggered:if(!cardHover.hovered && !root.overTrigger)root.dismiss() }

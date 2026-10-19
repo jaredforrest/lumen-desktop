@@ -31,6 +31,13 @@ ShellRoot {
     RemoteDesktopWindow {id:remoteDesktopWindow;shell:root}
     function openRemoteDesktop(){remoteDesktopWindow.show();focusOwnedWindow("Remote Desktop");}
     WindowLayoutMenu {id:windowLayoutMenu;shell:root}
+    readonly property bool nativeShowDesktop:windowLayoutMenu.showDesktopSupported
+    function revealDesktop() {
+        if(!nativeShowDesktop)return "unsupported";
+        claimPopup("");
+        Quickshell.execDetached(["swaymsg","lumen_window show-desktop"]);
+        return "requested";
+    }
     function openWindowLayout() {
         const state=exported.latestState || exported.state;
         const id=state.windowId;
@@ -254,6 +261,7 @@ ShellRoot {
     readonly property var currentDate: clock.date
     SystemClock { id: clock; precision: SystemClock.Minutes }
     IpcHandler {
+        function showDesktop():string {return root.revealDesktop();}
         function windowLayout():void {root.openWindowLayout();}
         function remoteDesktop():void {root.openRemoteDesktop();}
         function calendar():void {root.openCalendar();}

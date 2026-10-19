@@ -60,6 +60,7 @@ PanelWindow {
         else if(a==="sound") AppLaunch.run(["pavucontrol"]);
         else if(a==="lock") AppLaunch.run(["lumen-lock"]);
         else if(a==="help") shell.openHelp();
+        else if(a==="show-desktop") shell.revealDesktop();
         else if(a && a.startsWith("session:")) shell.sessionAction(a.substring(8));
         else if(a==="reference") AppLaunch.run(["xdg-open","http://127.0.0.1:8768/"]);
         else if(a==="mute") shell.audioKey(a);
@@ -207,7 +208,7 @@ PanelWindow {
                         if (bar.menu === "Sound") return [{label:shell.volume || "Audio unavailable"},{label:"Mute / Unmute",action:"mute"},{label:"Volume Up",action:"up"},{label:"Volume Down",action:"down"},{label:"Sound Settings…",action:"sound"}];
                         if (bar.menu === "Date") return [{label:Qt.formatDateTime(bar.clockDate,"dddd, d MMMM yyyy")},{label:Qt.formatDateTime(bar.clockDate,"h:mm AP")}];
                         if (bar.menu === "Help") return [{label:"Search Desktop Help…",action:"help"},{label:"Reference Board…",action:"reference"}];
-                        return [{label:"About This Computer",action:"about"},{label:"System Settings…",action:"settings"},{label:"",separator:true},{label:"Applications…",action:"apps"},{label:"",separator:true},{label:"Sleep…",action:"session:suspend"},{label:"Restart…",action:"session:reboot"},{label:"Shut Down…",action:"session:poweroff"},{label:"",separator:true},{label:"Lock Screen",action:"lock"},{label:"Log Out…",action:"session:logout"}];
+                        return [{label:"About This Computer",action:"about"},{label:"System Settings…",action:"settings"},{label:"",separator:true},{label:"Applications…",action:"apps"},...(shell.nativeShowDesktop?[{label:"Show Desktop",action:"show-desktop"}]:[]),{label:"",separator:true},{label:"Sleep…",action:"session:suspend"},{label:"Restart…",action:"session:reboot"},{label:"Shut Down…",action:"session:poweroff"},{label:"",separator:true},{label:"Lock Screen",action:"lock"},{label:"Log Out…",action:"session:logout"}];
                     }
                     Rectangle {
                         required property var modelData
