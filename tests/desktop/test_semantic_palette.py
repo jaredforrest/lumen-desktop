@@ -30,6 +30,7 @@ class SemanticPalette(unittest.TestCase):
                             for surface in ('background','surface','field','hover'):
                                 self.assertGreaterEqual(ratio(colors[foreground],colors[surface]),4.5,(foreground,surface,colors))
                         self.assertGreaterEqual(ratio(colors['selectedText'],colors['accent']),4.5)
+                        self.assertGreaterEqual(ratio(colors['destructiveText'],colors['destructiveFill']),4.5)
                         for surface in ('background','surface','field'):
                             self.assertGreaterEqual(ratio(colors['accent'],colors[surface]),3,('focus indicator',surface,colors))
                             if increased:self.assertGreaterEqual(ratio(colors['border'],colors[surface]),3)

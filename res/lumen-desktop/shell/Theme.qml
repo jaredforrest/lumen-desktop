@@ -20,6 +20,8 @@ Singleton {
     readonly property color errorText: colors.error || (dark ? "#ffaba5" : "#b42318")
     readonly property color successText: colors.success || (dark ? "#55d788" : "#196633")
     readonly property color warningText: colors.warning || (dark ? "#e0b85a" : "#775000")
+    readonly property color destructiveFill: colors.destructiveFill || "#b42318"
+    readonly property color destructiveText: colors.destructiveText || "#ffffff"
     readonly property string iconAppearance: preferences.iconAppearance || "auto"
     readonly property bool nativeWindowFrame: Quickshell.env("LUMEN_NATIVE_WINDOW_CONTROLS") === "1" && !unifiedOwnedHeaders
     readonly property bool unifiedOwnedHeaders: Quickshell.env("LUMEN_UNIFIED_OWNED_HEADERS") === "1"

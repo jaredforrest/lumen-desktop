@@ -64,7 +64,8 @@ def resolve_palette(palettes,mode,prefs):
     colors=dict(palettes[mode])
     colors.update(error='#ffaba5' if mode=='dark' else '#b42318',
                   success='#55d788' if mode=='dark' else '#196633',
-                  warning='#e0b85a' if mode=='dark' else '#775000')
+                  warning='#e0b85a' if mode=='dark' else '#775000',
+                  destructiveFill='#b42318',destructiveText='#ffffff')
     colors['accent']=ACCENTS[prefs['accent']][mode=='dark']
     if prefs['accent'] in ('orange','yellow','green','graphite') and mode=='dark':colors['selectedText']='#161618'
     if prefs.get('increaseContrast',False):
