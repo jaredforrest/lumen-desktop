@@ -29,7 +29,7 @@ FocusScope {
     onAvailableHeightChanged:cancelMove()
     Connections {target:root.shell.widgets;function onPreferencesChanged(){root.cancelMove();}}
     PanelSurface {anchors.fill:parent;radius:18;clip:true
-        Flickable {anchors.fill:parent;anchors.topMargin:26;visible:root.descriptor.type==="calendar";contentWidth:width;contentHeight:calendar.implicitHeight;clip:true;boundsBehavior:Flickable.StopAtBounds;ScrollBar.vertical:DesktopScrollBar {}
+        Flickable {anchors.fill:parent;anchors.topMargin:26;anchors.leftMargin:6;anchors.rightMargin:6;anchors.bottomMargin:10;visible:root.descriptor.type==="calendar";contentWidth:width;contentHeight:calendar.implicitHeight;clip:true;boundsBehavior:Flickable.StopAtBounds;ScrollBar.vertical:DesktopScrollBar {}
             CalendarCard {id:calendar;objectName:"widget-calendar-content";width:parent.width;today:root.shell.currentDate;compact:true;agendaOnly:root.descriptor.size==="small" || root.descriptor.style==="agenda";monochrome:root.monochrome;reduceTransparency:root.shell.widgets.preferences.reduceTransparency || !!Theme.preferences.reduceTransparency;active:root.active && root.descriptor.type==="calendar"
                 onOpenCalendar:root.shell.openCalendarAt(selected,null)
                 onEventRequested:(event,day)=>root.shell.openCalendarAt(day,event)

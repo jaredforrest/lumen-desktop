@@ -4,7 +4,7 @@ The supported catalogue contains Calendar and Local Time. Edit Widgets in the no
 
 Each instance has a stable identifier. Sizes are small, medium and large; geometry is bounded to the available display. Positions are independent per output connector. Drag the move handle and release to commit, or press Escape to cancel. With the handle focused, Space begins keyboard placement; arrows move, Return commits and Escape cancels. A disconnected display assignment remains explicit.
 
-Layouts are personal session state in the existing widget preferences file. They are not machine policy. Existing visible calendar layouts migrate without losing positions, while an explicitly empty catalogue stays empty across restart. The visible Add controls stop at 16 instances; validation rejects more than 32. Unsupported descriptors are rejected rather than executed.
+Layouts are personal session state in the existing widget preferences file. They are not machine policy. Existing visible calendar layouts migrate without losing positions, while an explicitly empty catalogue stays empty across restart. The visible Add controls stop at 16 instances; normalization retains at most 32. Unsupported descriptors are rejected rather than executed.
 
 ## Verification and boundaries
 
