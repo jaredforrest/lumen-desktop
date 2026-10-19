@@ -123,3 +123,5 @@ ScreenSaverState 1.0 ScreenSaverState.qml
 ScreenSaverController 1.0 ScreenSaverController.qml
 ScreenSaverSurface 1.0 ScreenSaverSurface.qml
 ScreenSaverPane 1.0 ScreenSaverPane.qml
+
+FocusFlickable 1.0 FocusFlickable.qml

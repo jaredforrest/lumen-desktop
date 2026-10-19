@@ -144,7 +144,7 @@ PanelWindow {
             Keys.onDownPressed:if(!bar.special)bar.stepBuiltin(1)
             Keys.onUpPressed:if(!bar.special)bar.stepBuiltin(-1)
             Keys.onReturnPressed:if(!bar.special && bar.builtinIndex>=0)bar.activateBuiltin(builtinItems.model[bar.builtinIndex])
-        Flickable {
+        FocusFlickable {
             id:systemViewport
             visible:["Wi-Fi","Bluetooth","VPN","Sound","Controls","Focus","Date","Calendar","Now Playing"].includes(bar.systemMenu)
             width:systemPanel.width;height:Math.min(systemPanel.height,Math.max(1,parent.height-Theme.barHeight-24))

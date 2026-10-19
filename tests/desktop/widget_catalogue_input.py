@@ -41,12 +41,12 @@ ShellRoot {
  }
  FloatingWindow {id:window;title:"Widget Catalogue";visible:true;implicitWidth:420;implicitHeight:680
   Rectangle {id:body;anchors.fill:parent;color:D.Theme.colors.background
-   Flickable {id:scroll;anchors.fill:parent;anchors.margins:20;contentWidth:width;contentHeight:editor.implicitHeight;clip:true;D.DesktopWidgetEditor {id:editor;width:scroll.width;service:widgets}}
+   D.FocusFlickable {id:scroll;anchors.fill:parent;anchors.margins:20;contentWidth:width;contentHeight:editor.implicitHeight;clip:true;D.DesktopWidgetEditor {id:editor;width:scroll.width;service:widgets}}
   }
  }
  function find(item,name){if(item.objectName===name)return item;for(const child of item.children || []){const result=find(child,name);if(result)return result;}return null;}
  IpcHandler {target:"widgetAudit"
-  function state():string{return JSON.stringify({preferences:widgets.preferences,error:widgets.error,outputs:Object.keys(stub.widgetSurfaces).filter(name=>stub.widgetSurfaces[name]).map(name=>({name:name,items:stub.widgetSurfaces[name].status()})),activations:fixture.activations,background:fixture.backgroundClicks,sameEditor:!fixture.capturedEditor || widgets.desktopItems.length>0 && find(body,"widget-size-"+widgets.desktopItems[0].id)===fixture.capturedEditor,same:!fixture.captured || widgets.desktopItems.length>0 && stub.widgetSurfaces["HEADLESS-1"].findWidget(widgets.desktopItems[0].id)===fixture.captured});}
+  function state():string{return JSON.stringify({preferences:widgets.preferences,error:widgets.error,outputs:Object.keys(stub.widgetSurfaces).filter(name=>stub.widgetSurfaces[name]).map(name=>({name:name,items:stub.widgetSurfaces[name].status()})),activations:fixture.activations,background:fixture.backgroundClicks,scrollY:scroll.contentY,focused:window.activeFocusItem?window.activeFocusItem.objectName:"",sameEditor:!fixture.capturedEditor || widgets.desktopItems.length>0 && find(body,"widget-size-"+widgets.desktopItems[0].id)===fixture.capturedEditor,same:!fixture.captured || widgets.desktopItems.length>0 && stub.widgetSurfaces["HEADLESS-1"].findWidget(widgets.desktopItems[0].id)===fixture.captured});}
   function point(name:string):string{const item=find(body,name);if(!item)throw Error("Missing "+name);const p=item.mapToItem(body,item.width/2,item.height/2);return JSON.stringify({x:p.x,y:p.y});}
   function widgetPoint(name:string):string{const card=stub.widgetSurfaces["HEADLESS-1"].findWidget(widgets.desktopItems[0].id);const target=find(card,name);if(!target)throw Error("Missing widget control "+name);const p=target.mapToItem(card,target.width/2,target.height/2);return JSON.stringify({x:card.x+p.x,y:card.y+p.y});}
   function capture():void{fixture.capturedEditor=find(body,"widget-size-"+widgets.desktopItems[0].id);fixture.captured=stub.widgetSurfaces["HEADLESS-1"].findWidget(widgets.desktopItems[0].id);}
@@ -101,6 +101,9 @@ try:
  click(point('widget-add-calendar'));wait(lambda:item()['type']=='calendar' and all(len(output['items'])==1 for output in state()['outputs']));assert item()['id']!=identifier;checks.append('Calendar can be added after an explicitly empty layout with a fresh identity')
  call('grim',str(out/('calendar-'+a.theme+'.png')))
  target=json.loads(ipc('widgetPoint','calendar-open-related'));click((target['x'],target['y']));wait(lambda:state()['activations']==1);key('-k','space');wait(lambda:state()['activations']==2);time.sleep(.2);assert state()['activations']==2;checks.append('Calendar related-content pointer and keyboard activation each dispatch exactly once')
+ for index in range(3):click(point('widget-add-clock'))
+ for index in range(24):key('-k','Tab')
+ wait(lambda:state()['scrollY']>0);checks.append('Keyboard traversal reveals controls below the widget editor viewport')
  assert not state()['error'],state()
  for name in ('shell.log','shell-restart.log'):
   text=(out/name).read_text();assert not any(marker in text for marker in ('TypeError:','ReferenceError:','Binding loop','Failed to load configuration','Cannot assign')),text
