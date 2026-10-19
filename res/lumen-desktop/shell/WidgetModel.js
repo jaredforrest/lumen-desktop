@@ -35,7 +35,8 @@ function dimensions(item,width,height,barHeight) {
 }
 function placed(item,output,index,width,height,barHeight,positionOverride) {
     const size=dimensions(item,width,height,barHeight);
-    const saved=position(positionOverride) || position(item.positions[output]) || {x:Math.min(.9,.02+(index%3)*.3),y:Math.min(.9,.03+Math.floor(index/3)*.28)};
+    const columns=Math.max(1,Math.floor((width-8)/(size.width+12)));
+    const saved=position(positionOverride) || position(item.positions[output]) || {x:(8+(index%columns)*(size.width+12))/Math.max(1,width-size.width),y:(barHeight+10+Math.floor(index/columns)*(size.height+12))/Math.max(1,height-size.height-80)};
     const left=Math.min(8,Math.max(0,width-size.width)),top=Math.min(barHeight+10,Math.max(0,height-size.height)),right=Math.max(left,width-size.width-8),bottom=Math.max(top,height-size.height-80);
     return {x:Math.max(left,Math.min(right,Math.round(saved.x*Math.max(0,width-size.width)))),y:Math.max(top,Math.min(bottom,Math.round(saved.y*Math.max(0,height-size.height-80)))),width:size.width,height:size.height};
 }

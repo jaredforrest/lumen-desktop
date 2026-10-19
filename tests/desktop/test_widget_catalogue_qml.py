@@ -22,6 +22,9 @@ with tempfile.TemporaryDirectory(prefix='lumen-widget-catalogue-') as directory:
 import Quickshell
 import "assets/shell" as D
 ShellRoot {
+ id:fixture
+ property var restored:null
+ Component {id:restorer;D.WidgetState {}}
  D.WidgetState {id:state}
  QtObject {id:stub;property var widgets:state;property date currentDate:new Date(2026,9,19,13,5);function showMenu(kind,output){}function openSettings(page){}function openCalendarAt(day,event){}}
  D.DesktopWidgetItem {id:card;shell:stub;descriptor:state.desktopItems[0] || {id:"fallback",type:"clock",size:"small",positions:{},hourCycle:"locale"};outputName:"test";widgetIndex:0;availableWidth:480;availableHeight:320;active:false}
@@ -37,7 +40,8 @@ ShellRoot {
   state.updateWidget("stale-id",{size:"small"});
   if(state.desktopItems[0].size!=="large")throw Error("Stale target");
  }catch(error){console.error("WIDGET_FAIL "+error);Qt.quit();}}}
- Timer {interval:600;running:true;onTriggered:{if(state.error)console.error("WIDGET_FAIL "+state.error);else console.log("WIDGET_PASS");Qt.quit();}}
+ Timer {interval:600;running:true;onTriggered:fixture.restored=restorer.createObject(fixture)}
+ Timer {interval:950;running:true;onTriggered:{if(state.error)console.error("WIDGET_FAIL "+state.error);else if(!fixture.restored || fixture.restored.desktopItems.length!==2 || fixture.restored.desktopItems[0].positions.test.x!==.25)console.error("WIDGET_FAIL Restart state");else console.log("WIDGET_PASS");Qt.quit();}}
 }''')
     command=['dbus-run-session','--config-file='+str(config),'--','bash','-c',prefix+'\nexport QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORMTHEME=generic QT_QUICK_BACKEND=software\nexec quickshell -p "$1"','fixture',str(qml)]
     result=subprocess.run(command,env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=15)

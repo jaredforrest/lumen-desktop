@@ -17,6 +17,7 @@ FocusScope {
     property var gesture:null
     readonly property var geometry:Model.placed(descriptor,outputName,widgetIndex,availableWidth,availableHeight,Theme.barHeight)
     readonly property string label:descriptor.type==="clock"?"Local time":"Calendar"
+    objectName:"desktop-widget-"+descriptor.id
     x:preview?preview.x:geometry.x;y:preview?preview.y:geometry.y;width:geometry.width;height:geometry.height
     opacity:monochrome?0.84:1
     function cancelMove(){gesture=null;preview=null;}
@@ -29,7 +30,7 @@ FocusScope {
     Connections {target:root.shell.widgets;function onPreferencesChanged(){root.cancelMove();}}
     PanelSurface {anchors.fill:parent;radius:18;clip:true
         Flickable {anchors.fill:parent;anchors.topMargin:26;visible:root.descriptor.type==="calendar";contentWidth:width;contentHeight:calendar.implicitHeight;clip:true;boundsBehavior:Flickable.StopAtBounds;ScrollBar.vertical:DesktopScrollBar {}
-            CalendarCard {id:calendar;width:parent.width;today:root.shell.currentDate;compact:true;agendaOnly:root.descriptor.size==="small" || root.descriptor.style==="agenda";monochrome:root.monochrome;reduceTransparency:root.shell.widgets.preferences.reduceTransparency || !!Theme.preferences.reduceTransparency;active:root.active && root.descriptor.type==="calendar"
+            CalendarCard {id:calendar;objectName:"widget-calendar-content";width:parent.width;today:root.shell.currentDate;compact:true;agendaOnly:root.descriptor.size==="small" || root.descriptor.style==="agenda";monochrome:root.monochrome;reduceTransparency:root.shell.widgets.preferences.reduceTransparency || !!Theme.preferences.reduceTransparency;active:root.active && root.descriptor.type==="calendar"
                 onOpenCalendar:root.shell.openCalendarAt(selected,null)
                 onEventRequested:(event,day)=>root.shell.openCalendarAt(day,event)
                 onAccountsRequested:root.shell.openSettings("Internet Accounts")
@@ -49,6 +50,7 @@ FocusScope {
     }
     PanelLabel {x:12;y:6;width:parent.width-70;text:root.label;font.pixelSize:Theme.textSize(11);font.weight:Font.DemiBold;color:Theme.colors.muted}
     Rectangle {id:handle;x:parent.width-44;y:3;width:38;height:23;radius:7;color:handle.activeFocus?Theme.colors.hover:"transparent";border.width:handle.activeFocus?2:0;border.color:Theme.colors.accent;activeFocusOnTab:true
+        objectName:"widget-move-"+root.descriptor.id
         onActiveFocusChanged:if(!activeFocus)root.cancelMove()
         Accessible.role:Accessible.Button;Accessible.name:"Move "+root.label+" widget. Space to begin, arrows to move, Return to place, Escape to cancel"
         Accessible.onPressAction:root.gesture?root.commitMove():root.beginMove(null)
