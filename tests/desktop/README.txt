@@ -144,3 +144,10 @@ This creates its own D-Bus daemon. It never contacts a physical power device.
 Python/QML backend tests and the JavaScript model check cover data bounds, low
 battery text semantics, accessible descriptions and frontend timeout/removal.
 Physical charging/discharging and exact reference geometry remain unverified.
+
+Files tabs/sidebar input regression:
+  desktop-test-python tests/desktop/files_layout_input.py --launcher /path/to/bin/lumen-desktop-shell --sway /path/to/bin/sway --pointer-tool /path/to/persistent-pointer/bin/wlrctl --output /tmp/lumen-files-layout
+Uses the test-pointer flake output, disposable content and a private session.
+Checks native pointer/keyboard disclosure, drag/keyboard resize, Escape cancel,
+stable tab reorder/close/history/selection and narrow window content bounds.
+See docs/files-layout.md for control semantics and the document-tab boundary.

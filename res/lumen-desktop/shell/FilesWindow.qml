@@ -3,6 +3,8 @@ import QtQuick.Controls
 import QtQuick.Window
 import QtQuick.Effects
 import Quickshell
+import "FilesTabModel.js" as TabModel
+import "FileLayoutModel.js" as LayoutModel
 
 FloatingWindow {
     id:root
@@ -27,7 +29,10 @@ FloatingWindow {
     property int selected:-1
     property var selectedPaths:[]
     property int selectionAnchor:-1
-    property var tabs:[{path:Quickshell.env("HOME"),history:[],historyIndex:-1}]
+    property int tabSerial:1
+    property var tabs:[TabModel.create("tab-1",Quickshell.env("HOME"))]
+    readonly property string activeTabId:(tabs[activeTab] || {}).id || ""
+    property string restoringTabId:""
     property int activeTab:0
     readonly property int tabHeight:tabs.length>1?30:0
     property string tagsTarget:""
@@ -44,10 +49,26 @@ FloatingWindow {
     FileInfoWindow {id:infoWindow}
     property var dragUris:[]
     function beginDrag(){if(dragUris.length)dragging=true;}
-    function newTab(){saveTab();tabs=tabs.concat([{path:service.path,history:[],historyIndex:-1}]);switchTab(tabs.length-1);}
-    function saveTab(){const next=tabs.slice();next[activeTab]={path:service.path,history:service.history.slice(),historyIndex:service.historyIndex};tabs=next;}
-    function switchTab(index){if(index===activeTab)return;saveTab();activeTab=index;service.history=tabs[index].history || [];service.historyIndex=tabs[index].historyIndex===undefined?-1:tabs[index].historyIndex;selectedPaths=[];filter.text="";service.query="";service.navigate(tabs[index].path,service.historyIndex);}
-    function closeTab(){if(tabs.length<2){visible=false;return;}const next=tabs.slice();next.splice(activeTab,1);tabs=next;activeTab=Math.min(activeTab,tabs.length-1);service.history=tabs[activeTab].history || [];service.historyIndex=tabs[activeTab].historyIndex;selectedPaths=[];navigate(tabs[activeTab].path);}
+    function newTab(){saveTab();const current=tabs[activeTab];const tab=TabModel.create("tab-"+(++tabSerial),current?current.path:service.path);tab.viewMode=service.viewMode;tabs=tabs.concat([tab]);switchTab(tabs.length-1);}
+    function saveTab(){
+        if(!activeTabId || (restoringTabId===activeTabId && service.busy))return;
+        tabs=TabModel.save(tabs,activeTabId,{path:service.path,history:service.history,historyIndex:service.historyIndex,selectedPaths:selectedPaths,selectedPath:current?current.path:"",selectionAnchor:selectionAnchor,query:filter.text,viewMode:service.viewMode});
+    }
+    function restoreTab(){
+        const tab=tabs[activeTab];if(!tab)return;
+        restoringTabId=tab.id;filterDelay.stop();selected=-1;selectedPaths=[];selectionAnchor=-1;
+        service.history=tab.history.slice();service.historyIndex=tab.historyIndex;service.viewMode=tab.viewMode || "grid";service.query=tab.query || "";filter.text=service.query;
+        service.navigate(tab.path,tab.historyIndex);
+    }
+    function switchTab(index){if(index===activeTab || index<0 || index>=tabs.length)return;saveTab();activeTab=index;restoreTab();}
+    function reorderTab(id,target){const active=activeTabId;saveTab();tabs=TabModel.reorder(tabs,id,target);activeTab=TabModel.indexOf(tabs,active);}
+    function closeTabId(id){
+        if(TabModel.indexOf(tabs,id)<0)return;
+        if(tabs.length<2){visible=false;return;}
+        const active=activeTabId;saveTab();const next=TabModel.remove(tabs,id,active);tabs=next.tabs;activeTab=TabModel.indexOf(tabs,next.activeId);
+        if(active!==next.activeId)restoreTab();
+    }
+    function closeTab(){closeTabId(activeTabId);}
     function duplicateSelected(){if(service.writable && service.path!=="trash:" && selectedPaths.length && !service.working)service.startJob("copy",selectedPaths,service.path,"keep-both");}
     function selectedUris(){return selectedPaths.map(p=>"file://"+p.split("/").map(encodeURIComponent).join("/"));}
     function isSelected(index){return service.rows[index] && selectedPaths.includes(service.rows[index].path);}
@@ -61,7 +82,11 @@ FloatingWindow {
     function addSidebar(){if(service.path==="trash:" || sidebarFavorites.some(item=>item.path===service.path) || sidebarFavorites.length>=32)return;service.favorites=sidebarFavorites.concat([{name:service.path.split("/").filter(Boolean).pop() || "Computer",path:service.path}]);}
     property bool previewOpen:false
     readonly property var current:service.rows[selected] || null
-    readonly property int sidebarWidth:width<720?160:190
+    property int sidebarDragWidth:-1
+    readonly property int sidebarMaximum:LayoutModel.sidebarMaximum(width)
+    readonly property int sidebarWidth:LayoutModel.sidebarWidth(sidebarDragWidth>=0?sidebarDragWidth:service.sidebarWidth,width)
+    function groupCollapsed(name){return Array.isArray(service.collapsedSidebarGroups) && service.collapsedSidebarGroups.includes(name);}
+    function collapseSidebar(name,value){let groups=Array.isArray(service.collapsedSidebarGroups)?service.collapsedSidebarGroups.slice():[];groups=groups.filter(group=>group!==name);if(value)groups.push(name);service.collapsedSidebarGroups=groups;}
     function fitScreen() {
         if(!visible || !screen)return;
         const fitWidth=Math.max(480,Math.min(width,screen.width-32));
@@ -106,7 +131,7 @@ FloatingWindow {
         else if(action==="home")navigate(Quickshell.env("HOME"));
         else dialogFor(action);
     }
-    function navigate(path){filter.text="";service.query="";service.navigate(path);}
+    function navigate(path){restoringTabId="";filterDelay.stop();filter.text="";service.query="";service.navigate(path);}
     function focusContents(){if(content.Window.window)content.Window.window.requestActivate();content.forceActiveFocus();activationTimer.epoch=shell.focusEpoch;activationTimer.restart();}
     Timer {id:activationTimer;property int epoch;interval:100;onTriggered:{if(epoch!==root.shell.focusEpoch)return;const window=root.shell.windows.find(w=>w.appId==="org.quickshell" && w.title===root.title);if(window)root.shell.focusWindow(window);}}
     function quickLookStep(delta){step(delta,false);if(current)shell.quickLookWindow.show(current.path,root);}
@@ -149,7 +174,14 @@ FloatingWindow {
         function onInformationReady(details){root.information=details;infoWindow.show(details);}
         function onApplicationsReady(apps,path){root.applications=apps;root.applicationsPath=path;openWith.open();}
         function onSelectedPath(path){
-            if(path==="@preserve"){root.selectedPaths=root.selectedPaths.filter(p=>root.service.rows.some(r=>r.path===p));root.selected=root.service.rows.findIndex(r=>root.selectedPaths.includes(r.path));}
+            if(root.restoringTabId===root.activeTabId){
+                const tab=root.tabs[root.activeTab];root.restoringTabId="";
+                root.selectedPaths=(tab.selectedPaths || []).filter(value=>root.service.rows.some(row=>row.path===value));
+                root.selected=root.service.rows.findIndex(row=>row.path===tab.selectedPath);
+                if(root.selected<0)root.selected=root.service.rows.findIndex(row=>root.selectedPaths.includes(row.path));
+                root.selectionAnchor=root.selected;
+            }
+            else if(path==="@preserve"){root.selectedPaths=root.selectedPaths.filter(p=>root.service.rows.some(r=>r.path===p));root.selected=root.service.rows.findIndex(r=>root.selectedPaths.includes(r.path));}
             else {root.selectedPaths=path?[path]:[];root.selected=root.service.rows.findIndex(r=>r.path===path);}
             root.saveTab();
         }
@@ -218,10 +250,8 @@ FloatingWindow {
         }
         ScrollView {id:favoritesScroll;x:12;y:66;width:root.sidebarWidth-24;height:parent.height-y-14;clip:true;ScrollBar.vertical:DesktopScrollBar {}
           Column {width:favoritesScroll.availableWidth;spacing:3
-            Row {width:parent.width;height:25
-                PanelLabel {x:8;width:parent.width-28;height:25;text:"Favourites";font.pixelSize:11;font.weight:Font.DemiBold;color:Theme.colors.muted}
-                AbstractButton {width:25;height:23;Accessible.name:"Add current folder to Sidebar";enabled:root.service.path!=="trash:" && !root.sidebarFavorites.some(item=>item.path===root.service.path) && root.sidebarFavorites.length<32;onClicked:root.addSidebar();contentItem:PanelLabel {text:"+";horizontalAlignment:Text.AlignHCenter}background:Rectangle {radius:5;color:parent.hovered?Theme.colors.hover:"transparent"}}
-            }
+            SidebarGroup {objectName:"files-sidebar-favourites";width:parent.width;title:"Favourites";collapsed:root.groupCollapsed("favourites");onCollapseRequested:value=>root.collapseSidebar("favourites",value)
+              accessory:Component {AbstractButton {width:25;height:23;Accessible.name:"Add current folder to Sidebar";enabled:root.service.path!=="trash:" && !root.sidebarFavorites.some(item=>item.path===root.service.path) && root.sidebarFavorites.length<32;onClicked:root.addSidebar();contentItem:PanelLabel {text:"+";horizontalAlignment:Text.AlignHCenter}background:Rectangle {radius:5;color:parent.hovered?Theme.colors.hover:"transparent"}}}
             Repeater {
                 model:root.sidebarFavorites
                 AbstractButton {
@@ -239,9 +269,10 @@ FloatingWindow {
                     }
                 }
             }
+            }
             Item {width:1;height:12}
+            SidebarGroup {objectName:"files-sidebar-locations";width:parent.width;title:"Locations";collapsed:root.groupCollapsed("locations");onCollapseRequested:value=>root.collapseSidebar("locations",value)
             ControlRow {width:parent.width;text:"Network…";onClicked:networkPopup.open()}
-            PanelLabel {x:8;height:23;text:"Locations";font.pixelSize:11;font.weight:Font.DemiBold;color:Theme.colors.muted}
             ControlRow {width:parent.width;text:"Computer";enabled:!root.service.busy;onClicked:root.navigate("/")}
             ControlRow {width:parent.width;text:"Trash";selected:root.service.path==="trash:";onClicked:root.navigate("trash:")}
             Repeater {model:root.service.volumes
@@ -250,7 +281,13 @@ FloatingWindow {
                     ControlRow {width:26;text:"⏏";enabled:modelData.eject;Accessible.name:"Eject "+modelData.name;onClicked:root.service.act("eject",{path:modelData.path})}
                 }
             }
+            }
           }
+        }
+        SidebarResizeHandle {id:sidebarResize;objectName:"files-sidebar-resize";x:root.sidebarWidth-4;y:57;height:parent.height-y;value:root.sidebarWidth;maximum:root.sidebarMaximum
+            onPreviewRequested:value=>root.sidebarDragWidth=value
+            onCommitted:value=>{root.service.sidebarWidth=value;root.sidebarDragWidth=-1;}
+            onCancelled:root.sidebarDragWidth=-1
         }
         Row {
             x:root.sidebarWidth+10;y:13;spacing:3
@@ -266,7 +303,7 @@ FloatingWindow {
                 }
             }
         }
-        PanelLabel {x:root.sidebarWidth+73;y:14;width:Math.max(50,parent.width-x-195);height:29;verticalAlignment:Text.AlignVCenter;text:root.service.path==="trash:"?"Trash":root.service.path.split("/").filter(Boolean).pop() || "Computer";textFormat:Text.PlainText;font.pixelSize:15;font.weight:Font.DemiBold}
+        PanelLabel {x:root.sidebarWidth+73;y:14;width:Math.max(0,parent.width-x-195);height:29;verticalAlignment:Text.AlignVCenter;text:root.service.path==="trash:"?"Trash":root.service.path.split("/").filter(Boolean).pop() || "Computer";textFormat:Text.PlainText;font.pixelSize:15;font.weight:Font.DemiBold}
         Row {
             anchors.right:parent.right;anchors.rightMargin:14;y:13;spacing:4
             DesktopComboBox {width:112;height:30;model:["Icons","List","Columns","Gallery"];currentIndex:["grid","list","columns","gallery"].indexOf(root.service.viewMode);Accessible.name:"Files view";onActivated:index=>root.service.viewMode=["grid","list","columns","gallery"][index]}
@@ -281,18 +318,11 @@ FloatingWindow {
                 }
             }
         }
-        Row {
-            x:root.sidebarWidth+10;y:58;height:root.tabHeight;visible:root.tabs.length>1;width:parent.width-x-10
-            Repeater {model:root.tabs
-                AbstractButton {required property var modelData;required property int index
-                    width:(parent.width-30)/root.tabs.length;height:28
-                    Accessible.name:modelData.path;Accessible.role:Accessible.PageTab;Accessible.selected:index===root.activeTab
-                    onClicked:root.switchTab(index)
-                    background:Rectangle {radius:6;color:parent.index===root.activeTab?Theme.colors.surface:parent.hovered?Theme.colors.hover:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline}
-                    contentItem:PanelLabel {text:modelData.path==="trash:"?"Trash":modelData.path.split("/").pop() || "Computer";horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter;font.pixelSize:12;leftPadding:8;rightPadding:8}
-                }
-            }
-            ControlRow {width:28;height:28;text:"+";Accessible.name:"New tab";onClicked:root.newTab()}
+        DocumentTabs {id:documentTabs;objectName:"files-tabs";x:root.sidebarWidth+10;y:58;width:parent.width-x-10;height:root.tabHeight;visible:root.tabs.length>1;tabs:root.tabs;activeId:root.activeTabId
+            onSelectRequested:id=>root.switchTab(TabModel.indexOf(root.tabs,id))
+            onCloseRequested:id=>root.closeTabId(id)
+            onMoveRequested:(id,target)=>root.reorderTab(id,target)
+            onNewRequested:root.newTab()
         }
         Item {id:dragGhost;width:1;height:1
             Drag.active:root.dragging

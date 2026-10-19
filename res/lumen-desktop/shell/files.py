@@ -107,10 +107,16 @@ def handle(data):
             if not isinstance(prefs,dict):prefs={}
             if action=='save-preferences':
                 incoming=data.get('preferences',{})
-                allowed={'view':['grid','list','columns','gallery'],'sort':['name','modified','size','kind'],'descending':[True,False],'hidden':[True,False],'foldersFirst':[True,False],'groupBy':['none','kind'],'favorites':None}
+                allowed={'view':['grid','list','columns','gallery'],'sort':['name','modified','size','kind'],'descending':[True,False],'hidden':[True,False],'foldersFirst':[True,False],'groupBy':['none','kind'],'favorites':None,'sidebarWidth':None,'collapsedSidebarGroups':None}
                 if not isinstance(incoming,dict) or any(key not in allowed for key in incoming):
                     raise ValueError('Unknown file preference')
                 for key,value in incoming.items():
+                    if key=='sidebarWidth':
+                        if type(value) is not int or not 120<=value<=360:raise ValueError('Sidebar width must be between 120 and 360 pixels')
+                        continue
+                    if key=='collapsedSidebarGroups':
+                        if not isinstance(value,list) or any(not isinstance(group,str) or group not in ('favourites','locations') for group in value) or len(value)!=len(set(value)):raise ValueError('Invalid sidebar groups')
+                        continue
                     if key=='favorites':
                         if value is not None:
                             if not isinstance(value,list) or len(value)>32:raise ValueError('Choose at most 32 sidebar destinations')

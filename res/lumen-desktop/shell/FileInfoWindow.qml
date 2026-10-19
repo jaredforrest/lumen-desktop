@@ -12,6 +12,6 @@ FloatingWindow {
         WindowControls {windowName:"File Info";canMinimize:false;canFullscreen:false;windowActive:body.Window.window?body.Window.window.active:false;onTriggered:root.visible=false}
         PanelLabel {x:100;y:14;visible:!Theme.nativeWindowFrame;width:parent.width-112;text:"Info";font.weight:Font.DemiBold}
         FileInfoPanel {x:16;y:Theme.nativeWindowFrame?14:58;width:parent.width-32;height:parent.height-y-16;details:root.details}
-        Shortcut {sequence:"Escape";onActivated:root.visible=false}
+        Shortcut {sequence:"Escape";enabled:root.visible;onActivated:root.visible=false}
     }
 }

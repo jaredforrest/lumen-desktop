@@ -18,6 +18,10 @@ Item {
     property bool writable:false
     property bool hidden:false
     property var favorites:null
+    property int sidebarWidth:190
+    property var collapsedSidebarGroups:[]
+    onSidebarWidthChanged:savePreferences()
+    onCollapsedSidebarGroupsChanged:savePreferences()
     property bool foldersFirst:true
     property string groupBy:"none"
     property string sort:"name"
@@ -26,7 +30,7 @@ Item {
     property bool persistViewPreferences:true
     property var columns:[]
     property var columnRequests:({})
-    function savePreferences(){if(preferencesLoaded && persistViewPreferences)send("save-preferences",{preferences:{view:viewMode,sort:sort,descending:descending,hidden:hidden,foldersFirst:foldersFirst,groupBy:groupBy,favorites:favorites}});}
+    function savePreferences(){if(preferencesLoaded && persistViewPreferences)send("save-preferences",{preferences:{view:viewMode,sort:sort,descending:descending,hidden:hidden,foldersFirst:foldersFirst,groupBy:groupBy,favorites:favorites,sidebarWidth:sidebarWidth,collapsedSidebarGroups:collapsedSidebarGroups}});}
     function loadColumns(){
         columnRequests={};columns=[];if(viewMode!=="columns" || path==="trash:")return;
         const ancestors=breadcrumbs.slice(-3);columns=ancestors.map(c=>({path:c.path,name:c.name,rows:[]}));
@@ -116,7 +120,7 @@ Item {
             try {
                 const data=JSON.parse(line);
                 if(data.action==="info"){root.informationReady(data.info || {error:data.error});return;}
-                if(data.action==="preferences"){const p=data.preferences || {};root.viewMode=p.view || "grid";root.sort=p.sort || "name";root.descending=!!p.descending;root.hidden=!!p.hidden;root.foldersFirst=p.foldersFirst!==false;root.groupBy=p.groupBy || "none";root.favorites=p.favorites===undefined?null:p.favorites;root.preferencesLoaded=true;root.refresh();return;}
+                if(data.action==="preferences"){const p=data.preferences || {};root.viewMode=p.view || "grid";root.sort=p.sort || "name";root.descending=!!p.descending;root.hidden=!!p.hidden;root.foldersFirst=p.foldersFirst!==false;root.groupBy=p.groupBy || "none";root.favorites=p.favorites===undefined?null:p.favorites;root.sidebarWidth=Number.isInteger(p.sidebarWidth)?Math.max(120,Math.min(360,p.sidebarWidth)):190;root.collapsedSidebarGroups=Array.isArray(p.collapsedSidebarGroups)?p.collapsedSidebarGroups.filter(group=>["favourites","locations"].includes(group)):[];root.preferencesLoaded=true;root.refresh();return;}
                 if(data.action==="save-preferences")return;
                 if(data.action==="column-list"){if(data.id in root.columnRequests){const columns=root.columns.slice();const i=root.columnRequests[data.id];columns[i]=Object.assign({},columns[i],{rows:data.rows || [],error:data.error || ""});root.columns=columns;}return;}
                 if(data.event==="changed"){watchRefresh.restart();return;}
