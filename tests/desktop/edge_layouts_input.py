@@ -1,6 +1,7 @@
 """Physical drag previews and placement on a private two-output compositor."""
 import argparse,json,os,select,signal,socket,struct,subprocess as sp,tempfile,time
 from pathlib import Path
+from private_native_bus import start_private_bus
 p=argparse.ArgumentParser();p.add_argument('--sway',required=True);p.add_argument('--pointer',required=True);p.add_argument('--keyboard',required=True);p.add_argument('--lock',required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--effects',action='store_true');p.add_argument('--quickshell');p.add_argument('--constraint-client');p.add_argument('--constraints-only',action='store_true');a=p.parse_args();a.output.mkdir(parents=True,exist_ok=False);processes=[];events=[]
 def wait(fn):
  end=time.monotonic()+10
@@ -25,6 +26,7 @@ with tempfile.TemporaryDirectory(prefix='lumen-edge-') as private:
  def window():return next((x for x in nodes(sway('-t','get_tree')) if x.get('app_id')==subject_app),None)
  config=a.output/'sway.conf';config.write_text('output HEADLESS-1 resolution 1280x720 position 0 0\noutput HEADLESS-2 resolution 1000x800 position 1280 0\nseat seat0 fallback true\nfloating_modifier Mod4 normal\ndefault_border normal 2\n')
  try:
+  start_private_bus(env,a.output,processes)
   launch([a.sway,'--unsupported-gpu','-c',str(config)],'sway.log');env['SWAYSOCK']=str(wait(lambda:next(Path(private).glob('sway-ipc.*.sock'),None)));env['WAYLAND_DISPLAY']=wait(lambda:next((p.name for p in Path(private).glob('wayland-*') if not p.name.endswith('.lock')),None));assert sway('-t','get_version')['native_edge_tiling']
   if a.quickshell:
    fixture=a.output/'bar.qml';fixture.write_text('import QtQuick\nimport Quickshell\nimport Quickshell.Wayland\nShellRoot {Variants {model:Quickshell.screens;PanelWindow {required property var modelData;screen:modelData;anchors {top:true;left:true;right:true}implicitHeight:40;exclusiveZone:40;color:"#242424";WlrLayershell.layer:WlrLayer.Top}}}')

@@ -1,6 +1,7 @@
 """Disposable native parent/modal focus and actual keyboard-recipient regression."""
 import argparse,json,os,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
+from private_native_bus import start_private_bus
 p=argparse.ArgumentParser();p.add_argument('--sway',required=True);p.add_argument('--client',required=True);p.add_argument('--keyboard',required=True);p.add_argument('--output',required=True,type=Path);a=p.parse_args()
 a.output.mkdir(parents=True,exist_ok=False)
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'res/lumen-desktop/runtime'))
@@ -44,6 +45,7 @@ with tempfile.TemporaryDirectory(prefix='lumen-window-relations-') as private:
  def command(text):
   before=(a.output/'client.log').read_text();client.stdin.write(text+'\n');client.stdin.flush();wait(lambda:'ack '+text in (a.output/'client.log').read_text()[len(before):])
  try:
+  start_private_bus(env,a.output,processes)
   config=a.output/'sway.conf';config.write_text('output HEADLESS-1 resolution 1440x1000\nxwayland disable\nseat seat0 fallback true\nfocus_follows_mouse no\n')
   launch([a.sway,'--unsupported-gpu','-c',str(config)],'sway.log')
   wait(lambda:list(Path(private).glob('sway-ipc*.sock')))

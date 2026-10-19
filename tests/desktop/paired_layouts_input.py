@@ -1,6 +1,7 @@
 """Native paired-full-output identity, divider and restore lifecycle in isolation."""
 import argparse,json,os,signal,subprocess as sp,tempfile,time,sys
 from pathlib import Path
+from private_native_bus import start_private_bus
 p=argparse.ArgumentParser();p.add_argument('--sway',required=True);p.add_argument('--pointer',required=True);p.add_argument('--keyboard',required=True);p.add_argument('--constraint-client',required=True);p.add_argument('--effects',action='store_true');p.add_argument('--divider-only',action='store_true');p.add_argument('--output',type=Path,required=True);a=p.parse_args();a.output.mkdir(parents=True,exist_ok=False);processes=[]
 def wait(fn):
  end=time.monotonic()+12
@@ -43,6 +44,7 @@ with tempfile.TemporaryDirectory(prefix='lumen-pair-') as private:
  def begin_divider(cid):
   parent=full_parent(cid);x=parent['rect']['x']+parent['rect']['width']*ratio(cid);y=parent['rect']['y']+200;at(x,y);motion(.1,0);button('p')
  try:
+  start_private_bus(env,a.output,processes)
   config=a.output/'sway.conf';config.write_text('output HEADLESS-1 resolution 1280x720 position 0 0\noutput HEADLESS-2 resolution 1000x800 position 1280 0\nseat seat0 fallback true\ndefault_border normal 2\n')
   launch([a.sway,'--unsupported-gpu','-c',str(config)],'sway.log');env['SWAYSOCK']=str(wait(lambda:next(Path(private).glob('sway-ipc*.sock'),None)));env['WAYLAND_DISPLAY']=wait(lambda:next((p.name for p in Path(private).glob('wayland-*') if not p.name.endswith('.lock')),None));assert query('get_version')['native_paired_layouts']
   pointer=launch([a.pointer,'pointer','move','0','0'],'pointer.log',stdin=sp.PIPE,text=True);motion(0,0)
