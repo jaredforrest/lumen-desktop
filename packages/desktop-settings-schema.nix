@@ -77,6 +77,7 @@ let
           ids = [ "battery" "sound" "focus" "search" "controls" ];
         in {
           order = mkOption { type = types.addCheck (types.listOf (types.enum ids)) (items: lib.length items == lib.length ids && lib.length items == lib.length (lib.unique items)); default = ids; };
+          fullscreenVisibility = mkOption { type = types.enum [ "automatic" "always" ]; default = "automatic"; description = "Menu bar visibility in fullscreen; desktop visibility is unchanged."; };
           hourCycle = mkOption { type = types.enum [ "locale" "12" "24" ]; default = "locale"; };
           locale = mkOption { type = types.strMatching "^$|[a-z]{2,3}(_[A-Z]{2})?"; default = ""; };
           showDate = mkOption { type = types.bool; default = true; };

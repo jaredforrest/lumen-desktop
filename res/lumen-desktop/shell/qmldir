@@ -131,3 +131,5 @@ WindowGroupSelector 1.0 WindowGroupSelector.qml
 GroupMembershipDrag 1.0 GroupMembershipDrag.qml
 GroupMembershipStrip 1.0 GroupMembershipStrip.qml
 GroupDragHandle 1.0 GroupDragHandle.qml
+
+MenuVisibilityState 1.0 MenuVisibilityState.qml

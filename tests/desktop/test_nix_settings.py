@@ -28,10 +28,11 @@ class NixSettingsTest(unittest.TestCase):
         self.directory.cleanup()
 
     def test_menu_bar_typed_presentation(self):
-        values=settings.transaction('menuBar', {'hourCycle':'24','locale':'fr_FR','showSeconds':True},merge=True)
+        values=settings.transaction('menuBar', {'hourCycle':'24','locale':'fr_FR','showSeconds':True,'fullscreenVisibility':'always'},merge=True)
         self.assertEqual(values['menuBar']['hourCycle'],'24')
+        self.assertEqual(values['menuBar']['fullscreenVisibility'],'always')
         self.assertEqual(values['menuBar']['order'],['battery','sound','focus','search','controls'])
-        for invalid in ({'hourCycle':'25'},{'locale':'../bad'},{'showSeconds':1},{'order':['sound','sound']}):
+        for invalid in ({'fullscreenVisibility':'hidden'},{'fullscreenVisibility':True},{'hourCycle':'25'},{'locale':'../bad'},{'showSeconds':1},{'order':['sound','sound']}):
             with self.assertRaises(ValueError):settings.transaction('menuBar',invalid,merge=True)
         self.assertEqual(settings.transaction('menuBar',{'showDate':False},merge=True)['menuBar']['locale'],'fr_FR')
 

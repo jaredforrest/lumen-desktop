@@ -12,6 +12,10 @@ def ratio(first,second):
     a,b=sorted((luminance(first),luminance(second)))
     return (b+.05)/(a+.05)
 class AppearancePreferences(unittest.TestCase):
+    def test_fullscreen_menu_choices(self):
+        self.assertEqual(module.MENU_DEFAULTS['fullscreenVisibility'],'automatic')
+        for value in ('automatic','always'):self.assertTrue(module.valid_menu('fullscreenVisibility',value))
+        for value in ('hidden','never',True,None,1):self.assertFalse(module.valid_menu('fullscreenVisibility',value))
     def test_text_scale_is_closed_and_rejects_booleans(self):
         for value in (1,1.15,1.3,1.5):self.assertTrue(module.valid('textScale',value))
         for value in (True,False,0,2,'1.5',1.25,None):self.assertFalse(module.valid('textScale',value))

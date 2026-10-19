@@ -16,6 +16,8 @@ ShellRoot {
     signal requestMenu(string name, string outputName)
     signal requestDockFocus(string outputName)
     signal dismissPopups(string owner)
+    MenuVisibilityState {id:menuVisibilityState}
+    property alias menuVisibility:menuVisibilityState
     property var bars: ({})
     property string popupOwner: ""
     property alias exportedMenu: exported
