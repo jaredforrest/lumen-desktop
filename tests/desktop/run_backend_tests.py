@@ -15,6 +15,13 @@ parser.add_argument('--settings-command',default=os.environ.get('LUMEN_TEST_SETT
 a=parser.parse_args();a.output.mkdir(parents=True,exist_ok=False)
 env=dict(os.environ)
 env['PYTHONWARNINGS']='error'
+launcher=env.get('LUMEN_TEST_SHELL_LAUNCHER') or shutil.which('lumen-desktop-shell')
+if not launcher or not Path(launcher).is_file():
+    raise RuntimeError('Build the shell and set LUMEN_TEST_SHELL_LAUNCHER to its executable')
+launcher=Path(launcher).resolve()
+env['LUMEN_TEST_SHELL_LAUNCHER']=str(launcher)
+# Legacy fixtures using command discovery must test the same selected package.
+env['PATH']=str(launcher.parent)+os.pathsep+env.get('PATH','')
 # Never pass production deployment settings to tests of configuration writes.
 for key in list(env):
     if key.startswith('LUMEN_NIX_SETTINGS_'):env.pop(key)

@@ -3,7 +3,7 @@ import json,os,re,shutil,subprocess,tempfile,unittest
 from pathlib import Path
 class DesktopLayoutQt(unittest.TestCase):
     def test_drag_metadata_grouping_rename_and_restart(self):
-        assets=Path(__file__).resolve().parents[2]/'res/lumen-desktop/shell';launcher=Path(shutil.which('lumen-desktop-shell'));prefix=re.split(r'\n[ \t]*exec quickshell ',launcher.read_text(),maxsplit=1)[0];raw=subprocess.check_output(['bash','-c',prefix+'\nexec env -0']);env=dict(value.decode().split('=',1) for value in raw.split(b'\0') if b'=' in value)
+        assets=Path(__file__).resolve().parents[2]/'res/lumen-desktop/shell';launcher=Path(os.environ.get('LUMEN_TEST_SHELL_LAUNCHER') or shutil.which('lumen-desktop-shell'));prefix=re.split(r'\n[ \t]*exec quickshell ',launcher.read_text(),maxsplit=1)[0];raw=subprocess.check_output(['bash','-c',prefix+'\nexec env -0']);env=dict(value.decode().split('=',1) for value in raw.split(b'\0') if b'=' in value)
         with tempfile.TemporaryDirectory() as temporary:
             folder=Path(temporary)/'Desktop';folder.mkdir();(folder/'one.txt').write_text('unchanged')
             env.update(HOME=temporary,XDG_RUNTIME_DIR=temporary,XDG_STATE_HOME=temporary,XDG_CONFIG_HOME=temporary,XDG_DATA_HOME=temporary,XDG_CACHE_HOME=temporary,QT_QPA_PLATFORM='offscreen',QT_QUICK_BACKEND='software',QT_QPA_PLATFORMTHEME='generic',QT_ACCESSIBILITY='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
