@@ -31,6 +31,8 @@ ShellRoot {
   if(!status.Accessible.name.startsWith("Error: ") || status.Accessible.description!=="error")throw Error("Error is only a colour");
   status.severity="success";
   if(!status.Accessible.name.startsWith("Success: "))throw Error("Success is only a colour");
+  status.severity="warning";
+  if(!status.Accessible.name.startsWith("Warning: ") || status.Accessible.description!=="warning")throw Error("Warning is only a colour");
   if(remove.enabled || !remove.destructive || remove.Accessible.name!=="Delete Fixture")throw Error("Destructive/disabled action identity missing");
   console.log("SEMANTIC_STATES_PASS");Qt.quit();
  }catch(error){console.error("SEMANTIC_STATES_FAIL "+error);Qt.quit();}}}
