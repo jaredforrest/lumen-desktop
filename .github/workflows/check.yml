@@ -105,7 +105,7 @@ jobs:
             artifacts/window-groups-*
             artifacts/dialog-manager-lifetime-*
             artifacts/desktop-lifecycle-*
-            artifacts/widget-visibility-*
+            artifacts/widget-visibility*
             artifacts/screen-saver*
             artifacts/calendar-widget*
             artifacts/input-settings
