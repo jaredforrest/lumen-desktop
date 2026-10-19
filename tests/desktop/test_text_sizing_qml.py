@@ -19,6 +19,7 @@ import QtQuick.Window
 import Quickshell
 import "assets/shell" as D
 ShellRoot {
+ D.DesktopComboBox {id:baseline;width:400;model:["Standard"]}
  Window {visible:true;width:250;height:800
   Column {width:190;spacing:10
    D.SettingsToggle {id:toggle;width:190;text:"Vergrößerte Benutzeroberfläche vollständig anzeigen";detail:"Lange übersetzte Erläuterungen bleiben vollständig lesbar und überdecken keine Schalter."}
@@ -39,6 +40,7 @@ ShellRoot {
   if(toggle.height<=58 || row.height<=46 || button.height<=28 || combo.height<=30)throw Error("Controls failed to grow");
   D.Theme.preferences={textScale:1};
   if(D.Theme.textSize(13)!==13)throw Error("Restore default text size");
+  if(baseline.font.pixelSize!==13 || baseline.contentItem.font.pixelSize!==13 || baseline.height!==30)throw Error("Default combo text/height changed");
   console.log("TEXT_SIZING_PASS");Qt.quit();
  }catch(error){console.error("TEXT_SIZING_FAIL "+error);Qt.quit();}}}
 }''')

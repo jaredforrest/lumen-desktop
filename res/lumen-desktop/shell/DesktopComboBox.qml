@@ -6,7 +6,7 @@ ComboBox {
     onCountChanged:if(count>0 && currentIndex<0)currentIndex=0
     implicitHeight:Math.max(30,displayLabel.implicitHeight+12)
     font.family:Theme.font
-    font.pixelSize:Theme.textSize(12)
+    font.pixelSize:Theme.textSize(13)
     leftPadding:10;rightPadding:28
     contentItem:PanelLabel {id:displayLabel;font:root.font;text:root.displayText;wrapMode:Text.Wrap;verticalAlignment:Text.AlignVCenter;elide:Text.ElideNone;opacity:root.enabled?1:0.45}
     indicator:PanelLabel {x:root.width-22;y:(root.height-height)/2;text:"⌄";font.pixelSize:Theme.textSize(15)}
