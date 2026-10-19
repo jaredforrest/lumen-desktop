@@ -1,0 +1,174 @@
+--- a/sway/input/cursor.c
++++ b/sway/input/cursor.c
+@@ -1,4 +1,7 @@
+ #include <assert.h>
++#include <json-c/json.h>
++#include <wlr/types/wlr_output_layout.h>
++#include "sway/ipc-server.h"
+ #include <math.h>
+ #include <libevdev/libevdev.h>
+ #include <linux/input-event-codes.h>
+@@ -287,6 +290,105 @@
+ 	wl_event_source_timer_update(cursor->hide_source, cursor_get_timeout(cursor));
+ }
+ 
++/* Corner occupancy is driven only by physical pointer motion. */
++static const char *hot_corner_names[] = {
++	NULL, "top-left", "top-right", "bottom-left", "bottom-right"
++};
++
++static struct sway_output *hot_corner_output(struct sway_cursor *cursor) {
++	for (int i = 0; i < root->outputs->length; ++i) {
++		struct sway_output *output = root->outputs->items[i];
++		if (output->node.id == cursor->hot_corner_output_id) {
++			return output;
++		}
++	}
++	return NULL;
++}
++
++static void hot_corner_emit(struct sway_cursor *cursor,
++		struct sway_output *output, int corner, bool adjacent) {
++	json_object *event = json_object_new_object();
++	json_object_object_add(event, "kind", json_object_new_string("lumen-corner"));
++	json_object_object_add(event, "version", json_object_new_int(1));
++	json_object_object_add(event, "corner", corner ?
++		json_object_new_string(hot_corner_names[corner]) : NULL);
++	json_object_object_add(event, "output", json_object_new_string(
++		output ? output->wlr_output->name : "unavailable"));
++	json_object_object_add(event, "locked",
++		json_object_new_boolean(server.session_lock.lock != NULL));
++	json_object_object_add(event, "fullscreen", json_object_new_boolean(
++		root->fullscreen_global || (output && output->current.active_workspace &&
++		output->current.active_workspace->fullscreen)));
++	json_object_object_add(event, "adjacent", json_object_new_boolean(adjacent));
++	json_object *modifiers = json_object_new_array();
++	struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(cursor->seat->wlr_seat);
++	uint32_t mods = keyboard ? wlr_keyboard_get_modifiers(keyboard) : 0;
++	const uint32_t bits[] = { WLR_MODIFIER_SHIFT, WLR_MODIFIER_CTRL,
++		WLR_MODIFIER_ALT, WLR_MODIFIER_LOGO };
++	const char *names[] = { "shift", "control", "alt", "super" };
++	for (size_t i = 0; i < sizeof(bits) / sizeof(bits[0]); ++i) {
++		if (mods & bits[i]) {
++			json_object_array_add(modifiers, json_object_new_string(names[i]));
++		}
++	}
++	json_object_object_add(event, "modifiers", modifiers);
++	ipc_event_tick(json_object_to_json_string_ext(event, JSON_C_TO_STRING_PLAIN));
++	json_object_put(event);
++}
++
++void cursor_hot_corners_lock_changed(void) {
++	struct sway_seat *seat;
++	wl_list_for_each(seat, &server.input->seats, link) {
++		/* Preserve occupancy across lock/unlock: returning cannot re-enter. */
++		hot_corner_emit(seat->cursor, hot_corner_output(seat->cursor), 0, false);
++	}
++}
++
++static void hot_corner_motion(struct sway_cursor *cursor) {
++	double x = cursor->cursor->x, y = cursor->cursor->y;
++	if (cursor->hot_corner) {
++		if (hot_corner_output(cursor) &&
++				fabs(x - cursor->hot_corner_x) <= 8 &&
++				fabs(y - cursor->hot_corner_y) <= 8) {
++			return;
++		}
++		hot_corner_emit(cursor, hot_corner_output(cursor), 0, false);
++		cursor->hot_corner = 0;
++	}
++	struct wlr_output *wlr_output = wlr_output_layout_output_at(
++		root->output_layout, x, y);
++	if (!wlr_output) {
++		return;
++	}
++	struct sway_output *output = wlr_output->data;
++	struct wlr_box box;
++	wlr_output_layout_get_box(root->output_layout, wlr_output, &box);
++	bool left = x - box.x <= 1, right = box.x + box.width - x <= 1;
++	bool top = y - box.y <= 1, bottom = box.y + box.height - y <= 1;
++	int corner = top ? (left ? 1 : right ? 2 : 0) :
++		bottom ? (left ? 3 : right ? 4 : 0) : 0;
++	if (!corner) {
++		return;
++	}
++	cursor->hot_corner = corner;
++	cursor->hot_corner_output_id = output->node.id;
++	cursor->hot_corner_x = left ? box.x : box.x + box.width;
++	cursor->hot_corner_y = top ? box.y : box.y + box.height;
++	bool adjacent = false;
++	for (int dx = -1; dx <= 1; dx += 2) {
++		for (int dy = -1; dy <= 1; dy += 2) {
++			struct wlr_output *neighbor = wlr_output_layout_output_at(
++				root->output_layout, cursor->hot_corner_x + dx * 0.5,
++				cursor->hot_corner_y + dy * 0.5);
++			adjacent |= neighbor && neighbor != wlr_output;
++		}
++	}
++	/* A drag or locked entry still occupies the corner until an actual leave. */
++	hot_corner_emit(cursor, output,
++		(cursor->pressed_button_count || server.session_lock.lock) ? 0 : corner,
++		adjacent);
++}
++
+ void pointer_motion(struct sway_cursor *cursor, uint32_t time_msec,
+ 		struct wlr_input_device *device, double dx, double dy,
+ 		double dx_unaccel, double dy_unaccel) {
+@@ -317,6 +419,9 @@
+ 	}
+ 
+ 	wlr_cursor_move(cursor->cursor, device, dx, dy);
++	if (device && device->type == WLR_INPUT_DEVICE_POINTER) {
++		hot_corner_motion(cursor);
++	}
+ 
+ 	seatop_pointer_motion(cursor->seat, time_msec);
+ }
+--- a/include/sway/input/cursor.h
++++ b/include/sway/input/cursor.h
+@@ -18,6 +18,9 @@
+ struct sway_cursor {
+ 	struct sway_seat *seat;
+ 	struct wlr_cursor *cursor;
++	size_t hot_corner_output_id;
++	int hot_corner;
++	double hot_corner_x, hot_corner_y;
+ 	uint64_t lumen_titlebar_id;
+ 	uint32_t lumen_titlebar_time;
+ 	double lumen_titlebar_x, lumen_titlebar_y;
+@@ -102,6 +105,7 @@
+  */
+ void cursor_rebase(struct sway_cursor *cursor);
+ void cursor_rebase_all(void);
++void cursor_hot_corners_lock_changed(void);
+ void cursor_update_image(struct sway_cursor *cursor, struct sway_node *node);
+ 
+ void cursor_handle_activity_from_idle_source(struct sway_cursor *cursor,
+--- a/sway/lock.c
++++ b/sway/lock.c
+@@ -200,6 +200,7 @@
+ 
+ 	if (server.session_lock.lock == lock) {
+ 		server.session_lock.lock = NULL;
++		cursor_hot_corners_lock_changed();
+ 	}
+ 
+ 	if (!lock->abandoned) {
+@@ -300,6 +301,7 @@
+ 
+ 	wlr_session_lock_v1_send_locked(lock);
+ 	server.session_lock.lock = sway_lock;
++	cursor_hot_corners_lock_changed();
+ 
+ 	// The lock screen covers everything, so check if any active inhibition got
+ 	// deactivated due to lost visibility.
+--- a/sway/ipc-json.c
++++ b/sway/ipc-json.c
+@@ -229,6 +229,7 @@
+ 	sscanf(SWAY_VERSION, "%d.%d.%d", &major, &minor, &patch);
+ 
+ 	json_object_object_add(version, "human_readable", json_object_new_string(SWAY_VERSION));
++	json_object_object_add(version, "native_hot_corners", json_object_new_boolean(true));
+ 	json_object_object_add(version, "native_window_controls", json_object_new_boolean(true));
+ 	json_object_object_add(version, "window_placement_preferences", json_object_new_boolean(true));
+ 	json_object_object_add(version, "native_window_layouts", json_object_new_boolean(true));
