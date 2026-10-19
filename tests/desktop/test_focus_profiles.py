@@ -29,9 +29,17 @@ with tempfile.TemporaryDirectory() as directory:
  assert path.stat().st_mode&0o777==0o600
  restored=f.Focus(path);assert restored.state()['active']=='work'
  # Wall clock forwards and suspend-aware monotonic expiry independently clear.
- with patch.object(f.time,'time',return_value=engine.until+1):assert engine.state()['active']==''
+ with patch.object(f.time,'time',return_value=engine.until+1):
+  state=engine.state()
+  assert state['scheduled'] and state['until']==0 and engine.manual is None
  engine.command({'profile':'work','seconds':3600})
- with patch.object(engine,'boot_time',return_value=engine.boot_deadline+1),patch.object(f.time,'time',return_value=1):assert engine.state()['active']==''
+ with patch.object(engine,'boot_time',return_value=engine.boot_deadline+1),patch.object(f.time,'time',return_value=1):
+  state=engine.state()
+  assert state['scheduled'] and state['until']==0 and engine.manual is None
+ # Expiry restores automatic scheduling, including a currently matching profile.
+ engine.command({'profile':'quiet','seconds':3600})
+ with patch.object(f.time,'time',return_value=engine.until+1),patch.object(f,'scheduled',side_effect=lambda item,now:item['id']=='work'):
+  assert engine.state()['active']=='work' and engine.manual is None
  engine.command({'profile':''});assert engine.state()['active']=='' and not engine.state()['scheduled']
  engine.command({'profile':None});assert engine.state()['scheduled']
  for bad in [dict(config,allowCritical='yes'),dict(config,allowedApps=['']),dict(config,schedules=[dict(days=[True],start=1,end=2)]),dict(config,schedules=[dict(days=[1],start=2,end=2)]),dict(config,schedules=[dict(days=[1],start=1,end=1440)])]:
