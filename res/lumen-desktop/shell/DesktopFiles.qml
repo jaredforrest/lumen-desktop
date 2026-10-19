@@ -2,12 +2,21 @@ import QtQuick
 import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
+import "DesktopLayoutModel.js" as Layout
 
 // An opt-in owned surface. The surrounding layer chooses its output and mask.
 Item {
     id:root
     required property var shell
     property bool active:false
+    DesktopLayoutState {id:arrangement;directory:root.directory;rows:root.service.rows;listingBusy:root.service.busy===true;active:root.active}
+    readonly property var displayItems:Layout.build(active?service.rows:[],arrangement.layout,arrangement.expanded,stage.width,stage.height,Date.now())
+    readonly property var inputRectangles:trashConfirmation.visible || editor.visible || actions.visible?[{x:stage.x,y:stage.y,width:stage.width,height:stage.height}]:displayItems.filter(item=>!item.overflow).map(item=>({x:stage.x+item.x,y:stage.y+item.y,width:item.width,height:item.height}))
+    readonly property int overflowCount:displayItems.filter(item=>item.overflow).length
+    readonly property var desktopLayout:arrangement.layout
+    function grouping(mode){selectedPaths=[];currentPath="";anchorPath="";arrangement.group(mode);}
+    function desktopActions(){selectedPaths=[];currentPath="";anchorPath="";actions.open();focusContents();}
+
     property bool resolveDirectory:true
     property string directory:""
     property string sort:"name"
@@ -35,7 +44,7 @@ Item {
         else if(primary)selectedPaths=selectedPaths.includes(row.path)?selectedPaths.filter(path=>path!==row.path):selectedPaths.concat([row.path]);
         else selectedPaths=[row.path];
         if(!((modifiers || 0)&Qt.ShiftModifier))anchorPath=row.path;
-        currentPath=row.path;grid.positionViewAtIndex(index,GridView.Contain);focusContents();
+        currentPath=row.path;focusContents();
     }
     function step(delta,modifiers){const index=service.rows.findIndex(row=>row.path===currentPath);choose(index<0?(delta<0?service.rows.length-1:0):Math.max(0,Math.min(service.rows.length-1,index+delta)),modifiers || 0);}
     function quickLookStep(delta){step(delta);if(current)shell.quickLookWindow.show(current.path,root);}
@@ -74,8 +83,8 @@ Item {
     }
     Item {
         id:stage
-        anchors {top:parent.top;right:parent.right;bottom:parent.bottom;topMargin:Theme.barHeight+16;rightMargin:Theme.preferences.dockPosition==="right"?Math.min(parent.width-110,(Theme.preferences.dockSize || 48)+100):16;bottomMargin:110}
-        width:Math.max(110,Math.min(432,parent.width*0.46))
+        anchors {top:parent.top;right:parent.right;bottom:parent.bottom;topMargin:Theme.barHeight+16;left:parent.left;leftMargin:Theme.preferences.dockPosition==="left"?(Theme.preferences.dockSize || 48)+100:16;rightMargin:Theme.preferences.dockPosition==="right"?Math.min(parent.width-110,(Theme.preferences.dockSize || 48)+100):16;bottomMargin:110}
+
         focus:root.keyboardActive
         Keys.onPressed:event=>{
             const primary=event.modifiers&(Qt.ControlModifier|Qt.MetaModifier);
@@ -97,27 +106,40 @@ Item {
             else {event.accepted=false;return;}
             event.accepted=true;
         }
-        GridView {
-            id:grid;anchors.fill:parent;clip:true;cellWidth:108;cellHeight:100;flow:GridView.FlowTopToBottom;layoutDirection:Qt.RightToLeft
-            model:root.active?root.service.rows:[]
-            ScrollBar.horizontal:DesktopScrollBar {}
-            delegate:AbstractButton {
-                required property var modelData
-                required property int index
-                width:108;height:100
-                Accessible.name:modelData.name;Accessible.role:Accessible.ListItem;Accessible.selected:root.selectedPaths.includes(modelData.path)
-                background:Rectangle {radius:7;color:root.selectedPaths.includes(parent.modelData.path)?Theme.colors.accent:parent.hovered?"#30303030":"transparent";border.color:parent.activeFocus?Theme.colors.text:"transparent"}
-                contentItem:Item {
-                    SystemGlyph {anchors.horizontalCenter:parent.horizontalCenter;y:8;width:46;height:46;name:modelData.directory?"folder":"document";ink:root.selectedPaths.includes(modelData.path)?Theme.colors.selectedText:Theme.colors.accent}
-                    PanelLabel {x:5;y:61;width:98;height:34;text:(modelData.link?"↗ ":"")+modelData.name;textFormat:Text.PlainText;wrapMode:Text.Wrap;maximumLineCount:2;elide:Text.ElideRight;horizontalAlignment:Text.AlignHCenter;font.pixelSize:11;color:root.selectedPaths.includes(modelData.path)?Theme.colors.selectedText:"white";style:Text.Outline;styleColor:"#66000000"}
+        Item {
+            id:grid;anchors.fill:parent
+            Repeater {model:root.displayItems
+                AbstractButton {
+                    id:tile
+                    required property var modelData
+                    required property int index
+                    readonly property var fileRow:modelData.row || ({path:"",name:modelData.label,directory:false})
+                    x:modelData.x;y:modelData.y;width:modelData.width;height:modelData.height;visible:!modelData.overflow
+                    Accessible.name:modelData.stack?modelData.label+" stack, "+modelData.children.length+" items":fileRow.name
+                    onClicked:{if(modelData.stack){root.focusContents();arrangement.toggle(modelData.key);}else root.choose(modelData.sourceIndex,0);}
+                    Keys.onPressed:event=>{if(modelData.stack && [Qt.Key_Return,Qt.Key_Enter,Qt.Key_Space].includes(event.key)){arrangement.toggle(modelData.key);event.accepted=true;}else event.accepted=false;}
+                    Accessible.role:Accessible.ListItem;Accessible.selected:!modelData.stack && root.selectedPaths.includes(fileRow.path)
+                    background:Rectangle {radius:7;color:root.selectedPaths.includes(tile.fileRow.path)?Theme.colors.accent:tile.hovered?"#30303030":"transparent";border.color:tile.activeFocus?Theme.colors.text:"transparent"}
+                    contentItem:Item {
+                        SystemGlyph {anchors.horizontalCenter:parent.horizontalCenter;y:8;width:46;height:46;name:tile.modelData.stack || tile.fileRow.directory?"folder":"document";ink:root.selectedPaths.includes(tile.fileRow.path)?Theme.colors.selectedText:Theme.colors.accent}
+                        PanelLabel {x:5;y:61;width:98;height:34;text:tile.modelData.stack?tile.modelData.label+" ("+tile.modelData.children.length+")":(tile.fileRow.link?"↗ ":"")+tile.fileRow.name;textFormat:Text.PlainText;wrapMode:Text.Wrap;maximumLineCount:2;elide:Text.ElideRight;horizontalAlignment:Text.AlignHCenter;font.pixelSize:11;color:root.selectedPaths.includes(tile.fileRow.path)?Theme.colors.selectedText:"white";style:Text.Outline;styleColor:"#66000000"}
+                    }
+                    MouseArea {
+                        anchors.fill:parent;acceptedButtons:Qt.LeftButton|Qt.RightButton
+                        drag.target:!tile.modelData.stack && arrangement.layout.grouping==="none"?tile:null
+                        drag.minimumX:0;drag.maximumX:Math.max(0,stage.width-tile.width);drag.minimumY:0;drag.maximumY:Math.max(0,stage.height-tile.height);drag.threshold:8
+                        property bool wasDragged:false
+                        onPositionChanged:if(drag.active)wasDragged=true
+                        onPressed:event=>{wasDragged=false;if(!tile.modelData.stack && (event.button!==Qt.RightButton || !root.selectedPaths.includes(tile.fileRow.path)))root.choose(tile.modelData.sourceIndex,event.modifiers);}
+                        onReleased:event=>{if(wasDragged){const key=tile.modelData.key,px=tile.x,py=tile.y;tile.x=Qt.binding(()=>tile.modelData.x);tile.y=Qt.binding(()=>tile.modelData.y);arrangement.move(key,px,py,stage.width,stage.height);}}
+                        onClicked:event=>{if(tile.modelData.stack){if(event.button===Qt.RightButton)root.desktopActions();else {root.focusContents();arrangement.toggle(tile.modelData.key);}}else if(event.button===Qt.RightButton){root.currentPath=tile.fileRow.path;root.context();}}
+                        onDoubleClicked:event=>{if(!tile.modelData.stack && event.button===Qt.LeftButton)root.openCurrent();}
+                    }
                 }
-                onClicked:root.choose(index,0)
-                onDoubleClicked:root.openCurrent()
-                MouseArea {anchors.fill:parent;acceptedButtons:Qt.LeftButton|Qt.RightButton;onClicked:event=>{if(event.button!==Qt.RightButton || !root.selectedPaths.includes(modelData.path))root.choose(index,event.modifiers);if(event.button===Qt.RightButton){root.currentPath=modelData.path;root.context();}}onDoubleClicked:event=>{if(event.button===Qt.LeftButton)root.openCurrent();}}
             }
         }
-        PanelLabel {anchors.bottom:parent.bottom;width:parent.width;wrapMode:Text.Wrap;text:root.error || root.service.error || root.service.warning || "";textFormat:Text.PlainText;color:"white";style:Text.Outline;styleColor:"black";visible:!!text}
-        Popup {id:actions;width:Math.min(240,stage.width);height:320;x:stage.width-width;y:0;modal:true;focus:true;padding:8
+        PanelLabel {anchors.bottom:parent.bottom;width:parent.width;wrapMode:Text.Wrap;text:root.error || arrangement.error || root.service.error || root.service.warning || (root.overflowCount?root.overflowCount+" desktop items do not fit. Open Desktop in Files to access every item.":"");textFormat:Text.PlainText;color:"white";style:Text.Outline;styleColor:"black";visible:!!text}
+        Popup {id:actions;width:Math.min(240,stage.width);height:Math.min(460,stage.height);x:Math.max(0,stage.width-width);y:0;modal:true;focus:true;padding:8
             background:Rectangle {radius:10;color:Theme.colors.background;border.color:Theme.outline}
             contentItem:Column {spacing:2
                 ControlRow {width:parent.width;text:"Open";enabled:!!root.current;onClicked:{actions.close();root.openCurrent();}}
@@ -127,6 +149,11 @@ Item {
                 ControlRow {width:parent.width;text:"Get Info";enabled:!!root.current;onClicked:{actions.close();root.service.send("info",{path:root.current.path});}}
                 ControlRow {width:parent.width;text:"Copy";enabled:root.selectedPaths.length>0;onClicked:{actions.close();root.service.stage(root.selectedPaths,"copy");}}
                 ControlRow {width:parent.width;text:"Move to Trash…";enabled:root.selectedPaths.length>0;onClicked:{actions.close();root.askTrash();}}
+                ControlRow {width:parent.width;text:"Reset Icon Arrangement";onClicked:{actions.close();arrangement.request("reset");}}
+                ControlRow {width:parent.width;text:"No Stacks";onClicked:{actions.close();root.grouping("none");}}
+                ControlRow {width:parent.width;text:"Group by Kind";onClicked:{actions.close();root.grouping("kind");}}
+                ControlRow {width:parent.width;text:"Group by Modification Date";onClicked:{actions.close();root.grouping("modified");}}
+                ControlRow {width:parent.width;text:"Group by Tags";onClicked:{actions.close();root.grouping("tags");}}
                 ControlRow {width:parent.width;text:"Refresh";onClicked:{actions.close();root.service.refresh();}}
             }
         }

@@ -1,7 +1,7 @@
 """Disposable nested desktop files: real directory events and keyboard confirmation."""
 import argparse,json,os,re,shutil,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
-parser=argparse.ArgumentParser();parser.add_argument('--output',type=Path,required=True);parser.add_argument('--sway',default='sway');parser.add_argument('--pointer-tool',required=True);parser.add_argument('--layer',choices=['bottom','top'],default='bottom');parser.add_argument('--inside',action='store_true');args=parser.parse_args()
+parser=argparse.ArgumentParser();parser.add_argument('--output',type=Path,required=True);parser.add_argument('--sway',default='sway');parser.add_argument('--pointer-tool',required=True);parser.add_argument('--layer',choices=['bottom','top'],default='bottom');parser.add_argument('--layout',action='store_true');parser.add_argument('--inside',action='store_true');args=parser.parse_args()
 if not args.inside:
     runtime=tempfile.mkdtemp(prefix='desktop-files-')
     env=dict(os.environ,HOME=runtime,XDG_RUNTIME_DIR=runtime)
@@ -27,14 +27,17 @@ import Quickshell.Io
 import Quickshell.Wayland
 import "file:'''+str(assets)+'''" as D
 ShellRoot {
+ property int backgroundClicks:0
+ PanelWindow {anchors {left:true;right:true;top:true;bottom:true}color:"#303030";exclusiveZone:0;WlrLayershell.layer:WlrLayer.Background;MouseArea {anchors.fill:parent;onClicked:backgroundClicks++}}
  QtObject {id:quick;function show(path,owner){}}
  QtObject {id:stub;property var quickLookWindow:quick;function openFiles(path){}}
  D.DesktopFilesSurface {id:surface;screen:Quickshell.screens[0];outputName:"HEADLESS-1";shell:stub;showFiles:true;WlrLayershell.layer:WlrLayer.'''+('Top' if args.layer=='top' else 'Bottom')+'''}
  IpcHandler {target:"desktopFilesTest"
-  function status():string {return JSON.stringify({count:surface.content.service.rows.length,path:surface.content.directory,selected:surface.content.selectedPaths,confirm:surface.content.confirmationVisible,error:surface.content.error || surface.content.service.error,keyboard:surface.content.keyboardActive,allowKeyboard:surface.allowKeyboard,geometry:{x:surface.content.inputArea.x,y:surface.content.inputArea.y,width:surface.content.inputArea.width,height:surface.content.inputArea.height},size:{width:surface.width,height:surface.height}});}
+  function status():string {return JSON.stringify({count:surface.content.service.rows.length,backgroundClicks:backgroundClicks,layout:surface.content.desktopLayout,items:surface.content.displayItems,path:surface.content.directory,selected:surface.content.selectedPaths,confirm:surface.content.confirmationVisible,error:surface.content.error || surface.content.service.error,keyboard:surface.content.keyboardActive,allowKeyboard:surface.allowKeyboard,geometry:{x:surface.content.inputArea.x,y:surface.content.inputArea.y,width:surface.content.inputArea.width,height:surface.content.inputArea.height},size:{width:surface.width,height:surface.height}});}
   function select(index:int):void {surface.content.choose(index,0);}
   function askTrash():void {surface.content.askTrash();}
   function confirmTrash():void {surface.content.confirmTrash();}
+  function group(mode:string):void {surface.content.grouping(mode);}
   function rename(name:string):void {surface.content.service.act("rename",{path:surface.content.currentPath,name:name});}
  }
 }
@@ -67,17 +70,39 @@ try:
     pointer.stdin.write('m 10 10\n');pointer.stdin.flush();time.sleep(.15);pointer.stdin.write('p\n');pointer.stdin.flush();time.sleep(.15);pointer.stdin.write('r\n');pointer.stdin.flush()
     time.sleep(.3);call('grim','-c',str(run/'clicked.png'));(run/'click-state.json').write_text(json.dumps({'state':state(),'seats':json.loads(call('swaymsg','-t','get_seats','-r')),'inputs':json.loads(call('swaymsg','-t','get_inputs','-r')),'pointer_exit':pointer.poll()},indent=2))
     wait(lambda:state()['selected']==[str(desktop/'one.txt')])
+    if args.layout:
+        time.sleep(.7);before=state()['items'][1];assert before['row']['name']=='one.txt'
+        pointer.stdin.write('p\n');pointer.stdin.flush();time.sleep(.15)
+        pointer.stdin.write('m -40 20\n');pointer.stdin.flush();time.sleep(.15);pointer.stdin.write('m -280 120\n');pointer.stdin.flush();time.sleep(.25)
+        pointer.stdin.write('r\n');pointer.stdin.flush();time.sleep(.25)
+        (run/'drag-state.json').write_text(json.dumps(state(),indent=2));wait(lambda:bool(state()['layout']['positions']))
+        dragged=state()['items'][1];assert dragged['x']<before['x']-200 and dragged['y']>before['y']+70,(before,dragged)
+        assert (desktop/'one.txt').read_text()=='Disposable desktop fixture'
+        call('grim',str(run/'dragged.png'))
+        # Empty desktop must reach the fixture background below the file layer.
+        call('swaymsg','seat','seat0','cursor','set','400','500');pointer.stdin.write('m 1 1\n');pointer.stdin.flush();time.sleep(.15);pointer.stdin.write('p\n');pointer.stdin.flush();time.sleep(.15);pointer.stdin.write('r\n');pointer.stdin.flush()
+        wait(lambda:state()['backgroundClicks']==1)
+        ipc('select','1')
     call('wtype','-k','Delete');wait(lambda:state()['confirm'])
     assert (desktop/'one.txt').exists(),'Trash ran before confirmation'
     call('grim',str(run/'confirmation.png'));call('wtype','-k','Escape');wait(lambda:not state()['confirm'])
     assert (desktop/'one.txt').exists(),'Escape executed a destructive action'
     ipc('rename','renamed.txt');wait(lambda:(desktop/'renamed.txt').exists() and not (desktop/'one.txt').exists())
+    if args.layout:
+        wait(lambda:state()['items'][1]['row']['name']=='renamed.txt')
+        assert state()['items'][1]['key']==dragged['key'] and abs(state()['items'][1]['x']-dragged['x'])<1
+        ipc('group','kind');wait(lambda:any(item['stack'] for item in state()['items']))
+        stack=next(item for item in state()['items'] if item['stack']);rect=state()['geometry'];call('swaymsg','seat','seat0','cursor','set',str(int(rect['x']+stack['x']+50)),str(int(rect['y']+stack['y']+40)))
+        pointer.stdin.write('m 1 1\n');pointer.stdin.flush();time.sleep(.15);pointer.stdin.write('p\n');pointer.stdin.flush();time.sleep(.15);pointer.stdin.write('r\n');pointer.stdin.flush()
+        wait(lambda:len(state()['items'])==3)
+        call('grim',str(run/'expanded-stack.png'));ipc('group','none');wait(lambda:state()['layout']['grouping']=='none')
     (desktop/'new.txt').write_text('watcher fixture');wait(lambda:state()['count']==3)
     (desktop/'new.txt').unlink();wait(lambda:state()['count']==2)
     # Explicit confirmation only affects the selected disposable file.
     ipc('select','1');ipc('askTrash');assert (desktop/'renamed.txt').exists();ipc('confirmTrash');wait(lambda:not (desktop/'renamed.txt').exists())
     assert (desktop/'Folder').is_dir(),'Unselected desktop item changed'
     result=dict(passed=True,checks=['configured Desktop directory','real bottom-layer click focus','physical Delete and Escape confirmation','rename','live add/remove events','explicit confirmed Trash','unselected item preserved'])
+    if args.layout:result['checks']+=['real pointer freeform drag persisted','rename retained dragged identity','empty area click-through','kind stack real pointer expansion']
     (run/'result.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result))
 finally:
     for process in reversed(processes):

@@ -85,3 +85,5 @@ ForceQuitDialog 1.0 ForceQuitDialog.qml
 
 DesktopFiles 1.0 DesktopFiles.qml
 DesktopFilesSurface 1.0 DesktopFilesSurface.qml
+
+DesktopLayoutState 1.0 DesktopLayoutState.qml
