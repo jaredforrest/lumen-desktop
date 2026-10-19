@@ -45,26 +45,69 @@ PanelWindow {
     readonly property var overflowItems:menuHeadings.slice(visibleHeadingCount).map(n=>({label:n.label,exportId:n.exportId,action:n.enabled?(n.heading?"heading:"+n.heading:"export-menu"):undefined})).concat(hiddenStatus)
     function menuLayoutStatus(){return {width:width,menuEnd:headings.x+headings.width,statusStart:statusIcons.x,clockWidth:clockButton.width,visible:visibleHeadingCount,headings:menuHeadings.length,overflow:overflowItems.length,overflowLabels:overflowItems.map(n=>n.label)};}
     property int builtinIndex:-1
+    property var builtinSelection:null
+    property bool builtinResetting:false
+    property int builtinSession:0
+    property var menuWindow:null
+    property var menuFilesWindow:null
+    property int menuFocusEpoch:0
+    property var menuExportState:null
     function launcherStatus() {return launcherPanel.status();}
+    function builtinEnabled(row){return !!row && !row.separator && row.enabled!==false && !!(row.action || row.win);}
+    function sameBuiltin(a,b){return !!a && !!b && a.action===b.action && a.win===b.win && a.exportId===b.exportId && a.label===b.label;}
+    function windowGroup(target){
+        if(!target)return {windows:[],records:[]};
+        if(target.appId!=="org.quickshell")return {windows:shell.windows.filter(w=>w.appId===target.appId).slice(),records:[]};
+        const records=shell.ownedToplevelAssociations || [];
+        const owner=records.find(item=>item.toplevel===target && item.window && item.window.visible && item.main && item.main.visible);
+        if(!owner)return {windows:[],records:[]};
+        const members=records.filter(item=>item.applicationId===owner.applicationId && shell.windows.includes(item.toplevel) && item.window && item.window.visible && item.main && item.main.visible);
+        return {windows:members.map(item=>item.toplevel),records:members};
+    }
+    function captureBuiltin(row){
+        if(!menu || special || !builtinEnabled(row))return null;
+        const target=row.win || menuWindow,group=windowGroup(target);
+        return {session:builtinSession,menu:menu,row:row,target:target,appId:target?target.appId:"",windows:group.windows,owners:group.records.map(record=>({record:record,applicationId:record.applicationId,toplevel:record.toplevel,window:record.window,main:record.main})),files:menuFilesWindow,epoch:menuFocusEpoch,exportState:menuExportState};
+    }
+    function validBuiltin(intent){
+        if(!menu || special || !intent || intent.session!==builtinSession || intent.menu!==menu || !builtinItems.model.some(row=>builtinEnabled(row) && sameBuiltin(row,intent.row)))return false;
+        const a=intent.row.action;
+        if(intent.row.win || ["focus","fullscreen","minimize","fill","close","close-all"].includes(a)){
+            if(!intent.target || !shell.windows.includes(intent.target) || intent.target.appId!==intent.appId)return false;
+            if(a==="close-all" && intent.windows.some(w=>w && shell.windows.includes(w) && w.appId!==intent.appId))return false;
+            if(a==="close-all" && intent.appId==="org.quickshell")return intent.owners.length>0 && intent.owners.every(owner=>(shell.ownedToplevelAssociations || []).includes(owner.record) && owner.record.applicationId===owner.applicationId && owner.record.toplevel===owner.toplevel && owner.record.window===owner.window && owner.record.main===owner.main && owner.window && owner.window.visible && owner.main && owner.main.visible && shell.windows.includes(owner.toplevel));
+            return true;
+        }
+        if(a && a.startsWith("files:"))return !!intent.files && shell.filesWindow===intent.files && shell.focusEpoch===intent.epoch;
+        if(a==="export-menu")return exported.state===intent.exportState;
+        return true;
+    }
+    function selectBuiltin(index){
+        const row=builtinItems.model[index];builtinIndex=index;builtinSelection=captureBuiltin(row);
+        const item=builtinItems.itemAt(index);if(item && item.enabled){item.forceActiveFocus();const y=item.y;builtinScroll.contentY=Math.max(0,Math.min(builtinScroll.contentHeight-builtinScroll.height,y-builtinScroll.height/2));}
+    }
     function stepBuiltin(delta) {
         const rows=builtinItems.model;
         for(let n=1;n<=rows.length;n++) {
             const start=builtinIndex<0?(delta>0?-1:0):builtinIndex;
-            const i=(start+n*delta+rows.length*2)%rows.length,r=rows[i];
-            if(r.action || r.win){builtinIndex=i;const y=i*(Theme.menuRowHeight+1);builtinScroll.contentY=Math.max(0,Math.min(builtinScroll.contentHeight-builtinScroll.height,y-builtinScroll.height/2));return;}
+            const i=(start+n*delta+rows.length*2)%rows.length;
+            if(builtinEnabled(rows[i])){selectBuiltin(i);return;}
         }
     }
-    function activateBuiltin(modelData) {
-        const a=modelData.action;
+    function edgeBuiltin(last){builtinIndex=-1;stepBuiltin(last?-1:1);}
+    function activateSelection(){const intent=builtinSelection;builtinSelection=null;if(intent)activateBuiltin(intent.row,intent);}
+    function activateBuiltin(modelData,captured) {
+        const intent=captured || captureBuiltin(modelData);if(!validBuiltin(intent))return;
+        const a=intent.row.action;modelData=intent.row;const target=intent.target;
         if(a==="export-menu"){bar.menu="";exported.openMenu(modelData.exportId,Math.min(bar.menuX,bar.width-220),bar.screen);return;}
         if(a && a.startsWith("heading:")){bar.menu=a.substring(8);return;}
         if(a && a.startsWith("status:")){bar.menu=a.substring(7);return;}
-        if(a && a.startsWith("files:"))shell.filesAction(a.substring(7));
-        else if (modelData.win) shell.focusWindow(modelData.win);
-        else if(a==="focus" && bar.selectedWindow) shell.focusWindow(bar.selectedWindow);
-        else if(["fullscreen","minimize","fill"].includes(a) && bar.selectedWindow) shell.windowAction(bar.selectedWindow,a);
-        else if(a==="close" && bar.selectedWindow) bar.selectedWindow.close();
-        else if(a==="close-all" && bar.selectedWindow) shell.windows.filter(w=>w.appId===bar.selectedWindow.appId).forEach(w=>w.close());
+        if(a && a.startsWith("files:"))shell.filesAction(a.substring(6));
+        else if (modelData.win) shell.focusWindow(target);
+        else if(a==="focus") shell.focusWindow(target);
+        else if(["fullscreen","minimize","fill"].includes(a)) shell.windowAction(target,a);
+        else if(a==="close") target.close();
+        else if(a==="close-all") intent.windows.filter(w=>w && shell.windows.includes(w)).forEach(w=>w.close());
         else if(a==="apps") {}
         else if(a==="terminal") AppLaunch.run(["foot"]);
         else if(a==="sound") AppLaunch.run(["pavucontrol"]);
@@ -95,11 +138,14 @@ PanelWindow {
     function toggle(name, x) {
         if(name==="Settings"){shell.openSettings("");return;}if(name==="Files"){shell.openFiles("");return;}
         const closing=menu===name;
+        const opening=menu==="";const target=opening?shell.active:menuWindow;
         if(menu === "") menuAppName=bar.displayName;
         shell.claimPopup("bar:"+bar.outputName);
+        if(opening){menuWindow=target;selectedWindow=target;menuFilesWindow=shell.filesWindow || null;menuExportState=exported.state;}
+        menuFocusEpoch=shell.focusEpoch || 0;
         menuX=x; menu=closing?"":name;
     }
-    onMenuChanged: {if(["Wi-Fi","Bluetooth","VPN","Sound","Controls","Focus","Date","Calendar","Now Playing"].includes(menu)){menuFade.stop();systemMenu=menu;systemViewport.contentY=0;}else menuFade.restart();builtinIndex=-1;Qt.callLater(()=>{if(bar && popupContents && bar.menu && bar.menu!=="Launcher")popupContents.forceActiveFocus();});if(menu==="" && shell.popupOwner==="bar:"+bar.outputName)shell.popupOwner="";}
+    onMenuChanged: {builtinSession++;builtinSelection=null;if(["Wi-Fi","Bluetooth","VPN","Sound","Controls","Focus","Date","Calendar","Now Playing"].includes(menu)){menuFade.stop();systemMenu=menu;systemViewport.contentY=0;}else menuFade.restart();builtinIndex=-1;Qt.callLater(()=>{if(bar && popupContents && bar.menu && bar.menu!=="Launcher")popupContents.forceActiveFocus();});if(menu==="" && shell.popupOwner==="bar:"+bar.outputName)shell.popupOwner="";}
     Connections {target:shell; function onDismissPopups(owner) {if(owner!=="bar:"+bar.outputName)bar.menu="";} }
     Connections { target: shell; function onRequestMenu(name, outputName) { if(outputName!==bar.outputName)return; bar.toggle(name,["Date","Calendar","Sound","Controls"].includes(name)?bar.width-380:16); } }
     anchors { top: true; left: true; right: true }
@@ -160,7 +206,11 @@ PanelWindow {
             Keys.onEscapePressed:bar.menu=""
             Keys.onDownPressed:if(!bar.special)bar.stepBuiltin(1)
             Keys.onUpPressed:if(!bar.special)bar.stepBuiltin(-1)
-            Keys.onReturnPressed:if(!bar.special && bar.builtinIndex>=0)bar.activateBuiltin(builtinItems.model[bar.builtinIndex])
+            Keys.onReturnPressed:if(!bar.special)bar.activateSelection()
+            Keys.onSpacePressed:if(!bar.special)bar.activateSelection()
+            Keys.onTabPressed:if(!bar.special)bar.stepBuiltin(1)
+            Keys.onBacktabPressed:if(!bar.special)bar.stepBuiltin(-1)
+            Keys.onPressed:event=>{if(!bar.special && (event.key===Qt.Key_Home || event.key===Qt.Key_End)){bar.edgeBuiltin(event.key===Qt.Key_End);event.accepted=true;}else event.accepted=false;}
         FocusFlickable {
             id:systemViewport
             visible:["Wi-Fi","Bluetooth","VPN","Sound","Controls","Focus","Date","Calendar","Now Playing"].includes(bar.systemMenu)
@@ -195,6 +245,8 @@ PanelWindow {
         }
         PanelSurface {
             id:builtinPanel
+            Accessible.role:Accessible.PopupMenu
+            Accessible.name:bar.menu
             visible:bar.menu!=="" && !bar.special
             x: Math.max(8,Math.min(bar.menuX,parent.width-width-8)); y: Theme.barHeight+1; width: Math.max(220,Math.min(360,builtinItems.model.reduce((w,n)=>Math.max(w,plainMetrics.advanceWidth(n.label || "")+54),0))); height: Math.min(items.height+12,parent.height-Theme.barHeight-100)
             radius: Theme.menuRadius; color: Theme.colors.background; border.color: Theme.outline; border.width: 1
@@ -206,36 +258,57 @@ PanelWindow {
                 id: items; width:parent.width; spacing:1
                 Repeater {
                     id:builtinItems
+                    onModelChanged:{bar.builtinResetting=true;bar.builtinIndex=-1;bar.builtinSelection=null;Qt.callLater(()=>{if(!bar || !popupContents)return;if(bar.menu && !bar.special)popupContents.forceActiveFocus();bar.builtinResetting=false;});}
                     model: {
                         if(bar.menu==="Overflow")return bar.overflowItems;
                         if(bar.filesFocused){const rows=shell.filesItems(bar.menu);if(rows)return rows;}
                         if (bar.menu.startsWith("Unassigned: ")) return [{label:bar.menu.substring(12) + " is unassigned"},{label:"Open Applications…",action:"apps"}];
-                        if (bar.menu === "File") return [{label:"Open Application…",action:"apps"},{label:"New Terminal",action:"terminal"}].concat(bar.selectedWindow ? [{label:"Close Window",action:"close"}] : []);
+                        if (bar.menu === "File") return [{label:"Open Application…",action:"apps"},{label:"New Terminal",action:"terminal"}].concat(bar.menuWindow ? [{label:"Close Window",action:"close"}] : []);
                         // These commands remain disabled until app-exported menus are integrated.
                         if (bar.menu === "Edit") return [{label:"Undo"},{label:"Redo"},{label:"Cut"},{label:"Copy"},{label:"Paste"},{label:"Select All"}];
-                        if (bar.menu === "View") return bar.selectedWindow ? [{label:bar.selectedWindow.fullscreen ? "Exit Full Screen" : "Enter Full Screen",action:"fullscreen"}] : [{label:"Enter Full Screen"}];
+                        if (bar.menu === "View") return bar.menuWindow ? [{label:bar.menuWindow.fullscreen ? "Exit Full Screen" : "Enter Full Screen",action:"fullscreen"}] : [{label:"Enter Full Screen"}];
                         if (bar.menu === "Go") return [{label:"Applications…",action:"apps"},{label:"Terminal",action:"terminal"}];
-                        if (bar.menu === "Window") return (bar.selectedWindow ? [{label:"Minimize",action:"minimize"},{label:"Fill / Restore",action:"fill"},{label:bar.selectedWindow.fullscreen?"Exit Full Screen":"Enter Full Screen",action:"fullscreen"},{label:"",separator:true}] : []).concat(shell.windows.map(w=>({label:w.title || w.appId,win:w})));
-                        if (bar.menu === "Application") return bar.selectedWindow ? [{label:"Bring to Front",action:"focus"},{label:"Close Window",action:"close"},{label:"Close All Windows",action:"close-all"}] : [{label:"Show Applications",action:"apps"}];
+                        if (bar.menu === "Window") return (bar.menuWindow ? [{label:"Minimize",action:"minimize"},{label:"Fill / Restore",action:"fill"},{label:bar.menuWindow.fullscreen?"Exit Full Screen":"Enter Full Screen",action:"fullscreen"},{label:"",separator:true}] : []).concat(shell.windows.map(w=>({label:w.title || w.appId,win:w})));
+                        if (bar.menu === "Application") return bar.menuWindow ? [{label:"Bring to Front",action:"focus"},{label:"Close Window",action:"close"},{label:"Close All Windows",action:"close-all",enabled:bar.windowGroup(bar.menuWindow).windows.length>0}] : [{label:"Show Applications",action:"apps"}];
                         if (bar.menu === "Sound") return [{label:shell.volume || "Audio unavailable"},{label:"Mute / Unmute",action:"mute"},{label:"Volume Up",action:"up"},{label:"Volume Down",action:"down"},{label:"Sound Settings…",action:"sound"}];
                         if (bar.menu === "Date") return [{label:Qt.formatDateTime(bar.clockDate,"dddd, d MMMM yyyy")},{label:Qt.formatDateTime(bar.clockDate,"h:mm AP")}];
                         if (bar.menu === "Help") return [{label:"Search Desktop Help…",action:"help"},{label:"Reference Board…",action:"reference"}];
                         return [{label:"About This Computer",action:"about"},{label:"System Settings…",action:"settings"},{label:"",separator:true},{label:"Applications…",action:"apps"},...(shell.nativeShowDesktop?[{label:"Show Desktop",action:"show-desktop"}]:[]),{label:"",separator:true},{label:"Sleep…",action:"session:suspend"},{label:"Restart…",action:"session:reboot"},{label:"Shut Down…",action:"session:poweroff"},{label:"",separator:true},{label:"Lock Screen",action:"lock"},{label:"Log Out…",action:"session:logout"}];
                     }
-                    Rectangle {
+                    AbstractButton {
+                        id:builtinRow
                         required property var modelData
                         required property int index
-                        width:items.width; height:modelData.separator?9:Theme.menuRowHeight; radius:5
-                        color: (bar.builtinIndex===index) && (modelData.action || modelData.win) ? Theme.colors.accent : "transparent"
-                        SystemGlyph {visible:!modelData.separator && name!=="";x:7;anchors.verticalCenter:parent.verticalCenter;width:14;height:14;name:(modelData.label || "").startsWith("About")?"info":modelData.action==="settings"?"gear":modelData.action==="apps"?"grid":modelData.action==="terminal"?"screen":modelData.action==="lock"?"lock":"";ink:bar.builtinIndex===index && modelData.action?Theme.colors.selectedText:Theme.colors.text}
-                        Text { anchors.left:parent.left; anchors.leftMargin:28; anchors.right:parent.right; anchors.rightMargin:8; anchors.verticalCenter:parent.verticalCenter; visible:!modelData.separator; text: modelData.label; elide:Text.ElideRight; color:(modelData.action || modelData.win) ? (bar.builtinIndex===index ? Theme.colors.selectedText : Theme.colors.text) : Theme.colors.muted; font.family:Theme.font; font.pixelSize:13 }
-                        Rectangle {visible:!!modelData.separator;anchors.centerIn:parent;width:parent.width-12;height:1;color:Theme.colors.border;opacity:0.5}
-                        MouseArea {
-                            id:rowMouse; anchors.fill:parent; hoverEnabled:true
-                            onEntered:bar.builtinIndex=index
-                            onClicked: {
-                                bar.activateBuiltin(modelData);
-                            }
+                        property var initialRow:null
+                        property var pressedIntent:null
+                        Component.onCompleted:initialRow=modelData
+                        objectName:"builtin-menu-row-"+index
+                        enabled:bar.builtinEnabled(modelData)
+                        activeFocusOnTab:enabled
+                        Accessible.role:modelData.separator?Accessible.Separator:Accessible.MenuItem
+                        Accessible.name:modelData.label || ""
+                        Accessible.selected:bar.builtinIndex===index
+                        Accessible.onPressAction:trigger()
+                        function trigger(){const intent=pressedIntent || bar.captureBuiltin(initialRow);pressedIntent=null;if(intent)bar.activateBuiltin(intent.row,intent);}
+                        onPressed:pressedIntent=bar.captureBuiltin(initialRow)
+                        onCanceled:pressedIntent=null
+                        onClicked:trigger()
+                        onActiveFocusChanged:if(activeFocus && !bar.builtinResetting)bar.selectBuiltin(index)
+                        onHoveredChanged:if(hovered && enabled){bar.builtinIndex=index;bar.builtinSelection=null;}
+                        Keys.onPressed:event=>{
+                            if(event.key===Qt.Key_Escape){bar.menu="";event.accepted=true;}
+                            else if(event.key===Qt.Key_Down || event.key===Qt.Key_Tab){bar.stepBuiltin(event.modifiers & Qt.ShiftModifier?-1:1);event.accepted=true;}
+                            else if(event.key===Qt.Key_Up || event.key===Qt.Key_Backtab){bar.stepBuiltin(-1);event.accepted=true;}
+                            else if(event.key===Qt.Key_Home || event.key===Qt.Key_End){bar.edgeBuiltin(event.key===Qt.Key_End);event.accepted=true;}
+                            else if(event.key===Qt.Key_Return || event.key===Qt.Key_Enter){if(!event.isAutoRepeat)bar.activateSelection();event.accepted=true;}
+                            else event.accepted=false;
+                        }
+                        width:items.width;height:modelData.separator?9:Theme.menuRowHeight
+                        background:Rectangle {radius:5;color:bar.builtinIndex===builtinRow.index && builtinRow.enabled?Theme.colors.accent:"transparent"}
+                        contentItem:Item {
+                            SystemGlyph {visible:!builtinRow.modelData.separator && name!=="";x:7;anchors.verticalCenter:parent.verticalCenter;width:14;height:14;name:(builtinRow.modelData.label || "").startsWith("About")?"info":builtinRow.modelData.action==="settings"?"gear":builtinRow.modelData.action==="apps"?"grid":builtinRow.modelData.action==="terminal"?"screen":builtinRow.modelData.action==="lock"?"lock":"";ink:bar.builtinIndex===builtinRow.index && builtinRow.enabled?Theme.colors.selectedText:Theme.colors.text}
+                            Text {anchors.left:parent.left;anchors.leftMargin:28;anchors.right:parent.right;anchors.rightMargin:8;anchors.verticalCenter:parent.verticalCenter;visible:!builtinRow.modelData.separator;text:builtinRow.modelData.label || "";elide:Text.ElideRight;color:builtinRow.enabled?(bar.builtinIndex===builtinRow.index?Theme.colors.selectedText:Theme.colors.text):Theme.colors.muted;font.family:Theme.font;font.pixelSize:13}
+                            Rectangle {visible:!!builtinRow.modelData.separator;anchors.centerIn:parent;width:parent.width-12;height:1;color:Theme.colors.border;opacity:0.5}
                         }
                     }
                 }

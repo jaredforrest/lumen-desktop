@@ -8,8 +8,10 @@ in pkgs.stdenvNoCC.mkDerivation {
   buildInputs = [ pkgs.gtk3 ];
   dontBuild = true;
   installPhase = ''
-    mkdir -p $out/share/global-menu $out/bin
+    mkdir -p $out/share/global-menu $out/share/runtime $out/bin
     cp bridge.py export-helper.py menu-adapter.cjs $out/share/global-menu/
+    cp ${../res/lumen-desktop/runtime/window_context.py} $out/share/runtime/window_context.py
+    cp ${../res/lumen-desktop/runtime/protocol.py} $out/share/runtime/protocol.py
     makeWrapper ${python}/bin/python3 $out/bin/global-menu-python \
       --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.sway pkgs.coreutils ]}
     ln -s ../../bin/global-menu-python $out/share/global-menu/python
