@@ -74,7 +74,7 @@ Item {
     VpnPanel {visible:root.kind==="VPN";width:parent.width;compact:true;service:root.shell.vpn;onBackRequested:root.panelRequested("Controls");onSettingsRequested:root.shell.openSettings("VPN")}
     CalendarCard {
         visible:root.kind==="Calendar"
-        width:parent.width;today:root.today;compact:true;onOpenCalendar:root.shell.openCalendarAt(selected,null);onEventRequested:(event,day)=>root.shell.openCalendarAt(day,event)
+        width:parent.width;today:root.today;compact:true;onOpenCalendar:day=>root.shell.openCalendarAt(day,null);onEventRequested:(event,day)=>root.shell.openCalendarAt(day,event)
     }
 
     Column {visible:root.kind==="Now Playing";width:parent.width;spacing:8

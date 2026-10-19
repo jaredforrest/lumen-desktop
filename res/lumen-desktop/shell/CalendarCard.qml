@@ -21,7 +21,15 @@ PanelSurface {
     signal eventRequested(var event, date day)
     signal accountsRequested()
     property string observedToday:""
-    onTodayChanged:{const key=iso(today);if(key===observedToday)return;observedToday=key;if(followingToday){selected=new Date(today.getFullYear(),today.getMonth(),today.getDate());month=new Date(today.getFullYear(),today.getMonth(),1);if(loaded && active)refresh();}}
+    onTodayChanged:{
+        const key=iso(today);if(key===observedToday)return;observedToday=key;
+        if(followingToday){
+            const changed=month.getFullYear()!==today.getFullYear() || month.getMonth()!==today.getMonth();
+            selected=new Date(today.getFullYear(),today.getMonth(),today.getDate());month=new Date(today.getFullYear(),today.getMonth(),1);detail=null;
+            if(changed)clearMonth();else updateSelection();
+            if(active)refresh();
+        }
+    }
     function goToday(){selectDate(new Date(today));}
     function moveDate(key) {
         let d=new Date(selected);
@@ -37,10 +45,18 @@ PanelSurface {
     }
     function dayColors(day){return Array.from(new Set(dayEvents(day).map(event=>tint(event)))).slice(0,3);}
     function tint(event){return monochrome?Theme.colors.muted:CalendarLogic.tint(event,Theme.dark);}
-    function timeLabel(event){if(event.allDay)return "All day";const d=new Date(event.date+"T"+event.startTime);return isNaN(d.getTime())?event.startTime:Qt.formatTime(d,Qt.locale().timeFormat(Locale.ShortFormat));}
+    function timeLabel(event){
+        if(event.allDay)return "All day";
+        const parts=/^(\d{2}):(\d{2})$/.exec(event.startTime || "");
+        if(!parts || Number(parts[1])>23 || Number(parts[2])>59)return event.startTime;
+        // Provider values are calendar-zone wall times, not host-zone instants.
+        // A neutral date avoids normalising an event through a host DST gap.
+        const d=new Date(2000,0,15,Number(parts[1]),Number(parts[2]));
+        return Qt.formatTime(d,Qt.locale().timeFormat(Locale.ShortFormat));
+    }
     property bool optionsOpen:false
     property bool active:visible
-    signal openCalendar()
+    signal openCalendar(date day)
     readonly property bool refreshing:background.running
     property string backgroundError:""
     property var markedDays:[]
@@ -104,7 +120,8 @@ PanelSurface {
         if(detail)detail=monthEvents.find(e=>e.id===detail.id) || null;
         loaded=true;configured=data.configured;providers=data.providers || [];calendarTimeZone=data.timezone || calendarTimeZone;lastSuccess=data.lastSuccess || "";syncError=data.syncError || "";warning=data.warning || "";
     }
-    function selectDate(d) {followingToday=iso(d)===iso(today);const changed=month.getFullYear()!==d.getFullYear() || month.getMonth()!==d.getMonth();month=new Date(d.getFullYear(),d.getMonth(),1);selected=d;detail=null;if(changed || !loaded){send({action:"list"});}else updateSelection();}
+    function clearMonth(){monthEvents=[];events=[];markedDays=[];total=0;loaded=false;}
+    function selectDate(d) {followingToday=iso(d)===iso(today);const changed=month.getFullYear()!==d.getFullYear() || month.getMonth()!==d.getMonth();month=new Date(d.getFullYear(),d.getMonth(),1);selected=d;detail=null;if(changed)clearMonth();if(changed || !loaded){send({action:"list"});}else updateSelection();}
     function changeMonth(delta) {selectDate(CalendarLogic.monthShift(selected,delta));}
     onActiveChanged:if(active)refresh()
     Component.onCompleted:if(active)refresh()
@@ -153,7 +170,10 @@ PanelSurface {
                     Accessible.checkable:true
                     Accessible.checked:selected
                     Accessible.name:valid?Qt.formatDateTime(dateValue,"dddd d MMMM yyyy")+(current?", today":"")+(selected?", selected":"")+(root.dayEvents(dateValue).length?", "+root.dayEvents(dateValue).length+" events":""):""
-                    onClicked:{root.selectDate(dateValue);dateGrid.forceActiveFocus();}
+                    property var activationDate:null
+                    onPressed:activationDate=new Date(dateValue)
+                    onCanceled:activationDate=null
+                    onClicked:{const day=activationDate || new Date(dateValue);activationDate=null;root.selectDate(day);dateGrid.forceActiveFocus();}
                     background:Item {
                         Rectangle {anchors.horizontalCenter:parent.horizontalCenter;width:26;height:26;radius:13;color:cell.current?(root.monochrome?Theme.colors.muted:Theme.dark?"#ff453a":"#ff3b30"):cell.selected?(root.monochrome?Theme.colors.muted:Theme.colors.accent):cell.hovered?Theme.colors.hover:"transparent";border.width:cell.activeFocus || (dateGrid.activeFocus && cell.selected)?2:0;border.color:Theme.colors.text}
                         Row {anchors.horizontalCenter:parent.horizontalCenter;y:28;spacing:2;visible:cell.valid;Repeater {model:cell.valid?root.dayColors(cell.dateValue):[];Rectangle {required property string modelData;width:3;height:3;radius:2;color:root.monochrome?Theme.colors.muted:modelData}}}
@@ -177,15 +197,20 @@ PanelSurface {
                     model:root.compact?root.events.slice(0,3):root.events
                     delegate:AbstractButton {
                         id:eventButton
+                        objectName:"calendar-event-"+modelData.id
+                        property var activationEvent:null
+                        property var activationDay:null
                         required property var modelData
                         width:eventRows.width;height:eventText.implicitHeight+14;leftPadding:10;rightPadding:8;topPadding:5;bottomPadding:5;enabled:!root.busy
-                        Accessible.name:modelData.title+", "+(modelData.allDay?"All day":modelData.startTime+" to "+modelData.endTime)
+                        Accessible.name:modelData.title+", "+(modelData.allDay?"All day":modelData.startTime+" to "+modelData.endTime)+", "+modelData.provider+", "+modelData.calendar+", "+root.calendarTimeZone
                         background:Rectangle {radius:6;color:parent.hovered || parent.activeFocus?Theme.colors.hover:Theme.colors.surface;Rectangle {width:3;anchors.top:parent.top;anchors.bottom:parent.bottom;anchors.margins:5;radius:2;color:root.tint(eventButton.modelData)}}
                         contentItem:Column {id:eventText;spacing:2
                             PanelLabel {width:eventButton.width-24;text:eventButton.modelData.title;textFormat:Text.PlainText;wrapMode:Text.WordWrap;maximumLineCount:2;elide:Text.ElideRight;font.weight:Font.Medium}
-                            PanelLabel {width:eventButton.width-24;font.pixelSize:11;color:Theme.colors.muted;text:root.timeLabel(eventButton.modelData)+" · "+eventButton.modelData.calendar;textFormat:Text.PlainText;elide:Text.ElideRight}
+                            PanelLabel {width:eventButton.width-24;font.pixelSize:11;color:Theme.colors.muted;text:root.timeLabel(eventButton.modelData)+" · "+eventButton.modelData.provider+" · "+eventButton.modelData.calendar;textFormat:Text.PlainText;elide:Text.ElideRight}
                         }
-                        onClicked:{if(root.compact){root.eventRequested(modelData,root.selected);return;}root.deletePending=false;root.detail=root.detail && root.detail.id===modelData.id?null:modelData;}
+                        onPressed:{activationEvent=Object.assign({},modelData);activationDay=new Date(root.selected);}
+                        onCanceled:{activationEvent=null;activationDay=null;}
+                        onClicked:{const event=activationEvent || Object.assign({},modelData);const day=activationDay || new Date(root.selected);activationEvent=null;activationDay=null;if(root.compact){root.eventRequested(event,day);return;}root.deletePending=false;root.detail=root.detail && root.detail.id===event.id?null:event;}
                     }
                 }
             }
@@ -230,7 +255,7 @@ PanelSurface {
         PanelLabel {visible:!root.compact && root.optionsOpen;width:parent.width;text:"Google syncs in the background · iCloud read-only · "+root.calendarTimeZone;color:Theme.colors.muted;font.pixelSize:10;wrapMode:Text.WordWrap}
     }
     // Compact content stays read-only; navigation hands off to the Calendar app.
-    ControlRow {objectName:"calendar-open-related";visible:root.compact;width:parent.width-36;x:18;y:content.y+content.height+4;height:30;text:root.events.length>3?"Show all "+root.total+" events in Calendar":"Open Calendar";onClicked:root.openCalendar()}
+    ControlRow {objectName:"calendar-open-related";visible:root.compact;width:parent.width-36;x:18;y:content.y+content.height+4;height:30;property var activationDate:null;text:root.events.length>3?"Show all "+root.total+" events in Calendar":"Open Calendar";onPressed:activationDate=new Date(root.selected);onCanceled:activationDate=null;onClicked:{const day=activationDate || new Date(root.selected);activationDate=null;root.openCalendar(day);}}
     component CalendarField: TextField {
         height:30;font.family:Theme.font;font.pixelSize:12;color:Theme.colors.text;placeholderTextColor:Theme.colors.muted
         selectionColor:(root.monochrome?Theme.colors.muted:Theme.colors.accent);selectedTextColor:Theme.colors.selectedText

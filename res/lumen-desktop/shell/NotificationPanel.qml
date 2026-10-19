@@ -23,7 +23,7 @@ Column {
         parent:root.preferences.calendarFirst?before:after
         visible:root.preferences.calendarVisible;width:root.width;today:root.today;compact:true;agendaOnly:root.preferences.style==="agenda";reduceTransparency:root.preferences.reduceTransparency || !!Theme.preferences.reduceTransparency
         active:root.visible && visible
-        onOpenCalendar:root.shell.openCalendarAt(calendar.selected,null)
+        onOpenCalendar:day=>root.shell.openCalendarAt(day,null)
         onEventRequested:(event,day)=>root.shell.openCalendarAt(day,event)
     }
     ControlRow {width:parent.width;height:30;text:root.editingWidgets?"Done":"Edit Widgets";onClicked:root.editingWidgets=!root.editingWidgets}
