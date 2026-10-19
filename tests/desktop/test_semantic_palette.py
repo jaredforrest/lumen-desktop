@@ -26,7 +26,7 @@ class SemanticPalette(unittest.TestCase):
                 for increased in (False,True):
                     with self.subTest(mode=mode,accent=accent,increased=increased):
                         colors=appearance.resolve_palette(palettes,mode,{**appearance.DEFAULTS,'accent':accent,'increaseContrast':increased})
-                        for foreground in ('text','muted'):
+                        for foreground in ('text','muted','error','success','warning'):
                             for surface in ('background','surface','field','hover'):
                                 self.assertGreaterEqual(ratio(colors[foreground],colors[surface]),4.5,(foreground,surface,colors))
                         self.assertGreaterEqual(ratio(colors['selectedText'],colors['accent']),4.5)
@@ -46,5 +46,10 @@ class SemanticPalette(unittest.TestCase):
         self.assertIn('Accessible.description: severity',text)
         self.assertIn('"Error: "',text)
         self.assertIn('"Success: "',text)
+        self.assertIn('"Warning: "',text)
+        for token in ('errorText','successText','warningText'):
+            self.assertIn('Theme.'+token,text)
+        force_quit=(ROOT/'res/lumen-desktop/shell/ForceQuitDialog.qml').read_text()
+        self.assertIn('parent.enabled?Theme.errorText',force_quit)
 
 if __name__=='__main__':unittest.main()

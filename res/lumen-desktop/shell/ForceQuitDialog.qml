@@ -56,7 +56,7 @@ PanelWindow {
                     contentItem:PanelLabel {text:parent.text;horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter}
                     background:Rectangle {radius:7;color:parent.hovered || parent.activeFocus?Theme.colors.hover:Theme.colors.field;border.width:parent.activeFocus?2:0;border.color:Theme.colors.accent}
                 }
-                ControlRow {width:(parent.width-8)/2;text:"Force Quit";enabled:root.phase==="ready" && !worker.running;onClicked:root.confirm();contentItem:PanelLabel {text:parent.text;color:parent.enabled?"#ff453a":Theme.colors.muted;horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter} background:Rectangle {radius:7;color:parent.hovered || parent.activeFocus?Theme.colors.hover:Theme.colors.field;border.width:parent.activeFocus?2:0;border.color:Theme.colors.accent}}
+                ControlRow {width:(parent.width-8)/2;text:"Force Quit";enabled:root.phase==="ready" && !worker.running;onClicked:root.confirm();contentItem:PanelLabel {text:parent.text;color:parent.enabled?Theme.errorText:Theme.colors.muted;horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter} background:Rectangle {radius:7;color:parent.hovered || parent.activeFocus?Theme.colors.hover:Theme.colors.field;border.width:parent.activeFocus?2:0;border.color:Theme.colors.accent}}
             }
         }
     }
