@@ -23,25 +23,27 @@ FloatingWindow {
     property string error:""
     property int selected:0
     property double draggedId:0
-    onVisibleChanged:{if(visible)fit();else draggedId=0;}
+    onVisibleChanged:{if(visible)fit();else {draggedId=0;activation.stop();}}
     function syncAssignment(){const saved=current?assignments[current.application]:null;assignment.currentIndex=saved?Math.max(0,assignmentChoices.findIndex(item=>item.kind===saved.kind && item.target===saved.target_id)):0;}
     onCurrentChanged:syncAssignment()
     onAssignmentsChanged:syncAssignment()
     function fit(){if(screen){implicitWidth=Math.max(400,Math.min(880,screen.width-32));implicitHeight=Math.max(380,Math.min(560,screen.height-130));}}
+    readonly property bool busy:worker.running
     property var request:({})
     readonly property var matches:windows.filter(w=>(!appFilter || w.group===appFilter) && (w.title+" "+w.app+" "+w.workspace).toLowerCase().includes(search.text.toLowerCase()))
     readonly property var current:matches[selected] || null
-    function show(app){draggedId=0;if(visible){visible=false;return;}appFilter=app || "";search.text="";selected=0;shell.claimPopup("");visible=true;send({action:"status"});Qt.callLater(()=>{if(content.Window.window)content.Window.window.requestActivate();search.forceActiveFocus();});}
+    function show(app){activation.stop();draggedId=0;if(visible){visible=false;return;}appFilter=app || "";search.text="";selected=0;shell.claimPopup("");visible=true;send({action:"status"});Qt.callLater(()=>{if(content.Window.window)content.Window.window.requestActivate();search.forceActiveFocus();});}
     function showForWindow(id){
         if(!Number.isSafeInteger(id) || id<=0)return;
+        activation.stop();
         appFilter="";search.text="";draggedId=id;selected=-1;shell.claimPopup("");visible=true;
         send({action:"status"});
         Qt.callLater(()=>{if(content.Window.window)content.Window.window.requestActivate();});
     }
     function send(data){if(worker.running)return;request=data;error="";worker.running=true;}
-    function activate(){if(current){visible=false;activation.data={action:"focus",id:current.id,pid:current.pid};activation.restart();}}
+    function activate(){if(!busy && current){visible=false;activation.data={action:"focus",id:current.id,pid:current.pid};activation.restart();}}
     function step(delta){draggedId=0;selected=Math.max(0,Math.min(matches.length-1,selected+delta));grid.positionViewAtIndex(selected,GridView.Contain);}
-    Timer {id:activation;property var data;interval:100;onTriggered:root.send(data)}
+    Timer {id:activation;property var data;interval:100;onTriggered:{if(root.busy)restart();else root.send(data);}}
     Rectangle {id:content;anchors.fill:parent;radius:Theme.nativeWindowFrame?0:12;color:Theme.colors.background;border.color:Theme.outline;focus:true
         Keys.onEscapePressed:root.visible=false
         Keys.onPressed:event=>{
@@ -58,14 +60,14 @@ FloatingWindow {
         Flickable {x:20;y:98;width:parent.width-40;height:34;contentWidth:spaces.width;clip:true
             Row {id:spaces;spacing:6
                 Repeater {model:root.workspaces
-                    DialogButton {required property var modelData;width:Math.max(90,modelData.name.length*8+24);text:"Desktop "+modelData.name;primary:modelData.focused;Accessible.name:"Workspace "+modelData.name+" on "+modelData.output;onClicked:{root.visible=false;activation.data={action:"workspace",workspace:modelData.name};activation.restart();}}
+                    DialogButton {required property var modelData;width:Math.max(90,modelData.name.length*8+24);text:"Desktop "+modelData.name;primary:modelData.focused;enabled:!root.busy;Accessible.name:"Workspace "+modelData.name+" on "+modelData.output;onClicked:{root.visible=false;activation.data={action:"workspace",workspace:modelData.name};activation.restart();}}
                 }
             }
         }
         GridView {id:grid;x:20;y:145;width:parent.width-40;height:parent.height-y-145;clip:true;cellWidth:Math.floor(width/Math.max(1,Math.floor(width/250)));cellHeight:108;model:root.matches;ScrollBar.vertical:DesktopScrollBar {}
             delegate:AbstractButton {
                 required property var modelData;required property int index
-                width:grid.cellWidth-8;height:100
+                width:grid.cellWidth-8;height:100;enabled:!root.busy
                 Accessible.name:modelData.title+" · "+modelData.app+" · workspace "+modelData.workspace;Accessible.selected:index===root.selected
                 onClicked:{root.draggedId=0;root.selected=index;root.activate();}
                 background:Rectangle {radius:12;color:Theme.colors.surface;border.width:parent.index===root.selected?2:1;border.color:parent.index===root.selected?Theme.colors.accent:Theme.hairline}
@@ -79,14 +81,14 @@ FloatingWindow {
         }
         Row {x:20;y:parent.height-128;width:parent.width-40;height:30;spacing:8
             DesktopComboBox {id:workspace;width:(parent.width-136)/2;model:[1,2,3,4,5,6,7,8,9].map(n=>({name:String(n),label:"Desktop "+n}));textRole:"label";Accessible.name:"Destination desktop"}
-            DialogButton {width:120;text:"Move Window";enabled:!!root.current;onClicked:root.send({action:"move",id:root.current.id,pid:root.current.pid,workspace:workspace.model[workspace.currentIndex].name})}
-            DesktopComboBox {id:output;width:(parent.width-136)/2;model:root.outputs;textRole:"label";Accessible.name:"Destination display";onActivated:index=>{if(root.current)root.send({action:"output",id:root.current.id,pid:root.current.pid,output:root.outputs[index].name});}}
+            DialogButton {width:120;text:"Move Window";enabled:!!root.current && !root.busy;onClicked:root.send({action:"move",id:root.current.id,pid:root.current.pid,workspace:workspace.model[workspace.currentIndex].name})}
+            DesktopComboBox {id:output;width:(parent.width-136)/2;enabled:!!root.current && !root.busy;model:root.outputs;textRole:"label";Accessible.name:"Destination display";onActivated:index=>{if(root.current)root.send({action:"output",id:root.current.id,pid:root.current.pid,output:root.outputs[index].name});}}
         }
         Row {x:20;y:parent.height-88;spacing:8;width:parent.width-40
             DesktopComboBox {id:assignment;width:parent.width-168;model:root.assignmentChoices;textRole:"label";Accessible.name:"Persistent application desktop assignment"}
-            DialogButton {width:160;text:"Assign Application";enabled:!!root.current && !!root.current.application;onClicked:{const choice=root.assignmentChoices[assignment.currentIndex];root.send({action:"assign",id:root.current.id,pid:root.current.pid,kind:choice.kind,target:choice.target});}}
+            DialogButton {width:160;text:"Assign Application";enabled:!!root.current && !!root.current.application && !root.busy;onClicked:{const choice=root.assignmentChoices[assignment.currentIndex];root.send({action:"assign",id:root.current.id,pid:root.current.pid,kind:choice.kind,target:choice.target});}}
         }
-        SettingsToggle {x:parent.width-270;y:parent.height-48;width:250;height:36;text:"Recent desktop order";Accessible.name:"Order desktops by recent use";checked:root.autoReorder;onToggled:root.send({action:"ordering",enabled:checked})}
+        SettingsToggle {x:parent.width-270;y:parent.height-48;width:250;height:36;text:"Recent desktop order";enabled:!root.busy;Accessible.name:"Order desktops by recent use";checked:root.autoReorder;onToggled:root.send({action:"ordering",enabled:checked})}
         PanelLabel {x:20;y:parent.height-44;width:parent.width-310;font.pixelSize:11;color:Theme.colors.muted;text:root.error || (root.draggedId>0?"Choose a desktop, then Move Window · Escape to cancel":"Arrow keys to select · Return to open · Escape to close");wrapMode:Text.WordWrap}
     }
     Timer {interval:2000;running:root.visible;repeat:true;onTriggered:root.send({action:"status"})}
