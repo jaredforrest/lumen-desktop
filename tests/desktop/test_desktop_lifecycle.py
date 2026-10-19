@@ -106,6 +106,20 @@ class EvacuationTests(unittest.TestCase):
         self.snapshot=snapshot
         with self.assertRaisesRegex(ValueError,'changed during removal'):self.execute()
         self.assertIn(self.keys[1],self.policy.state['desktops']);self.assertEqual(self.windows[0]['workspace'],'2')
+    def test_late_hidden_arrival_after_evacuation_prevents_retirement(self):
+        original=self.snapshot;count=[0]
+        def snapshot(**kwargs):
+            count[0]+=1
+            if count[0]==5:
+                self.windows.append(dict(id=13,pid=103,workspace='__i3_scratch',restores=['1'],fullscreen=0,paired=False))
+            return original(**kwargs)
+        self.snapshot=snapshot
+        with self.assertRaisesRegex(ValueError,'changed during removal'):self.execute()
+        self.assertIn(self.keys[1],self.policy.state['desktops'])
+        self.assertEqual(self.windows[0]['workspace'],'2')
+        self.assertEqual(self.windows[-1]['restores'],['1'])
+        self.assertFalse(any(workspace['name']=='1' for workspace in self.native))
+
     def test_changed_session_fails_before_any_window_mutation(self):
         self.data['sessionEpoch']='old'
         with self.assertRaisesRegex(ValueError,'session changed'):self.execute()

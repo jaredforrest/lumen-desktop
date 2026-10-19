@@ -100,6 +100,10 @@ def remove_desktop(model, data, epoch):
                 checked('workspace '+json.dumps(focused['name']))
     check_epoch(data,epoch)
     final=snapshot(include_overview=True)
+    if any(window['workspace']==source['name'] or source['name'] in window['restores']
+            or (window['paired'] and window.get('pairRestore') in (None,source['name']))
+            for window in final['windows']):
+        raise ValueError('The desktop changed during removal; desktop retained and moved windows preserved')
     if any(workspace['name']==source['name'] for workspace in final['workspaces']):
         raise ValueError('The compositor still contains this desktop; desktop retained')
     model.reconcile(final['workspaces'],run('-t','get_outputs'))
