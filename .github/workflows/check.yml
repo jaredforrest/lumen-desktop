@@ -25,14 +25,30 @@ jobs:
           LUMEN_TEST_SHELL_LAUNCHER="$PWD/artifacts/shell-package/bin/lumen-desktop-shell" nix develop --command desktop-test-python tests/desktop/run_backend_tests.py --output artifacts/backends
       - run: |
           mkdir -p artifacts
-          nix build .#compositor --no-link --option abort-on-warn true
+          nix build .#compositor --out-link artifacts/compositor-effects --option abort-on-warn true
+          nix build .#shell-runtime --out-link artifacts/shell-runtime --option abort-on-warn true
           nix build .#compositor-basic --out-link artifacts/compositor --option abort-on-warn true
           LUMEN_TEST_SHELL_LAUNCHER="$PWD/artifacts/shell-package/bin/lumen-desktop-shell" LUMEN_TEST_COMPOSITOR="$PWD/artifacts/compositor/bin/sway" nix develop --command desktop-test-python tests/desktop/window_layout_menu_qml.py
           nix develop --command desktop-test-python tests/desktop/smoke_installed.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/shell
       - run: |
           nix build .#test-pointer --out-link artifacts/pointer --option abort-on-warn true
+          nix build .#test-session-lock --out-link artifacts/session-lock --option abort-on-warn true
+          nix build .#test-constraint-client --out-link artifacts/constraint-client --option abort-on-warn true
+          nix develop --command desktop-test-python tests/desktop/edge_layouts_input.py --sway "$PWD/artifacts/compositor/bin/sway" --pointer "$PWD/artifacts/pointer/bin/wlrctl" --keyboard wtype --lock "$PWD/artifacts/session-lock/bin/lumen-test-session-lock" --quickshell "$PWD/artifacts/shell-runtime/bin/quickshell" --constraint-client "$PWD/artifacts/constraint-client/bin/lumen-test-constraint-client" --output artifacts/edge-layouts
+          PATH="$PWD/artifacts/shell-package/bin:$PATH" nix develop --command desktop-test-python tests/desktop/desktop_native_drag_render.py --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/file-drag
+          for mode in light dark; do
+            for frame in off on; do
+              nix develop --command desktop-test-python tests/desktop/surface_matrix.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --theme "$mode" --native-frame "$frame" --output "artifacts/surfaces-$mode-$frame"
+            done
+          done
+          nix develop --command desktop-test-python tests/desktop/native_hot_corners.py --sway "$PWD/artifacts/compositor/bin/sway" --pointer "$PWD/artifacts/pointer/bin/wlrctl" --keyboard wtype --lock "$PWD/artifacts/session-lock/bin/lumen-test-session-lock" --output artifacts/hot-corners
           nix develop --command desktop-test-python tests/desktop/window_frames_render.py --core-only --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/native-layouts
           PATH="$PWD/artifacts/shell-package/bin:$PATH" nix develop --command desktop-test-python tests/desktop/interaction_regression.py --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/interactions
+          nix develop --command desktop-test-python tests/desktop/accessibility_protocol.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/accessibility --full-shell
+          nix develop --command desktop-test-python tests/desktop/spaces_placement.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/spaces
+      - run: |
+          nix build .#test-network-provider --out-link artifacts/network-provider --option abort-on-warn true
+          nix develop --command desktop-test-python tests/desktop/network_locations_provider.py --provider "$PWD/artifacts/network-provider" | tee artifacts/network-provider.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -42,3 +58,10 @@ jobs:
             artifacts/shell
             artifacts/interactions
             artifacts/native-layouts
+            artifacts/accessibility
+            artifacts/hot-corners
+            artifacts/edge-layouts
+            artifacts/file-drag
+            artifacts/surfaces-*
+            artifacts/spaces
+            artifacts/network-provider.log

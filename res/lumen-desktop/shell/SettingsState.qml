@@ -6,6 +6,7 @@ Item {
     property bool active:false
     property bool available:false
     property bool busy:worker.running || pending.length>0
+    readonly property bool applying:pending.length>0 || (worker.running && worker.command[1]!=="--settings")
     property var pending:[]
     property string error:""
     property string warning:""
@@ -42,11 +43,11 @@ Item {
             try{
                 const data=JSON.parse(text);worker.received=true;
                 if(data.error){root.error=data.error;return;}
-                root.preferences=data.preferences;root.searchPreferences=data.searchPreferences || ({disabledProviders:[]});root.notificationsPreferences=data.notificationsPreferences || ({preview:"always"});root.windowsPreferences=data.windowsPreferences || ({tileMargins:true,titlebarDoubleClick:"fill"});root.desktopPreferences=data.desktopPreferences || ({showFiles:false,fileSort:"name",fileDescending:false});root.appearance=data.appearance;root.system=data.system;
+                root.preferences=data.preferences;root.searchPreferences=data.searchPreferences || ({disabledProviders:[]});root.notificationsPreferences=data.notificationsPreferences || ({preview:"always"});root.windowsPreferences=data.windowsPreferences || Theme.windowsPreferences;root.desktopPreferences=data.desktopPreferences || ({showFiles:false,fileSort:"name",fileDescending:false});root.appearance=data.appearance;root.system=data.system;
                 root.available=true;root.error="";root.warning=data.warning || "";
             }catch(e){root.error="Unable to read desktop preferences";}
         }}
-        onExited:(code,status)=>{if(code!==0 && !root.error)root.error="Could not save preferences";if(!received)root.error="Settings service did not respond";Qt.callLater(root.drain);}
+        onExited:(code,status)=>{if(code!==0 && !root.error)root.error=worker.command[1]==="--settings"?"Could not read preferences":"Could not save preferences";if(!received)root.error="Settings service did not respond";Qt.callLater(root.drain);}
     }
     Timer {interval:10000;running:root.active;repeat:true;onTriggered:root.refresh()}
 }

@@ -4,6 +4,7 @@ import Quickshell
 import Quickshell.Io
 import "DesktopLayoutModel.js" as Layout
 import "DesktopDragModel.js" as DragModel
+import "FileDropModel.js" as FileDrop
 
 // An opt-in owned surface. The surrounding layer chooses its output and mask.
 Item {
@@ -12,7 +13,12 @@ Item {
     property bool active:false
     DesktopLayoutState {id:arrangement;directory:root.directory;rows:root.service.rows;listingBusy:root.service.busy===true;active:root.active}
     readonly property var displayItems:Layout.build(active?service.rows:[],arrangement.layout,arrangement.expanded,stage.width,stage.height,Date.now())
-    readonly property var inputRectangles:trashConfirmation.visible || editor.visible || actions.visible?[{x:stage.x,y:stage.y,width:stage.width,height:stage.height}]:displayItems.filter(item=>!item.overflow).map(item=>({x:stage.x+item.x,y:stage.y+item.y,width:item.width,height:item.height}))
+    readonly property bool externalDragActive:active && shell.nativeFileDragActive===true
+    readonly property var inputRectangles:externalDragActive || (shell.nativeFileDragAvailable===true && backgroundDrop.containsDrag && dragTail.running) || dragSnapshot.length>0 || nativeDragActive || dropConfirmation.visible || trashConfirmation.visible || editor.visible || actions.visible?[{x:stage.x,y:stage.y,width:stage.width,height:stage.height}]:displayItems.filter(item=>!item.overflow).map(item=>({x:stage.x+item.x,y:stage.y+item.y,width:item.width,height:item.height}))
+    // Native drop completion can precede Qt delivery. Keep an entered target
+    // until Qt consumes that drop, with a short bound and no disconnected lease.
+    onExternalDragActiveChanged:if(externalDragActive)dragTail.stop();else if(backgroundDrop.containsDrag)dragTail.restart()
+    Timer {id:dragTail;interval:200}
     readonly property int overflowCount:displayItems.filter(item=>item.overflow).length
     readonly property var desktopLayout:arrangement.layout
     function grouping(mode){selectedPaths=[];currentPath="";anchorPath="";arrangement.group(mode);}
@@ -29,15 +35,39 @@ Item {
     property string anchorPath:""
     property var pendingTrash:[]
     property string pendingRename:""
+    property bool nativeDragActive:false
+    property string nativeUris:""
+    property string nativeToken:""
+    property point dragAnchor:Qt.point(0,0)
+    property var pendingDropPaths:[]
+    property string pendingDropDestination:""
+    function beginNativeDrag(){
+        if(!dragSnapshot.length || dragSnapshot[0].stack || nativeDragActive)return;
+        try {nativeUris=FileDrop.uris(displayItems.filter(item=>dragSnapshot.some(selected=>selected.key===item.key)));nativeToken=Date.now()+":"+Math.random();nativeDragActive=true;}
+        catch(error){root.error=String(error);}
+    }
+    function receiveInternalDrop(x,y){
+        if(!nativeDragActive || arrangement.layout.grouping!=="none")return false;
+        const placement=DragModel.translate(dragSnapshot,x-dragAnchor.x,y-dragAnchor.y,stage.width,stage.height);
+        dragSnapshot=[];dragPreview=[];if(placement.length)arrangement.place(placement,stage.width,stage.height);return true;
+    }
+    function endNativeDrag(){nativeDragActive=false;nativeUris="";nativeToken="";cancelDrag();}
+    function proposeCopy(urls,destination){
+        dropConfirmation.close();pendingDropPaths=[];pendingDropDestination="";
+        try {const paths=FileDrop.paths(urls);if(typeof destination!=="string" || !destination.startsWith("/") || /[\u0000-\u001f\u007f]/.test(destination))throw Error("The destination folder is invalid.");root.error="";pendingDropPaths=paths;pendingDropDestination=destination;dropConfirmation.open();focusContents();Qt.callLater(()=>cancelDrop.forceActiveFocus());return true;}
+        catch(error){root.error=String(error);return false;}
+    }
+    function confirmDrop(){const paths=pendingDropPaths.slice(),destination=pendingDropDestination;pendingDropPaths=[];pendingDropDestination="";dropConfirmation.close();if(paths.length)service.startJob("copy",paths,destination,"skip");}
     property var dragSnapshot:[]
     property var dragPreview:[]
-    function startDrag(key){dragProxy.x=0;dragProxy.y=0;dragSnapshot=DragModel.begin(displayItems,key,selectedPaths,arrangement.layout.grouping);dragPreview=[];}
-    function previewDrag(){dragPreview=DragModel.translate(dragSnapshot,dragProxy.x,dragProxy.y,stage.width,stage.height);}
+    function startDrag(key,anchor){dragProxy.x=0;dragProxy.y=0;dragAnchor=anchor || Qt.point(0,0);dragSnapshot=DragModel.begin(displayItems,key,selectedPaths,arrangement.layout.grouping);if(!dragSnapshot.length && arrangement.layout.grouping!=="none")dragSnapshot=displayItems.filter(item=>!item.stack && !item.overflow && (selectedPaths.includes(item.row.path) || item.key===key)).map(item=>({key:item.key,x:item.x,y:item.y,width:item.width,height:item.height,stack:false}));dragPreview=[];}
+    function previewDrag(){if(arrangement.layout.grouping!=="none" && dragSnapshot.length && !dragSnapshot[0].stack)return;dragPreview=DragModel.translate(dragSnapshot,dragProxy.x,dragProxy.y,stage.width,stage.height);}
     function finishDrag(){const placement=dragPreview;dragSnapshot=[];dragPreview=[];if(placement.length)arrangement.place(placement,stage.width,stage.height);}
     function cancelDrag(){dragSnapshot=[];dragPreview=[];}
     property bool keyboardActive:false
     readonly property var current:service.rows.find(row=>row.path===currentPath) || null
     readonly property alias inputArea:stage
+    readonly property bool dropConfirmationVisible:dropConfirmation.visible
     readonly property bool confirmationVisible:trashConfirmation.visible
     signal keyboardRequested(bool requested)
 
@@ -70,7 +100,7 @@ Item {
     function submitName(){if(!nameField.text)return;service.act(editor.mode,{path:editor.mode==="rename"?pendingRename:directory,name:nameField.text});editor.close();}
     function context(){if(!current)return;actions.open();focusContents();}
     function activate(){if(!active)return;if(resolveDirectory){if(!location.running)location.running=true;}else if(directory && service===internalFiles)service.navigate(directory);}
-    onActiveChanged:{if(active)activate();else {cancelDrag();selectedPaths=[];currentPath="";anchorPath="";trashConfirmation.close();editor.close();actions.close();leaveKeyboard();}}
+    onActiveChanged:{if(active)activate();else {endNativeDrag();dropConfirmation.close();selectedPaths=[];currentPath="";anchorPath="";trashConfirmation.close();editor.close();actions.close();leaveKeyboard();}}
     Component.onCompleted:if(active)activate()
     onSortChanged:if(active && service===internalFiles)service.refresh()
     onDescendingChanged:if(active && service===internalFiles)service.refresh()
@@ -95,7 +125,7 @@ Item {
         focus:root.keyboardActive
         Keys.onPressed:event=>{
             const primary=event.modifiers&(Qt.ControlModifier|Qt.MetaModifier);
-            if(event.key===Qt.Key_Escape){actions.close();editor.close();trashConfirmation.close();root.pendingTrash=[];root.leaveKeyboard();}
+            if(event.key===Qt.Key_Escape){if(root.nativeDragActive)dragProxy.Drag.cancel();else root.cancelDrag();dropConfirmation.close();actions.close();editor.close();trashConfirmation.close();root.pendingTrash=[];root.leaveKeyboard();}
             else if(primary && event.key===Qt.Key_A){root.selectedPaths=root.service.rows.map(row=>row.path);if(root.selectedPaths.length)root.currentPath=root.selectedPaths[0];}
             else if(primary && event.key===Qt.Key_C)root.service.stage(root.selectedPaths,"copy");
             else if(primary && event.key===Qt.Key_X)root.service.stage(root.selectedPaths,"move");
@@ -113,9 +143,23 @@ Item {
             else {event.accepted=false;return;}
             event.accepted=true;
         }
-        Item {id:dragProxy}
+        Item {id:dragProxy
+            Drag.active:root.nativeDragActive
+            Drag.dragType:Drag.Automatic
+            Drag.source:dragProxy
+            Drag.supportedActions:Qt.CopyAction
+            Drag.proposedAction:Qt.CopyAction
+            Drag.mimeData:({"text/uri-list":root.nativeUris,"application/x-lumen-desktop-arrangement":root.nativeToken})
+            Drag.onDragFinished:dropAction=>root.endNativeDrag()
+        }
         Item {
             id:grid;anchors.fill:parent
+        DropArea {anchors.fill:parent
+            id:backgroundDrop
+            objectName:"desktopBackgroundDrop"
+            onEntered:drag=>{drag.accepted=(root.nativeDragActive && drag.formats.includes("application/x-lumen-desktop-arrangement")) || (!root.nativeDragActive && drag.hasUrls && (drag.supportedActions & Qt.CopyAction));}
+            onDropped:drop=>{if(root.nativeDragActive && drop.getDataAsString("application/x-lumen-desktop-arrangement")===root.nativeToken && root.receiveInternalDrop(drop.x,drop.y))drop.accept(Qt.CopyAction);else if(!root.nativeDragActive && drop.hasUrls && (drop.supportedActions & Qt.CopyAction) && root.proposeCopy(drop.urls.map(url=>url.toString()),root.directory))drop.accept(Qt.CopyAction);}
+        }
             Repeater {model:root.displayItems
                 AbstractButton {
                     id:tile
@@ -133,22 +177,27 @@ Item {
                         SystemGlyph {anchors.horizontalCenter:parent.horizontalCenter;y:8;width:46;height:46;name:tile.modelData.stack || tile.fileRow.directory?"folder":"document";ink:root.selectedPaths.includes(tile.fileRow.path)?Theme.colors.selectedText:Theme.colors.accent}
                         PanelLabel {x:5;y:61;width:98;height:34;text:tile.modelData.stack?tile.modelData.label+" ("+tile.modelData.children.length+")":(tile.fileRow.link?"↗ ":"")+tile.fileRow.name;textFormat:Text.PlainText;wrapMode:Text.Wrap;maximumLineCount:2;elide:Text.ElideRight;horizontalAlignment:Text.AlignHCenter;font.pixelSize:11;color:root.selectedPaths.includes(tile.fileRow.path)?Theme.colors.selectedText:"white";style:Text.Outline;styleColor:"#66000000"}
                     }
+                    DropArea {anchors.fill:parent;enabled:tile.fileRow.directory && !tile.modelData.stack
+                        onEntered:drag=>{drag.accepted=!root.nativeDragActive && drag.hasUrls && (drag.supportedActions & Qt.CopyAction);}
+                        onDropped:drop=>{if(!root.nativeDragActive && drop.hasUrls && (drop.supportedActions & Qt.CopyAction) && root.proposeCopy(drop.urls.map(url=>url.toString()),tile.fileRow.path))drop.accept(Qt.CopyAction);}
+                    }
                     MouseArea {
                         anchors.fill:parent;acceptedButtons:Qt.LeftButton|Qt.RightButton
-                        drag.target:tile.modelData.stack || arrangement.layout.grouping==="none"?dragProxy:null
+                        drag.target:pressedButtons & Qt.LeftButton?dragProxy:null
                         drag.threshold:8
                         property bool wasDragged:false
                         onPositionChanged:if(drag.active){wasDragged=true;root.previewDrag();}
+                        drag.onActiveChanged:if(drag.active){wasDragged=true;root.previewDrag();root.beginNativeDrag();}
                         onPressed:event=>{
                             wasDragged=false;
                             if(!tile.modelData.stack){
                                 if(!root.selectedPaths.includes(tile.fileRow.path) || event.modifiers)root.choose(tile.modelData.sourceIndex,event.modifiers);
                                 else {root.currentPath=tile.fileRow.path;root.focusContents();}
                             }
-                            root.startDrag(tile.modelData.key);
+                            root.startDrag(tile.modelData.key,mapToItem(stage,event.x,event.y));
                         }
-                        onReleased:event=>{if(wasDragged)root.finishDrag();else root.cancelDrag();}
-                        onCanceled:root.cancelDrag()
+                        onReleased:event=>{if(!root.nativeDragActive){if(wasDragged)root.finishDrag();else root.cancelDrag();}}
+                        onCanceled:if(!root.nativeDragActive)root.cancelDrag()
                         onClicked:event=>{if(wasDragged)return;if(tile.modelData.stack){if(event.button===Qt.RightButton)root.desktopActions();else {root.focusContents();arrangement.toggle(tile.modelData.key);}}else if(event.button===Qt.RightButton){root.currentPath=tile.fileRow.path;root.context();}}
                         onDoubleClicked:event=>{if(!tile.modelData.stack && event.button===Qt.LeftButton)root.openCurrent();}
                     }
@@ -172,6 +221,17 @@ Item {
                 ControlRow {width:parent.width;text:"Group by Modification Date";onClicked:{actions.close();root.grouping("modified");}}
                 ControlRow {width:parent.width;text:"Group by Tags";onClicked:{actions.close();root.grouping("tags");}}
                 ControlRow {width:parent.width;text:"Refresh";onClicked:{actions.close();root.service.refresh();}}
+            }
+        }
+        Popup {id:dropConfirmation;width:Math.min(360,stage.width);height:Math.min(dropBody.implicitHeight+28,stage.height);x:stage.width-width;y:Math.max(0,(stage.height-height)/2);modal:true;focus:true;padding:14
+            onClosed:{root.pendingDropPaths=[];root.pendingDropDestination="";}
+            background:Rectangle {radius:12;color:Theme.colors.background;border.color:Theme.outline}
+            contentItem:Column {id:dropBody;spacing:12
+                PanelLabel {text:"Copy Dropped Files?";font.weight:Font.DemiBold}
+                PanelLabel {width:parent.width;wrapMode:Text.Wrap;text:root.pendingDropPaths.length+" item(s) to "+root.pendingDropDestination;maximumLineCount:3;elide:Text.ElideMiddle;textFormat:Text.PlainText}
+                PanelLabel {width:parent.width;wrapMode:Text.Wrap;text:"Existing names will be skipped. Originals will remain in place.";textFormat:Text.PlainText}
+                DialogButton {id:cancelDrop;width:parent.width;text:"Cancel";defaultAction:true;onClicked:dropConfirmation.close()}
+                DialogButton {width:parent.width;text:"Copy Files";primary:true;onClicked:root.confirmDrop()}
             }
         }
         Popup {id:trashConfirmation;width:Math.min(330,stage.width);height:Math.min(trashBody.implicitHeight+28,stage.height);x:stage.width-width;y:Math.max(0,(stage.height-height)/2);modal:true;focus:true;padding:14

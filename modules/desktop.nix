@@ -4,6 +4,7 @@ let
   cfg = config.services.lumen-desktop;
   desktopUser = cfg.user;
   settingsPackage = cfg.settingsPackage;
+  hostGvfsPackage = config.services.gvfs.package;
   hostSwayPackage = config.programs.sway.package;
   assets = import ../packages/assets.nix { inherit pkgs; inherit (cfg.appearance) icons wallpaper brandMark; };
   desktopTimeZone = config.time.timeZone;
@@ -35,6 +36,7 @@ in {
       authorization.enable = lib.mkEnableOption "session authorization dialog appearance integration";
       calendar.enable = lib.mkEnableOption "calendar account services";
       bluetooth.enable = lib.mkEnableOption "Bluetooth UI integration";
+      networkLocations.enable = lib.mkEnableOption "network location providers supplied by the host GVfs service";
       accessibility.enable = lib.mkEnableOption "desktop accessibility bus";
       replaceExistingShell = lib.mkEnableOption "replacement of existing bar and notification services";
     };
@@ -43,6 +45,9 @@ in {
   assertions = [ {
     assertion = !cfg.integrations.clipboard.enable || (cfg.integrations.clipboard.retentionSeconds != null && cfg.integrations.clipboard.maxItems != null);
     message = "Clipboard integration requires an explicit consumer retentionSeconds and maxItems policy.";
+  } {
+    assertion = !cfg.integrations.networkLocations.enable || config.services.gvfs.enable;
+    message = "Network locations require the consumer to enable services.gvfs explicitly.";
   } ];
   services.gnome.at-spi2-core.enable = lib.mkIf cfg.integrations.accessibility.enable true;
   services.gnome.gnome-online-accounts.enable = lib.mkIf cfg.integrations.calendar.enable true;
@@ -60,6 +65,7 @@ in {
   let
     session = import ../packages/session.nix {
       inherit pkgs settingsPackage assets;
+      networkProviderPackage = if cfg.integrations.networkLocations.enable then hostGvfsPackage else null;
       emojiFamily = cfg.appearance.emojiFamily;
       clipboardRetentionSeconds = if cfg.integrations.clipboard.retentionSeconds == null then 3600 else cfg.integrations.clipboard.retentionSeconds;
       clipboardMaxItems = if cfg.integrations.clipboard.maxItems == null then 100 else cfg.integrations.clipboard.maxItems;
@@ -70,7 +76,7 @@ in {
       swayPackage = hostSwayPackage;
       rofiPackage = config.programs.rofi.package;
     };
-    inherit (session) nixSettings appearance qtTheme qtTheme5 palette menuRuntime personalServices fileClipboard displayLayout fileOperations focusWindow desktopState clipboardHistory launchApp shellLauncher audioKey mediaKey notifications menuCommand desktopDoctor desktopAction appLauncher filesLauncher remoteDesktopLauncher calendarLauncher settingsLauncher;
+    inherit (session) hotCorners spaces networkLocations quickshell nixSettings appearance qtTheme qtTheme5 palette menuRuntime personalServices fileClipboard displayLayout fileOperations focusWindow desktopState clipboardHistory launchApp shellLauncher audioKey mediaKey notifications menuCommand desktopDoctor desktopAction appLauncher filesLauncher remoteDesktopLauncher calendarLauncher settingsLauncher;
   in {
     # Session UI only: the consumer retains all authentication policy.
     wayland.windowManager.sway.config.startup = lib.optionals cfg.integrations.authorization.enable [
@@ -162,12 +168,15 @@ in {
       "Mod4+Shift+Tab" = "exec ${desktopAction}/bin/lumen-desktop-action app-switcher-reverse";
       "--release Super_L" = "exec ${desktopAction}/bin/lumen-desktop-action app-switcher-commit";
       "--release Super_R" = "exec ${desktopAction}/bin/lumen-desktop-action app-switcher-commit";
+      "Control+Left" = "exec ${spaces}/bin/lumen-spaces switch previous";
+      "Control+Right" = "exec ${spaces}/bin/lumen-spaces switch next";
       "Control+Up" = "exec ${desktopAction}/bin/lumen-desktop-action overview";
       "Control+Down" = "exec ${desktopAction}/bin/lumen-desktop-action app-windows";
       "Mod4+Control+Shift+d" = "exec ${desktopAction}/bin/lumen-desktop-action dock";
       "Mod4+Control+Shift+n" = "exec ${desktopAction}/bin/lumen-desktop-action notifications-toggle";
       "Mod4+Control+Shift+c" = "exec ${desktopAction}/bin/lumen-desktop-action controls";
       "Mod4+Control+Shift+f" = "exec ${hostSwayPackage}/bin/swaymsg lumen_window fill";
+      "Mod4+Control+d" = "exec ${desktopAction}/bin/lumen-desktop-action show-desktop";
       "Mod4+Control+l" = "exec ${desktopAction}/bin/lumen-desktop-action window-layout";
       "Mod4+Control+f" = "exec ${hostSwayPackage}/bin/swaymsg fullscreen toggle";
       "Mod4+grave" = "exec ${desktopAction}/bin/lumen-desktop-action window-next";
@@ -187,7 +196,7 @@ in {
     qt.enable = true;
     home.sessionVariables.QT_QPA_PLATFORMTHEME = "gnome";
     systemd.user.sessionVariables.QT_QPA_PLATFORMTHEME = "gnome";
-    home.packages = [ clipboardHistory desktopState remoteDesktopLauncher auth.lock calendarLauncher personalServices qtTheme qtTheme5 desktopDoctor menuCommand desktopAction launchApp notifications audioKey pkgs.trash-cli filesLauncher settingsLauncher pkgs.ddcutil pkgs.foot pkgs.quickshell shellLauncher appearance nixSettings appLauncher ];
+    home.packages = [ networkLocations clipboardHistory desktopState remoteDesktopLauncher auth.lock calendarLauncher personalServices qtTheme qtTheme5 desktopDoctor menuCommand desktopAction launchApp notifications audioKey pkgs.trash-cli filesLauncher settingsLauncher pkgs.ddcutil pkgs.foot quickshell shellLauncher appearance nixSettings appLauncher ];
     # Consumers explicitly opt in to replacing competing bar services.
     programs.waybar.systemd.enable = lib.mkIf cfg.integrations.replaceExistingShell (lib.mkForce false);
     wayland.windowManager.sway.config.output."*".bg = lib.mkDefault "${assets}/shell/wallpaper.png fill";
@@ -202,6 +211,16 @@ in {
     # Sway's idle manager issues swaymsg commands, so keep it in the Sway session.
     services.swayidle.systemdTargets = [ "sway-session.target" ];
     systemd.user.services = {
+      lumen-hot-corners = {
+        Unit = { Description = "Native corner action policy"; PartOf = [ "sway-session.target" ]; After = [ "sway-session.target" ]; };
+        Service = { ExecStart = "${hotCorners}/bin/lumen-hot-corners watch"; Restart = "on-failure"; RestartSec = 2; UMask = "0077"; Environment = [ "XDG_STATE_HOME=${config.xdg.stateHome}" ]; };
+        Install.WantedBy = [ "sway-session.target" ];
+      };
+      lumen-spaces = {
+        Unit = { Description = "Application desktop assignments and recent desktop order"; PartOf = [ "sway-session.target" ]; After = [ "sway-session.target" ]; };
+        Service = { ExecStart = "${spaces}/bin/lumen-spaces watch"; Restart = "on-failure"; RestartSec = 2; UMask = "0077"; Environment = [ "XDG_STATE_HOME=${config.xdg.stateHome}" ]; };
+        Install.WantedBy = [ "sway-session.target" ];
+      };
       lumen-clipboard-history = lib.mkIf cfg.integrations.clipboard.enable {
         Unit = { Description = "Opt-in ephemeral text clipboard history"; PartOf = [ "graphical-session.target" ]; After = [ "sway-session.target" ]; ConditionPathExists = "${config.xdg.stateHome}/lumen-desktop/clipboard/consent"; };
         Service = { ExecStart = "${clipboardHistory}/bin/lumen-clipboard-history watch"; Restart = "on-failure"; RestartSec = 2; UMask = "0077"; Environment = [ "XDG_STATE_HOME=${config.xdg.stateHome}" ]; StandardOutput = "null"; };

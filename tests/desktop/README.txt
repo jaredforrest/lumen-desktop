@@ -70,3 +70,38 @@ idle scrollbars, colour/alpha conversion, power confirmation cancellation, help
 search, explicit Downloads overflow, media source/seek isolation, and captures
 preview/save/inspector/utility/display layouts in light/dark and high DPI.
 A proposed acceptance case is still distinct from a passing regression test.
+
+Deliberate accessibility protocol verification (accessibility stays enabled):
+  desktop-test-python tests/desktop/accessibility_protocol.py \
+    --output /tmp/desktop-accessibility-evidence \
+    --launcher /absolute/path/to/lumen-desktop-shell \
+    --quickshell /absolute/path/to/patched/quickshell --full-shell
+The pinned test runtime supplies LUMEN_TEST_AT_SPI. A standalone invocation can
+instead pass --at-spi-prefix for the matching accessibility runtime package.
+This fixture starts its private bus, registry and compositor and checks the live
+accessibility socket remains unchanged. Do not reuse a live desktop bus/address.
+
+Persistent desktop assignments and recent-use order:
+  desktop-test-python tests/desktop/spaces_placement.py --launcher /path/to/lumen-desktop-shell --output /tmp/spaces-proof
+Uses a private runtime and bus before starting a headless compositor, launches
+real windows, restarts the policy daemon, checks display removal/reconnection,
+and proves ordering never changes desktop identity. test_spaces.py additionally
+checks exact typed app matching, lock reload and capability rejection.
+
+Hot Corners:
+  desktop-test-python tests/desktop/test_hot_corners.py
+  desktop-test-python tests/desktop/test_hot_corners_qml.py
+Policy tests cover four corners, modifier entry snapshots, inhibition and latch
+semantics, atomic persistence and fixed action dispatch. The Qt test exercises
+the real editor's configuration roundtrip on a private bus/runtime. Native
+pointer transition acceptance is separate and requires the patched compositor;
+these tests do not simulate native evidence.
+
+Owned-surface paint matrix (isolated runtime, session bus and fixture data):
+  desktop-test-python tests/desktop/surface_matrix.py --launcher /path/to/bin/lumen-desktop-shell --sway /path/to/bin/sway --theme dark --native-frame off --output /tmp/lumen-surfaces-dark
+Repeat for light/dark and native-frame on/off. The native-frame case applies and
+verifies actual compositor decorations; setting a theme environment flag alone
+is insufficient. The test closes each fixture before the next capture, rejects
+blank interiors from measured pixels, and rejects QML binding/image errors.
+Screenshots and result.json are acceptance evidence for software rendering,
+not a claim of reference-platform visual equivalence or hardware rendering.

@@ -1,5 +1,6 @@
 { pkgs, lib ? pkgs.lib, swayPackage ? pkgs.sway, user ? "user", displayName ? user, assets ? ../res/lumen-desktop, greeterExtraConfig ? "", allowUnsupportedGpu ? false }:
 let
+  quickshell = import ./quickshell-runtime.nix { inherit pkgs; };
   authAssets = pkgs.runCommand "lumen-auth-assets" {} ''
     mkdir -p $out
     cp ${assets}/auth/*.qml $out/
@@ -13,7 +14,7 @@ let
   };
   lock = pkgs.writeShellApplication {
     name = "lumen-lock";
-    runtimeInputs = [ pkgs.quickshell pkgs.util-linux pkgs.coreutils pkgs.swaylock ];
+    runtimeInputs = [ quickshell pkgs.util-linux pkgs.coreutils pkgs.swaylock ];
     text = ''
       export FONTCONFIG_FILE=${fontConfig}
       export LUMEN_AUTH_NAME=${lib.escapeShellArg displayName}
@@ -35,7 +36,7 @@ let
   };
   greeterClient = pkgs.writeShellScript "lumen-greeter-client" ''
     export FONTCONFIG_FILE=${fontConfig}
-    if ${pkgs.quickshell}/bin/quickshell --path ${authAssets}/greeter.qml; then
+    if ${quickshell}/bin/quickshell --path ${authAssets}/greeter.qml; then
       touch "$LUMEN_AUTH_SUCCESS"
     fi
     ${swayPackage}/bin/swaymsg exit

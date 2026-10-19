@@ -1,0 +1,115 @@
+--- a/sway/input/keyboard.c
++++ b/sway/input/keyboard.c
+@@ -8,2 +8,3 @@
+ #include <wlr/types/wlr_keyboard.h>
++#include <wlr/types/wlr_data_device.h>
+ #include <wlr/types/wlr_keyboard_group.h>
+@@ -454,2 +455,12 @@
+ 
++	// Cancel the actual data offer before any application binding handles Escape.
++	if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED && wlr_seat->drag && wlr_seat->drag->source) {
++		for (size_t i = 0; i < keyinfo.raw_keysyms_len; ++i) {
++			if (keyinfo.raw_keysyms[i] == XKB_KEY_Escape) {
++				wlr_data_source_destroy(wlr_seat->drag->source);
++				free(device_identifier);
++				return;
++			}
++		}
++	}
+ 	bool handled = false;
+--- a/include/sway/input/seat.h
++++ b/include/sway/input/seat.h
+@@ -80,2 +80,3 @@
+ 	struct wl_listener destroy;
++	struct wl_listener lumen_drop;
+ };
+@@ -83,2 +84,4 @@
+ struct sway_seat {
++	bool lumen_drag_active;
++	uint64_t lumen_drag_serial;
+ 	struct wlr_seat *wlr_seat;
+--- a/sway/input/seat.c
++++ b/sway/input/seat.c
+@@ -1,2 +1,3 @@
+ #include <assert.h>
++#include <json-c/json.h>
+ #include <linux/input-event-codes.h>
+@@ -388,4 +389,26 @@
+ 
++static void lumen_drag_state(struct sway_seat *seat, bool active) {
++	if (seat->lumen_drag_active == active) return;
++	seat->lumen_drag_active = active;
++	seat->lumen_drag_serial++;
++	json_object *event = json_object_new_object();
++	json_object_object_add(event, "kind", json_object_new_string("lumen-drag"));
++	json_object_object_add(event, "version", json_object_new_int(1));
++	json_object_object_add(event, "seat", json_object_new_string(seat->wlr_seat->name));
++	json_object_object_add(event, "active", json_object_new_boolean(active));
++	json_object_object_add(event, "serial", json_object_new_int64(seat->lumen_drag_serial));
++	ipc_event_tick(json_object_to_json_string_ext(event, JSON_C_TO_STRING_PLAIN));
++	json_object_put(event);
++}
++
++static void lumen_drag_drop(struct wl_listener *listener, void *data) {
++	(void)data;
++	struct sway_drag *drag = wl_container_of(listener, drag, lumen_drop);
++	lumen_drag_state(drag->seat, false);
++}
++
+ static void drag_handle_destroy(struct wl_listener *listener, void *data) {
+ 	struct sway_drag *drag = wl_container_of(listener, drag, destroy);
++	lumen_drag_state(drag->seat, false);
++	wl_list_remove(&drag->lumen_drop.link);
+ 
+@@ -454,2 +477,5 @@
+ 	wl_signal_add(&wlr_drag->events.destroy, &drag->destroy);
++	drag->lumen_drop.notify = lumen_drag_drop;
++	wl_signal_add(&wlr_drag->events.drop, &drag->lumen_drop);
++	lumen_drag_state(seat, true);
+ 
+--- a/sway/ipc-json.c
++++ b/sway/ipc-json.c
+@@ -228,2 +228,3 @@
+ 
++	json_object_object_add(version, "native_file_drag_state", json_object_new_boolean(true));
+ 	sscanf(SWAY_VERSION, "%d.%d.%d", &major, &minor, &patch);
+@@ -1230,2 +1231,7 @@
+ 
++	json_object *drag = json_object_new_object();
++	json_object_object_add(drag, "version", json_object_new_int(1));
++	json_object_object_add(drag, "active", json_object_new_boolean(seat->lumen_drag_active));
++	json_object_object_add(drag, "serial", json_object_new_int64(seat->lumen_drag_serial));
++	json_object_object_add(object, "lumen_drag", drag);
+ 	json_object *devices = json_object_new_array();
+--- a/sway/lock.c
++++ b/sway/lock.c
+@@ -1,2 +1,3 @@
+ #include <assert.h>
++#include <wlr/types/wlr_data_device.h>
+ #include <wlr/types/wlr_scene.h>
+@@ -285,2 +286,5 @@
+ 	wl_list_for_each(seat, &server.input->seats, link) {
++		if (seat->wlr_seat->drag && seat->wlr_seat->drag->source) {
++			wlr_data_source_destroy(seat->wlr_seat->drag->source);
++		}
+ 		seat_unfocus_unless_client(seat, client);
+--- a/sway/desktop/layer_shell.c
++++ b/sway/desktop/layer_shell.c
+@@ -272,10 +272,17 @@
+ 	if (layer_surface->initial_commit || committed || layer_surface->surface->mapped != surface->mapped) {
+ 		surface->mapped = layer_surface->surface->mapped;
+ 		arrange_layers(surface->output);
+ 		transaction_commit_dirty();
+ 	}
++	// A layer can become the drag target without another physical motion.
++	if (layer_surface->surface->current.committed & WLR_SURFACE_STATE_INPUT_REGION) {
++		struct sway_seat *seat;
++		wl_list_for_each(seat, &server.input->seats, link) {
++			if (seat->lumen_drag_active) cursor_rebase(seat->cursor);
++		}
++	}
+ }
+ 
+ static void handle_map(struct wl_listener *listener, void *data) {
+ 	struct sway_layer_surface *surface = wl_container_of(listener,
+ 			surface, map);

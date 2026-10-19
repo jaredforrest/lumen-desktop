@@ -27,6 +27,8 @@ assert defaultHome.wayland.windowManager.sway.config.startup == [];
 assert builtins.length optedInHome.wayland.windowManager.sway.config.startup == 1;
 assert optedIn.security.polkit.enable == c.security.polkit.enable;
 assert optedIn.security.polkit.extraConfig == c.security.polkit.extraConfig;
+assert !c.services.gvfs.enable;
+assert !c.services.lumen-desktop.integrations.networkLocations.enable;
 assert !c.services.blueman.enable;
 assert !c.services.gnome.gnome-online-accounts.enable;
 assert !c.services.gnome.evolution-data-server.enable;

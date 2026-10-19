@@ -148,7 +148,7 @@ FloatingWindow {
             ScrollBar.vertical:DesktopScrollBar {}
             Column {
                 id:body;width:scroller.width;spacing:16
-                PanelLabel {width:parent.width;wrapMode:Text.WordWrap;visible:root.service.busy;text:"Applying your preferences…";font.pixelSize:11;color:Theme.colors.muted}
+                PanelLabel {width:parent.width;wrapMode:Text.WordWrap;visible:root.service.busy;text:root.service.applying===true?"Applying your preferences…":"Loading your preferences…";font.pixelSize:11;color:Theme.colors.muted}
                 PanelLabel {visible:root.service.error!=="" || root.service.warning!=="";text:root.service.error || root.service.warning;wrapMode:Text.WordWrap;width:parent.width;color:Theme.colors.muted}
                 Column {
                     visible:root.page==="Appearance";width:parent.width;spacing:14
@@ -223,12 +223,19 @@ FloatingWindow {
                 }
                 Column {
                     visible:root.page==="Desktop & Dock";width:parent.width;spacing:12
+                    HotCornerSettings {width:parent.width}
                     PanelLabel {text:"Desktop files";font.weight:Font.DemiBold}
                     SettingsToggle {width:parent.width;text:"Show files on the desktop";detail:"Display the configured Desktop folder on the primary display";checked:root.service.desktopPreferences.showFiles===true;enabled:root.service.available && !root.service.busy;onClicked:root.service.setDesktopPreference("showFiles",checked)}
                     DesktopComboBox {width:parent.width;model:["Name","Modified","Size","Kind"];currentIndex:["name","modified","size","kind"].indexOf(root.service.desktopPreferences.fileSort || "name");enabled:root.service.available && !root.service.busy;Accessible.name:"Sort desktop files";onActivated:index=>root.service.setDesktopPreference("fileSort",["name","modified","size","kind"][index])}
                     SettingsToggle {width:parent.width;text:"Descending desktop order";checked:root.service.desktopPreferences.fileDescending===true;enabled:root.service.available && !root.service.busy;onClicked:root.service.setDesktopPreference("fileDescending",checked)}
                     PanelLabel {text:"Windows";font.weight:Font.DemiBold}
                     SettingsToggle {width:parent.width;text:"Leave margins around tiled windows";checked:root.service.windowsPreferences.tileMargins!==false;enabled:root.service.available && !root.service.busy;onClicked:root.service.setWindowPreference("tileMargins",checked)}
+                    SettingsToggle {width:parent.width;text:"Drag windows to screen edges to tile";checked:root.service.windowsPreferences.edgeTiling!==false;enabled:root.service.available && !root.service.busy;onClicked:root.service.setWindowPreference("edgeTiling",checked)}
+                    SettingsToggle {width:parent.width;text:"Hold Option while dragging to tile";checked:root.service.windowsPreferences.optionTiling!==false;enabled:root.service.available && !root.service.busy;onClicked:root.service.setWindowPreference("optionTiling",checked)}
+                    SettingsToggle {width:parent.width;text:"Drag windows to the menu bar to fill the screen";checked:root.service.windowsPreferences.topEdgeFill!==false;enabled:root.service.available && !root.service.busy;onClicked:root.service.setWindowPreference("topEdgeFill",checked)}
+                    SettingsToggle {width:parent.width;text:"Hold a window at the top edge to open Overview";checked:root.service.windowsPreferences.topEdgeOverview!==false;enabled:root.service.available && !root.service.busy;onClicked:root.service.setWindowPreference("topEdgeOverview",checked)}
+                    PanelLabel {text:"Tile gap: "+Math.round(tileGapSlider.value)}
+                    SystemSlider {id:tileGapSlider;width:parent.width;from:0;to:32;stepSize:1;value:root.service.windowsPreferences.tileGap ?? 8;enabled:root.service.available && !root.service.busy && root.service.windowsPreferences.tileMargins!==false;Accessible.name:"Tile gap";onMoved:if(!pressed)root.service.setWindowPreference("tileGap",Math.round(value));onPressedChanged:if(!pressed && Math.round(value)!==(root.service.windowsPreferences.tileGap ?? 8))root.service.setWindowPreference("tileGap",Math.round(value))}
                     PanelLabel {text:"Double-click a title bar to"}
                     DesktopComboBox {width:parent.width;model:["Fill","Minimize","Do nothing"];currentIndex:["fill","minimize","none"].indexOf(root.service.windowsPreferences.titlebarDoubleClick || "fill");enabled:root.service.available && !root.service.busy;Accessible.name:"Title bar double-click action";onActivated:index=>root.service.setWindowPreference("titlebarDoubleClick",["fill","minimize","none"][index])}
                     PanelLabel {text:"Dock position"}

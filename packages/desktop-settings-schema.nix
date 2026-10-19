@@ -61,6 +61,12 @@ let
       windows = mkOption {
         type = types.submodule { options = {
           tileMargins = mkOption { type = types.bool; default = true; };
+          tileGap = mkOption { type = types.ints.between 0 32; default = 8; };
+          edgeTiling = mkOption { type = types.bool; default = true; };
+          optionTiling = mkOption { type = types.bool; default = true; };
+          topEdgeFill = mkOption { type = types.bool; default = true; };
+          topEdgeOverview = mkOption { type = types.bool; default = true; };
+
           titlebarDoubleClick = mkOption { type = types.enum [ "fill" "minimize" "none" ]; default = "fill"; };
         }; };
         default = {};

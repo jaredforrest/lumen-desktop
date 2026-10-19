@@ -64,7 +64,7 @@ def valid_desktop(key,value):
     return key in ('showFiles','fileDescending') and type(value) is bool or key=='fileSort' and value in ('name','modified','size','kind')
 
 def valid_windows(key,value):
-    return key=='tileMargins' and type(value) is bool or key=='titlebarDoubleClick' and value in ('fill','minimize','none')
+    return key in ('tileMargins','edgeTiling','optionTiling','topEdgeFill','topEdgeOverview') and type(value) is bool or key=='tileGap' and type(value) is int and 0<=value<=32 or key=='titlebarDoubleClick' and value in ('fill','minimize','none')
 
 CONTROL_IDS=('wifi','bluetooth','sharing','media','displays','appearance','focus','brightness','sound')
 def valid_control(key,value):
@@ -109,7 +109,8 @@ def main():
             if not valid_desktop(key,value):raise ValueError('Unsupported desktop preference or value')
             from nix_settings import set_section
             desktop_prefs=set_section('desktop',{key:value},merge=True)['desktop']
-        window_prefs=read_settings().get('windows',{'tileMargins':True,'titlebarDoubleClick':'fill'})
+        window_prefs=dict(tileMargins=True,tileGap=8,titlebarDoubleClick='fill',edgeTiling=True,optionTiling=True,topEdgeFill=True,topEdgeOverview=True)
+        window_prefs.update(read_settings().get('windows',{}))
         if a.set_windows:
             key,raw=a.set_windows
             value=json.loads(raw)
@@ -168,6 +169,7 @@ def main():
             compositor_effects=False
             unified_headers=False
             placement_preferences=False
+            edge_preferences=False
             if os.environ.get('SWAYSOCK'):
                 try:
                     version=subprocess.run(['swaymsg','-t','get_version','-r'],capture_output=True,text=True,timeout=3,check=True)
@@ -176,6 +178,7 @@ def main():
                     compositor_effects=capabilities.get('compositor_effects',False)
                     unified_headers=capabilities.get('native_window_actions',False)
                     placement_preferences=capabilities.get('window_placement_preferences',False)
+                    edge_preferences=capabilities.get('native_edge_tiling') is True
                 except (OSError,ValueError,subprocess.SubprocessError):pass
             layout=':' if native_frame else 'close,minimize,maximize:'
             if run('gsettings','set','org.gnome.desktop.wm.preferences','button-layout',layout):
@@ -189,6 +192,14 @@ def main():
             if placement_preferences:
                 for command in ('lumen_window margins '+('enable' if window_prefs['tileMargins'] else 'disable'), 'lumen_window titlebar-action '+window_prefs['titlebarDoubleClick']):
                     if run('swaymsg',command):warnings.append('Could not apply window placement preference')
+            if edge_preferences:
+                commands=['lumen_window tile-gap '+str(window_prefs.get('tileGap',8))]
+                for key,setting in (('edgeTiling','edge-tiling'),('optionTiling','option-tiling'),('topEdgeFill','top-edge-fill'),('topEdgeOverview','top-edge-overview')):
+                    commands.append('lumen_window '+setting+' '+('enable' if window_prefs.get(key,True) else 'disable'))
+                for command in commands:
+                    if run('swaymsg',command):warnings.append('Could not apply window drag preference')
+            elif a.set_windows and a.set_windows[0] in ('tileGap','edgeTiling','optionTiling','topEdgeFill','topEdgeOverview'):
+                warnings.append('Window drag preferences require the updated compositor at next login')
             if unified_headers:
                 if run('swaymsg','[app_id="org.quickshell" title="^(Files.*|System Settings|Calendar|Text Tools|Window Overview|Quick Look|File Info|Desktop Help|Session Options|Remote Desktop)$"] border pixel 0'):
                     warnings.append('Could not apply unified app headers')

@@ -74,7 +74,7 @@ class LayoutMenuTest(unittest.TestCase):
 import Quickshell
 import "file:'''+str(assets)+'''" as D
 ShellRoot {
- QtObject {id:stub;property string popupOwner:"";signal dismissPopups(string owner);function claimPopup(owner){popupOwner=owner;dismissPopups(owner);}}
+ QtObject {id:stub;property string popupOwner:"";property double dragged:0;function dragOverview(id){dragged=id;}signal dismissPopups(string owner);function claimPopup(owner){popupOwner=owner;dismissPopups(owner);}}
  D.WindowLayoutMenu {id:menu;shell:stub}
  Timer {id:finish;interval:200;onTriggered:{console.log("LAYOUT_MENU_PASS");menu.dismiss();Qt.quit();}}
  function check(x,m){if(!x)throw new Error(m);}
@@ -84,6 +84,10 @@ ShellRoot {
   menu.event('{"lumen_layout":1,"id":-1,"x":20,"y":30}');check(menu.target===42,"reject negative target");
   menu.event('{"lumen_layout":1,"id":43,"x":"bad","y":30}');check(menu.target===42,"reject nonfinite coordinate");
   check(menu.choices.length===11,"layout choices");
+  menu.updateCapabilities('{"native_edge_tiling":true}');
+  menu.event('{"lumen_drag_overview":1,"id":99}');check(stub.dragged===99,"captured drag target");
+  menu.event('{"lumen_drag_overview":1,"id":"100"}');check(stub.dragged===99,"reject string drag target");
+  menu.updateCapabilities('{}');menu.event('{"lumen_drag_overview":1,"id":100}');check(stub.dragged===99,"ignore unavailable drag capability");
   menu.updateCapabilities('{"native_window_layouts":true,"native_show_desktop":true}');
   check(menu.supported && menu.showDesktopSupported,"native capabilities accepted");
   menu.updateCapabilities('{"native_window_layouts":"true","native_show_desktop":1}');

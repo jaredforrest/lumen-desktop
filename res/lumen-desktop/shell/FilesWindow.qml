@@ -11,6 +11,7 @@ FloatingWindow {
     readonly property color selectionText:selectionActive?Theme.colors.selectedText:Theme.colors.text
     required property var shell
     required property var service
+    NetworkLocationsState {id:networkLocations;active:networkPopup.visible}
     property int windowNumber:1
     title:"Files"+(windowNumber>1?" "+windowNumber:"")+" — "+(service.path==="trash:"?"Trash":service.path.split("/").pop() || "Computer")
     visible:false
@@ -169,6 +170,7 @@ FloatingWindow {
             else if(ctrl && event.key===Qt.Key_A)root.selectAll();
             else if(ctrl && event.key===Qt.Key_Z)root.service.undo();
             else if(ctrl && event.key===Qt.Key_I && root.current)root.service.send("info",{path:root.current.path});
+            else if(ctrl && event.key===Qt.Key_K)networkPopup.open();
             else if(ctrl && event.key===Qt.Key_L)root.dialogFor("goto");
             else if(ctrl && event.key===Qt.Key_F)filter.forceActiveFocus();
             else if(ctrl && shift && event.key===Qt.Key_N)root.dialogFor("mkdir");
@@ -238,6 +240,7 @@ FloatingWindow {
                 }
             }
             Item {width:1;height:12}
+            ControlRow {width:parent.width;text:"Network…";onClicked:networkPopup.open()}
             PanelLabel {x:8;height:23;text:"Locations";font.pixelSize:11;font.weight:Font.DemiBold;color:Theme.colors.muted}
             ControlRow {width:parent.width;text:"Computer";enabled:!root.service.busy;onClicked:root.navigate("/")}
             ControlRow {width:parent.width;text:"Trash";selected:root.service.path==="trash:";onClicked:root.navigate("trash:")}
@@ -521,6 +524,16 @@ Accessible.name:modelData.name;Accessible.selected:root.isSelected(index);onClic
                 }
             }
         }
+        }
+        Popup {
+            id:networkPopup;modal:true;focus:true;width:Math.min(620,root.width-32);height:Math.min(760,root.height-32);x:(root.width-width)/2;y:16;padding:16
+            background:Rectangle {radius:14;color:Theme.colors.background;border.color:Theme.outline}
+            contentItem:Column {spacing:9
+                ScrollView {id:networkScroll;width:parent.width;height:parent.height-42;clip:true;ScrollBar.vertical:DesktopScrollBar {}
+                    NetworkLocationsPane {width:networkScroll.availableWidth;service:networkLocations;onOpenLocalFolder:path=>{networkPopup.close();root.navigate(path);}}
+                }
+                DialogButton {width:parent.width;height:32;text:"Done";onClicked:networkPopup.close()}
+            }
         }
         Popup {
             id:editor;property string action:"";property string target:"";property string label:""

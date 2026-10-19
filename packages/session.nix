@@ -1,6 +1,7 @@
-{ pkgs, settingsPackage, user ? "user", displayName ? user, homeDirectory ? "/home/${user}", timeZone ? "UTC", swayPackage ? pkgs.sway, rofiPackage ? pkgs.rofi, assets ? ../res/lumen-desktop, emojiFamily ? "Noto Color Emoji", clipboardRetentionSeconds ? 3600, clipboardMaxItems ? 100 }:
+{ pkgs, settingsPackage, user ? "user", displayName ? user, homeDirectory ? "/home/${user}", timeZone ? "UTC", swayPackage ? pkgs.sway, rofiPackage ? pkgs.rofi, assets ? ../res/lumen-desktop, emojiFamily ? "Noto Color Emoji", clipboardRetentionSeconds ? 3600, clipboardMaxItems ? 100, networkProviderPackage ? null }:
 let
   lib = pkgs.lib;
+  quickshell = import ./quickshell-runtime.nix { inherit pkgs; };
   desktopTimeZone = timeZone;
   auth = import ./lumen-auth.nix { inherit pkgs user displayName assets; swayPackage = swayPackage; };
     nixSettings = settingsPackage;
@@ -11,6 +12,20 @@ let
     menuRuntime = import ../packages/global-menu-runtime.nix { inherit pkgs; };
     personalServices = import ../packages/lumen-personal-services.nix { inherit pkgs; timeZone = desktopTimeZone; };
     fileClipboard = import ../packages/file-clipboard.nix { inherit pkgs; };
+    hotCorners = pkgs.writeShellApplication {
+      name = "lumen-hot-corners";
+      runtimeInputs = [ pkgs.sway desktopAction appLauncher auth.lock ];
+      text = ''
+        exec ${pkgs.python3}/bin/python3 ${assets}/runtime/hot_corners.py "$@"
+      '';
+    };
+    spaces = pkgs.writeShellApplication {
+      name = "lumen-spaces";
+      runtimeInputs = [ pkgs.sway ];
+      text = ''
+        exec ${pkgs.python3}/bin/python3 ${assets}/runtime/spaces.py "$@"
+      '';
+    };
     displayLayout = pkgs.writeShellApplication {
       name = "lumen-display-layout";
       runtimeInputs = [ pkgs.sway nixSettings ];
@@ -18,6 +33,7 @@ let
         exec ${pkgs.python3}/bin/python3 ${assets}/shell/display_settings.py watch
       '';
     };
+    networkLocations = import ./lumen-network-locations.nix { inherit pkgs menuRuntime assets; providerPackage = networkProviderPackage; };
     fileOperations = pkgs.writeShellApplication {
       name = "lumen-file-operations";
       runtimeInputs = [ pkgs.trash-cli ];
@@ -61,9 +77,9 @@ let
     };
     shellIpc = pkgs.writeShellApplication {
       name = "lumen-shell-ipc";
-      runtimeInputs = [ pkgs.systemd pkgs.quickshell ];
+      runtimeInputs = [ pkgs.systemd quickshell ];
       text = ''
-        exec ${pkgs.python3}/bin/python3 ${assets}/runtime/shell_ipc.py --systemctl ${pkgs.systemd}/bin/systemctl --quickshell ${pkgs.quickshell}/bin/quickshell -- "$@"
+        exec ${pkgs.python3}/bin/python3 ${assets}/runtime/shell_ipc.py --systemctl ${pkgs.systemd}/bin/systemctl --quickshell ${quickshell}/bin/quickshell -- "$@"
       '';
     };
     desktopState = pkgs.writeShellApplication {
@@ -84,8 +100,8 @@ let
       name = "lumen-desktop-shell";
       # Desktop entries launched through Rofi inherit this service's PATH.
       # Entries such as ChatGPT use `env` from coreutils in their Exec command.
-      runtimeInputs = [ pkgs.remmina pkgs.fontconfig pkgs.hyprpicker personalServices pkgs.rembg pkgs.whisper-cpp pkgs.pipewire (pkgs.tesseract.override { enableLanguages = [ "eng" ]; }) (pkgs.aspellWithDicts (d: [ d.en ])) pkgs.wordnet pkgs.espeak-ng pkgs.wtype pkgs.poppler-utils pkgs.ffmpeg-headless pkgs.util-linux fileClipboard pkgs.wl-clipboard pkgs.glib pkgs.udisks2 launchApp pkgs.ddcutil pkgs.blueman pkgs.coreutils pkgs.jq pkgs.sway focusWindow pkgs.quickshell pkgs.foot pkgs.wireplumber pkgs.pavucontrol
-        clipboardHistory desktopState shellIpc dockDrop applicationControl fileAlias auth.lock pkgs.swaylock pkgs.xdg-utils pkgs.trash-cli appearance nixSettings rofiPackage ];
+      runtimeInputs = [ pkgs.remmina pkgs.fontconfig pkgs.hyprpicker personalServices pkgs.rembg pkgs.whisper-cpp pkgs.pipewire (pkgs.tesseract.override { enableLanguages = [ "eng" ]; }) (pkgs.aspellWithDicts (d: [ d.en ])) pkgs.wordnet pkgs.espeak-ng pkgs.wtype pkgs.poppler-utils pkgs.ffmpeg-headless pkgs.util-linux fileClipboard pkgs.wl-clipboard pkgs.glib pkgs.udisks2 launchApp pkgs.ddcutil pkgs.blueman pkgs.coreutils pkgs.jq pkgs.sway focusWindow quickshell pkgs.foot pkgs.wireplumber pkgs.pavucontrol
+        hotCorners spaces networkLocations clipboardHistory desktopState shellIpc dockDrop applicationControl fileAlias auth.lock pkgs.swaylock pkgs.xdg-utils pkgs.trash-cli appearance nixSettings rofiPackage ];
       text = ''
         # The systemd service does not inherit the interactive login PATH.
         # Desktop entries may name installed commands without absolute paths.
@@ -159,6 +175,7 @@ let
     };
     desktopAction = pkgs.writeShellScriptBin "lumen-desktop-action" ''
       case "$1" in
+        show-desktop) exec ${shellIpc}/bin/lumen-shell-ipc call desktop showDesktop ;;
         window-layout) exec ${shellIpc}/bin/lumen-shell-ipc call desktop windowLayout ;;
         window-next) exec ${shellIpc}/bin/lumen-shell-ipc call desktop cycleWindow next ;;
         window-previous) exec ${shellIpc}/bin/lumen-shell-ipc call desktop cycleWindow previous ;;
@@ -193,4 +210,4 @@ let
     settingsLauncher = pkgs.writeShellScriptBin "lumen-system-settings" ''
       exec ${shellIpc}/bin/lumen-shell-ipc call desktop settings ""
     '';
-in { inherit nixSettings appearance qtTheme qtTheme5 palette menuRuntime personalServices fileClipboard displayLayout fileOperations focusWindow dockDrop applicationControl fileAlias desktopState shellIpc clipboardHistory launchApp shellLauncher audioKey mediaKey notifications menuCommand desktopDoctor desktopAction appLauncher filesLauncher remoteDesktopLauncher calendarLauncher settingsLauncher; }
+in { inherit hotCorners spaces networkLocations quickshell nixSettings appearance qtTheme qtTheme5 palette menuRuntime personalServices fileClipboard displayLayout fileOperations focusWindow dockDrop applicationControl fileAlias desktopState shellIpc clipboardHistory launchApp shellLauncher audioKey mediaKey notifications menuCommand desktopDoctor desktopAction appLauncher filesLauncher remoteDesktopLauncher calendarLauncher settingsLauncher; }

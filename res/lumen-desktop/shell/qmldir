@@ -86,4 +86,10 @@ ForceQuitDialog 1.0 ForceQuitDialog.qml
 DesktopFiles 1.0 DesktopFiles.qml
 DesktopFilesSurface 1.0 DesktopFilesSurface.qml
 
+NetworkLocationsState 1.0 NetworkLocationsState.qml
+NetworkLocationsPane 1.0 NetworkLocationsPane.qml
+
 DesktopLayoutState 1.0 DesktopLayoutState.qml
+
+HotCornerSettings 1.0 HotCornerSettings.qml
+NativeFileDragState 1.0 NativeFileDragState.qml

@@ -1,0 +1,447 @@
+--- a/sway/tree/root.c
++++ b/sway/tree/root.c
+@@ -106,6 +106,10 @@
+ bool container_lumen_action_enabled(struct sway_container *con, int action) {
+  if (!con || con->node.destroying || !con->view || !con->view->surface) return false;
+  if (action == 0) return true;
++ if (action == 2) {
++  double minw,maxw,minh,maxh;view_get_constraints(con->view,&minw,&maxw,&minh,&maxh);
++  if (minw==maxw || minh==maxh) return false;
++ }
+  const char *app = view_get_app_id(con->view);
+  if (app && strcmp(app, "org.quickshell") == 0 && con->title) {
+   if (strcmp(con->title, "Window Overview") == 0 || strcmp(con->title, "Quick Look") == 0) return false;
+@@ -286,8 +290,48 @@
+ 
+ static bool lumen_tile_margins = true;
+ static int lumen_titlebar_action = 1;
++static bool lumen_edge_tiling = true, lumen_option_tiling = true;
++static bool lumen_top_edge_fill = true, lumen_top_edge_overview = true;
++static int lumen_tile_gap = 8;
++
++bool container_lumen_drag_setting(const char *name) {
++ if (strcmp(name, "edge-tiling") == 0) return lumen_edge_tiling;
++ if (strcmp(name, "option-tiling") == 0) return lumen_option_tiling;
++ if (strcmp(name, "top-edge-fill") == 0) return lumen_top_edge_fill;
++ if (strcmp(name, "top-edge-overview") == 0) return lumen_top_edge_overview;
++ return false;
++}
++
++struct sway_lumen_placement *container_lumen_snapshot(struct sway_container *con) {
++ return lumen_save(con);
++}
++
++void container_lumen_tile_box(struct sway_workspace *ws, int column, int row,
++  int columns, int rows, struct wlr_box *box) {
++ int gap = lumen_tile_margins && ws->width > 64 && ws->height > 64 ? lumen_tile_gap : 0;
++ int left = gap + (ws->width-gap)*column/columns;
++ int right = gap + (ws->width-gap)*(column+1)/columns-gap;
++ int top = gap + (ws->height-gap)*row/rows;
++ int bottom = gap + (ws->height-gap)*(row+1)/rows-gap;
++ *box = (struct wlr_box){ws->x+left, ws->y+top, right-left, bottom-top};
++}
++
+ 
+ bool container_lumen_configure(const char *setting, const char *value) {
++ if (strcmp(setting,"tile-gap")==0) {
++  char *end=NULL;long gap=strtol(value,&end,10);
++  if (!value[0] || *end || gap<0 || gap>32) return false;
++  lumen_tile_gap=gap;return true;
++ }
++ bool *drag_setting = strcmp(setting,"edge-tiling")==0 ? &lumen_edge_tiling :
++  strcmp(setting,"option-tiling")==0 ? &lumen_option_tiling :
++  strcmp(setting,"top-edge-fill")==0 ? &lumen_top_edge_fill :
++  strcmp(setting,"top-edge-overview")==0 ? &lumen_top_edge_overview : NULL;
++ if (drag_setting) {
++  if (strcmp(value,"enable")!=0 && strcmp(value,"disable")!=0) return false;
++  *drag_setting=strcmp(value,"enable")==0;return true;
++ }
++
+  if (strcmp(setting, "margins") == 0) {
+   if (strcmp(value, "enable") != 0 && strcmp(value, "disable") != 0) return false;
+   lumen_tile_margins = strcmp(value, "enable") == 0; return true;
+@@ -319,21 +363,17 @@
+ void container_lumen_tile(struct sway_container *con, int column, int row, int columns, int rows) {
+  if (!container_lumen_action_enabled(con, 2) || !con->pending.workspace || con->scratchpad) return;
+  if (columns < 1 || rows < 1 || column < 0 || row < 0 || column >= columns || row >= rows) return;
++ struct sway_workspace *ws = con->pending.workspace;
++ struct wlr_box tile_box;container_lumen_tile_box(ws,column,row,columns,rows,&tile_box);
++ double minw,maxw,minh,maxh;view_get_constraints(con->view,&minw,&maxw,&minh,&maxh);
++ if (tile_box.width<minw || tile_box.height<minh || tile_box.width>maxw || tile_box.height>maxh) return;
+  if (con->pending.fullscreen_mode != FULLSCREEN_NONE) container_fullscreen_disable(con);
+  if (!con->lumen_filled) con->lumen_filled = lumen_save(con);
+  if (!con->lumen_filled) return;
+- struct sway_workspace *ws = con->pending.workspace;
+  container_set_floating(con, true);
+  con->pending.border = con->lumen_filled->border;
+- int gap = lumen_tile_margins && ws->width > 64 && ws->height > 64 ? 8 : 0;
+- int left = gap + (ws->width - gap) * column / columns;
+- int right = gap + (ws->width - gap) * (column + 1) / columns - gap;
+- int top = gap + (ws->height - gap) * row / rows;
+- int bottom = gap + (ws->height - gap) * (row + 1) / rows - gap;
+- con->pending.x = ws->x + left;
+- con->pending.y = ws->y + top;
+- con->pending.width = right - left;
+- con->pending.height = bottom - top;
++ con->pending.x=tile_box.x;con->pending.y=tile_box.y;
++ con->pending.width=tile_box.width;con->pending.height=tile_box.height;
+  arrange_workspace(ws);
+  node_set_dirty(&con->node);
+ }
+--- a/include/sway/tree/container.h
++++ b/include/sway/tree/container.h
+@@ -170,6 +170,10 @@
+ void container_lumen_show_desktop(int mode);
+ bool container_lumen_configure(const char *setting, const char *value);
+ void container_lumen_titlebar_action(struct sway_container *con);
++bool container_lumen_drag_setting(const char *name);
++struct sway_lumen_placement *container_lumen_snapshot(struct sway_container *con);
++void container_lumen_tile_box(struct sway_workspace *ws, int column, int row,
++ int columns, int rows, struct wlr_box *box);
+ void container_lumen_tile(struct sway_container *con, int column, int row, int columns, int rows);
+ void container_lumen_hide(struct sway_container *con);
+ void container_lumen_unhide(struct sway_container *con);
+--- a/include/sway/input/seat.h
++++ b/include/sway/input/seat.h
+@@ -344,6 +344,7 @@
+  * End a seatop (ie. free any seatop specific resources).
+  */
+ void seatop_end(struct sway_seat *seat);
++bool seatop_lumen_cancel_drag(struct sway_seat *seat);
+ 
+ /**
+  * Instructs the seatop implementation to drop any references to the given
+--- a/sway/input/seatop_move_floating.c
++++ b/sway/input/seatop_move_floating.c
+@@ -1,80 +1,224 @@
++#include "sway/desktop/transaction.h"
++#include <math.h>
++#include <json-c/json.h>
+ #include <wlr/types/wlr_cursor.h>
+-#include "sway/desktop/transaction.h"
++#include <wlr/types/wlr_keyboard.h>
++#include <wlr/types/wlr_output_layout.h>
++#include <wlr/types/wlr_scene.h>
+ #include "sway/input/cursor.h"
+ #include "sway/input/seat.h"
++#include "sway/ipc-server.h"
++#include "sway/server.h"
++#include "sway/output.h"
++#include "sway/tree/root.h"
++#include "sway/tree/arrange.h"
++#include "sway/tree/view.h"
++#include "sway/tree/workspace.h"
++
++/* Provisional policy timings, not measurements of another platform. */
++#define LUMEN_DRAG_DWELL_MS 250
++#define LUMEN_DRAG_OVERVIEW_MS 900
++#define LUMEN_DRAG_OPTION_BAND 32
+ 
+ struct seatop_move_floating_event {
+-	struct sway_container *con;
+-	double dx, dy; // cursor offset in container
++ struct sway_container *con;
++ struct sway_seat *seat;
++ double dx, dy;
++ struct sway_lumen_placement *restore;
++ struct wl_event_source *timer;
++ struct wlr_scene_rect *preview;
++ struct wlr_box box;
++ size_t output_id;
++ int target, preview_delay;
++ bool ready, overview;
+ };
++static const struct sway_seatop_impl seatop_impl;
++
++static void drag_animation(struct sway_container *con, bool moving) {
++#ifdef SCENEFX_VERSION
++ con->animation_state.seat_is_moving_float=moving;
++#else
++ (void)con;(void)moving;
++#endif
++}
++
++static void preview_clear(struct seatop_move_floating_event *e) {
++ if (e->preview) { wlr_scene_node_destroy(&e->preview->node); e->preview = NULL; }
++ e->ready = false;
++}
++
++static void drag_event(struct seatop_move_floating_event *e, const char *phase) {
++ json_object *event = json_object_new_object();
++ json_object_object_add(event, "lumen_drag_layout", json_object_new_int(1));
++ json_object_object_add(event, "id", json_object_new_int64(e->con->node.id));
++ json_object_object_add(event, "phase", json_object_new_string(phase));
++ json_object_object_add(event, "target", json_object_new_int(e->target));
++ json_object_object_add(event, "x", json_object_new_int(e->box.x));
++ json_object_object_add(event, "y", json_object_new_int(e->box.y));
++ json_object_object_add(event, "width", json_object_new_int(e->box.width));
++ json_object_object_add(event, "height", json_object_new_int(e->box.height));
++ ipc_event_tick(json_object_to_json_string_ext(event, JSON_C_TO_STRING_PLAIN));
++ json_object_put(event);
++}
++
++static struct sway_workspace *drag_target(struct seatop_move_floating_event *e,
++  int *target, size_t *output_id, struct wlr_box *box) {
++ *target = 0;
++ struct sway_cursor *cursor = e->seat->cursor;
++ if (server.session_lock.lock || cursor->active_constraint || e->con->node.destroying ||
++   !container_lumen_action_enabled(e->con, 2) || e->overview) return NULL;
++ struct wlr_output *wlr = wlr_output_layout_output_at(root->output_layout,
++  cursor->cursor->x, cursor->cursor->y);
++ if (!wlr) return NULL;
++ struct sway_output *output = wlr->data;
++ struct sway_workspace *ws = output_get_active_workspace(output);
++ if (!ws || ws->width <= 0 || ws->height <= 0) return NULL;
++ struct wlr_box bounds;
++ wlr_output_layout_get_box(root->output_layout, wlr, &bounds);
++ struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(e->seat->wlr_seat);
++ bool option = keyboard && (wlr_keyboard_get_modifiers(keyboard) & WLR_MODIFIER_ALT) &&
++  container_lumen_drag_setting("option-tiling");
++ int band = option ? LUMEN_DRAG_OPTION_BAND : 1;
++ double x=cursor->cursor->x, y=cursor->cursor->y;
++ bool left=x-bounds.x<=band, right=bounds.x+bounds.width-x<=band;
++ bool top=y-bounds.y<=band, bottom=bounds.y+bounds.height-y<=band;
++ int column=0,row=0,columns=2,rows=1;
++ if (container_lumen_drag_setting("edge-tiling") && (left || right)) {
++  column=right;
++  if (top || bottom) { rows=2; row=bottom; *target=3+row*2+column; }
++  else *target=1+column;
++ } else if (top && (container_lumen_drag_setting("top-edge-fill") ||
++   container_lumen_drag_setting("top-edge-overview"))) {
++  *target=7; columns=1;
++ } else return NULL;
++ container_lumen_tile_box(ws,column,row,columns,rows,box);
++ double minw,maxw,minh,maxh;
++ view_get_constraints(e->con->view,&minw,&maxw,&minh,&maxh);
++ if (maxw==minw || maxh==minh || box->width<minw || box->height<minh || box->width>maxw || box->height>maxh) {
++  *target=0; return NULL;
++ }
++ *output_id=output->node.id;
++ return ws;
++}
++
++static int drag_timer(void *data) {
++ struct seatop_move_floating_event *e=data;
++ int target;size_t output_id=0;struct wlr_box box;
++ struct sway_workspace *ws=drag_target(e,&target,&output_id,&box);
++ if (!ws || target!=e->target || output_id!=e->output_id) {
++  preview_clear(e);drag_event(e,"leave");e->target=0;return 0;
++ }
++ if (e->ready && target==7 && container_lumen_drag_setting("top-edge-overview")) {
++  preview_clear(e);e->overview=true;
++  char payload[128];
++  snprintf(payload,sizeof(payload),"{\"lumen_drag_overview\":1,\"id\":%llu}",
++   (unsigned long long)e->con->node.id);
++  ipc_event_tick(payload);drag_event(e,"overview");return 0;
++ }
++ e->box=box;e->ready=true;
++ if (target!=7 || container_lumen_drag_setting("top-edge-fill")) {
++  const float color[4]={0.052f,0.1248f,0.234f,0.26f};
++  e->preview=wlr_scene_rect_create(root->layers.seat,box.width,box.height,color);
++  if (e->preview) wlr_scene_node_set_position(&e->preview->node,box.x,box.y);
++  drag_event(e,"preview");
++ }
++ if (target==7 && container_lumen_drag_setting("top-edge-overview"))
++  wl_event_source_timer_update(e->timer,LUMEN_DRAG_OVERVIEW_MS-e->preview_delay);
++ return 0;
++}
++
++static void update_target(struct seatop_move_floating_event *e) {
++ int target;size_t output_id=0;struct wlr_box box;
++ drag_target(e,&target,&output_id,&box);
++ if (target==e->target && output_id==e->output_id) return;
++ if (e->target) {preview_clear(e);drag_event(e,"leave");}
++ wl_event_source_timer_update(e->timer,0);
++ e->target=target;e->output_id=output_id;
++ if (!target) return;
++ e->box=box;
++ struct wlr_keyboard *keyboard=wlr_seat_get_keyboard(e->seat->wlr_seat);
++ bool option=keyboard && (wlr_keyboard_get_modifiers(keyboard)&WLR_MODIFIER_ALT) &&
++  container_lumen_drag_setting("option-tiling");
++ e->preview_delay=option ? 0 : LUMEN_DRAG_DWELL_MS;
++ if (option) drag_timer(e);
++ else wl_event_source_timer_update(e->timer,LUMEN_DRAG_DWELL_MS);
++}
+ 
+ static void finalize_move(struct sway_seat *seat) {
+-	struct seatop_move_floating_event *e = seat->seatop_data;
+-
+-	// We "move" the container to its own location
+-	// so it discovers its output again.
+-	container_floating_move_to(e->con, e->con->pending.x, e->con->pending.y);
+-	transaction_commit_dirty();
+-
+-	seatop_begin_default(seat);
+-}
+-
+-static void handle_button(struct sway_seat *seat, uint32_t time_msec,
+-		struct wlr_input_device *device, uint32_t button,
+-		enum wl_pointer_button_state state) {
+-	if (seat->cursor->pressed_button_count == 0) {
+-		finalize_move(seat);
+-	}
+-}
+-
+-static void handle_tablet_tool_tip(struct sway_seat *seat,
+-		struct sway_tablet_tool *tool, uint32_t time_msec,
+-		enum wlr_tablet_tool_tip_state state) {
+-	if (state == WLR_TABLET_TOOL_TIP_UP) {
+-		finalize_move(seat);
+-	}
+-}
+-static void handle_pointer_motion(struct sway_seat *seat, uint32_t time_msec) {
+-	struct seatop_move_floating_event *e = seat->seatop_data;
+-	struct wlr_cursor *cursor = seat->cursor->cursor;
+-	container_floating_move_to(e->con, cursor->x - e->dx, cursor->y - e->dy);
+-	transaction_commit_dirty();
+-}
+-
+-static void handle_unref(struct sway_seat *seat, struct sway_container *con) {
+-	struct seatop_move_floating_event *e = seat->seatop_data;
+-	if (e->con == con) {
+-		seatop_begin_default(seat);
+-	}
+-}
+-
+-static const struct sway_seatop_impl seatop_impl = {
+-	.button = handle_button,
+-	.pointer_motion = handle_pointer_motion,
+-	.tablet_tool_tip = handle_tablet_tool_tip,
+-	.unref = handle_unref,
++ struct seatop_move_floating_event *e=seat->seatop_data;
++ int target;size_t output_id=0;struct wlr_box box;
++ struct sway_workspace *ws=drag_target(e,&target,&output_id,&box);
++ bool commit=e->ready && !e->overview && target==e->target && output_id==e->output_id &&
++  (target!=7 || container_lumen_drag_setting("top-edge-fill"));
++ if (commit && ws) {
++  if (e->con->pending.workspace!=ws) {
++   container_detach(e->con);workspace_add_floating(ws,e->con);
++  }
++  if (!e->con->lumen_filled) {e->con->lumen_filled=e->restore;e->restore=NULL;}
++  if (target==7) container_lumen_tile(e->con,0,0,1,1);
++  else if (target<=2) container_lumen_tile(e->con,target-1,0,2,1);
++  else container_lumen_tile(e->con,(target-3)%2,(target-3)/2,2,2);
++  drag_event(e,"commit");
++ } else container_floating_move_to(e->con,e->con->pending.x,e->con->pending.y);
++ transaction_commit_dirty();seatop_begin_default(seat);
++}
++
++static void handle_button(struct sway_seat *seat,uint32_t time_msec,
++  struct wlr_input_device *device,uint32_t button,enum wl_pointer_button_state state) {
++ (void)time_msec;(void)device;(void)button;(void)state;
++ if (seat->cursor->pressed_button_count==0) finalize_move(seat);
++}
++static void handle_tablet_tool_tip(struct sway_seat *seat,struct sway_tablet_tool *tool,
++  uint32_t time_msec,enum wlr_tablet_tool_tip_state state) {
++ (void)tool;(void)time_msec;
++ if (state==WLR_TABLET_TOOL_TIP_UP) finalize_move(seat);
++}
++static void handle_pointer_motion(struct sway_seat *seat,uint32_t time_msec) {
++ (void)time_msec;
++ struct seatop_move_floating_event *e=seat->seatop_data;
++ struct wlr_cursor *cursor=seat->cursor->cursor;
++ container_floating_move_to(e->con,cursor->x-e->dx,cursor->y-e->dy);
++ update_target(e);transaction_commit_dirty();
++}
++static void handle_end(struct sway_seat *seat) {
++ struct seatop_move_floating_event *e=seat->seatop_data;
++ drag_animation(e->con,false);
++ if (e->target) drag_event(e,"end");
++ preview_clear(e);
++ if (e->timer) wl_event_source_remove(e->timer);
++ container_lumen_placement_free(e->restore);
++}
++static void handle_unref(struct sway_seat *seat,struct sway_container *con) {
++ struct seatop_move_floating_event *e=seat->seatop_data;
++ if (e->con==con) seatop_begin_default(seat);
++}
++static const struct sway_seatop_impl seatop_impl={
++ .button=handle_button,.pointer_motion=handle_pointer_motion,
++ .tablet_tool_tip=handle_tablet_tool_tip,.unref=handle_unref,.end=handle_end,
+ };
+ 
+-void seatop_begin_move_floating(struct sway_seat *seat,
+-		struct sway_container *con) {
+-	seatop_end(seat);
+-
+-	struct sway_cursor *cursor = seat->cursor;
+-	struct seatop_move_floating_event *e =
+-		calloc(1, sizeof(struct seatop_move_floating_event));
+-	if (!e) {
+-		return;
+-	}
+-	e->con = con;
+-	e->dx = cursor->cursor->x - con->pending.x;
+-	e->dy = cursor->cursor->y - con->pending.y;
+-
+-	seat->seatop_impl = &seatop_impl;
+-	seat->seatop_data = e;
+-
+-	container_raise_floating(con);
+-	transaction_commit_dirty();
+-
+-	cursor_set_image(cursor, "grab", NULL);
+-	wlr_seat_pointer_notify_clear_focus(seat->wlr_seat);
+-}
++bool seatop_lumen_cancel_drag(struct sway_seat *seat) {
++ if (seat->seatop_impl!=&seatop_impl) return false;
++ struct seatop_move_floating_event *e=seat->seatop_data;
++ if (e->restore && !e->con->node.destroying) {
++  container_floating_move_to(e->con,e->restore->box.x,e->restore->box.y);
++  e->con->pending.width=e->restore->box.width;e->con->pending.height=e->restore->box.height;
++  arrange_container(e->con);node_set_dirty(&e->con->node);transaction_commit_dirty();
++ }
++ drag_event(e,"cancel");seatop_begin_default(seat);return true;
++}
++
++void seatop_begin_move_floating(struct sway_seat *seat,struct sway_container *con) {
++ seatop_end(seat);
++ struct sway_cursor *cursor=seat->cursor;
++ struct seatop_move_floating_event *e=calloc(1,sizeof(*e));
++ if (!e) return;
++ drag_animation(con,true);
++ e->con=con;e->seat=seat;e->restore=container_lumen_snapshot(con);
++ e->dx=cursor->cursor->x-con->pending.x;e->dy=cursor->cursor->y-con->pending.y;
++ e->timer=wl_event_loop_add_timer(server.wl_event_loop,drag_timer,e);
++ if (!e->timer) {container_lumen_placement_free(e->restore);free(e);return;}
++ seat->seatop_impl=&seatop_impl;seat->seatop_data=e;
++ container_raise_floating(con);transaction_commit_dirty();
++ cursor_set_image(cursor,"grab",NULL);wlr_seat_pointer_notify_clear_focus(seat->wlr_seat);
++}
+--- a/sway/input/keyboard.c
++++ b/sway/input/keyboard.c
+@@ -451,6 +451,14 @@
+ 	// Identify new keycode, raw keysym(s), and translated keysym(s)
+ 	struct key_info keyinfo;
+ 	update_keyboard_state(keyboard, event->keycode, event->state, &keyinfo);
++ if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
++  for (size_t i=0;i<keyinfo.translated_keysyms_len;++i) {
++   if (keyinfo.translated_keysyms[i]==XKB_KEY_Escape && seatop_lumen_cancel_drag(seat)) {
++    free(device_identifier);return;
++   }
++  }
++ }
++
+ 
+ 	bool handled = false;
+ 	// Identify active release binding
+--- a/sway/input/cursor.c
++++ b/sway/input/cursor.c
+@@ -339,6 +339,7 @@
+ void cursor_hot_corners_lock_changed(void) {
+ 	struct sway_seat *seat;
+ 	wl_list_for_each(seat, &server.input->seats, link) {
++		if (server.session_lock.lock) seatop_lumen_cancel_drag(seat);
+ 		/* Preserve occupancy across lock/unlock: returning cannot re-enter. */
+ 		hot_corner_emit(seat->cursor, hot_corner_output(seat->cursor), 0, false);
+ 	}
+--- a/sway/ipc-json.c
++++ b/sway/ipc-json.c
+@@ -229,6 +229,7 @@
+ 	sscanf(SWAY_VERSION, "%d.%d.%d", &major, &minor, &patch);
+ 
+ 	json_object_object_add(version, "human_readable", json_object_new_string(SWAY_VERSION));
++	json_object_object_add(version, "native_edge_tiling", json_object_new_boolean(true));
+ 	json_object_object_add(version, "native_hot_corners", json_object_new_boolean(true));
+ 	json_object_object_add(version, "native_window_controls", json_object_new_boolean(true));
+ 	json_object_object_add(version, "window_placement_preferences", json_object_new_boolean(true));

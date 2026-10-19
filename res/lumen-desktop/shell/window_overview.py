@@ -2,6 +2,13 @@
 import json
 import subprocess
 import sys
+from pathlib import Path
+import os
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "runtime"))
+from spaces import SpacePolicy
+
+def policy():
+    return SpacePolicy(Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "lumen-desktop/spaces.json")
 
 
 def run(*args):
@@ -18,7 +25,7 @@ def snapshot():
             title=node.get('name') or app
             group='Files' if app=='org.quickshell' and title.startswith('Files') else title if app=='org.quickshell' else app
             if not (app=='org.quickshell' and node.get('name')=='Window Overview'):
-                windows.append(dict(id=node['id'],pid=node['pid'],app=app,group=group,title=title,workspace=workspace,output=output,focused=node.get('focused',False)))
+                windows.append(dict(id=node['id'],pid=node['pid'],app=app,application=SpacePolicy.application(node),group=group,title=title,workspace=workspace,output=output,focused=node.get('focused',False)))
         for child in node.get('nodes',[])+node.get('floating_nodes',[]):walk(child,workspace,output)
     walk(run('-t','get_tree'))
     return dict(windows=windows,workspaces=run('-t','get_workspaces'),outputs=[dict(name=o['name'],label=(o.get('model') or 'Display '+str(i+1))) for i,o in enumerate(run('-t','get_outputs')) if o.get('active')])
@@ -26,6 +33,25 @@ def snapshot():
 
 def handle(data):
     state=snapshot();action=data.get('action','status')
+    model=policy()
+    with model.transaction():
+        model.reconcile(state['workspaces'],run('-t','get_outputs'))
+        for workspace in state['workspaces']:
+            workspace['logicalId']=model.current.get(workspace['id'])
+        order=model.order()
+        state['workspaces'].sort(key=lambda w:order.index(w['logicalId']) if w['logicalId'] in order else len(order))
+        for output in state['outputs']:
+            output['logicalId']=next((key for key,name in model.outputs.items() if name==output['name']),None)
+        state['autoReorder']=model.state['auto_reorder']
+        state['assignments']=model.state['assignments']
+        if action=='ordering':
+            model.configure(auto_reorder=data['enabled'])
+            return dict(ok=True)
+        if action=='assign':
+            window=next((w for w in state['windows'] if w['id']==data.get('id') and w['pid']==data.get('pid')),None)
+            if not window:raise ValueError('This window is no longer available')
+            model.assign(window['application'],data['kind'],data.get('target'))
+            return dict(ok=True)
     if action=='status':return state
     if action=='workspace':
         name=str(data['workspace'])

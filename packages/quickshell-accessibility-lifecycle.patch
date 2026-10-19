@@ -1,0 +1,32 @@
+--- a/src/launch/launch.cpp
++++ b/src/launch/launch.cpp
+@@ -12,6 +12,7 @@
+ #include <qprocess.h>
+ #include <qqmldebug.h>
+ #include <qquickwindow.h>
++#include <QtQuick/private/qtquickglobal_p.h>
+ #include <qstring.h>
+ #include <qtenvironmentvariables.h>
+ #include <qtextstream.h>
+@@ -290,6 +291,10 @@
+ 		app = new QGuiApplication(qArgC, argv);
+ 	}
+ 
++	// Destroying the temporary core app clears Qt accessibility factories.
++	// Restore the Quick factory inside the new GUI application's lifetime.
++	QQuick_initializeModule();
++
+ 	QGuiApplication::setDesktopFileName(appId);
+ 
+ 	if (args.debugPort != -1) {
+--- a/src/launch/CMakeLists.txt
++++ b/src/launch/CMakeLists.txt
+@@ -8,7 +8,7 @@
+ )
+ 
+ target_link_libraries(quickshell-launch PRIVATE
+-	Qt::Quick Qt::Widgets CLI11::CLI11 quickshell-build
++	Qt::Quick Qt::QuickPrivate Qt::Widgets CLI11::CLI11 quickshell-build
+ )
+ 
+ qs_add_pchset(launch

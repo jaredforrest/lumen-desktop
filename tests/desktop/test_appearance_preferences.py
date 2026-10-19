@@ -26,6 +26,10 @@ class AppearancePreferences(unittest.TestCase):
     def test_windows_and_folder_stack_preferences_are_closed(self):
         self.assertTrue(module.valid_windows('tileMargins',False));self.assertTrue(module.valid_windows('titlebarDoubleClick','minimize'))
         self.assertFalse(module.valid_windows('tileMargins',1));self.assertFalse(module.valid_windows('titlebarDoubleClick','zoom'))
+        for key in ('edgeTiling','optionTiling','topEdgeFill','topEdgeOverview'):
+            self.assertTrue(module.valid_windows(key,False));self.assertFalse(module.valid_windows(key,1))
+        for value in (0,8,32):self.assertTrue(module.valid_windows('tileGap',value))
+        for value in (-1,33,True,8.5,'8'):self.assertFalse(module.valid_windows('tileGap',value))
         self.assertTrue(module.valid('dockFolders',[{'path':'/folder','sort':'name','descending':False,'presentation':'grid'}]))
         for value in ([{'path':'relative'}],[{'path':'/same'},{'path':'/same'}],[{'path':'/tab\tpath'}],[{'path':'/folder','unknown':True}]):self.assertFalse(module.valid('dockFolders',value))
     def test_control_layout_requires_complete_order_and_unique_known_ids(self):

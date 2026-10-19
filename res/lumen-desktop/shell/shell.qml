@@ -15,6 +15,9 @@ ShellRoot {
     property var bars: ({})
     property string popupOwner: ""
     property alias exportedMenu: exported
+    NativeFileDragState {id:nativeFileDragState}
+    readonly property bool nativeFileDragActive:nativeFileDragState.active
+    readonly property bool nativeFileDragAvailable:nativeFileDragState.available
     property var widgetSurfaces:({})
     property alias widgets:widgetState
     WidgetState {id:widgetState}
@@ -64,6 +67,7 @@ ShellRoot {
     property alias overviewWindow:overview
     function openTextTools(){textTools.show();focusOwnedWindow("Text Tools");}
     function appSwitcherCommand(action){applicationSwitcher.command(action);}
+    function dragOverview(id){if(Number.isSafeInteger(id) && id>0)overview.showForWindow(id);}
     function openOverview(sameApp){overview.show(sameApp && active?(active.appId==="org.quickshell"?(active.title.startsWith("Files")?"Files":active.title):active.appId):"");if(overview.visible)focusOwnedWindow("Window Overview");}
     CalendarWindow {id:calendarWindow;shell:root}
     function openCalendar(){calendarWindow.open();}
@@ -255,7 +259,7 @@ ShellRoot {
     function appLabel(entry) { return shortNames[entry.id] || entry.name; }
     function appIcon(entry) {
         const item = referenceDock.find(i => i.entry && i.entry.id === entry.id);
-        return item ? Qt.resolvedUrl("reference-icons/"+item.image) : (Quickshell.iconPath(entry.icon,true) || Qt.resolvedUrl("icons/application.svg"));
+        return item && item.image ? Qt.resolvedUrl("reference-icons/"+item.image) : (Quickshell.iconPath(entry.icon,true) || Qt.resolvedUrl("icons/application.svg"));
     }
     function launchApps() { showMenu("Launcher"); }
     readonly property var currentDate: clock.date

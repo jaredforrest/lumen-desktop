@@ -7,6 +7,7 @@
       system = "x86_64-linux";
       pkgs = import nixpkgs { inherit system; config.allowUnfree = true; };
       compositorPkgs = import compositor-packages { inherit system; };
+      quickshell = import ./packages/quickshell-runtime.nix { inherit pkgs; };
       settings = import ./packages/settings-adapter.nix { inherit pkgs; };
       session = import ./packages/session.nix { inherit pkgs; settingsPackage = settings; };
       profileBridge = import ./packages/lumen-native-profile.nix { inherit pkgs; nixSettings = settings; };
@@ -34,12 +35,23 @@
         character-viewer = import ./res/character-viewer { inherit pkgs; };
         localsend = import ./packages/localsend-desktop-style.nix { inherit pkgs; };
         test-runtime = runtime;
+        test-network-provider = pkgs.gvfs;
+        test-session-lock = import ./tests/desktop/session_lock_driver.nix { inherit pkgs; };
+        test-constraint-client = import ./tests/desktop/constraint_client.nix { inherit pkgs; };
+        shell-runtime = quickshell;
         test-pointer = import ./tests/desktop/pointer_driver.nix { inherit pkgs; };
         inherit (office) wordcraft gridcraft deckcraft;
         profile-bridge = profileBridge;
         prism = import ./packages/prism-nix-profile.nix { inherit pkgs profileBridge; };
       };
       checks.${system} = {
+        javascript-models = pkgs.runCommand "lumen-javascript-models" { nativeBuildInputs = [ pkgs.nodejs ]; } ''
+          cd ${self}
+          for test in ${self}/tests/desktop/test_*.cjs; do
+            node "$test"
+          done
+          touch "$out"
+        '';
         authorization-appearance = import ./tests/auth/polkit-appearance.nix { inherit pkgs; };
         asset-overrides = let
           icons = ./tests/project/fixtures/icons;
@@ -60,7 +72,7 @@
           touch $out
         '';
         backend-units = pkgs.runCommand "lumen-backend-units" {
-          nativeBuildInputs = [ privateBus python pkgs.quickshell session.shellLauncher pkgs.dbus pkgs.git pkgs.glib pkgs.procps pkgs.coreutils pkgs.util-linux ];
+          nativeBuildInputs = [ privateBus python quickshell session.shellLauncher pkgs.dbus pkgs.git pkgs.glib pkgs.procps pkgs.coreutils pkgs.util-linux ];
         } ''
           export HOME=$TMPDIR/home
           mkdir -p "$HOME"
@@ -76,7 +88,7 @@
         '';
       };
       devShells.${system}.default = pkgs.mkShell {
-        packages = [ privateBus runtime settings pkgs.nix pkgs.git pkgs.dbus pkgs.quickshell pkgs.sway pkgs.grim pkgs.wtype pkgs.foot pkgs.imagemagick pkgs.gitleaks ];
+        packages = [ privateBus runtime settings pkgs.nix pkgs.git pkgs.dbus quickshell pkgs.sway pkgs.grim pkgs.wtype pkgs.foot pkgs.imagemagick pkgs.gitleaks ];
         shellHook = ''
           export PYTHONDONTWRITEBYTECODE=1
           export LUMEN_TEST_SETTINGS_COMMAND=${settings}/bin/lumen-nix-settings

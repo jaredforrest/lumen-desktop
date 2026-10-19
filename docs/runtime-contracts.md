@@ -227,3 +227,127 @@ provided by the existing agent patch. `authorization-agent` exposes the package;
 `checks.x86_64-linux.authorization-appearance` compiles the synthetic GTK fixture
 with warnings treated as errors and checks light/dark/default propagation under
 a private virtual display, without authenticating or handling credentials.
+
+### Accessibility application lifetime and protocol verification
+
+The command launcher temporarily constructs a core application before the GUI
+application. Destroying that temporary application clears Qt accessibility factory
+registrations. The scoped shell-runtime patch restores the Quick module after the
+GUI application's lifetime begins; otherwise a visible window registers its app
+but exposes no accessible children. This affects both ordinary and shell-owned
+windows, so the corrected runtime is used by the shell, authentication surfaces,
+IPC tools and test environment.
+
+`tests/desktop/accessibility_protocol.py` deliberately enables accessibility in a
+private compositor, session bus and runtime created before service activation. It
+launches its own accessibility bus and registry, validates their private address
+and enabled/screen-reader status, registers an actual protocol listener and checks
+names, roles, focus, keyboard activation and state-change signals. Full-shell mode
+also inspects editable Settings search and the Files view selector. The fixture
+asserts that the live accessibility socket is unchanged. This is protocol-level
+verification; audible screen-reader output and physical assistive devices still
+require their own acceptance evidence.
+
+### Network locations
+
+Files exposes Network and Control+K for explicit server connections. The optional
+`integrations.networkLocations.enable` setting supplies the host's GVfs provider
+package to the helper; it defaults to false and does not enable host services.
+The consumer must configure its GVfs service, network access and keyring policy.
+Missing protocol providers are reported, rather than simulated.
+
+The JSON-lines helper uses Gio asynchronous mount, enumeration and unmount APIs.
+Server addresses cannot contain credentials, queries or fragments. Authentication
+and keyring choices belong to Gtk.MountOperation; credentials never cross the
+shell interface or enter connection settings. Connections are session-only.
+Cancellation dismisses toolkit dialogs and rejects late callbacks. Mount inventory
+remains authoritative: cancellation does not promise rollback of a provider that
+has already completed a mount. Provider error text is mapped to fixed categories.
+
+The network pane reads at most 100 entries, scans at most 1000 provider records,
+and has an eight-second browse deadline. Connect and disconnect have cancellable
+120-second and 30-second deadlines. It supports read-only remote folder navigation;
+full Files operations are offered only when the provider returns a real local
+filesystem path. Files operations through FUSE retain the ordinary Files backend's
+limitations; this is not a guarantee of offline support or bounded kernel I/O.
+
+`test_network_locations.py` checks provider failures, credential rejection,
+redaction, cancellation, stale callbacks and bounded listing with fake providers.
+`test_network_locations_qml.py` runs the actual Qt state/pane and child-process
+protocol. `network_locations_provider.py --provider GVFS_PACKAGE` uses an anonymous
+loopback DAV fixture and a private D-Bus/GVfs session, with FUSE disabled, to verify
+real connect, browse and disconnect without user accounts or existing mounts.
+Other protocols and authenticated server/keyring interactions still need their
+own provider acceptance tests.
+
+Desktop placement policies are user session data in
+`$XDG_STATE_HOME/lumen-desktop/spaces.json`, updated under a cross-process lock
+with atomic replacement. `lumen-spaces watch` applies assignments to newly mapped
+windows, including delayed advertised application identity, without a focus
+command. Exact identities distinguish Wayland app IDs from X11 classes; these
+are advertised identifiers and do not authenticate an application. Assignments
+apply to subsequent windows, not all existing windows retroactively.
+
+Logical desktop UUIDs survive compositor restarts by name, and preserve identity
+through renames observed in the same compositor session. Renaming a desktop while
+the policy service is stopped cannot be inferred. Recent-use order is a separate
+list; names, compositor IDs and window membership are never renumbered. The
+Overview switch controls automatic ordering and Control Left/Right follows that
+published order on the focused output, stopping at either end. Empty assigned
+desktops can be recreated on their recorded connected output. Explicit desktop
+deletion/forgetting is not currently exposed.
+
+A display assignment chooses its currently visible desktop. Hardware identity
+uses make/model/serial when available and a clearly labelled connector fallback
+otherwise. Disconnected targets retain their assignment and leave new windows
+where the compositor placed them; reconnection resumes matching. Overview shows
+unavailable saved assignments. The all-desktop assignment is not implemented by
+the native compositor: the backend rejects it rather than substituting floating
+sticky windows. This remains an implementation gap.
+
+### Desktop arrangements
+
+The opt-in desktop file surface supports individual icon dragging and expandable
+stacks grouped by file kind, modification-date bucket or colour tags. Folders
+remain individual items. Context menus switch grouping and reset arrangement;
+stack context menus clear hidden file selections before exposing file actions.
+Freeform positions apply when grouping is disabled and survive grouping changes.
+Positions are normalized to the usable desktop bounds, so display-size changes
+keep placed items reachable. Items that do not fit the automatic grid are counted
+with an explicit message and remain available through Open Desktop in Files.
+
+`desktop_layout.py` stores private, atomic metadata per directory identity. It
+never moves, renames or writes the desktop files themselves. Item inode identity
+preserves ordinary rename placement; hard links receive distinct name suffixes.
+Authoritative observed removals prune obsolete placements. This does not promise
+tracking an inode that is removed and reused between two directory snapshots.
+Stack expansion is temporary; grouping and freeform positions persist.
+
+The layer input mask is the union of displayed item rectangles. Empty desktop
+areas continue to the surface below. A visible modal menu or confirmation owns
+its usable desktop region while open. `desktop_files_render.py --layout` verifies
+real pointer dragging, persisted metadata, rename identity, stack expansion and
+empty-area click-through in a disposable nested compositor, alongside existing
+selection and destructive-confirmation checks. Multi-item dragging uses one frozen selection snapshot and one clamped delta,
+preserving relative offsets at screen edges. Whole-stack anchors also persist;
+expanded children follow the anchor and wrap into neighbouring columns as needed.
+`desktop_files_render.py --layout --multi-drag` verifies actual multi-item and
+expanded-stack pointer gestures, grouping-switch persistence and file preservation.
+Cross-application native file drops are not implemented by this slice.
+
+Hot Corners use native compositor transitions rather than pointer polling or
+input-capturing overlay windows. The `lumen-corner` tick protocol version1 carries
+only corner/output identity, the modifier snapshot, and lock/fullscreen/adjacent
+inhibitions. Entry is within one logical pixel; native observation retains a
+corner latch until leaving an eight-pixel region. Modifier presses after entry
+do not trigger an action. Backend policy additionally latches suppressed entries,
+fails closed on incomplete inhibition information, and never activates while
+locked. Fullscreen and adjacent-display corners require explicit opt-in.
+
+Settings > Desktop & Dock offers four independent configurations, all disabled
+by default, saved atomically in the user's `hot-corners.json` state file. Actions
+are a fixed enum: overview, application windows, desktop, notifications,
+applications, lock screen, or display power off. Display power off does not
+suspend the machine. No arbitrary command execution is accepted. Screensaver and
+notes actions have no implemented provider and are not offered. The watcher
+reloads validated configuration on entry without restarting the compositor.

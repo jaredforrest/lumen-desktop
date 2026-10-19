@@ -16,6 +16,7 @@ PanelWindow {
     WlrLayershell.keyboardFocus: visible ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
     property bool supported: false
     property bool showDesktopSupported: false
+    property bool edgeTilingSupported: false
     property double target: 0
     property real anchorX: 0
     property real anchorY: 0
@@ -34,6 +35,8 @@ PanelWindow {
     function event(payload) {
         let data;
         try {data=JSON.parse(payload);}catch(e){return;}
+        if(!data || typeof data!=="object" || Array.isArray(data))return;
+        if(data.lumen_drag_overview===1){if(edgeTilingSupported && Number.isSafeInteger(data.id) && data.id>0)root.shell.dragOverview(data.id);return;}
         if(data.lumen_layout!==1 || !Number.isSafeInteger(data.id) || data.id<0)return;
         if(data.id===0){opening.stop();if(visible)leaving.restart();return;}
         if(!Number.isFinite(data.x) || !Number.isFinite(data.y))return;
@@ -58,7 +61,8 @@ PanelWindow {
             const version=JSON.parse(raw);
             supported=version.native_window_layouts===true;
             showDesktopSupported=version.native_show_desktop===true;
-        } catch(error) { supported=false;showDesktopSupported=false; }
+            edgeTilingSupported=version.native_edge_tiling===true;
+        } catch(error) { supported=false;showDesktopSupported=false;edgeTilingSupported=false; }
     }
     Process {
         running:!!Quickshell.env("SWAYSOCK")

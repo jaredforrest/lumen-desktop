@@ -136,7 +136,7 @@ try:
   wait(lambda:json.loads(ipc('textToolsStatus'))['page']==page)
  key('-k','Escape');ipc('focusDock');time.sleep(.3);key('-k','End','-k','Return');wait(lambda:state()['path']=='trash:')
  window_capture('Files — Trash','files.png')
- ipc('settings','Appearance');window_capture('System Settings','settings.png')
+ ipc('settings','Appearance');wait(lambda:not json.loads(ipc('settingsStatus'))['busy']);window_capture('System Settings','settings.png')
  ipc('settings','VPN');wait(lambda:json.loads(ipc('settingsStatus'))['page']=='VPN');window_capture('System Settings','vpn-settings.png')
  if capabilities.get('native_window_actions') and args.click_pointer:
   def allnodes(node):

@@ -1,0 +1,212 @@
+--- a/src/core/model.hpp
++++ b/src/core/model.hpp
+@@ -170,7 +170,10 @@
+ 	}
+ 
+ 	[[nodiscard]] QList<QObject*> values() override {
+-		return *reinterpret_cast<QList<QObject*>*>(&this->mValuesList);
++		QList<QObject*> result;
++		result.reserve(this->mValuesList.size());
++		for (auto* object: this->mValuesList) result.append(reinterpret_cast<QObject*>(object));
++		return result;
+ 	}
+ 
+ private:
+--- a/src/network/nm/device.cpp
++++ b/src/network/nm/device.cpp
+@@ -61,6 +61,7 @@
+ 		case 40 ... 90: return ConnectionState::Connecting;
+ 		case 100: return ConnectionState::Connected;
+ 		case 110 ... 120: return ConnectionState::Disconnecting;
++		default: return ConnectionState::Unknown;
+ 		}
+ 	};
+ 	// clang-format off
+--- a/src/network/nm/wireless.cpp
++++ b/src/network/nm/wireless.cpp
+@@ -265,6 +265,7 @@
+ 		case NM80211Mode::Infra: return WifiDeviceMode::Station;
+ 		case NM80211Mode::Ap: return WifiDeviceMode::AccessPoint;
+ 		case NM80211Mode::Mesh: return WifiDeviceMode::Mesh;
++		default: return WifiDeviceMode::Unknown;
+ 		}
+ 	};
+ 	frontend->bindableMode().setBinding(translateMode);
+--- a/src/network/nm/utils.cpp
++++ b/src/network/nm/utils.cpp
+@@ -114,6 +114,7 @@
+ 		break;
+ 	case WifiSecurityType::Leap:
+ 		if (adhoc) return false;
++		[[fallthrough]];
+ 	case WifiSecurityType::StaticWep:
+ 		if (!(apFlags & NM80211ApFlags::Privacy)) return false;
+ 		if (apWpa || apRsn) {
+--- a/src/services/upower/powerprofiles.cpp
++++ b/src/services/upower/powerprofiles.cpp
+@@ -169,7 +169,7 @@
+ 	case PowerProfile::PowerSaver: return QStringLiteral("power-saver");
+ 	case PowerProfile::Balanced: return QStringLiteral("balanced");
+ 	case PowerProfile::Performance: return QStringLiteral("performance");
+-	default: qFatal() << "Attempted to convert invalid power profile" << data << "to wire format.";
++	default: qFatal("Attempted to convert invalid power profile %d to wire format.", static_cast<int>(data));
+ 	}
+ }
+ 
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -85,7 +85,10 @@
+ include(cmake/install-qml-module.cmake)
+ include(cmake/util.cmake)
+ 
+-add_compile_options(-Wall -Wextra -Wno-vla-cxx-extension)
++add_compile_options(-Wall -Wextra)
++
++# MOC includes use source-root-relative paths, including across modules.
++include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src)
+ 
+ # pipewire defines these, breaking PCH
+ add_compile_definitions(_REENTRANT)
+--- a/src/io/jsonadapter.cpp
++++ b/src/io/jsonadapter.cpp
+@@ -1,6 +1,6 @@
+ #include "jsonadapter.hpp"
+ 
+-#include <qassociativeiterable.h>
++#include <qmetaassociation.h>
+ #include <qcontainerfwd.h>
+ #include <qjsonarray.h>
+ #include <qjsondocument.h>
+@@ -16,7 +16,7 @@
+ #include <qqmlengine.h>
+ #include <qqmlinfo.h>
+ #include <qqmllist.h>
+-#include <qsequentialiterable.h>
++#include <qmetasequence.h>
+ #include <qstringview.h>
+ #include <qvariant.h>
+ 
+@@ -140,9 +140,9 @@
+ 				auto jsonVal = QJsonValue::fromVariant(val);
+ 
+ 				if (jsonVal.isNull() && !val.isNull() && val.isValid()) {
+-					if (val.canConvert<QAssociativeIterable>()) {
++					if (val.canConvert<QMetaAssociation::Iterable>()) {
+ 						val.convert(QMetaType::fromType<QVariantMap>());
+-					} else if (val.canConvert<QSequentialIterable>()) {
++					} else if (val.canConvert<QMetaSequence::Iterable>()) {
+ 						val.convert(QMetaType::fromType<QVariantList>());
+ 					}
+ 
+@@ -267,13 +267,13 @@
+ 					prop.write(obj, convVariant);
+ 				} else {
+ 					auto pval = prop.read(obj);
+-					if (variant.canConvert<QSequentialIterable>() && pval.canView<QSequentialIterable>()) {
++					if (variant.canConvert<QMetaSequence::Iterable>() && pval.canView<QMetaSequence::Iterable>()) {
+ 						auto targetv = QVariant(pval.metaType());
+-						auto target = targetv.view<QSequentialIterable>().metaContainer();
++						auto target = targetv.view<QMetaSequence::Iterable>().metaContainer();
+ 						auto valueType = target.valueMetaType();
+ 						auto i = 0;
+ 
+-						for (QVariant item: variant.value<QSequentialIterable>()) {
++						for (QVariant item: variant.value<QMetaSequence::Iterable>()) {
+ 							if (item.convert(valueType)) {
+ 								target.addValueAtEnd(targetv.data(), item.constData());
+ 							} else {
+--- a/src/services/pipewire/peak.cpp
++++ b/src/services/pipewire/peak.cpp
+@@ -31,8 +31,6 @@
+ #include "node.hpp"
+ #include "qml.hpp"
+ 
+-#pragma GCC diagnostic push
+-#pragma GCC diagnostic ignored "-Wmissing-designated-field-initializers"
+ 
+ namespace qs::service::pipewire {
+ 
+@@ -71,13 +69,15 @@
+ 	QVector<float> channelPeaks;
+ };
+ 
+-const pw_stream_events PwPeakStream::EVENTS = {
+-    .version = PW_VERSION_STREAM_EVENTS,
+-    .destroy = &PwPeakStream::onDestroy,
+-    .state_changed = &PwPeakStream::onStateChanged,
+-    .param_changed = &PwPeakStream::onParamChanged,
+-    .process = &PwPeakStream::onProcess,
+-};
++const pw_stream_events PwPeakStream::EVENTS = [] {
++	pw_stream_events events {};
++	events.version = PW_VERSION_STREAM_EVENTS;
++	events.destroy = &PwPeakStream::onDestroy;
++	events.state_changed = &PwPeakStream::onStateChanged;
++	events.param_changed = &PwPeakStream::onParamChanged;
++	events.process = &PwPeakStream::onProcess;
++	return events;
++}();
+ 
+ bool PwPeakStream::start() {
+ 	auto* core = PwConnection::instance()->registry.core;
+@@ -422,4 +422,3 @@
+ 
+ } // namespace qs::service::pipewire
+ 
+-#pragma GCC diagnostic pop
+--- a/src/wayland/toplevel/qml.hpp
++++ b/src/wayland/toplevel/qml.hpp
+@@ -1,4 +1,6 @@
+ #pragma once
++
++Q_MOC_INCLUDE("wayland/toplevel/wlr_toplevel.hpp")
+ 
+ #include <qlist.h>
+ #include <qobject.h>
+--- a/src/services/pipewire/defaults.hpp
++++ b/src/services/pipewire/defaults.hpp
+@@ -1,4 +1,7 @@
+ #pragma once
++
++Q_MOC_INCLUDE("services/pipewire/metadata.hpp")
++Q_MOC_INCLUDE("services/pipewire/node.hpp")
+ 
+ #include <qobject.h>
+ #include <qtmetamacros.h>
+--- a/src/services/pipewire/registry.hpp
++++ b/src/services/pipewire/registry.hpp
+@@ -1,4 +1,8 @@
+ #pragma once
++
++Q_MOC_INCLUDE("services/pipewire/metadata.hpp")
++Q_MOC_INCLUDE("services/pipewire/node.hpp")
++Q_MOC_INCLUDE("services/pipewire/link.hpp")
+ 
+ #include <pipewire/core.h>
+ #include <pipewire/proxy.h>
+--- a/src/services/pipewire/device.hpp
++++ b/src/services/pipewire/device.hpp
+@@ -1,4 +1,6 @@
+ #pragma once
++
++Q_MOC_INCLUDE("services/pipewire/node.hpp")
+ 
+ #include <functional>
+ 
+--- a/src/services/pipewire/peak.hpp
++++ b/src/services/pipewire/peak.hpp
+@@ -1,4 +1,6 @@
+ #pragma once
++
++Q_MOC_INCLUDE("services/pipewire/qml.hpp")
+ 
+ #include <qobject.h>
+ #include <qqmlintegration.h>
+@@ -16,7 +18,6 @@
+ 
+ } // namespace qs::service::pipewire
+ 
+-Q_DECLARE_OPAQUE_POINTER(qs::service::pipewire::PwNodeIface*);
+ 
+ namespace qs::service::pipewire {
+ 

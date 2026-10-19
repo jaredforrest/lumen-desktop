@@ -6,7 +6,7 @@ Singleton {
     id: root
     property var preferences: ({mode:"auto",accent:"blue",iconAppearance:"auto",switchToAppSpace:true,dockMagnification:true,reduceMotion:false})
     property var desktopPreferences: ({showFiles:false,fileSort:"name",fileDescending:false})
-    property var windowsPreferences: ({tileMargins:true,titlebarDoubleClick:"fill"})
+    property var windowsPreferences: ({tileMargins:true,tileGap:8,titlebarDoubleClick:"fill",edgeTiling:true,optionTiling:true,topEdgeFill:true,topEdgeOverview:true})
     property var controlCentrePreferences: ({order:["wifi","bluetooth","sharing","media","displays","appearance","focus","brightness","sound"],hidden:[]})
     property var notificationsPreferences: ({preview:"always"})
     property var searchPreferences: ({disabledProviders:[]})
