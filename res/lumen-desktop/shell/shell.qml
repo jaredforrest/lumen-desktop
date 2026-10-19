@@ -83,6 +83,10 @@ ShellRoot {
     ForceQuitDialog {id:forceQuitDialog;shell:root}
     function canForceQuit(entry){const matches=windowsFor(entry);return matches.length>0 && matches.every(window=>window.appId!=="org.quickshell");}
     function forceQuit(entry){forceQuitDialog.show(appLabel(entry),windowsFor(entry).map(window=>({appId:window.appId,title:window.title || ""})));}
+    WindowGroupState {id:windowGroupState}
+    signal requestGroupSelector(string name)
+    property var groupSurfaces:({})
+    function openGroupSelector(){const name=windowGroupState.state.focusedOutput || "";if(name)requestGroupSelector(name);}
     WindowOverview {id:overview;shell:root}
     property alias overviewWindow:overview
     function openTextTools(){textTools.show();focusOwnedWindow("Text Tools");}
@@ -331,6 +335,8 @@ ShellRoot {
         function focusDock():void {root.requestDockFocus(root.preferredOutput());}
         function cycleWindow(direction:string):void {if(["next","previous"].includes(direction))root.cycleAppWindow(direction);}
         function appSwitcher(action:string):string {root.appSwitcherCommand(action);return applicationSwitcher.status();}
+        function windowGroups():void {root.openGroupSelector();}
+        function windowGroupStatus():string {return JSON.stringify({state:windowGroupState.state,surfaces:Object.values(root.groupSurfaces).map(s=>({output:s.outputName,visible:s.visible,revealed:s.revealed,keyboard:s.keyboardMode,rows:s.rows,capture:s.capture,selected:s.selected,commits:s.commits,error:s.error}))});}
         function overview(sameApp:bool):void {root.openOverview(sameApp);}
         function quickLookStatus():string {return JSON.stringify({visible:root.quickLookWindow.visible,type:root.quickLookWindow.result.type || "",playing:root.quickLookWindow.preview.playing,position:root.quickLookWindow.preview.position,playbackError:root.quickLookWindow.preview.playbackError,page:root.quickLookWindow.result.page || 1,pages:root.quickLookWindow.result.pages || 1,error:root.quickLookWindow.result.error || ""});}
         function overviewStatus():string {return JSON.stringify({visible:root.overviewWindow.visible,count:root.overviewWindow.matches.length,workspaces:root.overviewWindow.workspaces.length,error:root.overviewWindow.error});}
@@ -347,6 +353,7 @@ ShellRoot {
             DesktopWidgets {screen:modelData;outputName:modelData.name;shell:root}
             MenuBar { screen: modelData; shell: root; clockDate: clock.date }
             Dock { screen: modelData; shell: root }
+            WindowGroupSelector {screen:modelData;outputName:modelData.name;shell:root;service:windowGroupState}
             NotificationBanners {screen:modelData;outputName:modelData.name;outputWidth:modelData.width;outputHeight:modelData.height;shell:root}
             VolumeHud {screen:modelData;outputName:modelData.name;shell:root}
         }

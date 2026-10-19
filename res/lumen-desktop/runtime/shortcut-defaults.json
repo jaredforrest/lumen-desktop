@@ -304,6 +304,14 @@
       "scope": "global",
       "owner": "desktop",
       "fallback": "Window menu or green window control"
+    },
+    {
+      "id": "default.window-groups",
+      "action": "shell.window_groups",
+      "chord": "Mod4+Control+g",
+      "scope": "global",
+      "owner": "desktop",
+      "fallback": "Left-edge Window Groups selector while grouping is enabled"
     }
   ]
 }

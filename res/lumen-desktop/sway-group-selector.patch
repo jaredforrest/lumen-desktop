@@ -1,0 +1,36 @@
+--- a/sway/tree/lumen_groups.c
++++ b/sway/tree/lumen_groups.c
+@@ -9,6 +9,7 @@
+ #include "sway/input/input-manager.h"
+ #include "sway/input/seat.h"
+ #include "sway/server.h"
++#include "sway/output.h"
+ #include "sway/tree/container.h"
+ #include "sway/tree/lumen_groups.h"
+ #include "sway/tree/root.h"
+@@ -188,7 +189,14 @@
+   if (argc < 3 || !number(argv[2], &gid)) return cmd_results_new(CMD_INVALID, "Invalid group target");
+   struct group *g = find(gid);
+   if (!g || suspended(g->workspace)) return cmd_results_new(CMD_INVALID, "Group is unavailable in the current presentation");
+-  if (argc == 3 && !strcmp(action, "select")) {select_group(g); focus_selected(g);}
++  if (argc == 5 && !strcmp(action, "select-scoped")) {
++   uint64_t wid;
++   struct sway_output *output = output_by_name_or_id(argv[4]);
++   if (!number(argv[3], &wid) || wid != g->workspace || !output ||
++       output_get_active_workspace(output) != workspace(wid) || workspace(wid)->output != output)
++    return cmd_results_new(CMD_INVALID, "The selected desktop or output changed; refresh before acting");
++   select_group(g); focus_selected(g);
++  } else if (argc == 3 && !strcmp(action, "select")) {select_group(g); focus_selected(g);}
+   else if (argc == 5 && (!strcmp(action, "add") || !strcmp(action, "remove"))) {
+    uint64_t cid, pid;
+    if (!number(argv[3], &cid) || !number(argv[4], &pid)) return cmd_results_new(CMD_INVALID, "Invalid exact window identity");
+--- a/sway/ipc-json.c
++++ b/sway/ipc-json.c
+@@ -230,6 +230,7 @@
+ 	int major = 0, minor = 0, patch = 0;
+ 	json_object *version = json_object_new_object();
+  json_object_object_add(version, "native_window_groups", json_object_new_boolean(true));
++ json_object_object_add(version, "native_window_group_selector", json_object_new_boolean(true));
+ 	json_object_object_add(version, "desktop_rehome", json_object_new_boolean(true));
+ 	json_object_object_add(version, "native_window_relationships", json_object_new_boolean(true));
+ 

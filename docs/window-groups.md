@@ -38,8 +38,8 @@ placement emulation.
 ## Current boundaries
 
 This is a functional grouping workflow, not a complete spatial presentation.
-The recent groups edge strip, edge reveal, pointer drag into/out of that strip,
-packing, previews and animations are not implemented. Ordinary tiled windows
+The recent groups edge selector is implemented below. Pointer drag into/out of
+that selector, packing, previews and animations are not implemented. Ordinary tiled windows
 retain their original layout slots. There is no together/one-window-at-a-time
 setting yet. Sticky windows, X11 windows and shared-process shell windows are currently ungrouped;
 the latter need explicit owned-role adapters rather than title-based inference.
@@ -70,3 +70,35 @@ pointer, paired/fullscreen presentation, session lock, output disconnect and
 clean shutdown on both compositor variants. `desktop_lifecycle_input.py` also
 exercises the production dialog with actual private pointer and keyboard input.
 No fixture contacts the host session or user documents.
+
+## Recent-group edge selector
+
+While Window Groups is enabled, each display has a concealed selector at its
+left edge. Hover at the edge to reveal recent groups on that display's currently
+visible native desktop; moving away conceals it. The cards are a recent-use list,
+not document thumbnails. Activating a card by pointer selects its captured group
+on release. Press Escape during a held press, release outside the card, or click
+outside a keyboard-open selector to cancel without changing group membership.
+
+**Super + Control + G** opens keyboard selection on the native focused display.
+Up/Down and Home/End preview rows; Return or Space activates; Escape cancels.
+The shortcut is declared in the shared registry and can be overridden by the
+consumer. Disabled grouping, unsupported native capability, suspended presentation,
+lock, stale observation and disconnected outputs provide no active selector.
+Unlock does not reopen it. The selector coordinates with existing shell popups.
+
+The selector requires `get_version.native_window_group_selector`; old native
+group builds provide no fallback selector. Every press captures group, native
+revision, compositor epoch, display and visible desktop. A fresh backend query validates those facts, and native `select-scoped`
+checks output/visible-desktop ownership again atomically before selection. A
+workspace switch between validation and command cannot redirect activation to a
+hidden desktop. Native groups remain the sole visibility and membership owner;
+edge previews never change them.
+
+The edge width, reveal/leave delays and card dimensions are chosen implementation
+policy, not measured reference geometry. Pointer grouping drag, live previews,
+packing and presentation animation remain unsupported. Acceptance uses both
+native compositor variants, two real disposable outputs, real keyboard/pointer
+input, actual session lock and observer shutdown. It checks MRU/scope projection,
+preview cancellation, pointer release, stale native scope rejection and removal
+of disconnected output surfaces.

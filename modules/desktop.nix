@@ -112,6 +112,7 @@ in {
       "--release Super_R" = "exec ${desktopAction}/bin/lumen-desktop-action app-switcher-commit";
       "Control+Left" = "exec ${spaces}/bin/lumen-spaces switch previous";
       "Control+Right" = "exec ${spaces}/bin/lumen-spaces switch next";
+      "Mod4+Control+g" = "exec ${desktopAction}/bin/lumen-desktop-action window-groups";
       "Control+Up" = "exec ${desktopAction}/bin/lumen-desktop-action overview";
       "Control+Down" = "exec ${desktopAction}/bin/lumen-desktop-action app-windows";
       "Mod4+Control+Shift+d" = "exec ${desktopAction}/bin/lumen-desktop-action dock";

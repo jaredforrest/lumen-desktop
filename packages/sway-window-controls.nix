@@ -13,6 +13,7 @@ pkgs.sway.override {
       ++ [ ../res/lumen-desktop/sway-hot-corners.patch ../res/lumen-desktop/sway-edge-layouts.patch ../res/lumen-desktop/sway-file-drag.patch
            ../res/lumen-desktop/sway-paired-layouts.patch ../res/lumen-desktop/sway-window-relationships.patch
            ../res/lumen-desktop/sway-desktop-lifecycle.patch ../res/lumen-desktop/sway-session-lock-state.patch
-           ../res/lumen-desktop/sway-window-groups.patch ../res/lumen-desktop/sway-layer-input-rebase.patch ];
+           ../res/lumen-desktop/sway-window-groups.patch ../res/lumen-desktop/sway-group-selector.patch
+           ../res/lumen-desktop/sway-layer-input-rebase.patch ];
   });
 }

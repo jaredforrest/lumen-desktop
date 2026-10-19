@@ -204,6 +204,7 @@ let
         app-switcher) exec ${shellIpc}/bin/lumen-shell-ipc call desktop appSwitcher next ;;
         app-switcher-reverse) exec ${shellIpc}/bin/lumen-shell-ipc call desktop appSwitcher previous ;;
         app-switcher-commit) exec ${shellIpc}/bin/lumen-shell-ipc call desktop appSwitcher commit ;;
+        window-groups) exec ${shellIpc}/bin/lumen-shell-ipc call desktop windowGroups ;;
         overview) exec ${shellIpc}/bin/lumen-shell-ipc call desktop overview false ;;
         app-windows) exec ${shellIpc}/bin/lumen-shell-ipc call desktop overview true ;;
         text-tools) exec ${shellIpc}/bin/lumen-shell-ipc call desktop textTools ;;

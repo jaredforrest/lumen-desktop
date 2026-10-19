@@ -125,3 +125,5 @@ ScreenSaverSurface 1.0 ScreenSaverSurface.qml
 ScreenSaverPane 1.0 ScreenSaverPane.qml
 
 FocusFlickable 1.0 FocusFlickable.qml
+WindowGroupState 1.0 WindowGroupState.qml
+WindowGroupSelector 1.0 WindowGroupSelector.qml
