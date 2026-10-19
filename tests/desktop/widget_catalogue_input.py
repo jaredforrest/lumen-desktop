@@ -99,7 +99,7 @@ try:
  click(point('widget-remove-'+identifier));wait(lambda:state()['preferences']['desktopItems']==[] and all(not output['items'] for output in state()['outputs']));checks.append('Removing the last instance preserves an explicitly empty layout')
  click(point('widget-add-calendar'));wait(lambda:item()['type']=='calendar' and all(len(output['items'])==1 for output in state()['outputs']));assert item()['id']!=identifier;checks.append('Calendar can be added after an explicitly empty layout with a fresh identity')
  call('grim',str(out/('calendar-'+a.theme+'.png')))
- target=json.loads(ipc('widgetPoint','calendar-open-related'));click((target['x'],target['y']));wait(lambda:state()['activations']==1);key('-k','Return');wait(lambda:state()['activations']==2);time.sleep(.2);assert state()['activations']==2;checks.append('Calendar related-content pointer and keyboard activation each dispatch exactly once')
+ target=json.loads(ipc('widgetPoint','calendar-open-related'));click((target['x'],target['y']));wait(lambda:state()['activations']==1);key('-k','space');wait(lambda:state()['activations']==2);time.sleep(.2);assert state()['activations']==2;checks.append('Calendar related-content pointer and keyboard activation each dispatch exactly once')
  assert not state()['error'],state()
  for name in ('shell.log','shell-restart.log'):
   text=(out/name).read_text();assert not any(marker in text for marker in ('TypeError:','ReferenceError:','Binding loop','Failed to load configuration','Cannot assign')),text
