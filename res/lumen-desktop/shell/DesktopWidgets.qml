@@ -13,6 +13,8 @@ PanelWindow {
     readonly property real widgetHeight:cards.count && cards.itemAt(0)?cards.itemAt(0).height:0
     readonly property var preferences:shell.widgets.preferences
     readonly property bool monochrome:preferences.desktopColor==="monochrome" || preferences.desktopColor==="auto" && (shell.exportedMenu.latestState || shell.exportedMenu.state).windowId>0
+    function findWidget(id){for(let index=0;index<cards.count;index++)if(cards.itemAt(index) && cards.itemAt(index).descriptor.id===id)return cards.itemAt(index);return null;}
+    function status(){let result=[];for(let index=0;index<cards.count;index++){const card=cards.itemAt(index);if(card)result.push({id:card.descriptor.id,x:card.x,y:card.y,width:card.width,height:card.height,moving:!!card.gesture});}return result;}
     function syncItems(){
         const ids=items.map(item=>item.id);
         for(let i=stable.count-1;i>=0;i--)if(!ids.includes(stable.get(i).widget.id))stable.remove(i);
