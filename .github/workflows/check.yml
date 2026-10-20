@@ -363,6 +363,37 @@ jobs:
             artifacts/session-end*
             artifacts/network-provider.log
 
+  vault-compatibility:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@v31
+      - run: |
+          mkdir -p artifacts
+          nix build .#test-vault-server -o artifacts/vault-server --option abort-on-warn true
+          nix build .#test-vault-web -o artifacts/vault-web --option abort-on-warn true
+          nix build .#test-vault-cli -o artifacts/vault-cli --option abort-on-warn true
+          nix build .#test-vault-browser -o artifacts/vault-browser --option abort-on-warn true
+          nix build .#test-vault-tools -o artifacts/vault-tools --option abort-on-warn true
+          nix build .#test-owned-font-config -o artifacts/vault-fonts --option abort-on-warn true
+      - run: python3 -W error tests/desktop/test_vault_artifacts.py
+      - run: bash tests/ci/run-native.sh vault_namespace_prepare nix develop --command desktop-test-python tests/ci/native_namespace_policy.py prepare --output artifacts/vault-namespace
+      - run: bash tests/ci/run-native.sh vault_transport_native nix develop --command desktop-test-python tests/desktop/vault_transport_native.py --tls-tool "$PWD/artifacts/vault-tools/bin/openssl" --output artifacts/vault-transport
+      - run: bash tests/ci/run-native.sh vault_compatibility nix develop --command desktop-test-python tests/desktop/disposable_vault.py --server "$PWD/artifacts/vault-server/bin/vaultwarden" --web "$PWD/artifacts/vault-web/share/vaultwarden/vault" --cli "$PWD/artifacts/vault-cli/bin/bw" --browser "$PWD/artifacts/vault-browser/bin/brave" --bus "$PWD/artifacts/vault-tools/bin/dbus-daemon" --tls-tool "$PWD/artifacts/vault-tools/bin/openssl" --trust-tool "$PWD/artifacts/vault-tools/bin/certutil" --font-config "$PWD/artifacts/vault-fonts" --output artifacts/vault-compatibility
+      - if: always()
+        run: bash tests/ci/run-native.sh vault_namespace_cleanup nix develop --command desktop-test-python tests/ci/native_namespace_policy.py cleanup --output artifacts/vault-namespace
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: vault-compatibility
+          path: |
+            artifacts/vault-compatibility
+            artifacts/vault-transport
+            artifacts/vault-namespace
+            artifacts/native-command-logs/vault*
+
   provider-save-integrity:
     runs-on: ubuntu-24.04
     steps:

@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "suite": "disposable-vault-compatibility",
+  "test": "tests/desktop/disposable_vault.py",
+  "transport_test": "tests/desktop/vault_transport_native.py",
+  "diagnostic_boundary_test": "tests/desktop/test_vault_artifacts.py",
+  "required_receipts": [
+    "Successful result.json with credential audit and retained warning observations",
+    "Frozen source and dependency receipt with exitCode 0",
+    "Successful isolated stalled-peer transport receipt"
+  ],
+  "implemented_acceptance_cases": [
+    "Synthetic account token provisioned by the private compatible server",
+    "Real web client derives keys and completes password registration over verified HTTPS",
+    "Actual CLI password login against that private server",
+    "Create, decrypt and edit a synthetic login item",
+    "Synchronize the private vault",
+    "Lock and refuse item access without an unlock session",
+    "Password unlock retains the edited item",
+    "Trash the item, synchronize and log out"
+  ],
+  "not_established": [
+    "Initial web signup form interaction",
+    "Desktop client password entry, lock and unlock",
+    "Browser extension and autofill integration",
+    "Biometric unlock",
+    "Actual user backend and complete user feature inventory",
+    "Provider outage handling or full format and feature compatibility"
+  ],
+  "host_access": false,
+  "live_vault_access": false,
+  "migration_authority": false
+}

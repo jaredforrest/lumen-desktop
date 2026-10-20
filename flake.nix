@@ -50,6 +50,11 @@
         test-network-provider = pkgs.gvfs;
         test-capture-pipewire = pkgs.pipewire;
         test-audio-provider = pkgs.pulseaudio;
+        test-vault-server = pkgs.vaultwarden;
+        test-vault-web = pkgs.vaultwarden.webvault;
+        test-vault-cli = pkgs.bitwarden-cli;
+        test-vault-browser = pkgs.brave;
+        test-vault-tools = pkgs.symlinkJoin { name = "disposable-vault-tools"; paths = [ pkgs.openssl.bin pkgs.nss.tools pkgs.dbus ]; };
         test-screen-reader-atspi = import ./tests/desktop/screen_reader_atspi.nix { inherit pkgs; };
         test-screen-reader = import ./tests/desktop/screen_reader_package.nix { inherit pkgs; };
         test-screen-reader-tools = pkgs.symlinkJoin { name = "screen-reader-test-tools"; paths = [ pkgs.glib.dev pkgs.util-linux ]; };
