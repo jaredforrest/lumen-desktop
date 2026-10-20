@@ -2,6 +2,7 @@
 import argparse,json,os,re,shutil,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
 from application_fixture.isolation import run as isolated_run
+from application_fixture.provenance import FrozenSource,generated
 from private_native_bus import start_private_bus
 from fixture_resources import close_reaped_pipes
 p=argparse.ArgumentParser();p.add_argument('--launcher',type=Path,required=True);p.add_argument('--sway',type=Path,required=True);p.add_argument('--output',type=Path);p.add_argument('--effects',action='store_true');p.add_argument('--inside',action='store_true');p.add_argument('--python-runtime',default=shutil.which('desktop-test-python'));p.add_argument('--egl-vendor',type=Path,default=os.environ.get('__EGL_VENDOR_LIBRARY_FILENAMES'));p.add_argument('--pointer',type=Path,required=True);p.add_argument('--constraint-client',type=Path,required=True);p.add_argument('--font-config',type=Path,required=True);p.add_argument('--source-revision');p.add_argument('--parent-net');a=p.parse_args()
@@ -10,12 +11,15 @@ if not a.inside:
  a.output=a.output.resolve();a.output.mkdir(mode=0o700,parents=True,exist_ok=False)
  a.launcher=a.launcher.resolve();a.sway=a.sway.resolve();a.pointer=a.pointer.resolve();a.constraint_client=a.constraint_client.resolve();a.font_config=a.font_config.resolve();runtime=Path(a.python_runtime).resolve()
  if not all(str(path).startswith('/nix/store/') for path in (a.launcher,a.sway,a.pointer,a.constraint_client,a.font_config,runtime)):raise ValueError('Pinned native tools required')
- revision=sp.check_output(['git','rev-parse','HEAD'],cwd=Path(__file__).resolve().parents[2],text=True).strip()
+ frozen=FrozenSource(Path(__file__).resolve().parents[2],__file__,[a.launcher,a.sway,a.pointer,a.constraint_client,a.font_config,runtime]+([a.egl_vendor] if a.effects else []));revision=frozen.revision
  args=[str(runtime),'/source/tests/desktop/window_controls_native.py','--inside','--launcher',str(a.launcher),'--sway',str(a.sway),'--pointer',str(a.pointer),'--constraint-client',str(a.constraint_client),'--font-config',str(a.font_config),'--source-revision',revision,'--parent-net',os.readlink('/proc/self/ns/net')]
  if a.effects:
   if not a.egl_vendor or not str(a.egl_vendor.resolve()).startswith('/nix/store/'):raise ValueError('Pinned Mesa vendor required')
   args+=['--effects','--egl-vendor',str(a.egl_vendor.resolve())]
- raise SystemExit(isolated_run(Path(__file__).resolve().parents[2],a.output,args,software_graphics=a.effects))
+ code=1
+ try:code=isolated_run(Path(__file__).resolve().parents[2],a.output,args,software_graphics=a.effects)
+ finally:frozen.finish(a.output,code)
+ raise SystemExit(code)
 assert os.getuid()!=0 and os.readlink('/proc/self/ns/net')!=a.parent_net
 assert not any((Path('/dev')/name).exists() for name in ('dri','snd','video0')) and Path('/dev/udmabuf').exists()==a.effects
 a.output=Path('/artifacts')
@@ -142,6 +146,7 @@ ShellRoot {id:stub
   checks.append('Two physical minimized documents restore through production application Dock rows with exact container/title/geometry and keyboard focus')
   (a.output/'result.json').write_text(json.dumps(dict(passed=True,checks=checks,source=a.source_revision,compositor=str(a.sway),liveSocketUnchanged=os.environ.get('SWAYSOCK')==original_socket),indent=2));print(json.dumps(dict(passed=True,checks=len(checks))))
  finally:
+  generated(private,a.output)
   for proc in reversed(processes):
    if proc.poll() is None:
     try:os.killpg(proc.pid,signal.SIGTERM)
