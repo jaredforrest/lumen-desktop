@@ -249,6 +249,8 @@ ShellRoot {
     AudioState { id: audio }
     property alias systemState: controls
     SystemState {id:controls}
+    CaptureState {id:captureState}
+    property alias capture:captureState
     property alias search: searchState
     SearchState {id:searchState;active:Object.values(root.bars).some(b=>b && b.menu==="Launcher") && !(Theme.searchPreferences.disabledProviders || []).includes("files")}
     property alias notifications:notificationState

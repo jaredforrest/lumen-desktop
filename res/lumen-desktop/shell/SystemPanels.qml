@@ -69,6 +69,7 @@ Item {
             ControlRow {width:parent.width;height:25;text:"Sound Settings…";onClicked:root.settingsRequested()}
         }
     }
+    CaptureReport {visible:root.kind==="Capture";width:parent.width;state:root.shell.capture || null}
     NotificationPanel {id:datePanel;visible:root.kind==="Date";width:parent.width;shell:root.shell;today:root.today}
     ConnectivityPanel {visible:root.kind==="Wi-Fi" || root.kind==="Bluetooth";kind:root.kind;controls:root.shell.systemState;onBackRequested:root.panelRequested("Controls")}
     VpnPanel {visible:root.kind==="VPN";width:parent.width;compact:true;service:root.shell.vpn;onBackRequested:root.panelRequested("Controls");onSettingsRequested:root.shell.openSettings("VPN")}

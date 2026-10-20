@@ -39,8 +39,28 @@ def runtime_environment(environment):
     exact={'PATH','GLOBAL_MENU_PYTHON','LOCALE_ARCHIVE','TZDIR','LANG','LC_ALL','GI_TYPELIB_PATH','GIO_EXTRA_MODULES','LD_LIBRARY_PATH','FONTCONFIG_FILE','FONTCONFIG_PATH'}
     return {key:value for key,value in environment.items() if key.startswith(('QT_','QML')) or key in exact}
 
-def setup(root,source,output,environment,command):
+def graphics_policy(value):
+    if type(value) is not bool:raise ValueError('software_graphics must be a boolean')
+    return value
+
+def software_device():
+    """Fixed optional software allocator; never provision or expose GPU devices."""
+    path=Path('/dev/udmabuf');info=path.lstat()
+    if not stat.S_ISCHR(info.st_mode):raise ValueError('Software allocator must be a non-symlink character device')
+    expected='%d:%d'%(os.major(info.st_rdev),os.minor(info.st_rdev))
+    fields=dict(line.split('=',1) for line in Path('/sys/class/misc/udmabuf/uevent').read_text().splitlines() if '=' in line)
+    if Path('/sys/class/misc/udmabuf/dev').read_text().strip()!=expected or fields.get('DEVNAME')!='udmabuf':raise ValueError('Software allocator identity does not match sysfs')
+    if not os.access(path,os.R_OK|os.W_OK):raise PermissionError('Software allocator is not accessible')
+    return info.st_dev,info.st_ino,info.st_rdev
+
+def bind_software_device(target):
+    expected=software_device();bind('/dev/udmabuf',target)
+    bound=Path(target).lstat()
+    if not stat.S_ISCHR(bound.st_mode) or (bound.st_dev,bound.st_ino,bound.st_rdev)!=expected or software_device()!=expected:raise ValueError('Software allocator changed during isolation')
+
+def setup(root,source,output,environment,command,software_graphics=False):
     """Called only after unshare; no mount or network operation on the host."""
+    graphics_policy(software_graphics)
     uid,gid=os.getuid(),os.getgid()
     if uid==0:raise ValueError('Browser fixture must retain a non-root identity')
     root,source,output=map(Path,(root,source,output))
@@ -50,6 +70,7 @@ def setup(root,source,output,environment,command):
     for name in ('etc','proc','sys','dev','tmp','run','home/fixture'):(root/name).mkdir(parents=True,exist_ok=True)
     (root/'tmp').chmod(0o1777);(root/'home/fixture').chmod(0o700)
     for name in ('null','zero','random','urandom'):bind('/dev/'+name,root/'dev'/name)
+    if software_graphics:bind_software_device(root/'dev/udmabuf')
     for name,target in [('fd','/proc/self/fd'),('stdin','/proc/self/fd/0'),('stdout','/proc/self/fd/1'),('stderr','/proc/self/fd/2')]: (root/'dev'/name).symlink_to(target)
     (root/'dev/shm').mkdir();mount('tmpfs',root/'dev/shm','tmpfs',MS_NOSUID|MS_NODEV,'mode=1777,size=256M')
     mount('proc',root/'proc','proc',MS_NOSUID|MS_NODEV|MS_NOEXEC)
@@ -68,13 +89,14 @@ def setup(root,source,output,environment,command):
     os.rmdir('/.old-root');os.chdir('/source');drop_capabilities()
     os.execve(command[0],command,env)
 
-def run(source,output,command,environment=None):
+def run(source,output,command,environment=None,software_graphics=False):
+    graphics_policy(software_graphics)
     source,output=Path(source).resolve(),Path(output).resolve()
     if not source.is_dir() or not output.is_dir():raise ValueError('Existing source and fresh artifact directories are required')
     info=output.stat()
     if info.st_uid!=os.getuid() or stat.S_IMODE(info.st_mode)&0o022 or any(output.iterdir()):raise ValueError('Artifact directory must be empty, owned and writable only by this user')
     with tempfile.TemporaryDirectory(prefix='lumen-browser-root-') as private:
-        descriptor=Path(private)/'launch.json';descriptor.write_text(json.dumps(dict(root=str(Path(private)/'root'),source=str(source),output=str(output),environment=runtime_environment(os.environ if environment is None else environment),command=command)));(Path(private)/'root').mkdir()
+        descriptor=Path(private)/'launch.json';descriptor.write_text(json.dumps(dict(root=str(Path(private)/'root'),source=str(source),output=str(output),environment=runtime_environment(os.environ if environment is None else environment),command=command,software_graphics=software_graphics)));(Path(private)/'root').mkdir()
         return subprocess.call(['unshare','--user','--map-current-user','--keep-caps','--mount','--pid','--net','--ipc','--uts','--fork','--kill-child','--mount-proc',sys.executable,str(Path(__file__).resolve()),str(descriptor)])
 
 if __name__=='__main__':setup(**json.loads(Path(sys.argv[1]).read_text()))
