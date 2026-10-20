@@ -20,7 +20,7 @@ function display(physical) {
 function hint(groups,action,appId) {
     const local=appId?groups.find(group=>group.action===action && group.scope==="application" && group.appId===appId):null;
     const group=local || groups.find(group=>group.action===action && group.scope==="global");
-    return group?group.bindings.map(item=>display(item.physical)).join(" / "):"";
+    return group?display(group.bindings[0].physical):"";
 }
 function menuAction(action) {
     return ({fullscreen:"window.fullscreen.toggle",fill:"window.fill","show-desktop":"shell.show_desktop",mute:"audio.key.mute",up:"audio.key.up",down:"audio.key.down","status:Controls":"shell.control_centre.toggle"})[action] || "";

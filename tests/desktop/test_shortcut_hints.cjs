@@ -9,4 +9,5 @@ for(const mutate of [d=>d.valid=false,d=>d.version=true,d=>d.bindings[0].enabled
  const copy=JSON.parse(JSON.stringify(document));mutate(copy);assert.throws(()=>model.read(copy));
 }
 assert.equal(model.hint([],binding.action,''),'');
+const aliases=JSON.parse(JSON.stringify(document));aliases.hints[0].bindings.push({...aliases.hints[0].bindings[0]});assert.equal(model.hint(aliases.hints,binding.action,''),'Ctrl+Super+X');
 console.log('shortcut hint model PASS');

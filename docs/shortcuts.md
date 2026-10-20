@@ -59,8 +59,8 @@ with 1 for collisions and 2 for an invalid registry.
 The same validated export contains action-scoped `hints`, generated only for
 enabled default-mode, wildcard-device press bindings. Release edges, reservations,
 device-specific declarations and unrelated consumer commands are not advertised
-as general shortcuts. Multiple aliases are retained; shorter physical chords are
-shown first. The shell loads the effective file through `ShortcutState`, clears
+as general shortcuts. Multiple aliases are retained in the model and settings
+listing; the shortest physical chord is selected for a compact menu hint. The shell loads the effective file through `ShortcutState`, clears
 hints on missing/malformed input and watches atomic replacements. It does not
 silently fall back to bundled defaults when a consumer disables a binding.
 
