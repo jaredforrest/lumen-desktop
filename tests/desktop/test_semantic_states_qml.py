@@ -27,7 +27,7 @@ ShellRoot {
   tile.active=true;
   if(!tile.Accessible.checkable || !tile.Accessible.checked || !tile.Accessible.name.includes("Connected"))throw Error("Radio state conveyed only by colour");
   tile.unavailable=true;
-  if(tile.activeFocusOnTab || !tile.Accessible.name.includes("unavailable"))throw Error("Unavailable state lacks semantic explanation");
+  if(tile.enabled || !tile.Accessible.name.includes("unavailable"))throw Error("Unavailable state lacks semantic explanation");
   if(!status.Accessible.name.startsWith("Error: ") || status.Accessible.description!=="error")throw Error("Error is only a colour");
   status.severity="success";
   if(!status.Accessible.name.startsWith("Success: "))throw Error("Success is only a colour");

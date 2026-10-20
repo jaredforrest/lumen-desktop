@@ -21,7 +21,8 @@ PanelSurface {
         }
     }
     MouseArea {anchors.fill:parent;enabled:!tile.unavailable;onClicked:tile.clicked()}
-    activeFocusOnTab: !unavailable
+    enabled:!unavailable
+    activeFocusOnTab:true
     Keys.onReturnPressed: if(!unavailable)clicked()
     Keys.onSpacePressed: if(!unavailable)clicked()
     Accessible.role: toggle?Accessible.CheckBox:Accessible.Button
