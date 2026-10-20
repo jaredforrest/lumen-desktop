@@ -1,0 +1,25 @@
+--- a/crates/engine/src/lib.rs
++++ b/crates/engine/src/lib.rs
+@@ -8,6 +8,8 @@
+ 
+ pub mod catalog;
+ pub mod cf;
++#[cfg(not(target_arch = "wasm32"))]
++mod lumen_atomic_output;
+ pub mod cmd;
+ pub mod display;
+ pub mod fill;
+--- a/crates/engine/src/io.rs
++++ b/crates/engine/src/io.rs
+@@ -275,10 +275,7 @@
+ 
+ #[cfg(not(target_arch = "wasm32"))]
+ pub fn write_file(path: &str, bytes: &[u8]) -> Result<()> {
+-    // Write to a temporary file, then rename: a crash never leaves a half-written workbook.
+-    let tmp = format!("{path}.sctmp");
+-    std::fs::write(&tmp, bytes).map_err(|e| EngineError::Other(format!("{path}: {e}")))?;
+-    std::fs::rename(&tmp, path).map_err(|e| EngineError::Other(format!("{path}: {e}")))
++    crate::lumen_atomic_output::write(std::path::Path::new(path), bytes).map_err(EngineError::Other)
+ }
+ 
+ #[cfg(target_arch = "wasm32")]

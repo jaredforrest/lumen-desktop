@@ -1,0 +1,25 @@
+--- a/crates/engine/src/lib.rs
++++ b/crates/engine/src/lib.rs
+@@ -7,6 +7,8 @@
+ #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
+ 
+ pub mod catalog;
++#[cfg(not(target_arch = "wasm32"))]
++mod lumen_atomic_output;
+ pub mod cmd;
+ pub mod io;
+ mod io_ext;
+--- a/crates/engine/src/io.rs
++++ b/crates/engine/src/io.rs
+@@ -267,10 +267,7 @@
+ #[cfg(not(target_arch = "wasm32"))]
+ pub fn save_path_with(path: &std::path::Path, doc: &Document, password: Option<&str>) -> Result<(), String> {
+     let bytes = save_bytes_with(&path.to_string_lossy(), doc, password)?;
+-    // Write atomically: temp file next to the target, then rename.
+-    let tmp = path.with_extension(format!("{}.tmp", ext_of(&path.to_string_lossy())));
+-    std::fs::write(&tmp, &bytes).map_err(|e| format!("{}: {e}", tmp.display()))?;
+-    std::fs::rename(&tmp, path).map_err(|e| format!("{}: {e}", path.display()))
++    crate::lumen_atomic_output::write(path, &bytes)
+ }
+ 
+ #[cfg(target_arch = "wasm32")]

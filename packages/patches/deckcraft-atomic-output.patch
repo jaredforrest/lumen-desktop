@@ -1,0 +1,25 @@
+--- a/crates/engine/src/lib.rs
++++ b/crates/engine/src/lib.rs
+@@ -7,6 +7,8 @@
+ #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
+ #![forbid(unsafe_code)]
+ 
++#[cfg(not(target_arch = "wasm32"))]
++mod lumen_atomic_output;
+ pub mod cmd;
+ pub mod connect;
+ pub mod guard;
+--- a/crates/engine/src/cmd/file.rs
++++ b/crates/engine/src/cmd/file.rs
+@@ -169,10 +169,7 @@
+ 
+ #[cfg(not(target_arch = "wasm32"))]
+ fn write_file(path: &str, bytes: &[u8]) -> Result<()> {
+-    // Write to a temporary sibling then rename, so a failed save never truncates the old file.
+-    let tmp = format!("{path}.saving");
+-    std::fs::write(&tmp, bytes).map_err(|e| EngineError::Other(format!("{path}: {e}")))?;
+-    std::fs::rename(&tmp, path).map_err(|e| EngineError::Other(format!("{path}: {e}")))
++    crate::lumen_atomic_output::write(std::path::Path::new(path), bytes).map_err(EngineError::Other)
+ }
+ #[cfg(target_arch = "wasm32")]
+ fn write_file(_path: &str, _bytes: &[u8]) -> Result<()> {

@@ -16,12 +16,16 @@ in pkgs.rustPlatform.buildRustPackage {
     hash = "sha256-yJk5hzvvjwJXJkZFc/dO+Llf70w7xZnoX7zI3ifIuoY=";
   };
   cargoHash = "sha256-OljEFWaPOT3nmWU/xVTcbn3ePAdEYkhG6/U4ysVG9Kc=";
-  patches = [ ./patches/wordcraft-print-failure.patch ./patches/wordcraft-version-ownership.patch ];
+  patches = [ ./patches/wordcraft-print-failure.patch ./patches/wordcraft-version-ownership.patch ./patches/wordcraft-atomic-output.patch ];
+  postPatch = ''
+    cp ${../res/office/atomic_output.rs} crates/engine/src/lumen_atomic_output.rs
+  '';
   nativeBuildInputs = [ pkgs.pkg-config ];
   buildInputs = [ pkgs.wayland pkgs.libxkbcommon pkgs.libGL pkgs.alsa-lib ];
   cargoBuildFlags = [ "--package" "wordcraft" "--package" "wordcraft-cli" ];
   cargoTestFlags = [ "--package" "wordcraft-ui-egui" "--lib" "print" ];
   postCheck = ''
+    cargo test --offline --profile release --target ${pkgs.stdenv.hostPlatform.rust.rustcTarget} --package wordcraft-engine --lib lumen_atomic_output -j "$NIX_BUILD_CORES"
     cargo test --offline --profile release --target ${pkgs.stdenv.hostPlatform.rust.rustcTarget} --package wordcraft-engine --lib document_versions_ownership -j "$NIX_BUILD_CORES"
   '';
   CRAFT_FONTS_DIR = fonts;

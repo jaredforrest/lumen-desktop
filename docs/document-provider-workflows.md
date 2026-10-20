@@ -91,3 +91,29 @@ source hashes and parses generated PDF content independently. The presentation
 also holds the Save control while the document is changed or replaced, then
 releases it without moving the pointer and checks that no bystander was mutated.
 All capability records remain incomplete for physical printer submission.
+
+
+## Native save publication
+
+All three packaged Linux providers share the same publication helper for native
+saves and copies. It reserves a new private staging file with exclusive creation,
+opens the selected parent as a directory, writes and synchronizes the bytes, then
+checks the staging file identity and selected directory identity before renaming.
+Existing regular-file permissions are preserved; new files start at mode 0600.
+An existing destination link is replaced rather than followed. Old predictable
+staging names are neither opened nor removed. A refused publication removes only
+its own unchanged staging file.
+
+`provider_atomic_save.py` runs the installed command-line binaries in detached
+user, process, network, mount, IPC and hostname namespaces. Its 21 cases cover
+existing staging hardlinks/symlinks, destination hardlinks/symlinks, a FIFO parent,
+publication failure cleanup and ordinary saves for each provider. Original hashes,
+output container contents and relevant permissions are checked independently.
+The package checks also cover directory retargeting and staging replacement using
+a private test callback. The callback is absent from the provider API.
+
+These checks establish deterministic alias and failure handling. They do not
+establish protection from a hostile process running as the same user, directory
+synchronization across power loss, persistent version history, or format fidelity.
+Asynchronous chooser ownership is a separate UI contract: a safe file publication
+cannot itself decide whether a delayed chooser still belongs to the open document.

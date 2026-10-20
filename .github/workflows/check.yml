@@ -333,3 +333,28 @@ jobs:
             artifacts/application-lifecycle
             artifacts/session-end*
             artifacts/network-provider.log
+
+  provider-save-integrity:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@v31
+      - run: |
+          mkdir -p artifacts
+          nix build .#wordcraft --out-link artifacts/wordcraft --option abort-on-warn true
+          nix build .#gridcraft --out-link artifacts/gridcraft --option abort-on-warn true
+          nix build .#deckcraft --out-link artifacts/deckcraft --option abort-on-warn true
+      - run: bash tests/ci/run-native.sh provider_save_namespace_prepare nix develop --command desktop-test-python tests/ci/native_namespace_policy.py prepare --output artifacts/provider-save-namespace
+      - run: bash tests/ci/run-native.sh provider_atomic_save nix develop --command desktop-test-python tests/desktop/provider_atomic_save.py --wordcraft "$PWD/artifacts/wordcraft/bin/wordcraft-cli" --gridcraft "$PWD/artifacts/gridcraft/bin/gridcraft-cli" --deckcraft "$PWD/artifacts/deckcraft/bin/deckcraft-cli" --output artifacts/provider-atomic-save
+      - if: always()
+        run: bash tests/ci/run-native.sh provider_save_namespace_cleanup nix develop --command desktop-test-python tests/ci/native_namespace_policy.py cleanup --output artifacts/provider-save-namespace
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: provider-save-integrity
+          path: |
+            artifacts/provider-save-namespace
+            artifacts/provider-atomic-save
+            artifacts/native-command-logs/provider*
