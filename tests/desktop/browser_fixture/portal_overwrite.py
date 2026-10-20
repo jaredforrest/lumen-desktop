@@ -24,6 +24,7 @@ def run(c):
  c.wait(lambda:target.exists() and hashlib.sha256(target.read_bytes()).hexdigest()!=original,'captured target replaced after confirmation')
  data=target.read_bytes();assert b'Disposable local page' in data
  c.navigate('brave://downloads');row=c.wait(lambda:next((row for row in c.ui_downloads() if row['filePath']==str(target) and row['state']==2),None),'actual saved-page provider complete after Replace')
- c.capture_presented("document.querySelector('downloads-manager').shadowRoot.querySelector('#content')",'overwrite-completed-download.png')
+ item="Array.from(document.querySelector('downloads-manager').shadowRoot.querySelectorAll('downloads-item')).find(item=>item.data.id==="+json.dumps(row['id'])+")"
+ c.capture_presented('('+item+").shadowRoot.querySelector('#content')",'overwrite-completed-download.png')
  (c.out/'overwrite-result.json').write_text(json.dumps(dict(target=str(target),beforeSha256=original,afterSha256=hashlib.sha256(data).hexdigest(),bytes=len(data),download=row,portal=c.portal_facts),indent=2))
  c.checks.append('Explicit native portal Replace commits exact captured target and completed provider record after confirmation')
