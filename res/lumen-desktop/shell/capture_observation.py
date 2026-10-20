@@ -45,13 +45,17 @@ def describe(objects):
         node=indexed.get(target);origin=indexed.get(source)
         if not node or not origin:raise ValueError('Incomplete active graph')
         if node.get('type')!='PipeWire:Interface:Node' or origin.get('type')!='PipeWire:Interface:Node':raise ValueError('Invalid link endpoint')
-        ni=node.get('info',{});props=ni.get('props',{})
+        ni=node.get('info',{})
+        if not isinstance(ni,dict):raise ValueError('Invalid node information')
+        props=ni.get('props',{})
         if not isinstance(props,dict):raise ValueError('Invalid node metadata')
         media=props.get('media.class');kind={'Stream/Input/Audio':'audio-input','Stream/Input/Video':'video-input'}.get(media)
         if kind is None:continue
         client=None
         if 'client.id' in props:client=indexed.get(identifier(props['client.id']))
-        cp=client.get('info',{}).get('props',{}) if client and client.get('type')=='PipeWire:Interface:Client' else {}
+        ci=client.get('info',{}) if client and client.get('type')=='PipeWire:Interface:Client' else {}
+        if not isinstance(ci,dict):raise ValueError('Invalid client information')
+        cp=ci.get('props',{})
         if not isinstance(cp,dict):raise ValueError('Invalid client metadata')
         key=(target,kind)
         if key not in rows:
@@ -65,7 +69,7 @@ def describe(objects):
 def read_graph(command=('pw-dump','--no-colors'),deadline=DEADLINE,max_bytes=MAX_BYTES):
     """Never activate a provider, change routing or retain graph data on disk."""
     end=time.monotonic()+deadline
-    with subprocess.Popen(command,stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,stdin=subprocess.DEVNULL) as child:
+    with subprocess.Popen(command,stdout=subprocess.PIPE,stdin=subprocess.DEVNULL) as child:
         try:
             with selectors.DefaultSelector() as ready:
                 ready.register(child.stdout,selectors.EVENT_READ);parts=[];size=0
