@@ -4,17 +4,19 @@ from pathlib import Path
 from application_fixture import offscreen
 from private_native_bus import start_private_bus
 from fixture_resources import close_reaped_pipes
-p=argparse.ArgumentParser();p.add_argument('--launcher',type=Path,required=True);p.add_argument('--font-config',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--font-family');p.add_argument('--expected-resolved-family');p.add_argument('--consumer',choices=['Files','Calendar']);p.add_argument('--window-size',type=int,choices=[480,1060]);p.add_argument('--inside',action='store_true');a=p.parse_args();repo=Path(__file__).resolve().parents[2]
+from typography_cases import cases as corpus_cases,segments as corpus_segments,identity as case_identity
+p=argparse.ArgumentParser();p.add_argument('--launcher',type=Path,required=True);p.add_argument('--font-config',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--font-family');p.add_argument('--expected-resolved-family');p.add_argument('--consumer',choices=['Files','Calendar']);p.add_argument('--window-size',type=int,choices=[480,1060]);p.add_argument('--color-mode',choices=['light','dark']);p.add_argument('--inside',action='store_true');a=p.parse_args();repo=Path(__file__).resolve().parents[2]
 if not a.inside:
- output=a.output.resolve();consumers=[a.consumer] if a.consumer else ['Files','Calendar'];records=[];segments=[]
- sizes=[a.window_size] if a.window_size else [480,1060]
- if not(a.consumer and a.window_size):output.mkdir(mode=0o700,parents=True,exist_ok=False)
- for consumer,size in [(consumer,size)for consumer in consumers for size in sizes]:
-  target=output if a.consumer and a.window_size else output/(consumer.lower()+'-'+str(size));started=time.monotonic()
-  code=offscreen.run(repo,target,a.launcher,a.font_config,[sys.executable,'/source/tests/desktop/owned_typography_qml.py','--inside','--consumer',consumer,'--window-size',str(size),'--launcher',str(a.launcher.resolve()),'--font-config',str(a.font_config.resolve()),'--output','/artifacts/result']+(['--font-family',a.font_family] if a.font_family else [])+(['--expected-resolved-family',a.expected_resolved_family] if a.expected_resolved_family else []))
-  assert code==0,(consumer,code)
-  result=json.loads((target/'result/result.json').read_text());assert result['passed'] and len(result['cases'])==32;records+=result['cases'];segments.append(dict(consumer=consumer,width=size,elapsedSeconds=time.monotonic()-started,artifactDirectory=str(target)))
- if not(a.consumer and a.window_size):(output/'result.json').write_text(json.dumps(dict(passed=True,cases=records,segments=segments,scope='Independently bounded32-case production presentation segments;25s child deadline unchanged'),indent=2))
+ output=a.output.resolve();batches=corpus_segments(a.consumer,a.window_size,a.color_mode);records=[];receipts=[];selected=bool(a.consumer and a.window_size and a.color_mode)
+ if not selected:output.mkdir(mode=0o700,parents=True,exist_ok=False)
+ for batch in batches:
+  consumer,size,mode=batch['consumer'],batch['width'],batch['mode'];target=output if selected else output/(consumer.lower()+'-'+str(size)+'-'+mode);started=time.monotonic()
+  code=offscreen.run(repo,target,a.launcher,a.font_config,[sys.executable,'/source/tests/desktop/owned_typography_qml.py','--inside','--consumer',consumer,'--window-size',str(size),'--color-mode',mode,'--launcher',str(a.launcher.resolve()),'--font-config',str(a.font_config.resolve()),'--output','/artifacts/result']+(['--font-family',a.font_family] if a.font_family else [])+(['--expected-resolved-family',a.expected_resolved_family] if a.expected_resolved_family else []))
+  receipts.append(dict(consumer=consumer,width=size,mode=mode,elapsedSeconds=time.monotonic()-started,exitCode=code,paintedFrames=len([path for path in (target/'result').glob('*.png')if path.stem.isdecimal()]),artifactDirectory=str(target)));(output/'segments.json').write_text(json.dumps(receipts,indent=2))
+  assert code==0,(batch,code)
+  result=json.loads((target/'result/result.json').read_text());assert result['passed'] and len(result['cases'])==16;records+=result['cases']
+ expected=[case_identity(case)for batch in batches for case in corpus_cases(**batch)];actual=[case_identity(row['entry'])for row in records];assert len(actual)==len(set(actual))and set(actual)==set(expected),'Presentation corpus omitted or duplicated cases'
+ if not selected:(output/'result.json').write_text(json.dumps(dict(passed=True,cases=records,segments=receipts,scope='Independently bounded16-case production presentation segments;25s child deadline unchanged'),indent=2))
  raise SystemExit(0)
 
 env=offscreen.environment();out=a.output;out.mkdir(parents=True,exist_ok=False);assets=out/'desktop';shutil.copytree(repo/'res/lumen-desktop/shell',assets)
@@ -29,7 +31,7 @@ import Quickshell
 import "desktop" as D
 ShellRoot {
  id:audit
- property var cases:[]
+ property var cases:'''+json.dumps(corpus_cases(a.consumer,a.window_size,a.color_mode))+'''
  property var records:[]
  property var findings:[]
  property int index:0
@@ -51,7 +53,7 @@ ShellRoot {
  function ratio(a,b){const lum=c=>[c.r,c.g,c.b].map(v=>v<=.04045?v/12.92:Math.pow((v+.055)/1.055,2.4)).reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0),x=lum(a),y=lum(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);}
  function paint(root){return Array.from(root.contentItem.children).find(item=>item.visible && item.width===root.width && item.height===root.height);}
  Component.onCompleted:{
-  for(const app of '''+json.dumps([a.consumer])+''')for(const size of '''+json.dumps([[a.window_size,320 if a.window_size==480 else 720]])+''')for(const mode of ["light","dark"])for(const scale of [1,1.15,1.3,1.5])for(const view of app==="Files"?["list","grid","columns","gallery"]:["Month","Year","Day","Week"])cases.push({app:app,width:size[0],height:size[1],mode:mode,scale:scale,view:view});
+
   calendar.calendarState.active=false;calendar.calendarState.loaded=true;calendar.calendarState.monthEvents=[{id:"synthetic",provider:"Private",calendar:"Calendar collection",title:"Planning session",date:"2026-10-20",endDate:"2026-10-20",startTime:"09:00",endTime:"10:00",allDay:false},...[1,2,3].map(index=>({id:"all-day-"+index,provider:"Private",calendar:"Calendar collection",title:"All-day "+index,date:"2026-10-20",endDate:"2026-10-20",startTime:"00:00",endTime:"23:59",allDay:true}))];calendar.calendarState.providers=[{name:"Private",calendars:[{name:"Calendar collection"}]}];service.navigate("/home/fixture/Documents");
  }
  Timer {interval:20;repeat:true;running:true;onTriggered:{try{
@@ -108,7 +110,7 @@ try:
  start_private_bus(env,out,processes)
  with (out/'qt.log').open('w') as log:child=sp.Popen(['quickshell','-p',str(qml)],env=env,stdout=log,stderr=sp.STDOUT,start_new_session=True)
  processes.append(child);child.wait(timeout=25);text=(out/'qt.log').read_text();assert child.returncode==0 and 'OWNED_TYPOGRAPHY_FAILURE' not in text,text
- records=json.loads(next(line.split('OWNED_TYPOGRAPHY_RESULT ',1)[1]for line in text.splitlines()if 'OWNED_TYPOGRAPHY_RESULT 'in line));assert len(records)==32
+ records=json.loads(next(line.split('OWNED_TYPOGRAPHY_RESULT ',1)[1]for line in text.splitlines()if 'OWNED_TYPOGRAPHY_RESULT 'in line));assert len(records)==16
  assert not any(word in text for word in ('ReferenceError','TypeError','binding loop')),text
  from PIL import Image
  for row in records:
