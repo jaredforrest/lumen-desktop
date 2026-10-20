@@ -152,6 +152,7 @@ jobs:
             compositor="$PWD/artifacts/compositor/bin/sway"
             extra=()
             if [[ "$variant" == effects ]]; then compositor="$PWD/artifacts/compositor-effects/bin/sway"; extra=(--effects); fi
+            bash tests/ci/run-native.sh preferred_zoom_native nix develop --command desktop-test-python tests/desktop/preferred_zoom_native.py --rapid --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$compositor" --pointer "$PWD/artifacts/pointer/bin/wlrctl" "${extra[@]}" --output "artifacts/preferred-zoom-$variant"
             for backend in software opengl; do
               for frame in on off; do
                 bash tests/ci/run-native.sh content_clipping_native nix develop --command desktop-test-python tests/desktop/content_clipping_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$compositor" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" "${extra[@]}" --native-frame "$frame" --content-backend "$backend" --output "artifacts/content-clipping-$variant-$backend-$frame"
@@ -215,6 +216,7 @@ jobs:
             artifacts/icon-grid
             artifacts/content-clipping-*
             artifacts/consumer-fit-*
+            artifacts/preferred-zoom-*
             artifacts/mixed-output-scale-*
             artifacts/accessibility
             artifacts/screen-reader-input-*
