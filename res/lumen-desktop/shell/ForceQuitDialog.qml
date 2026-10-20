@@ -19,6 +19,11 @@ PanelWindow {
     property int generation:0
     property int windowCount:0
     property var pendingRequest:null
+    function fail(message){
+        error=message;phase="error";
+        const failedGeneration=generation;
+        Qt.callLater(()=>{if(visible && phase==="error" && generation===failedGeneration)cancelButton.forceActiveFocus();});
+    }
     function request(action,value){pendingRequest={generation:generation,action:action,value:value};drain();}
     function drain(){if(worker.running || !pendingRequest)return;const request=pendingRequest;pendingRequest=null;worker.requestGeneration=request.generation;worker.action=request.action;worker.command=["lumen-application-control","--request-id",String(request.generation),request.action,request.value];worker.running=true;}
     function show(name,windows){
@@ -26,7 +31,7 @@ PanelWindow {
         ++generation;pendingRequest=null;token="";error="";applicationName=name;windowCount=0;
         screen=Quickshell.screens.find(screen=>screen.name===shell.preferredOutput()) || Quickshell.screens[0];
         shell.claimPopup("force-quit");visible=true;
-        if(payload.length>65536){phase="error";error="The selected window list is too large. Close some windows and try again.";}
+        if(payload.length>65536){fail("The selected window list is too large. Close some windows and try again.");}
         else {phase="preparing";request("prepare",payload);}
         Qt.callLater(()=>cancelButton.forceActiveFocus());
     }
@@ -66,13 +71,13 @@ PanelWindow {
             if(worker.action==="cancel" || worker.requestGeneration!==root.generation)return;
             try{
                 const result=JSON.parse(text);if(result.requestId!==String(root.generation))return;worker.received=true;
-                if(result.error){root.error=result.error;root.phase="error";return;}
+                if(result.error){root.fail(result.error);return;}
                 if(worker.action==="prepare"){
                     if(typeof result.token!=="string" || !/^[0-9a-f]{32}$/.test(result.token))throw Error("Invalid confirmation identity");
                     root.token=result.token;root.windowCount=result.windowCount;root.phase="ready";
                 }else {root.phase="closed";root.visible=false;}
-            }catch(error){root.error="The application control service did not respond correctly";root.phase="error";}
+            }catch(error){root.fail("The application control service did not respond correctly");}
         }}
-        onExited:(code,status)=>{if(action!=="cancel" && requestGeneration===root.generation && !received){root.error="The application control service is unavailable";root.phase="error";}Qt.callLater(root.drain);}
+        onExited:(code,status)=>{if(action!=="cancel" && requestGeneration===root.generation && !received)root.fail("The application control service is unavailable");Qt.callLater(root.drain);}
     }
 }

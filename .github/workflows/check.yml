@@ -227,6 +227,8 @@ jobs:
           PATH="$PWD/artifacts/shell-package/bin:$PATH" bash tests/ci/run-native.sh interaction_regression nix develop --command desktop-test-python tests/desktop/interaction_regression.py --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/interactions
           bash tests/ci/run-native.sh accessibility_protocol nix develop --command desktop-test-python tests/desktop/accessibility_protocol.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/accessibility --full-shell
           PYTHONWARNINGS=error bash tests/ci/run-native.sh force_quit_surface nix develop --command desktop-test-python tests/desktop/force_quit_surface.py --sway "$PWD/artifacts/compositor/bin/sway" --wtype wtype --output artifacts/force-quit
+          bash tests/ci/run-native.sh force_quit_native nix develop --command desktop-test-python tests/desktop/force_quit_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --font-config "$PWD/artifacts/offscreen-font-config" --output artifacts/force-quit-native-basic
+          bash tests/ci/run-native.sh force_quit_native nix develop --command desktop-test-python tests/desktop/force_quit_native.py --effects --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --font-config "$PWD/artifacts/offscreen-font-config" --egl-vendor "$PWD/artifacts/owned-typography-driver/share/glvnd/egl_vendor.d/50_mesa.json" --output artifacts/force-quit-native-effects
           bash tests/ci/run-native.sh spaces_placement nix develop --command desktop-test-python tests/desktop/spaces_placement.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/spaces
           bash tests/ci/run-native.sh application_desktops_native nix develop --command desktop-test-python tests/desktop/application_desktops_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --client "$PWD/artifacts/window-relationships-client/bin/lumen-test-window-relationships" --output artifacts/application-desktops-basic
           bash tests/ci/run-native.sh application_desktops_native nix develop --command desktop-test-python tests/desktop/application_desktops_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --client "$PWD/artifacts/window-relationships-client/bin/lumen-test-window-relationships" --effects --output artifacts/application-desktops-effects
@@ -274,6 +276,7 @@ jobs:
             artifacts/search-native-*
             artifacts/search-history-*
             artifacts/force-quit
+            artifacts/force-quit-native-*
             artifacts/software-effects-kernel
             artifacts/effects-software-render
             artifacts/owned-preview-*
