@@ -519,7 +519,7 @@ def main():
                 if name == BUS and old:
                     loop.quit()
             bus.add_signal_receiver(owner_changed, 'NameOwnerChanged', 'org.freedesktop.DBus')
-            GLib.io_add_watch(sys.stdin, GLib.IO_IN | GLib.IO_HUP, command)
+            GLib.io_add_watch(sys.stdin, GLib.PRIORITY_DEFAULT, GLib.IO_IN | GLib.IO_HUP, command)
             loop.run()
         elif mode == 'focus':
             if len(sys.argv)==2:

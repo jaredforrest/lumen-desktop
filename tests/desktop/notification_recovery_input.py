@@ -1,4 +1,5 @@
 """Disposable notification producer, service, watcher and owned shell crash matrix."""
+from fixture_resources import close_reaped_pipes
 import argparse,json,os,re,select,shutil,signal,socket,subprocess as sp,sys,tempfile,time
 from pathlib import Path
 import dbus
@@ -14,8 +15,10 @@ with tempfile.TemporaryDirectory(prefix='nrecover-') as temporary:
  env['GLOBAL_MENU_PYTHON']=sys.executable;installed_assets=Path(env['LUMEN_NOTIFICATION_HELPER']).parent.parent;assert (installed_assets/'notifications/session_lock.py').is_file() and (installed_assets/'notifications/transport.py').is_file();env['LUMEN_NOTIFICATION_STATE']=str(private/'history');settings=private/'settings.json';env['LUMEN_NIX_SETTINGS_ACTIVE']=str(settings)
  def preference(value):settings.write_text(json.dumps({'notifications':{'preview':value,'policies':{}}}))
  preference('when_unlocked')
+ palette=json.loads((Path(__file__).resolve().parents[2]/'res/lumen-desktop/appearance/palette.json').read_text());appearance=private/'appearance.json';appearance.write_text(json.dumps(dict(font=palette['font'],palette=palette['dark'],preferences={})));env['LUMEN_APPEARANCE_STATE']=str(appearance)
  def launch(cmd,name,**kw):
-  proc=sp.Popen(cmd,env=env,stdout=(a.output/name).open('w'),stderr=sp.STDOUT,start_new_session=True,**kw);processes.append(proc);return proc
+  with (a.output/name).open('w') as _fixture_log0:
+      proc=sp.Popen(cmd,env=env,stdout=_fixture_log0,stderr=sp.STDOUT,start_new_session=True,**kw);processes.append(proc);return proc
  def call(*cmd):return sp.check_output(cmd,env=env,text=True,timeout=5).strip()
  def wait(fn):
   deadline=time.monotonic()+15
@@ -25,10 +28,15 @@ with tempfile.TemporaryDirectory(prefix='nrecover-') as temporary:
     if value:return value
    except (ValueError,OSError,dbus.DBusException,sp.SubprocessError):pass
    time.sleep(.04)
+  diagnostic={'processes':[{'pid':proc.pid,'returncode':proc.poll()} for proc in processes]}
+  try:diagnostic['server']=json.loads(api('org.lumendesktop.Notifications').Snapshot(timeout=.3))
+  except (dbus.DBusException,ValueError,NameError) as error:diagnostic['serverError']=str(error)
+  (a.output/'timeout.json').write_text(json.dumps(diagnostic,indent=2))
   raise AssertionError('Notification recovery fixture timed out: '+str(a.output))
  try:
   bus_config=private/'bus.conf';bus_config.write_text('<busconfig><type>session</type><listen>unix:tmpdir='+env['XDG_RUNTIME_DIR']+'</listen><policy context="default"><allow own="*"/><allow send_destination="*"/><allow receive_sender="*"/></policy></busconfig>')
-  bus=sp.Popen(['dbus-daemon','--nofork','--print-address=1','--config-file='+str(bus_config)],env=env,stdout=sp.PIPE,stderr=(a.output/'bus.log').open('w'),text=True,start_new_session=True);processes.append(bus);assert select.select([bus.stdout],[],[],5)[0];env['DBUS_SESSION_BUS_ADDRESS']=bus.stdout.readline().strip();connection=dbus.bus.BusConnection(env['DBUS_SESSION_BUS_ADDRESS'])
+  with (a.output/'bus.log').open('w') as _fixture_log0:
+      bus=sp.Popen(['dbus-daemon','--nofork','--print-address=1','--config-file='+str(bus_config)],env=env,stdout=sp.PIPE,stderr=_fixture_log0,text=True,start_new_session=True);processes.append(bus);assert select.select([bus.stdout],[],[],5)[0];env['DBUS_SESSION_BUS_ADDRESS']=bus.stdout.readline().strip();connection=dbus.bus.BusConnection(env['DBUS_SESSION_BUS_ADDRESS'])
   config=private/'sway.conf';config.write_text('output HEADLESS-1 resolution 1100x800\nxwayland disable\nseat seat0 fallback true\n')
   env['SWAYSOCK']=str(Path(env['XDG_RUNTIME_DIR'])/'compositor.sock')
   def start_compositor(name):
@@ -47,6 +55,7 @@ with tempfile.TemporaryDirectory(prefix='nrecover-') as temporary:
    os.killpg(proc.pid,signal.SIGKILL);proc.wait(timeout=5)
   wait(lambda:snapshot()['lock']=={'known':True,'locked':False})
   shutil.copytree(installed_assets,private/'assets')
+  watcher_qml=private/'assets/shell/NotificationState.qml';watcher_qml.chmod(0o600);watcher_qml.write_text(watcher_qml.read_text().replace('stdout:SplitParser {onRead:line=>root.applyState(line)}','stdout:SplitParser {onRead:line=>root.applyState(line)}\n        stderr:SplitParser {onRead:line=>console.log("WATCHER_STDERR:"+line)}'))
   fixture=private/'fixture.qml';fixture.write_text('''import QtQuick
 import QtQuick.Controls
 import Quickshell
@@ -62,7 +71,7 @@ ShellRoot {
   D.NotificationCard {id:card;x:20;y:20;width:400;visible:notifications.rows.length>0;service:notifications;notification:notifications.rows[0] || ({id:0,app:"",summary:"",body:"",icon:"",image:"",actions:[],timestamp:0})}
  }
  IpcHandler {target:"recoveryAudit"
-  function status():string{return JSON.stringify({available:notifications.available,instance:notifications.instance,revision:notifications.revision,rows:notifications.rows,layout:widgets.preferences,probes:root.probes,lease:notifications.commandUntil});}
+  function status():string{return JSON.stringify({available:notifications.available,error:notifications.error,transportEpoch:notifications.transportEpoch,instance:notifications.instance,revision:notifications.revision,rows:notifications.rows,layout:widgets.preferences,probes:root.probes,lease:notifications.commandUntil});}
   function activate():void{card.activate();}
   function activateWithLease(value:string):void{const current=notifications.commandUntil;notifications.commandUntil=Number(value);card.activate();notifications.commandUntil=current;}
   function focusProbe():void{probe.forceActiveFocus();}
@@ -89,7 +98,8 @@ GLib.MainLoop().run()
   def signals(path):return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
   def actions(path):return [line for line in signals(path) if 'action' in line]
   def start_ui(name):return launch(['quickshell','-p',str(fixture)],name)
-  def ui_state():return json.loads(call('quickshell','-p',str(fixture),'ipc','call','recoveryAudit','status'))
+  def ui_state():
+   state=json.loads(call('quickshell','-p',str(fixture),'ipc','call','recoveryAudit','status'));(a.output/'last-ui.json').write_text(json.dumps(state,indent=2));return state
   def probe_control():
    before=ui_state()['probes'];call('quickshell','-p',str(fixture),'ipc','call','recoveryAudit','focusProbe');call('swaymsg','[title="Recovery notification"]','focus');call('wtype','-k','space');wait(lambda:ui_state()['probes']==before+1)
    assert ui_state()['layout']==saved_layout
@@ -163,7 +173,7 @@ GLib.MainLoop().run()
   activate();wait(lambda:len(actions(fourth_log))==1);time.sleep(.25);assert len(actions(fourth_log))==1
   checks.append('Owned shell SIGKILL preserves widget layout, service history and producer identity; fresh keyboard control and action each dispatch once')
   for name in ('ui.log','ui-restart.log'):
-   log=(a.output/name).read_text();assert not any(marker in log for marker in ('TypeError:','ReferenceError:','Binding loop','Failed to load configuration','Cannot assign')),log
+   log=(a.output/name).read_text();assert not any(marker in log for marker in ('TypeError:','ReferenceError:','Binding loop','Failed to load configuration','Cannot assign','PyGIDeprecationWarning','ResourceWarning')),log
   (a.output/'result.json').write_text(json.dumps({'passed':True,'checks':checks,'scope':'Private bus/compositor, synthetic producers and owned controls only; native widget drag/mask acceptance is separate widget_catalogue_input.py'},indent=2)+'\n')
   print('PASS disposable notification recovery matrix')
  finally:
@@ -174,3 +184,6 @@ GLib.MainLoop().run()
   for proc in reversed(processes):
    try:proc.wait(timeout=3)
    except sp.TimeoutExpired:os.killpg(proc.pid,signal.SIGKILL);proc.wait(timeout=3)
+  for _fixture_process in processes:
+      if _fixture_process.poll() is None:_fixture_process.wait(timeout=5)
+  close_reaped_pipes(processes)

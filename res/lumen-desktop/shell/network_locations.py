@@ -336,7 +336,7 @@ def main():
                 emit({'id':request.get('id') if isinstance(request,dict) else None,'error':str(error) if isinstance(error,RequestError) else 'Invalid network request'})
             except Exception:emit({'id':request.get('id') if isinstance(request,dict) else None,'error':'The network request could not be processed'})
         return True
-    GLib.io_add_watch(sys.stdin.fileno(),GLib.IO_IN|GLib.IO_HUP,readable)
+    GLib.io_add_watch(sys.stdin.fileno(), GLib.PRIORITY_DEFAULT, GLib.IO_IN|GLib.IO_HUP,readable)
     emit({'event':'ready',**backend.snapshot()})
     try:loop.run()
     finally:backend.close()

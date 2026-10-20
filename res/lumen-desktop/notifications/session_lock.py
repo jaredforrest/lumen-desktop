@@ -74,7 +74,7 @@ class SessionLockAuthority:
             if token!=self.last_token:self.revision=-1
             self.last_token=token
             if self.glib is not None:
-                self.watch=self.glib.io_add_watch(connection,self.glib.IO_IN|self.glib.IO_HUP|self.glib.IO_ERR,self._events,connection)
+                self.watch=self.glib.io_add_watch(connection,self.glib.PRIORITY_DEFAULT,self.glib.IO_IN|self.glib.IO_HUP|self.glib.IO_ERR,self._events,connection)
         except (OSError,ValueError,TypeError,UnicodeError):self._unknown()
 
     def refresh(self):

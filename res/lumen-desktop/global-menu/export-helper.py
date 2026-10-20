@@ -48,4 +48,4 @@ def owner(name,old,new):
 dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
 bus=dbus.SessionBus();exports={};loop=GLib.MainLoop()
 bus.add_signal_receiver(owner,signal_name='NameOwnerChanged',dbus_interface='org.freedesktop.DBus')
-GLib.io_add_watch(sys.stdin,GLib.IO_IN|GLib.IO_HUP,read);loop.run()
+GLib.io_add_watch(sys.stdin, GLib.PRIORITY_DEFAULT, GLib.IO_IN|GLib.IO_HUP,read);loop.run()

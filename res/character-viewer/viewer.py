@@ -830,7 +830,7 @@ def main():
             finally:
                 client.close()
             return True
-        GLib.io_add_watch(server.fileno(), GLib.IO_IN, receive)
+        GLib.io_add_watch(server.fileno(), GLib.PRIORITY_DEFAULT, GLib.IO_IN, receive)
         try:
             Gtk.main()
         finally:

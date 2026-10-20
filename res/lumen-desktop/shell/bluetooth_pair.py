@@ -85,7 +85,7 @@ def main(device):
             else:agent.respond(data)
         except (ValueError,dbus.DBusException) as exc:emit(dict(error=str(exc)))
         return True
-    GLib.io_add_watch(sys.stdin,GLib.IO_IN|GLib.IO_HUP,input)
+    GLib.io_add_watch(sys.stdin, GLib.PRIORITY_DEFAULT, GLib.IO_IN|GLib.IO_HUP,input)
     GLib.timeout_add_seconds(90,lambda:(remote.CancelPairing(reply_handler=lambda:None,error_handler=lambda e:None),failed('Pairing timed out'),False)[2])
     remote.Pair(reply_handler=done,error_handler=failed,timeout=90)
     try:loop.run()

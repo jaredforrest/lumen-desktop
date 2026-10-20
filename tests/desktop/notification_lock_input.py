@@ -1,4 +1,5 @@
 """Private native lock clients, D-Bus transport and painted notification privacy."""
+from fixture_resources import close_reaped_pipes
 import argparse,json,os,re,select,shutil,signal,socket,stat,subprocess as sp,sys,tempfile,time
 from pathlib import Path
 import dbus
@@ -14,8 +15,10 @@ with tempfile.TemporaryDirectory(prefix='nlock-') as temporary:
  env['GLOBAL_MENU_PYTHON']=sys.executable;installed_assets=Path(env['LUMEN_NOTIFICATION_HELPER']).parent.parent;assert (installed_assets/'notifications/session_lock.py').is_file() and (installed_assets/'notifications/transport.py').is_file();env['LUMEN_NOTIFICATION_STATE']=str(private/'history');settings=private/'settings.json';env['LUMEN_NIX_SETTINGS_ACTIVE']=str(settings)
  def preference(value):settings.write_text(json.dumps({'notifications':{'preview':value,'policies':{}}}))
  preference('when_unlocked')
+ palette=json.loads((Path(__file__).resolve().parents[2]/'res/lumen-desktop/appearance/palette.json').read_text());appearance=private/'appearance.json';appearance.write_text(json.dumps(dict(font=palette['font'],palette=palette['dark'],preferences={})));env['LUMEN_APPEARANCE_STATE']=str(appearance)
  def launch(cmd,name,**kw):
-  proc=sp.Popen(cmd,env=env,stdout=(a.output/name).open('w'),stderr=sp.STDOUT,start_new_session=True,**kw);processes.append(proc);return proc
+  with (a.output/name).open('w') as _fixture_log0:
+      proc=sp.Popen(cmd,env=env,stdout=_fixture_log0,stderr=sp.STDOUT,start_new_session=True,**kw);processes.append(proc);return proc
  def call(*cmd):return sp.check_output(cmd,env=env,text=True,timeout=5).strip()
  def wait(fn):
   deadline=time.monotonic()+15
@@ -31,7 +34,8 @@ with tempfile.TemporaryDirectory(prefix='nlock-') as temporary:
   proc.wait(timeout=5)
  try:
   bus_config=private/'bus.conf';bus_config.write_text('<busconfig><type>session</type><listen>unix:tmpdir='+env['XDG_RUNTIME_DIR']+'</listen><policy context="default"><allow own="*"/><allow send_destination="*"/><allow receive_sender="*"/></policy></busconfig>')
-  bus=sp.Popen(['dbus-daemon','--nofork','--print-address=1','--config-file='+str(bus_config)],env=env,stdout=sp.PIPE,stderr=(a.output/'bus.log').open('w'),text=True,start_new_session=True);processes.append(bus);assert select.select([bus.stdout],[],[],5)[0];env['DBUS_SESSION_BUS_ADDRESS']=bus.stdout.readline().strip();connection=dbus.bus.BusConnection(env['DBUS_SESSION_BUS_ADDRESS'])
+  with (a.output/'bus.log').open('w') as _fixture_log0:
+      bus=sp.Popen(['dbus-daemon','--nofork','--print-address=1','--config-file='+str(bus_config)],env=env,stdout=sp.PIPE,stderr=_fixture_log0,text=True,start_new_session=True);processes.append(bus);assert select.select([bus.stdout],[],[],5)[0];env['DBUS_SESSION_BUS_ADDRESS']=bus.stdout.readline().strip();connection=dbus.bus.BusConnection(env['DBUS_SESSION_BUS_ADDRESS'])
   config=private/'sway.conf';config.write_text('output HEADLESS-1 resolution 1100x800\nxwayland disable\nseat seat0 fallback true\n')
   env['SWAYSOCK']=str(Path(env['XDG_RUNTIME_DIR'])/'compositor.sock')
   def start_compositor(name):
@@ -108,3 +112,6 @@ ShellRoot {
   for proc in reversed(processes):
    try:proc.wait(timeout=3)
    except sp.TimeoutExpired:os.killpg(proc.pid,signal.SIGKILL);proc.wait(timeout=3)
+  for _fixture_process in processes:
+      if _fixture_process.poll() is None:_fixture_process.wait(timeout=5)
+  close_reaped_pipes(processes)
