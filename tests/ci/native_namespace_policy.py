@@ -28,8 +28,20 @@ def profile_for(executable):
 def parameters(root=Path('/proc/sys')):
     return {name:(root/name).read_text().strip() if (root/name).exists() else None for name in PARAMETERS}
 
-def execute(parser, operation, profile):
-    subprocess.run(['sudo','--non-interactive',str(parser),operation,str(profile)], check=True, timeout=20)
+def execute(parser, operation, text):
+    # The privileged parser receives reconstructed bytes, never a mutable path.
+    subprocess.run(['sudo','--non-interactive',str(parser),operation], input=text, text=True, check=True, timeout=20)
+
+def profile_loaded(name):
+    result=subprocess.run(['sudo','--non-interactive','/usr/bin/cat','/sys/kernel/security/apparmor/profiles'],text=True,capture_output=True,check=True,timeout=5)
+    matches=[line for line in result.stdout.splitlines() if line.startswith(name+' (')]
+    if len(matches)>1:raise ValueError('Ambiguous test profile identity')
+    return bool(matches)
+
+def cleanup_policy(parser,name,text,attempted,present=profile_loaded,apply=execute):
+    if not attempted:return
+    if present(name):apply(parser,'--remove',text)
+    if present(name):raise ValueError('Test profile remains loaded after cleanup')
 
 def main():
     p=argparse.ArgumentParser();p.add_argument('operation',choices=('prepare','cleanup'));p.add_argument('--output',type=Path,required=True);a=p.parse_args()
@@ -43,9 +55,12 @@ def main():
         executable=Path(shutil.which('unshare') or '').resolve()
         if not executable.is_file() or not os.access(executable,os.X_OK):raise ValueError('Nix unshare missing')
         name,text=profile_for(executable);out.mkdir(mode=0o700,parents=True,exist_ok=False);profile=out/'profile';profile.write_text(text)
-        record=dict(profile=name,executable=str(executable),executableSha256=hashlib.sha256(executable.read_bytes()).hexdigest(),profileSha256=hashlib.sha256(text.encode()).hexdigest(),parametersBefore=parameters(),loaded=False)
+        record=dict(profile=name,executable=str(executable),executableSha256=hashlib.sha256(executable.read_bytes()).hexdigest(),profileSha256=hashlib.sha256(text.encode()).hexdigest(),parametersBefore=parameters(),loaded=False,attempted=False)
         (out/'result.json').write_text(json.dumps(record,indent=2)+'\n')
-        execute(parser,'--add',profile);record['loaded']=True;(out/'result.json').write_text(json.dumps(record,indent=2)+'\n')
+        if profile_loaded(name):raise ValueError('Refusing to replace a preexisting test profile')
+        record['attempted']=True;(out/'result.json').write_text(json.dumps(record,indent=2)+'\n')
+        execute(parser,'--add',text);record['loaded']=profile_loaded(name);(out/'result.json').write_text(json.dumps(record,indent=2)+'\n')
+        if not record['loaded']:raise ValueError('Namespace profile was not loaded')
         record['parametersAfter']=parameters();(out/'result.json').write_text(json.dumps(record,indent=2)+'\n')
         if record['parametersAfter']!=record['parametersBefore']:raise ValueError('Global namespace controls changed unexpectedly')
         print('Prepared exact immutable test executable policy; global controls unchanged')
@@ -53,7 +68,7 @@ def main():
         if out.stat().st_uid!=os.getuid() or stat.S_IMODE(out.stat().st_mode)&0o077:raise ValueError('Policy artifact ownership changed')
         record=json.loads((out/'result.json').read_text());profile=out/'profile';name,text=profile_for(record['executable'])
         if name!=record['profile'] or profile.is_symlink() or profile.read_text()!=text:raise ValueError('Refusing changed policy cleanup')
-        if record['loaded']:execute(parser,'--remove',profile);record['loaded']=False
+        cleanup_policy(parser,name,text,record['attempted']);record['loaded']=False
         record['cleaned']=True;record['parametersAfterCleanup']=parameters();(out/'result.json').write_text(json.dumps(record,indent=2)+'\n')
         if record['parametersAfterCleanup']!=record['parametersBefore']:raise ValueError('Global namespace controls changed during job')
         print('Removed only the test executable policy; global controls unchanged')
