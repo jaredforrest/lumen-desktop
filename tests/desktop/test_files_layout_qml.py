@@ -46,7 +46,7 @@ ShellRoot {
   if(phase===3){select();service.viewMode="list";files.newTab();thirdId=files.activeTabId;phase=4;return;}
   if(phase===4){service.navigate(base+"/Third");phase=5;return;}
   if(phase===5){
-   select();thirdHistory=service.history.slice();thirdHistoryIndex=service.historyIndex;
+   select();thirdHistory=service.history.map(entry=>({id:entry.id,path:typeof entry==="string"?entry:entry.path}));thirdHistoryIndex=service.historyIndex;
    files.reorderTab(firstId,2);check(files.activeTabId===thirdId,"Reorder changed active identity");check(service.path===base+"/Third","Reorder navigated");
    files.closeTabId(firstId);check(files.activeTabId===thirdId && service.path===base+"/Third","Inactive close navigated");
    files.switchTab(files.tabs.findIndex(tab=>tab.id===secondId));phase=6;return;
@@ -56,11 +56,11 @@ ShellRoot {
    files.closeTabId(secondId);phase=7;return;
   }
   if(phase===7){
-   check(files.activeTabId===thirdId && service.path===base+"/Third","Active close chose wrong tab");check(JSON.stringify(service.history)===JSON.stringify(thirdHistory) && service.historyIndex===thirdHistoryIndex,"Close modified destination history");check(files.selectedPaths[0]===base+"/Third/selected.txt","Close lost selected object");
+   check(files.activeTabId===thirdId && service.path===base+"/Third","Active close chose wrong tab");check(JSON.stringify(service.history.map(entry=>({id:entry.id,path:typeof entry==="string"?entry:entry.path})))===JSON.stringify(thirdHistory) && service.historyIndex===thirdHistoryIndex,"Close modified destination history");check(files.selectedPaths[0]===base+"/Third/selected.txt","Close lost selected object");
    files.newTab();const temporaryId=files.activeTabId;files.switchTab(files.tabs.findIndex(tab=>tab.id===thirdId));files.closeTabId(temporaryId);phase=75;return;
   }
   if(phase===75){
-   check(files.tabs.length===1 && files.activeTabId===thirdId,"Pending close changed tab identity");check(service.path===base+"/Third" && JSON.stringify(service.history)===JSON.stringify(thirdHistory),"Rapid switch saved another tab state");check(files.selectedPaths[0]===base+"/Third/selected.txt","Rapid switch lost selection");
+   check(files.tabs.length===1 && files.activeTabId===thirdId,"Pending close changed tab identity");check(service.path===base+"/Third" && JSON.stringify(service.history.map(entry=>({id:entry.id,path:typeof entry==="string"?entry:entry.path})))===JSON.stringify(thirdHistory),"Rapid switch saved another tab state");check(files.selectedPaths[0]===base+"/Third/selected.txt","Rapid switch lost selection");
    files.collapseSidebar("favourites",true);files.collapseSidebar("locations",true);service.sidebarWidth=340;phase=8;return;
   }
   if(phase===8){

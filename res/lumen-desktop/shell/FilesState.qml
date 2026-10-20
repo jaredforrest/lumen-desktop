@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import "FilesHistoryModel.js" as HistoryModel
 Item {
     id:root
     signal informationReady(var details)
@@ -10,6 +11,8 @@ Item {
     property string path:Quickshell.env("HOME")
     property string parentPath:""
     property var rows:[]
+    property string rowsPath:""
+    function prepareTab(value){path=value;rows=[];rowsPath="";breadcrumbs=[];parentPath="";columns=[];columnRequests={};}
     property var breadcrumbs:[]
     property bool busy:false
     property bool pendingRefresh:false
@@ -30,10 +33,12 @@ Item {
     property bool persistViewPreferences:true
     property var columns:[]
     property var columnRequests:({})
-    function savePreferences(){if(preferencesLoaded && persistViewPreferences)send("save-preferences",{preferences:{view:viewMode,sort:sort,descending:descending,hidden:hidden,foldersFirst:foldersFirst,groupBy:groupBy,favorites:favorites,sidebarWidth:sidebarWidth,collapsedSidebarGroups:collapsedSidebarGroups}});}
+    property bool restoringPresentation:false
+    function restoreView(value){restoringPresentation=true;viewMode=value;restoringPresentation=false;}
+    function savePreferences(){if(preferencesLoaded && persistViewPreferences && !restoringPresentation)send("save-preferences",{preferences:{view:viewMode,sort:sort,descending:descending,hidden:hidden,foldersFirst:foldersFirst,groupBy:groupBy,favorites:favorites,sidebarWidth:sidebarWidth,collapsedSidebarGroups:collapsedSidebarGroups}});}
     function loadColumns(){
         columnRequests={};columns=[];if(viewMode!=="columns" || path==="trash:")return;
-        const ancestors=breadcrumbs.slice(-3);columns=ancestors.map(c=>({path:c.path,name:c.name,rows:[]}));
+        const ancestors=breadcrumbs.slice(-3);columns=ancestors.map(c=>({path:c.path,name:c.name,rows:[],loaded:false}));
         let requests={};ancestors.forEach((c,i)=>{requests[send("column-list",{path:c.path,hidden:hidden,sort:sort,descending:descending,foldersFirst:foldersFirst,groupBy:groupBy})]=i;});columnRequests=requests;
     }
     onViewModeChanged:{savePreferences();loadColumns();}
@@ -65,6 +70,8 @@ Item {
     readonly property bool working:jobs.some(j=>j.state==="running" || j.state==="cancelling")
     property string requestedPath:""
     property int requestedHistory:-1
+    signal capturePresentation()
+    signal historyReady(var presentation)
     signal selectedPath(string path)
     signal applicationsReady(var applications,string path)
     property int applicationRequestId:0
@@ -77,12 +84,15 @@ Item {
         return id;
     }
     function navigate(value,index,preserveError) {
+        if(!busy)capturePresentation();
         busy=true;if(!preserveError)error="";requestedPath=value || path;
         requestedHistory=index===undefined?-1:index;
+        const target=requestedHistory>=0?history[requestedHistory]:null;
+        if(target && target.presentation)query=target.presentation.query || "";
         currentId=send("list",{path:requestedPath,query:query,hidden:hidden,sort:sort,descending:descending,foldersFirst:foldersFirst,groupBy:groupBy});
     }
     function refresh(){if(busy){pendingRefresh=true;return;}navigate(path,historyIndex,true);}
-    function back(delta){const i=historyIndex+delta;if(i>=0 && i<history.length){query="";navigate(history[i],i);}}
+    function back(delta){const i=historyIndex+delta;if(i>=0 && i<history.length){navigate(HistoryModel.path(history[i]),i);}}
     function act(action,data) {
         error="";
         if(["copy","move","trash","restore"].includes(action)){startJob(action,data.paths || [data.path],data.destination);return;}
@@ -122,22 +132,24 @@ Item {
                 if(data.action==="info"){root.informationReady(data.info || {error:data.error});return;}
                 if(data.action==="preferences"){const p=data.preferences || {};root.viewMode=p.view || "grid";root.sort=p.sort || "name";root.descending=!!p.descending;root.hidden=!!p.hidden;root.foldersFirst=p.foldersFirst!==false;root.groupBy=p.groupBy || "none";root.favorites=p.favorites===undefined?null:p.favorites;root.sidebarWidth=Number.isInteger(p.sidebarWidth)?Math.max(120,Math.min(360,p.sidebarWidth)):190;root.collapsedSidebarGroups=Array.isArray(p.collapsedSidebarGroups)?p.collapsedSidebarGroups.filter(group=>["favourites","locations"].includes(group)):[];root.preferencesLoaded=true;root.refresh();return;}
                 if(data.action==="save-preferences")return;
-                if(data.action==="column-list"){if(data.id in root.columnRequests){const columns=root.columns.slice();const i=root.columnRequests[data.id];columns[i]=Object.assign({},columns[i],{rows:data.rows || [],error:data.error || ""});root.columns=columns;}return;}
+                if(data.action==="column-list"){if(data.id in root.columnRequests){const columns=root.columns.slice();const i=root.columnRequests[data.id];columns[i]=Object.assign({},columns[i],{rows:data.rows || [],error:data.error || "",loaded:true});root.columns=columns;}return;}
                 if(data.event==="changed"){watchRefresh.restart();return;}
                 if(data.jobs){root.acceptJobs(data);return;}
                 if(data.action==="volumes"){root.volumes=data.volumes || [];return;}
                 if(data.action==="applications"){if(data.id!==root.applicationRequestId)return;root.applicationRequestId=0;if(data.error)root.error=data.error;else root.applicationsReady(data.applications,root.applicationRequestPath);return;}
                 if(data.id===root.previewId){root.preview=data.error?{type:"generic",text:data.error}:data;return;}
-                if(data.id!==root.currentId){if(data.error)root.error=data.error;return;}
+                if(data.id!==root.currentId){if(data.action!=="list" && data.error)root.error=data.error;return;}
                 root.busy=false;
-                if(data.error){root.error=data.error;return;}
+                if(data.error){root.error=data.error;if(data.action==="list"){const saved=(root.history[root.historyIndex] || {}).presentation;if(saved && root.rowsPath===root.path){root.query=saved.query;root.historyReady(saved);root.selectedPath("@history");}}return;}
                 if(data.action==="list"){
                     const sameFolder=root.path===data.path;
-                    root.path=data.path;root.parentPath=data.parent;root.rows=data.rows;root.breadcrumbs=data.breadcrumbs;root.writable=data.writable;root.loadColumns();
+                    root.path=data.path;root.rowsPath=data.path;root.parentPath=data.parent;root.rows=data.rows;root.breadcrumbs=data.breadcrumbs;root.writable=data.writable;root.loadColumns();
                     root.warning=data.limited?"Showing up to 5,000 matches. Narrow the folder filter.":data.unreadable?"Some items could not be read.":"";
-                    if(root.requestedHistory>=0)root.historyIndex=root.requestedHistory;
-                    else if(root.history[root.historyIndex]!==data.path){root.history=root.history.slice(0,root.historyIndex+1).concat([data.path]);root.historyIndex=root.history.length-1;}
-                    root.selectedPath(root.nextSelection || (sameFolder?"@preserve":""));root.nextSelection="";
+                    const committed=HistoryModel.commit(root.history,root.historyIndex,data.path,root.requestedHistory,root.requestSession+"-"+data.id);
+                    root.history=committed.history;root.historyIndex=committed.index;
+                    const saved=(root.history[root.historyIndex] || {}).presentation;
+                    root.historyReady(saved || null);
+                    root.selectedPath(root.nextSelection || (saved?"@history":sameFolder?"@preserve":""));root.nextSelection="";
                     if(root.pendingRefresh){root.pendingRefresh=false;Qt.callLater(root.refresh);}
                 } else {
                     root.nextSelection=data.selected || "";root.refresh();

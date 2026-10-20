@@ -4,6 +4,7 @@ import QtQuick.Window
 import QtQuick.Effects
 import Quickshell
 import "FilesTabModel.js" as TabModel
+import "FilesHistoryModel.js" as HistoryModel
 import "FileLayoutModel.js" as LayoutModel
 
 FloatingWindow {
@@ -53,15 +54,44 @@ FloatingWindow {
     Component.onDestruction:if(shell.ownedContext)shell.ownedContext.close(root)
     property var dragUris:[]
     function beginDrag(){if(dragUris.length)dragging=true;}
+    property bool presentationTransition:false
+    property bool restoringPresentationState:false
+    property var pendingPresentation:null
+    property int presentationRevision:0
+    function viewSnapshot(view,horizontal){
+        const value=horizontal?view.contentX:view.contentY;
+        const index=view.indexAt(horizontal?value+1:1,horizontal?1:value+1);
+        const item=index>=0?view.itemAtIndex(index):null;
+        return {offset:value,anchor:HistoryModel.ref(service.rows[index]),delta:item?Math.max(0,value-(horizontal?item.x:item.y)):0};
+    }
+    function historyPresentation(){return {view:service.viewMode,query:service.query,selection:selectedPaths.map(path=>service.rows.find(row=>row.path===path)),current:current,anchor:service.rows[selectionAnchor],scroll:{list:viewSnapshot(list,false),grid:viewSnapshot(grid,false),gallery:viewSnapshot(galleryStrip,true),columns:columnView.snapshot()}};}
+    function captureHistory(){
+        if(presentationTransition || restoringPresentationState || service.busy || restoringTabId===activeTabId || service.rowsPath!==service.path)return;
+        service.history=HistoryModel.save(service.history,service.historyIndex,historyPresentation());
+    }
+    function restoreScroll(view,value,horizontal){
+        value=value || {};const index=HistoryModel.locate(service.rows,value.anchor);
+        if(index>=0)view.positionViewAtIndex(index,ListView.Beginning);
+        const offset=index>=0?(horizontal?view.contentX:view.contentY)+(value.delta || 0):value.offset || 0;
+        if(horizontal)view.contentX=Math.max(0,Math.min(offset,view.contentWidth-view.width));
+        else view.contentY=Math.max(0,Math.min(offset,view.contentHeight-view.height));
+    }
+    function restorePresentation(saved){
+        pendingPresentation=saved;restoringPresentationState=true;const revision=++presentationRevision;
+        if(saved){if(saved.selectionOverflow)service.warning="The previous selection exceeded the navigation history limit and was cleared. Select the items again.";service.restoreView(saved.view);filter.text=service.query;const selectedState=HistoryModel.reconcile(saved,service.rows);selectedPaths=selectedState.paths;selected=selectedState.selected;selectionAnchor=selectedState.anchor;}
+        else {selectedPaths=[];selected=-1;selectionAnchor=-1;}
+        Qt.callLater(()=>{if(revision!==presentationRevision)return;if(service.busy){restoringPresentationState=false;return;}const scroll=(saved || {}).scroll || {};restoreScroll(list,scroll.list,false);restoreScroll(grid,scroll.grid,false);restoreScroll(galleryStrip,scroll.gallery,true);columnView.restoreSnapshot(scroll.columns || {});restoringPresentationState=false;saveTab();});
+    }
     function newTab(){saveTab();const current=tabs[activeTab];const tab=TabModel.create("tab-"+(++tabSerial),current?current.path:service.path);tab.viewMode=service.viewMode;tabs=tabs.concat([tab]);switchTab(tabs.length-1);}
     function saveTab(){
         if(!activeTabId || (restoringTabId===activeTabId && service.busy))return;
+        captureHistory();
         tabs=TabModel.save(tabs,activeTabId,{path:service.path,history:service.history,historyIndex:service.historyIndex,selectedPaths:selectedPaths,selectedPath:current?current.path:"",selectionAnchor:selectionAnchor,query:filter.text,viewMode:service.viewMode});
     }
     function restoreTab(){
         const tab=tabs[activeTab];if(!tab)return;
         restoringTabId=tab.id;filterDelay.stop();selected=-1;selectedPaths=[];selectionAnchor=-1;
-        service.history=tab.history.slice();service.historyIndex=tab.historyIndex;service.viewMode=tab.viewMode || "grid";service.query=tab.query || "";filter.text=service.query;
+        service.prepareTab(tab.path);service.history=HistoryModel.clone(tab.history);service.historyIndex=tab.historyIndex;service.restoreView(tab.viewMode || "grid");service.query=tab.query || "";filter.text=service.query;
         service.navigate(tab.path,tab.historyIndex);
     }
     function switchTab(index){if(index===activeTab || index<0 || index>=tabs.length)return;saveTab();activeTab=index;restoreTab();}
@@ -108,7 +138,7 @@ FloatingWindow {
             Quickshell.execDetached(["swaymsg",'[con_id='+swayContainer+'] move workspace current, focus']);minimized=false;
         }
         const wasVisible=visible;visible=true;
-        filter.text="";service.query="";service.navigate(path || service.path);
+        navigate(path || service.path);
         if(!wasVisible)fitTimer.restart();
         activationTimer.epoch=shell.focusEpoch;activationTimer.restart();
         Qt.callLater(()=>{if(content.Window.window){if(content.Window.window.visibility===Window.Minimized)content.Window.window.showNormal();content.Window.window.requestActivate();}content.forceActiveFocus();});
@@ -136,7 +166,7 @@ FloatingWindow {
         else if(action==="home")navigate(Quickshell.env("HOME"));
         else dialogFor(action);
     }
-    function navigate(path){restoringTabId="";filterDelay.stop();filter.text="";service.query="";service.navigate(path);}
+    function navigate(path){captureHistory();restoringTabId="";filterDelay.stop();presentationTransition=true;filter.text="";service.query="";service.navigate(path);presentationTransition=false;}
     function focusContents(){if(shell.claimPopup)shell.claimPopup("");if(content.Window.window)content.Window.window.requestActivate();content.forceActiveFocus();activationTimer.epoch=shell.focusEpoch;activationTimer.restart();}
     Timer {id:activationTimer;property int epoch;interval:100;onTriggered:{if(epoch!==root.shell.focusEpoch)return;const window=root.shell.windows.find(w=>w.appId==="org.quickshell" && w.title===root.title);if(window)root.shell.focusWindow(window);}}
     function quickLookStep(delta){step(delta,false);if(current)shell.quickLookWindow.show(current.path,root);}
@@ -148,7 +178,7 @@ FloatingWindow {
         else {selectedPaths=[row.path];selectionAnchor=index;}
         selected=index;content.forceActiveFocus();
     }
-    function step(delta,extend){choose(Math.max(0,Math.min(service.rows.length-1,selected+delta)),extend?Qt.ShiftModifier:0);if(listMode)list.positionViewAtIndex(selected,ListView.Contain);else if(galleryMode)galleryStrip.positionViewAtIndex(selected,ListView.Contain);else if(!columnsMode)grid.positionViewAtIndex(selected,GridView.Contain);}
+    function step(delta,extend){choose(Math.max(0,Math.min(service.rows.length-1,selected+delta)),extend?Qt.ShiftModifier:0);if(listMode)list.positionViewAtIndex(selected,ListView.Contain);else if(galleryMode)galleryStrip.positionViewAtIndex(selected,ListView.Contain);else if(columnsMode)columnView.ensureVisible(current?current.path:"");else grid.positionViewAtIndex(selected,GridView.Contain);}
     function stage(action){if(selectedPaths.length)service.stage(selectedPaths,action);}
     function dialogFor(action){
         if(service.busy)return;
@@ -176,10 +206,13 @@ FloatingWindow {
     onPreviewOpenChanged:{if(previewOpen)previewDelay.restart();else service.requestPreview("");}
     Timer {id:previewDelay;interval:140;onTriggered:root.service.requestPreview(root.current?root.current.path:"")}
     Connections {target:root.service
+        function onCapturePresentation(){root.captureHistory();}
+        function onHistoryReady(saved){root.restorePresentation(saved);}
         function onInformationReady(details){root.information=details;infoWindow.show(details);}
         function onApplicationsReady(apps,path){root.applications=apps;root.applicationsPath=path;openWith.open();}
         function onSelectedPath(path){
-            if(root.restoringTabId===root.activeTabId){
+            if(path==="@history"){root.restoringTabId="";}
+            else if(root.restoringTabId===root.activeTabId){
                 const tab=root.tabs[root.activeTab];root.restoringTabId="";
                 root.selectedPaths=(tab.selectedPaths || []).filter(value=>root.service.rows.some(row=>row.path===value));
                 root.selected=root.service.rows.findIndex(row=>row.path===tab.selectedPath);
@@ -443,7 +476,7 @@ FloatingWindow {
             ListView {
                 section.property:root.service.groupBy==="kind"?"modelData.group":""
                 section.delegate:PanelLabel {required property string section;width:list.width;height:30;text:section;font.weight:Font.DemiBold;topPadding:8;leftPadding:8}
-                id:list;visible:root.listMode;anchors.top:headings.bottom;anchors.bottom:parent.bottom;width:parent.width;clip:true;model:root.service.rows
+                id:list;objectName:"files-list-view";visible:root.listMode;anchors.top:headings.bottom;anchors.bottom:parent.bottom;width:parent.width;clip:true;model:root.service.rows
                 ScrollBar.vertical:DesktopScrollBar {}
                 delegate:Rectangle {
                     required property var modelData;required property int index
@@ -461,7 +494,7 @@ FloatingWindow {
                 }
             }
             GridView {
-                id:grid;visible:root.service.viewMode==="grid";anchors.fill:parent;cellWidth:108;cellHeight:108;clip:true;model:root.service.rows
+                id:grid;objectName:"files-grid-view";visible:root.service.viewMode==="grid";anchors.fill:parent;cellWidth:108;cellHeight:108;clip:true;model:root.service.rows
                 ScrollBar.vertical:DesktopScrollBar {}
                 delegate:Item {
                     required property var modelData;required property int index
@@ -481,10 +514,10 @@ FloatingWindow {
                         onClicked:event=>{if(event.button!==Qt.RightButton || !root.isSelected(index))root.choose(index,event.modifiers);if(event.button===Qt.RightButton){actions.x=Math.min(root.width-actions.width-8,mapToItem(content,event.x,event.y).x);actions.y=Math.min(root.height-actions.height-8,mapToItem(content,event.x,event.y).y);actions.open();}} onDoubleClicked:root.openCurrent()}
                 }
             }
-            ColumnView {selectionActive:root.selectionActive;dropCoordinator:fileDrop;visible:root.columnsMode;anchors.fill:parent;columns:root.service.columns;currentPath:root.current?root.current.path:"";onChosen:(path,directory)=>{if(directory)root.navigate(path);else {const index=root.service.rows.findIndex(r=>r.path===path);if(index>=0)root.choose(index,0);else {root.service.nextSelection=path;root.navigate(path.slice(0,path.lastIndexOf("/")) || "/");}}}}
+            ColumnView {id:columnView;selectionActive:root.selectionActive;dropCoordinator:fileDrop;visible:root.columnsMode;anchors.fill:parent;columns:root.service.columns;currentPath:root.current?root.current.path:"";onChosen:(path,directory)=>{if(directory)root.navigate(path);else {const index=root.service.rows.findIndex(r=>r.path===path);if(index>=0)root.choose(index,0);else {root.service.nextSelection=path;root.navigate(path.slice(0,path.lastIndexOf("/")) || "/");}}}}
             Item {visible:root.galleryMode;anchors.fill:parent
                 FilePreview {x:12;y:0;width:parent.width-24;height:Math.max(60,parent.height-118);result:root.current?root.service.preview:{text:"Select an item"};active:root.visible && root.galleryMode;onPageRequested:number=>root.service.requestPreview(root.current.path,number)}
-                ListView {id:galleryStrip;anchors.bottom:parent.bottom;width:parent.width;height:104;orientation:ListView.Horizontal;clip:true;spacing:5;model:root.service.rows;ScrollBar.horizontal:DesktopScrollBar {}
+                ListView {id:galleryStrip;objectName:"files-gallery-view";anchors.bottom:parent.bottom;width:parent.width;height:104;orientation:ListView.Horizontal;clip:true;spacing:5;model:root.service.rows;ScrollBar.horizontal:DesktopScrollBar {}
                     delegate:AbstractButton {required property var modelData;required property int index;width:92;height:92;
                         FolderDropTarget {anchors.fill:parent;enabled:modelData.directory && root.service.path!=="trash:";folder:modelData.path;coordinator:fileDrop}
 Accessible.name:modelData.name;Accessible.selected:root.isSelected(index);onClicked:root.choose(index,0);onDoubleClicked:root.openCurrent()

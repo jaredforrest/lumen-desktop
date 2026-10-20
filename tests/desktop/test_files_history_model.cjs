@@ -1,0 +1,18 @@
+const assert=require('node:assert/strict');
+const h=require('../../res/lumen-desktop/shell/FilesHistoryModel.js');
+const row=(path,inode)=>({path,identity:{device:1,inode}});
+let first=h.commit([],-1,'/first',-1,'one');
+const state={view:'list',query:'needle',selection:[row('/first/a',10)],current:row('/first/a',10),anchor:row('/first/a',10),scroll:{list:{offset:240,anchor:row('/first/a',10),delta:4}}};
+let history=h.save(first.history,0,state);state.selection.length=0;state.scroll.list.offset=999;
+assert.equal(history[0].presentation.scroll.list.offset,240);assert.equal(history[0].presentation.selection.length,1);
+const second=h.commit(history,0,'/second',-1,'two');assert.equal(second.index,1);assert.equal(h.commit(second.history,1,'/first',0,'ignored').index,0);
+const branch=h.commit(second.history,0,'/branch',-1,'three');assert.deepEqual(branch.history.map(e=>e.id),['one','three']);assert.deepEqual(second.history.map(e=>e.id),['one','two']);
+assert.deepEqual(h.reconcile(history[0].presentation,[row('/first/a',11)]).paths,[],'same path replaced inode rejected');
+assert.deepEqual(h.reconcile(history[0].presentation,[row('/first/renamed',10)]).paths,['/first/renamed']);
+assert.deepEqual(h.reconcile(history[0].presentation,[row('/first/b',10),row('/first/c',10)]).paths,[],'ambiguous hardlinks not guessed');
+assert.deepEqual(h.reconcile(history[0].presentation,[{path:'/first/a'}]).paths,[],'known identity cannot degrade to path');
+const bounded=h.presentation({view:'unknown',query:'x'.repeat(5000),selection:Array(600).fill(row('/a',1)),scroll:{list:{offset:Infinity,delta:-2},grid:{offset:1e20},columns:{x:NaN,columns:Array(8).fill({path:'/a',offset:-1})}}});
+assert.equal(bounded.view,'grid');assert.equal(bounded.query.length,4096);assert.equal(bounded.selection.length,0);assert.equal(bounded.selectionOverflow,true);assert.equal(bounded.current,null);assert.equal(bounded.scroll.list.offset,0);assert.equal(bounded.scroll.grid.offset,1e7);assert.equal(bounded.scroll.columns.columns.length,3);
+let many=[];for(let i=0;i<150;i++)many=h.commit(many,many.length-1,'/'+i,-1,String(i)).history;assert.equal(many.length,128);
+const tabs=require('../../res/lumen-desktop/shell/FilesTabModel.js');const saved=tabs.save([tabs.create('a','/first'),tabs.create('b','/second')],'a',{history,historyIndex:0});history[0].presentation.query='changed';assert.equal(saved[0].history[0].presentation.query,'needle');assert.deepEqual(saved[1].history,[]);
+console.log('PASS history transactions, identity reconciliation, independent immutable tabs and bounded presentation');

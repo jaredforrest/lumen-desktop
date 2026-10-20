@@ -51,6 +51,7 @@ jobs:
           for compositor in compositor compositor-effects; do
             compositor_flags=()
             if [[ "$compositor" == compositor-effects ]]; then compositor_flags=(--effects); fi
+            nix develop --command desktop-test-python tests/desktop/files_history_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/files-history-$compositor"
             nix develop --command desktop-test-python tests/desktop/installed_switcher_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --action "$PWD/artifacts/desktop-action/bin/lumen-desktop-action" --sway "$PWD/artifacts/$compositor/bin/sway" --output "artifacts/installed-switcher-$compositor"
             nix develop --command desktop-test-python tests/desktop/clipboard_native_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --producer "$PWD/artifacts/clipboard-producer/bin/lumen-test-clipboard-producer" --observer "$PWD/artifacts/clipboard-observer/bin/lumen-clipboard-observer" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/clipboard-native-$compositor"
             nix develop --command desktop-test-python tests/desktop/group_membership_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --client "$PWD/artifacts/window-relationships-client/bin/lumen-test-window-relationships" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --locker "$PWD/artifacts/session-lock/bin/lumen-test-session-lock" --output "artifacts/group-membership-$compositor"
@@ -122,6 +123,7 @@ jobs:
             artifacts/force-quit
             artifacts/software-effects-kernel
             artifacts/effects-software-render
+            artifacts/files-history-*
             artifacts/installed-switcher-*
             artifacts/group-membership-*
             artifacts/group-selector-*

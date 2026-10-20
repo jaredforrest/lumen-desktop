@@ -15,6 +15,6 @@ function remove(tabs,id,activeId) {
 }
 function save(tabs,id,state) {
     const index=indexOf(tabs,id);if(index<0)return tabs;
-    const next=tabs.slice();next[index]=Object.assign({},next[index],state,{id:id,history:(state.history || []).slice(),selectedPaths:(state.selectedPaths || []).slice()});return next;
+    const next=tabs.slice();next[index]=Object.assign({},next[index],state,{id:id,history:JSON.parse(JSON.stringify(state.history || [])),selectedPaths:(state.selectedPaths || []).slice()});return next;
 }
 if(typeof module!=="undefined")module.exports={create,indexOf,reorder,remove,save};
