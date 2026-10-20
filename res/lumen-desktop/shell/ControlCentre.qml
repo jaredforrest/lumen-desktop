@@ -17,7 +17,16 @@ Column {
     property var pending:({})
     property string error:""
     readonly property bool saving:writer.running
-    readonly property var names:({wifi:"Wi-Fi",bluetooth:"Bluetooth",sharing:"Sharing",media:"Now Playing",displays:"Displays",appearance:"Appearance",focus:"Focus",brightness:"Brightness",sound:"Sound"})
+    readonly property var names:({wifi:"Wi-Fi",bluetooth:"Bluetooth",sharing:"AirDrop",media:"Now Playing",displays:"Displays",appearance:"Appearance",focus:"Focus",brightness:"Brightness",sound:"Sound"})
+    property bool airDropAvailable:false
+    property var airDropStatus:({ready:false,remaining:null})
+    readonly property string airDropSubtitle:!airDropAvailable?"Unavailable":airDropStatus.ready?"On · "+Math.max(1,Math.ceil((airDropStatus.remaining || 0)/60))+" min":"Off"
+    function refreshAirDrop(){if(!airDropReader.running)airDropReader.running=true;}
+    Process {id:airDropReader;command:["iphone-airdrop","status"]
+        stdout:StdioCollector {onStreamFinished:{try{const state=JSON.parse(text);root.airDropStatus=state;root.airDropAvailable=true;}catch(e){root.airDropAvailable=false;}}}
+        onExited:(code,status)=>{if(code!==0)root.airDropAvailable=false;}
+    }
+    Timer {interval:3000;running:root.visible && !root.editing && !root.preferences.hidden.includes("sharing");repeat:true;triggeredOnStart:true;onTriggered:root.refreshAirDrop()}
     function update(key,value){const next=Object.assign({},preferences);next[key]=value;preferences=next;const queued=Object.assign({},pending);queued[key]=value;pending=queued;flush();}
     function flush(){if(writer.running)return;const keys=Object.keys(pending);if(!keys.length)return;const key=keys[0],value=pending[key];const queued=Object.assign({},pending);delete queued[key];pending=queued;writer.command=["lumen-appearance","--set-control-centre",key,JSON.stringify(value)];writer.running=true;}
     function move(id,delta){let order=preferences.order.slice();const at=order.indexOf(id),to=at+delta;if(to<0 || to>=order.length)return;order.splice(at,1);order.splice(to,0,id);update("order",order);}
@@ -58,7 +67,7 @@ Column {
     PanelLabel {visible:root.error!=="";width:parent.width;wrapMode:Text.WordWrap;text:root.error;color:Theme.colors.muted}
     Component {id:componentWifi;ControlTile {label:"Wi-Fi";symbol:"wifi";unavailable:NetworkState.state(root.shell.systemState.wifi).unavailable;active:NetworkState.state(root.shell.systemState.wifi).active;subtitle:NetworkState.state(root.shell.systemState.wifi).label;onClicked:root.panelRequested("Wi-Fi")}}
     Component {id:componentBluetooth;ControlTile {label:"Bluetooth";symbol:"bluetooth";unavailable:!Bluetooth.defaultAdapter;active:!!Bluetooth.defaultAdapter && Bluetooth.defaultAdapter.enabled;subtitle:active?"On":"Off";onClicked:root.panelRequested("Bluetooth")}}
-    Component {id:componentSharing;ControlTile {label:"Sharing";subtitle:"LocalSend";symbol:"share";unavailable:false;accessibleLabel:"Open LocalSend nearby sharing";onClicked:{root.shell.claimPopup("");AppLaunch.run(["localsend_app"]);}}}
+    Component {id:componentSharing;ControlTile {label:"AirDrop";subtitle:root.airDropSubtitle;symbol:"airdrop";active:root.airDropStatus.ready;unavailable:!root.airDropAvailable;accessibleLabel:"AirDrop receiving controls";onClicked:{root.shell.claimPopup("");AppLaunch.run(["lumen-airdrop-receive"]);}}}
     Component {id:componentMedia;MediaControl {onExpandRequested:root.panelRequested("Now Playing")}}
     Component {id:componentDisplays;ControlTile {label:"Displays";subtitle:"Settings";symbol:"screen";unavailable:false;onClicked:root.shell.openSettings("Displays")}}
     Component {id:componentAppearance;ControlTile {label:"Appearance";subtitle:"Settings";symbol:"contrast";unavailable:false;onClicked:root.shell.openSettings("Appearance")}}

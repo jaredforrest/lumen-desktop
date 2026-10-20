@@ -24,7 +24,7 @@ PanelSurface {
     function appEntry(){
         if(notification.desktop){const direct=DesktopEntries.byId(notification.desktop.replace(/\.desktop$/,""));if(direct)return direct;}
         const normal=s=>s.toLowerCase().replace(/[^a-z0-9]/g,"");const name=normal(notification.app);
-        const aliases={chatgpt:"codex-desktop",codex:"codex-desktop",brave:"brave-browser",localsend:"LocalSend",bitwarden:"bitwarden"};
+        const aliases={chatgpt:"codex-desktop",codex:"codex-desktop",brave:"brave-browser",bitwarden:"bitwarden"};
         if(aliases[name]){const entry=DesktopEntries.byId(aliases[name]);if(entry)return entry;}
         return DesktopEntries.applications.values.find(e=>normal(e.name)===name || normal(e.id)===name) || null;
     }

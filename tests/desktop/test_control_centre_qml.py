@@ -12,6 +12,7 @@ with tempfile.TemporaryDirectory() as directory:
  env.update(HOME=directory,XDG_RUNTIME_DIR=directory,XDG_STATE_HOME=directory,XDG_CONFIG_HOME=directory,QT_QPA_PLATFORM='offscreen',QT_QUICK_BACKEND='software')
  for key in ('WAYLAND_DISPLAY','DISPLAY'):env.pop(key,None)
  binary=root/'bin';binary.mkdir();helper=binary/'lumen-appearance';helper.write_text('#!/bin/sh\nprintf \'%s %s\\n\' \"$2\" \"$3\" >> \"$FIXTURE_LOG\"\nprintf \'{}\\n\'\n');helper.chmod(0o700)
+ airdrop=binary/'iphone-airdrop';airdrop.write_text('#!/bin/sh\n[ "$1" = status ] || exit 2\nprintf \'{"ready":true,"remaining":129}\\n\'\n');airdrop.chmod(0o700)
  env['FIXTURE_BIN']=str(binary);env['FIXTURE_LOG']=str(root/'writes')
  qml=root/'shell.qml'
  qml.write_text('''import QtQuick
@@ -25,7 +26,7 @@ ShellRoot {
  QtObject {id:audio;property bool available:false;property bool muted:false;property real volume:0;property var outputs:[]}
  QtObject {id:vpn;property var mullvad:({state:"disconnected"});property var tailscale:({online:false})}
  QtObject {id:stub;property var notifications:notifications;property var systemState:system;property var audioState:audio;property var vpn:vpn}
- D.ControlCentre {id:editor;shell:stub;preferences:({order:["wifi","bluetooth","sharing","media","displays","appearance","focus","brightness","sound"],hidden:["wifi","bluetooth","sharing","media","brightness","sound"]})}
+ D.ControlCentre {id:editor;shell:stub;preferences:({order:["wifi","bluetooth","sharing","media","displays","appearance","focus","brightness","sound"],hidden:["wifi","bluetooth","media","brightness","sound"]})}
  Timer {interval:100;running:true;repeat:true;onTriggered:{
   try {
    if(++ticks>100)throw Error("Writer timeout");
@@ -36,7 +37,8 @@ ShellRoot {
    editor.editing=true;
    if(editor.preferences.order.length!==9)throw Error("controls lost");
    phase=1;return;}
-   if(editor.saving || Object.keys(editor.pending).length)return;
+   if(editor.saving || Object.keys(editor.pending).length || !editor.airDropAvailable)return;
+   if(editor.names.sharing!=="AirDrop" || editor.airDropSubtitle!=="On · 3 min")throw Error("AirDrop status/control mismatch");
    console.log("FOCUS_EDITOR_PASS");Qt.quit();
   }catch(e){console.error("FOCUS_EDITOR_FAIL "+e);Qt.quit();}
  }}

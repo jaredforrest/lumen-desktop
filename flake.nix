@@ -45,7 +45,6 @@
         compositor-basic = import ./packages/sway-window-controls.nix { pkgs = compositorPkgs; effects = false; };
         utilities = import ./packages/utilities.nix { inherit pkgs; };
         character-viewer = import ./res/character-viewer { inherit pkgs; };
-        localsend = import ./packages/localsend-desktop-style.nix { inherit pkgs; };
         test-runtime = runtime;
         test-network-provider = pkgs.gvfs;
         test-capture-pipewire = pkgs.pipewire;
