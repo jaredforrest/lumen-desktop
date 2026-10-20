@@ -6,6 +6,7 @@ import Quickshell
 import "FilesTabModel.js" as TabModel
 import "FilesHistoryModel.js" as HistoryModel
 import "FileLayoutModel.js" as LayoutModel
+import "FileLinks.js" as FileLinks
 
 FloatingWindow {
     id:root
@@ -489,7 +490,7 @@ FloatingWindow {
                     required property var modelData;required property int index
                     width:list.width;height:31;radius:5;color:root.isSelected(index)?root.selectionFill:index%2?Theme.colors.background:"transparent"
                     SystemGlyph {x:8;anchors.verticalCenter:parent.verticalCenter;name:modelData.directory?"folder":"document";width:18;height:18;ink:root.isSelected(index)?root.selectionText:Theme.colors.accent}
-                    PanelLabel {x:34;anchors.verticalCenter:parent.verticalCenter;width:parent.width*.55-40;text:(modelData.link?"↗ ":"")+modelData.name;textFormat:Text.PlainText;color:root.isSelected(index)?root.selectionText:Theme.colors.text;font.pixelSize:12}
+                    PanelLabel {x:34;anchors.verticalCenter:parent.verticalCenter;width:parent.width*.55-40;text:(modelData.link?"↗ ":"")+FileLinks.label(modelData);textFormat:Text.PlainText;color:root.isSelected(index)?root.selectionText:Theme.colors.text;font.pixelSize:12}
                     PanelLabel {x:parent.width*.55+8;anchors.verticalCenter:parent.verticalCenter;width:parent.width*.27-10;text:Qt.formatDateTime(new Date(modelData.mtime*1000),"dd MMM yyyy");font.pixelSize:11;color:root.isSelected(index)?root.selectionText:Theme.colors.muted}
                     PanelLabel {x:parent.width*.82+8;anchors.verticalCenter:parent.verticalCenter;width:parent.width*.18-12;text:root.sizeText(modelData);font.pixelSize:11;color:root.isSelected(index)?root.selectionText:Theme.colors.muted}
                     FolderDropTarget {anchors.fill:parent;enabled:modelData.directory && root.service.path!=="trash:";folder:modelData.path;coordinator:fileDrop}
@@ -497,7 +498,7 @@ FloatingWindow {
                         onPressed:event=>{if(event.button===Qt.LeftButton && !event.modifiers && !root.isSelected(index))root.choose(index,event.modifiers);}
                         onPositionChanged:if(drag.active && !root.dragging){root.dragUris=root.selectedUris();Qt.callLater(root.beginDrag);}
                         onClicked:event=>{if(event.button!==Qt.RightButton || !root.isSelected(index))root.choose(index,event.modifiers);if(event.button===Qt.RightButton){actions.x=Math.min(root.width-actions.width-8,mapToItem(content,event.x,event.y).x);actions.y=Math.min(root.height-actions.height-8,mapToItem(content,event.x,event.y).y);actions.open();}} onDoubleClicked:root.openCurrent()}
-                    Accessible.name:modelData.name;Accessible.role:Accessible.ListItem;Accessible.selected:root.isSelected(index);Accessible.onPressAction:root.choose(index,0)
+                    Accessible.name:FileLinks.accessible(modelData);Accessible.role:Accessible.ListItem;Accessible.selected:root.isSelected(index);Accessible.onPressAction:root.choose(index,0)
                 }
             }
             GridView {
@@ -506,14 +507,14 @@ FloatingWindow {
                 delegate:Item {
                     required property var modelData;required property int index
                     width:108;height:108
-                    Accessible.name:modelData.name;Accessible.role:Accessible.ListItem;Accessible.selected:root.isSelected(index);Accessible.onPressAction:root.choose(index,0)
+                    Accessible.name:FileLinks.accessible(modelData);Accessible.role:Accessible.ListItem;Accessible.selected:root.isSelected(index);Accessible.onPressAction:root.choose(index,0)
                     Rectangle {x:20;y:4;width:68;height:62;radius:8;color:root.isSelected(index)?Theme.selection:"transparent"}
                     Image {visible:modelData.directory;x:25;y:9;width:58;height:48;source:"icons/folder.svg";sourceSize:Qt.size(116,96)}
                     Image {id:thumbnail;property bool failed:false;onStatusChanged:if(status===Image.Error)failed=true;visible:!modelData.directory && ["image/png","image/jpeg","image/webp","image/gif","image/bmp"].includes(modelData.kind) && modelData.size<=33554432 && !failed;x:24;y:8;width:60;height:54;source:visible?modelData.uri:"";sourceSize:Qt.size(120,108);fillMode:Image.PreserveAspectFit;asynchronous:true}
                     SystemGlyph {visible:!modelData.directory && !thumbnail.visible;x:36;y:14;width:36;height:40;name:"document";ink:Theme.colors.muted}
                     PanelLabel {visible:modelData.link;x:22;y:45;text:"↗";font.pixelSize:16}
                     Rectangle {x:3;y:70;width:102;height:30;radius:4;color:root.isSelected(index)?root.selectionFill:"transparent"}
-                    PanelLabel {x:5;y:70;width:98;height:30;text:modelData.name;textFormat:Text.PlainText;horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter;wrapMode:Text.Wrap;maximumLineCount:2;font.pixelSize:12;color:root.isSelected(index)?root.selectionText:Theme.colors.text}
+                    PanelLabel {x:5;y:70;width:98;height:30;text:FileLinks.label(modelData);textFormat:Text.PlainText;horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter;wrapMode:Text.Wrap;maximumLineCount:2;font.pixelSize:12;color:root.isSelected(index)?root.selectionText:Theme.colors.text}
                     FolderDropTarget {anchors.fill:parent;enabled:modelData.directory && root.service.path!=="trash:";folder:modelData.path;coordinator:fileDrop}
                     MouseArea {anchors.fill:parent;acceptedButtons:Qt.LeftButton|Qt.RightButton;drag.target:dragGhost
                         onPressed:event=>{if(event.button===Qt.LeftButton && !event.modifiers && !root.isSelected(index))root.choose(index,event.modifiers);}
@@ -527,12 +528,12 @@ FloatingWindow {
                 ListView {id:galleryStrip;objectName:"files-gallery-view";anchors.bottom:parent.bottom;width:parent.width;height:104;orientation:ListView.Horizontal;clip:true;spacing:5;model:root.service.rows;ScrollBar.horizontal:DesktopScrollBar {}
                     delegate:AbstractButton {required property var modelData;required property int index;width:92;height:92;
                         FolderDropTarget {anchors.fill:parent;enabled:modelData.directory && root.service.path!=="trash:";folder:modelData.path;coordinator:fileDrop}
-Accessible.name:modelData.name;Accessible.selected:root.isSelected(index);onClicked:root.choose(index,0);onDoubleClicked:root.openCurrent()
+Accessible.name:FileLinks.accessible(modelData);Accessible.selected:root.isSelected(index);onClicked:root.choose(index,0);onDoubleClicked:root.openCurrent()
                         background:Rectangle {radius:7;color:root.isSelected(index)?Theme.selection:parent.hovered?Theme.colors.hover:"transparent";border.color:parent.activeFocus?Theme.colors.accent:"transparent"}
                         contentItem:Item {
                             Image {id:galleryThumb;anchors.horizontalCenter:parent.horizontalCenter;y:4;width:72;height:46;source:modelData.directory?"icons/folder.svg":(["image/png","image/jpeg","image/webp","image/gif","image/bmp"].includes(modelData.kind) && modelData.size<=33554432?modelData.uri:"");sourceSize:Qt.size(144,92);fillMode:Image.PreserveAspectFit;asynchronous:true}
                             SystemGlyph {visible:!galleryThumb.source || galleryThumb.status===Image.Error;anchors.horizontalCenter:parent.horizontalCenter;y:5;width:36;height:42;name:"document";ink:Theme.colors.muted}
-                            PanelLabel {y:52;width:parent.width;height:36;text:modelData.name;textFormat:Text.PlainText;wrapMode:Text.Wrap;maximumLineCount:2;horizontalAlignment:Text.AlignHCenter;font.pixelSize:11}}
+                            PanelLabel {y:52;width:parent.width;height:36;text:FileLinks.label(modelData);textFormat:Text.PlainText;wrapMode:Text.Wrap;maximumLineCount:2;horizontalAlignment:Text.AlignHCenter;font.pixelSize:11}}
                     }
                 }
             }

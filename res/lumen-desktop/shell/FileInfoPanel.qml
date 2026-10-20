@@ -23,7 +23,7 @@ Item {
         Column {
             width:parent.width;spacing:0
             Repeater {
-                model:[{title:"General",rows:[{label:"Kind",key:"kind"},{label:"Size",key:"size"},{label:"Where",key:"location"},{label:"Modified",key:"modified"},{label:"Original",key:"target"}]},{title:"Sharing & Permissions",rows:[{label:"Owner",key:"owner"},{label:"Group",key:"group"},{label:"Access",key:"permissions"}]}]
+                model:[{title:"General",rows:[{label:"Kind",key:"kind"},{label:"Size",key:"size"},{label:"Where",key:"location"},{label:"Modified",key:"modified"},{label:"Original",key:"target"},{label:"Link Status",key:"linkDetail"}]},{title:"Sharing & Permissions",rows:[{label:"Owner",key:"owner"},{label:"Group",key:"group"},{label:"Access",key:"permissions"}]}]
                 Column {
                     id: section; required property var modelData
                     width:parent.width; property bool expanded:true
