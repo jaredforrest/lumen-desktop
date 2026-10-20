@@ -124,6 +124,9 @@ jobs:
                 bash tests/ci/run-native.sh content_clipping_native nix develop --command desktop-test-python tests/desktop/content_clipping_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$compositor" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" "${extra[@]}" --native-frame "$frame" --content-backend "$backend" --output "artifacts/content-clipping-$variant-$backend-$frame"
               done
             done
+            for frame in on off; do
+              bash tests/ci/run-native.sh consumer_fit_native nix develop --command desktop-test-python tests/desktop/consumer_fit_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$compositor" "${extra[@]}" --native-frame "$frame" --output "artifacts/consumer-fit-$variant-$frame"
+            done
           done
           PATH="$PWD/artifacts/shell-package/bin:$PATH" bash tests/ci/run-native.sh interaction_regression nix develop --command desktop-test-python tests/desktop/interaction_regression.py --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/interactions
           bash tests/ci/run-native.sh accessibility_protocol nix develop --command desktop-test-python tests/desktop/accessibility_protocol.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/accessibility --full-shell
@@ -169,6 +172,7 @@ jobs:
             artifacts/interactions
             artifacts/native-layouts
             artifacts/content-clipping-*
+            artifacts/consumer-fit-*
             artifacts/mixed-output-scale-*
             artifacts/accessibility
             artifacts/hot-corners

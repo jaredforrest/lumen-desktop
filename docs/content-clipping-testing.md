@@ -53,8 +53,9 @@ application interior or a measured external reference shape is covered.
 ## Client fit contract
 
 System Settings, Calendar and Files use the shared `WindowGeometry` component
-and pinned `lumen-window-geometry` helper. Display dimensions are outer fit
-budgets, not client dimensions. The helper measures container/client rectangles
+and pinned `lumen-window-geometry` helper. Consumer margins are subtracted from
+the authoritative native workspace dimensions; these are outer fit budgets,
+not client dimensions. An explicit outer-budget API remains available. The helper measures container/client rectangles
 and titlebar padding from the native tree, then subtracts that padding before
 clamping the current client size. It intersects the requested budget with the
 actual usable workspace and retains each consumer's existing minimum client
@@ -67,7 +68,13 @@ no-op, preserving explicit position. Only an out-of-bounds prospective outer
 frame is recentered within the usable workspace. Screen identity changes also
 schedule fitting, even when the destination output already exists and emits no
 new size signal. Requests coalesce and execute serially; closing the owning
-window cancels pending work.
+window cancels pending work and its observer. An acknowledged native window/output
+subscription re-samples after ACK and tracks the exact captured owner and
+workspace identity/rectangle. This handles oversized windows spanning two outputs,
+where the Qt screen pointer can remain on the original display. Same-workspace
+move/resize events do not trigger fits; socket/process epochs and retired native
+containers cannot be retargeted. Title/container changes retire and rebuild the
+observer before draining the new request.
 
 A direct child process establishes the owning UI PID. App ID, literal title,
 container ID, process start and compositor socket identity are checked before
@@ -85,3 +92,30 @@ retired container, and fits a literal punctuation/Unicode title. Protocol units
 exercise initial mapping, stale socket/process identity and unsupported layout
 states. This test found the former native client/outer-size mismatch; the
 shared helper replaces those raw resize requests.
+
+
+## Consumer glue acceptance
+
+`consumer_fit_native.py` opens the actual Calendar and Files windows in a private
+fragment. It preserves the large initial Calendar size that spans both outputs
+on moving to the smaller display; no pre-shrink conceals screen-selection
+ambiguity. Each consumer must fit its own outer margin, survive five coalesced
+no-op requests, and return without enlargement. Files retains a real selected
+synthetic text file and its rendered preview. Small-output captures are retained.
+The copied Files backend only replaces unused volume discovery with an empty
+private list; original/copied hashes record that adapter. All file contents,
+preferences and preview leases are private. The calendar executable accepts
+read-only requests and returns an empty synthetic provider catalogue; its hash
+is retained. There is no session activation directory or host system bus.
+
+```sh
+bash tests/ci/run-native.sh consumer_fit_native \
+  nix develop --command desktop-test-python tests/desktop/consumer_fit_native.py \
+  --launcher /absolute/package/bin/lumen-desktop-shell \
+  --sway /absolute/compositor/bin/sway --native-frame on \
+  --output /absolute/new-consumer-artifact-directory
+```
+
+CI runs both frame modes with basic/effects compositors. This bounded two-window
+screen-change proof complements the Settings clipping corpus; it does not claim
+all internal Calendar/Files interactions or provider integrations.

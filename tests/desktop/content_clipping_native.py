@@ -273,7 +273,7 @@ try:
  ipc(f'[con_id={identity}] move container to output HEADLESS-2')
  wait(lambda:state()['screen']=='HEADLESS-2' and state()['fit']['completed']>completed and not state()['fit']['busy'])
  small=state();assert not small['fit']['error'],small
- smallOutcome=small['fit']['result'];assert smallOutcome['changed'],small
+ smallOutcome=small['fit']['result'];assert small['width']<beforeMove['width'] or small['height']<beforeMove['height'],small
  wait(lambda:state()['width']==smallOutcome['clientWidth'] and state()['height']==smallOutcome['clientHeight'])
  assert smallOutcome['outerWidth']<=outputs()['HEADLESS-2']['rect']['width']-32 and smallOutcome['outerHeight']<=outputs()['HEADLESS-2']['rect']['height']-150,small
  small=state();smallWindow=window(title);assert smallWindow['id']==identity
