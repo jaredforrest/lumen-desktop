@@ -87,6 +87,9 @@ class CompositorObservation(unittest.TestCase):
         report=state.snapshot(tree,outputs,'epoch')
         self.assertEqual(report['windows'][0]['placement'],'zoomed')
         self.assertTrue(report['windows'][0]['capabilities']['preferred_zoom'])
+        window['lumen_state']['filled']=False
+        with self.assertRaises(protocol.ProtocolError):state.snapshot(tree,outputs,'epoch')
+        window['lumen_state']['filled']=True
         for key in ('zoomed','preferred_zoom'):
             window['lumen_state'][key]=1
             with self.assertRaises(protocol.ProtocolError):state.snapshot(tree,outputs,'epoch')

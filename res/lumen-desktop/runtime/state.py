@@ -65,6 +65,7 @@ def snapshot(tree, outputs, epoch):
                     raise ProtocolError('Invalid placement extension')
                 for field in ('zoomed', 'preferred_zoom'):
                     if field in extension and type(extension[field]) is not bool:raise ProtocolError('Invalid preferred zoom state')
+                if extension.get('zoomed') and not extension['filled']:raise ProtocolError('Zoom state lacks a restore snapshot')
                 if 'hidden' in extension and type(extension['hidden']) is not bool:raise ProtocolError('Invalid hidden state')
                 if 'group_hidden' in extension and type(extension['group_hidden']) is not bool:raise ProtocolError('Invalid group visibility state')
                 if 'desktop_hidden' in extension and type(extension['desktop_hidden']) is not bool:raise ProtocolError('Invalid desktop reveal state')
