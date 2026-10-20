@@ -41,7 +41,9 @@ for test in sorted(Path(__file__).parent.glob('test_*.py')):
         for key in ('AT_SPI_BUS_ADDRESS','SWAYSOCK','WAYLAND_DISPLAY','DISPLAY'):test_env.pop(key,None)
         run=subprocess.run(['dbus-run-session','--',sys.executable,str(test)],env=test_env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=180)
     (a.output/(test.stem+'.log')).write_text(run.stdout)
-    results.append(dict(test=test.name,passed=run.returncode==0))
-    print(('PASS ' if run.returncode==0 else 'FAIL ')+test.name,flush=True)
+    diagnostic_failure=bool(re.search(r'ResourceWarning:|Exception ignored (?:in|while finalizing)',run.stdout))
+    passed=run.returncode==0 and not diagnostic_failure
+    results.append(dict(test=test.name,passed=passed,diagnosticFailure=diagnostic_failure))
+    print(('PASS ' if passed else 'FAIL ')+test.name,flush=True)
 (a.output/'results.json').write_text(json.dumps(results,indent=2)+'\n')
 raise SystemExit(0 if all(r['passed'] for r in results) else 1)
