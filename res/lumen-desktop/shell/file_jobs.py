@@ -401,14 +401,38 @@ class Jobs:
 
 
 _jobs = Jobs()
+_trash_operations = None
+_request_lock = threading.RLock()
+
+
+def trash_controller():
+    global _trash_operations
+    if _trash_operations is None:
+        from trash_operations import TrashOperations
+        _trash_operations=TrashOperations(trash_root())
+    return _trash_operations
 
 
 def request(data):
-    if data['action'] == 'job-start':
-        return _jobs.start(data)
-    if data['action'] == 'job-cancel':
-        return _jobs.cancel(data['job'])
-    return _jobs.state()
+    with _request_lock:
+        action=data.get('action')
+        if isinstance(action,str) and action.startswith('trash-'):
+            fields={'trash-prepare':{'mode','items'},'trash-confirm':{'token'},'trash-cancel':{'token'},'trash-stop':set(),'trash-status':set(),'trash-inspect':{'operationId'},'trash-capabilities':{'location'}}
+            if action not in fields or set(data)-({'action'}|fields[action]):raise ValueError('Unsupported Trash request')
+            if action=='trash-capabilities':return dict(available=data.get('location')=='trash:',fallback=False,scope='Only recognized items already in personal Trash',reason='' if data.get('location')=='trash:' else 'Permanent deletion is unavailable for this location')
+            controller=trash_controller()
+            if action=='trash-status':return controller.status()
+            if action=='trash-inspect':return controller.inspect(data.get('operationId'))
+            if action=='trash-prepare':return controller.prepare(data.get('mode'),data.get('items'))
+            if action=='trash-cancel':return controller.cancel(data.get('token'))
+            if action=='trash-stop':return controller.stop()
+            if any(job['state'] in ('running','cancelling') for job in _jobs.state()['jobs']):raise ValueError('Wait for the current file operation or cancel it first')
+            return controller.confirm(data.get('token'))
+        if action=='job-start':
+            if _trash_operations is not None and _trash_operations.busy:raise ValueError('Wait for the current Trash deletion or stop it first')
+            return _jobs.start(data)
+        if action=='job-cancel':return _jobs.cancel(data['job'])
+        return _jobs.state()
 
 
 def remote(data):
@@ -438,6 +462,7 @@ def serve():
         # remain non-daemon so Python waits for staging cleanup before exiting.
         for token in list(_jobs.tokens.values()):
             token.set()
+        if _trash_operations is not None:_trash_operations.stop_event.set()
         raise SystemExit(0)
     signal.signal(signal.SIGTERM, stop)
     try:

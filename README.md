@@ -34,3 +34,5 @@ Window Groups provides optional native presentation groups; see [the workflow an
 [Content clipping](docs/content-clipping-testing.md) covers declared masks, vivid edge pixels and preserved production input targets.
 
 File identity serialization and compatibility are documented in [file identity wire format](docs/file-identity-wire.md).
+
+Confirmed deletion in personal Trash, durable outcomes and consumer persistence: [Trash confirmation](docs/trash-confirmation.md).

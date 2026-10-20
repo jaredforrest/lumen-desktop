@@ -49,6 +49,9 @@ let
       '';
     };
     networkLocations = import ./lumen-network-locations.nix { inherit pkgs menuRuntime assets; providerPackage = networkProviderPackage; };
+    trashActions = pkgs.writeShellScriptBin "lumen-trash-actions" ''
+      exec ${menuRuntime}/bin/global-menu-python ${assets}/shell/trash_client.py "$@"
+    '';
     fileOperations = pkgs.writeShellApplication {
       name = "lumen-file-operations";
       runtimeInputs = [ pkgs.trash-cli ];
@@ -126,7 +129,7 @@ let
       # Desktop entries launched through Rofi inherit this service's PATH.
       # Entries such as ChatGPT use `env` from coreutils in their Exec command.
       runtimeInputs = [ pkgs.remmina pkgs.fontconfig pkgs.hyprpicker personalServices pkgs.rembg pkgs.whisper-cpp pkgs.pipewire (pkgs.tesseract.override { enableLanguages = [ "eng" ]; }) (pkgs.aspellWithDicts (d: [ d.en ])) pkgs.wordnet pkgs.espeak-ng pkgs.wtype pkgs.poppler-utils pkgs.ffmpeg-headless pkgs.util-linux fileClipboard pkgs.wl-clipboard pkgs.glib pkgs.udisks2 launchApp pkgs.ddcutil pkgs.blueman pkgs.coreutils pkgs.jq pkgs.sway focusWindow windowGeometry quickshell pkgs.foot pkgs.wireplumber pkgs.pavucontrol
-        hotCorners spaces networkLocations clipboardHistory desktopState shellIpc dockDrop applicationControl applicationLifecycle fileAlias auth.lock pkgs.swaylock pkgs.xdg-utils pkgs.trash-cli appearance nixSettings rofiPackage ];
+        hotCorners spaces networkLocations trashActions clipboardHistory desktopState shellIpc dockDrop applicationControl applicationLifecycle fileAlias auth.lock pkgs.swaylock pkgs.xdg-utils pkgs.trash-cli appearance nixSettings rofiPackage ];
       text = ''
         # The systemd service does not inherit the interactive login PATH.
         # Desktop entries may name installed commands without absolute paths.
