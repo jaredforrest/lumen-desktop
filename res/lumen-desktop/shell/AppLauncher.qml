@@ -68,6 +68,11 @@ PanelSurface {
         if(!query)return [];
         return apps.slice(0,6).concat(providerEnabled("Files")?service.files.slice(0,12):[],actionRows.slice(0,5),menuRows.slice(0,8));
     }
+    FontMetrics {id:resultTitleMetrics;font.family:Theme.font;font.pixelSize:Theme.textSize(14)}
+    FontMetrics {id:resultSubtitleMetrics;font.family:Theme.font;font.pixelSize:Theme.textRole("caption")}
+    readonly property int listRowHeight:Math.max(50,Math.ceil(resultTitleMetrics.height+resultSubtitleMetrics.height+21))
+    readonly property int gridRowHeight:Math.max(100,Math.ceil(83+Theme.textSize(11)))
+    readonly property int clipboardControlsHeight:provider==="Clipboard" && clipboard.enabled?Math.max(34,clipboardControls.implicitHeight+4):0
     width:Math.min(previewOpen?920:660,parent ? parent.width-32 : 660)
     height:footer.y+footer.height+12
     radius:22
@@ -89,6 +94,7 @@ PanelSurface {
     function status() {return {provider:provider,count:results.length,selected:selectedIndex,kind:current?current.kind:"",preview:previewOpen,previewType:service.preview.type || "",grid:gridMode};}
     function setProvider(name) {if(!providerChoices.includes(name))return;provider=name;gridMode=false;selectedKey="";selectedIndex=0;search.forceActiveFocus();if(name==="Clipboard"){previewOpen=false;clipboard.search(search.text);}else if(providerEnabled("Files") && (name==="Files" || name==="All"))service.search(search.text);}
     function cycleProvider() {const choices=providerChoices;setProvider(choices[(choices.indexOf(provider)+1)%choices.length]);}
+    function activatePreviewKey(key,parent){if(key && key===resultKey(current))launchKey(key,parent);}
     function launchKey(key,parent){const index=results.findIndex(item=>resultKey(item)===key);if(index>=0)launch(index,parent);}
     function launch(index, parent) {
         if(index<0 || index>=results.length || service.opening)return;
@@ -134,13 +140,13 @@ PanelSurface {
         return size+" · "+new Date(item.mtime*1000).toLocaleDateString();
     }
     Item {
-        id:searchArea;width:parent.width;height:66
+        id:searchArea;width:parent.width;height:Math.max(66,search.implicitHeight+28)
         SystemGlyph {x:22;anchors.verticalCenter:parent.verticalCenter;name:"search";width:24;height:24;ink:Theme.colors.muted}
         TextInput {
             id:search;x:60;anchors.verticalCenter:parent.verticalCenter;width:parent.width-84
-            font.family:Theme.font;font.pixelSize:24;color:Theme.colors.text;selectionColor:Theme.colors.accent;clip:true
+            font.family:Theme.font;font.pixelSize:Theme.textSize(24);color:Theme.colors.text;selectionColor:Theme.colors.accent;clip:true
             onTextChanged:{root.selectedIndex=0;if(root.visible){if(root.provider==="Clipboard")clipboard.search(text);else if(root.providerEnabled("Files"))root.service.search(text);}}
-            PanelLabel {visible:search.text.length===0;text:"Search";font.pixelSize:24;color:Theme.colors.muted}
+            PanelLabel {visible:search.text.length===0;text:"Search";font.pixelSize:Theme.textSize(24);color:Theme.colors.muted}
             Keys.onPressed:event=>{
                 if((event.modifiers & Qt.ControlModifier) && event.key===Qt.Key_1){if(root.providerEnabled("Applications")){root.provider="Applications";root.gridMode=true;}event.accepted=true;}
                 else if((event.modifiers & Qt.ControlModifier) && event.key===Qt.Key_2){root.setProvider("Files");event.accepted=true;}
@@ -160,15 +166,15 @@ PanelSurface {
         }
     }
     Item {
-        id:filters;y:searchArea.height;width:parent.width;height:40
-        Row {x:16;spacing:3
+        id:filters;y:searchArea.height;width:parent.width;height:Math.max(40,filterFlow.implicitHeight+15)
+        Flow {id:filterFlow;x:16;width:parent.width-104;spacing:3
             Repeater {
                 model:root.providerChoices
                 AbstractButton {
                     id:filterButton
                     required property string modelData
-                    width:filterLabel.implicitWidth+18;height:25
-                    contentItem:PanelLabel {id:filterLabel;text:filterButton.modelData;font.pixelSize:11;horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter}
+                    width:filterLabel.implicitWidth+18;height:Math.max(25,filterLabel.implicitHeight+10)
+                    contentItem:PanelLabel {id:filterLabel;text:filterButton.modelData;font.pixelSize:Theme.textSize(11);horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter}
                     background:Rectangle {radius:12;color:filterButton.modelData===root.provider?Theme.selection:filterButton.activeFocus?Theme.colors.hover:"transparent"}
                     onClicked:root.setProvider(modelData)
                     Accessible.name:modelData+(modelData===root.provider?", selected":"")
@@ -194,7 +200,7 @@ PanelSurface {
     }
     Item {
         id:resultArea;y:filters.y+filters.height;width:parent.width
-        height:Math.min(Math.max(100,(root.parent?root.parent.height:1000)-Theme.barHeight-230),!root.showingResults?0:root.previewOpen?330:root.provider==="Clipboard" && !clipboard.enabled?140:root.results.length===0?90:root.gridMode?Math.min(300,Math.ceil(root.results.length/5)*100):Math.min(330,root.results.length*50))
+        height:Math.min(Math.max(40,(root.parent?root.parent.height:1000)-32-searchArea.height-filters.height-footer.height-root.clipboardControlsHeight-12),Math.max(100,(root.parent?root.parent.height:1000)-Theme.barHeight-230),!root.showingResults?0:root.previewOpen?330:root.provider==="Clipboard" && !clipboard.enabled?140:root.results.length===0?90:root.gridMode?Math.min(300,Math.ceil(root.results.length/5)*root.gridRowHeight):Math.min(330,root.results.length*root.listRowHeight))
         Item {
             id:rows;anchors.left:parent.left;anchors.top:parent.top;anchors.bottom:parent.bottom;width:root.splitPreview?parent.width-300:parent.width
             visible:!root.previewOpen || root.splitPreview
@@ -206,7 +212,7 @@ PanelSurface {
             Column {
                 visible:root.provider==="Clipboard" && !clipboard.enabled
                 x:20;y:10;width:parent.width-40;spacing:6
-                PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:"Clipboard history is off. Enabling it saves future supported copied text on this computer. Sensitive text may be included unless its source marks it secret.";font.pixelSize:12}
+                PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:"Clipboard history is off. Enabling it saves future supported copied text on this computer. Sensitive text may be included unless its source marks it secret.";font.pixelSize:Theme.textSize(12)}
                 DialogButton {text:"Enable Clipboard History";enabled:!clipboard.busy;onClicked:clipboard.enable()}
             }
             ListView {
@@ -224,17 +230,17 @@ PanelSurface {
                     Keys.onReturnPressed:root.activateResult(focusKey)
                     Keys.onSpacePressed:root.activateResult(focusKey)
                     border.width:activeFocus?2:0;border.color:Theme.colors.accent
-                    width:list.width;height:50;radius:9;color:root.selectedIndex===index?Theme.selection:"transparent"
+                    width:list.width;height:root.listRowHeight;radius:9;color:root.selectedIndex===index?Theme.selection:"transparent"
                     AppIcon {visible:modelData.kind==="app";x:12;anchors.verticalCenter:parent.verticalCenter;width:28;height:28;iconSource:root.icon(modelData);calendarDate:root.shell.currentDate;sourceSize.width:64;sourceSize.height:64}
                     SystemGlyph {visible:modelData.kind!=="app";x:14;anchors.verticalCenter:parent.verticalCenter;width:24;height:24;name:modelData.kind==="file"?(modelData.folder?"folder":"document"):modelData.glyph || "info";ink:modelData.kind==="file" && modelData.folder?Theme.colors.accent:Theme.colors.text}
-                    PanelLabel {x:52;y:6;width:parent.width-80;text:modelData.title;textFormat:Text.PlainText;font.pixelSize:14}
-                    PanelLabel {x:52;y:28;width:parent.width-80;text:modelData.kind==="file"?modelData.subtitle.replace(Quickshell.env("HOME"),"~"):modelData.subtitle;textFormat:Text.PlainText;font.pixelSize:10;color:Theme.colors.muted}
+                    PanelLabel {id:resultTitle;x:52;y:6;width:parent.width-80;text:modelData.title;textFormat:Text.PlainText;font.pixelSize:Theme.textSize(14)}
+                    PanelLabel {x:52;y:Math.max(28,6+resultTitle.implicitHeight+4);width:parent.width-80;text:modelData.kind==="file"?modelData.subtitle.replace(Quickshell.env("HOME"),"~"):modelData.subtitle;textFormat:Text.PlainText;font.pixelSize:Theme.textSize(10);color:Theme.colors.muted}
                     MouseArea {anchors.fill:parent;hoverEnabled:true;property string pressedKey:"";onEntered:root.selectedIndex=index;onPressed:pressedKey=root.resultKey(modelData);onCanceled:pressedKey="";onClicked:{root.launchKey(pressedKey,false);pressedKey="";}}
                 }
             }
             GridView {
                 id:grid;visible:root.gridMode;anchors.fill:parent;anchors.leftMargin:12;anchors.rightMargin:12;clip:true;model:root.results
-                cellWidth:width/5;cellHeight:100
+                cellWidth:width/5;cellHeight:root.gridRowHeight
                 delegate:Rectangle {
                     required property var modelData
                     required property int index
@@ -248,9 +254,9 @@ PanelSurface {
                     Keys.onReturnPressed:root.activateResult(focusKey)
                     Keys.onSpacePressed:root.activateResult(focusKey)
                     border.width:activeFocus?2:0;border.color:Theme.colors.accent
-                    width:grid.cellWidth-4;height:96;radius:10;color:root.selectedIndex===index?Theme.selection:"transparent"
+                    width:grid.cellWidth-4;height:root.gridRowHeight-4;radius:10;color:root.selectedIndex===index?Theme.selection:"transparent"
                     AppIcon {anchors.horizontalCenter:parent.horizontalCenter;y:8;width:52;height:52;iconSource:root.icon(modelData);calendarDate:root.shell.currentDate;sourceSize.width:128;sourceSize.height:128}
-                    PanelLabel {x:5;y:67;width:parent.width-10;text:modelData.title;textFormat:Text.PlainText;font.pixelSize:11;horizontalAlignment:Text.AlignHCenter}
+                    PanelLabel {x:5;y:67;width:parent.width-10;text:modelData.title;textFormat:Text.PlainText;font.pixelSize:Theme.textSize(11);horizontalAlignment:Text.AlignHCenter}
                     MouseArea {anchors.fill:parent;hoverEnabled:true;property string pressedKey:"";onEntered:root.selectedIndex=index;onPressed:pressedKey=root.resultKey(modelData);onCanceled:pressedKey="";onClicked:{root.launchKey(pressedKey,false);pressedKey="";}}
                 }
             }
@@ -258,38 +264,63 @@ PanelSurface {
         Item {
             id:previewPane;visible:root.previewOpen;anchors.right:parent.right;width:root.splitPreview?300:parent.width;height:parent.height
             Rectangle {visible:root.splitPreview;width:1;height:parent.height;color:Theme.hairline}
-            Column {x:18;y:8;width:parent.width-36;spacing:8
-                PanelLabel {width:parent.width;text:root.current?root.current.title:"Select a result";textFormat:Text.PlainText;font.pixelSize:15;font.weight:Font.DemiBold}
-                PanelLabel {width:parent.width;text:root.current && root.current.kind==="file"?root.metadata(root.current):root.current?root.current.subtitle:"";textFormat:Text.PlainText;font.pixelSize:10;color:Theme.colors.muted}
+            FocusFlickable {
+                anchors.fill:parent;clip:true;contentWidth:width;contentHeight:previewColumn.height+16
+                activeFocusOnTab:true
+                Accessible.name:"Search result preview"
+                Keys.onUpPressed:contentY=Math.max(0,contentY-Theme.textRole("body")*3)
+                Keys.onDownPressed:contentY=Math.min(Math.max(0,contentHeight-height),contentY+Theme.textRole("body")*3)
+                Keys.onPressed:event=>{if(event.key===Qt.Key_Home){contentY=0;event.accepted=true;}else if(event.key===Qt.Key_End){contentY=Math.max(0,contentHeight-height);event.accepted=true;}else event.accepted=false;}
+                ScrollBar.vertical:DesktopScrollBar {}
+            Column {id:previewColumn;x:18;y:8;width:parent.width-36;spacing:8
+                PanelLabel {width:parent.width;text:root.current?root.current.title:"Select a result";textFormat:Text.PlainText;font.pixelSize:Theme.textSize(15);font.weight:Font.DemiBold}
+                PanelLabel {width:parent.width;text:root.current && root.current.kind==="file"?root.metadata(root.current):root.current?root.current.subtitle:"";textFormat:Text.PlainText;font.pixelSize:Theme.textSize(10);color:Theme.colors.muted}
                 PreviewResourceConsumer {manager:root.service.resourceRetirement;sourceObjects:[launcherPreviewImage]}
-                Image {id:launcherPreviewImage;visible:root.current && root.current.kind==="file" && root.service.preview.type==="image";width:parent.width;height:visible?Math.max(60,previewPane.height-120):0;source:visible?root.service.preview.uri || "":"";fillMode:Image.PreserveAspectFit;sourceSize.width:640;sourceSize.height:640;asynchronous:true;PanelLabel {anchors.centerIn:parent;visible:parent.status===Image.Error;text:"Image preview unavailable";font.pixelSize:11;color:Theme.colors.muted}}
+                Image {id:launcherPreviewImage;visible:root.current && root.current.kind==="file" && root.service.preview.type==="image";width:parent.width;height:visible?Math.max(60,previewPane.height-120):0;source:visible?root.service.preview.uri || "":"";fillMode:Image.PreserveAspectFit;sourceSize.width:640;sourceSize.height:640;asynchronous:true;PanelLabel {anchors.centerIn:parent;visible:parent.status===Image.Error;text:"Image preview unavailable";font.pixelSize:Theme.textSize(11);color:Theme.colors.muted}}
                 Flickable {
                     visible:!root.current || root.current.kind!=="file" || root.service.preview.type!=="image"
                     width:parent.width;height:Math.max(40,previewPane.height-120);clip:true;contentHeight:previewText.height
-                    PanelLabel {id:previewText;width:parent.width;wrapMode:Text.WrapAnywhere;elide:Text.ElideNone;textFormat:Text.PlainText;font.pixelSize:12;text:!root.current?"":root.current.kind==="file"?(root.service.preview.text || (root.service.preview.type?"No preview available":"Loading preview…")):root.current.kind==="app"?"Open this application with Return.":root.current.subtitle}
+                    PanelLabel {id:previewText;width:parent.width;wrapMode:Text.WrapAnywhere;elide:Text.ElideNone;textFormat:Text.PlainText;font.pixelSize:Theme.textSize(12);text:!root.current?"":root.current.kind==="file"?(root.service.preview.text || (root.service.preview.type?"No preview available":"Loading preview…")):root.current.kind==="app"?"Open this application with Return.":root.current.subtitle}
                 }
-                PanelLabel {width:parent.width;visible:!!root.service.preview.truncated && root.current && root.current.kind==="file";text:"Preview shortened";font.pixelSize:10;color:Theme.colors.muted}
+                PanelLabel {width:parent.width;visible:!!root.service.preview.truncated && root.current && root.current.kind==="file";text:"Preview shortened";font.pixelSize:Theme.textSize(10);color:Theme.colors.muted}
                 Row {spacing:8;visible:!!root.current
                     Repeater {model:root.current && root.current.kind==="file"?["Open","Show Folder"]:["Open"]
-                        Rectangle {required property string modelData;width:label.implicitWidth+20;height:26;radius:6;color:Theme.colors.field
-                            PanelLabel {id:label;anchors.centerIn:parent;text:parent.modelData;font.pixelSize:11}
-                            MouseArea {anchors.fill:parent;property string pressedKey:"";onPressed:pressedKey=root.resultKey(root.current);onCanceled:pressedKey="";onClicked:{root.launchKey(pressedKey,parent.modelData==="Show Folder");pressedKey="";}}
+                        AbstractButton {
+                            id:previewAction
+                            required property string modelData
+                            property string pressedKey:""
+                            property string focusKey:""
+                            width:label.implicitWidth+20;height:Math.max(26,label.implicitHeight+12)
+                            activeFocusOnTab:true
+                            enabled:!root.service.opening
+                            Accessible.name:modelData
+                            Accessible.onPressAction:if(enabled && visible)root.activatePreviewKey(root.resultKey(root.current),modelData==="Show Folder")
+                            onActiveFocusChanged:if(activeFocus)focusKey=root.resultKey(root.current)
+                            onPressed:pressedKey=root.resultKey(root.current)
+                            onCanceled:pressedKey=""
+                            onClicked:{const key=pressedKey;pressedKey="";root.activatePreviewKey(key,modelData==="Show Folder");}
+                            Keys.onReturnPressed:event=>{root.activatePreviewKey(focusKey,modelData==="Show Folder");event.accepted=true;}
+                            Keys.onSpacePressed:event=>{root.activatePreviewKey(focusKey,modelData==="Show Folder");event.accepted=true;}
+                            background:Rectangle {radius:6;color:Theme.colors.field;border.width:previewAction.activeFocus?2:0;border.color:Theme.colors.accent}
+                            contentItem:PanelLabel {id:label;text:previewAction.modelData;font.pixelSize:Theme.textSize(11);horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter}
                         }
                     }
                 }
             }
+            }
         }
     }
     Row {
+        id:clipboardControls
         visible:root.provider==="Clipboard" && clipboard.enabled
         x:20;y:resultArea.y+resultArea.height;spacing:8
         DialogButton {text:"Clear History";enabled:!clipboard.busy;onClicked:clipboard.clear()}
         DialogButton {text:"Disable History";enabled:!clipboard.busy;onClicked:clipboard.disable()}
     }
     Item {
-        id:footer;y:resultArea.y+resultArea.height+(root.provider==="Clipboard" && clipboard.enabled?34:0);width:parent.width;height:40
+        id:footer;y:resultArea.y+resultArea.height+root.clipboardControlsHeight;width:parent.width;height:Math.max(40,footerHint.y+footerHint.implicitHeight+5)
         Rectangle {x:16;width:parent.width-32;height:1;color:Theme.hairline}
-        PanelLabel {x:22;y:7;width:parent.width-44;text:(root.provider==="Clipboard"?(clipboard.error || clipboard.message || (clipboard.busy?"Loading clipboard history…":clipboard.enabled?"Select a result to copy. Paste explicitly in the destination.":"Clipboard history requires your consent.")):"") || root.service.error || (root.service.opening?"Opening…":root.service.scanning?"Indexing files · "+root.service.indexed.toLocaleString()+" found":root.service.limited?"Index limit reached · Some files are not included":root.service.unreadable?"Some folders could not be read":root.showingResults?root.results.length+(root.service.more?"+":"")+(root.results.length===1?" result":" results"):"Search apps, files and actions");textFormat:Text.PlainText;font.pixelSize:10;color:Theme.colors.muted}
-        PanelLabel {x:22;y:23;width:parent.width-44;text:root.provider==="Clipboard"?"↑↓ to select   Return to copy   Tab for controls   Escape to close":"↑↓ to select   Return to open   Ctrl+Tab for categories   Escape to close";font.pixelSize:10;color:Theme.colors.muted}
+        PanelLabel {id:footerStatus;x:22;y:7;width:parent.width-44;wrapMode:Text.WordWrap;text:(root.provider==="Clipboard"?(clipboard.error || clipboard.message || (clipboard.busy?"Loading clipboard history…":clipboard.enabled?"Select a result to copy. Paste explicitly in the destination.":"Clipboard history requires your consent.")):"") || root.service.error || (root.service.opening?"Opening…":root.service.scanning?"Indexing files · "+root.service.indexed.toLocaleString()+" found":root.service.limited?"Index limit reached · Some files are not included":root.service.unreadable?"Some folders could not be read":root.showingResults?root.results.length+(root.service.more?"+":"")+(root.results.length===1?" result":" results"):"Search apps, files and actions");textFormat:Text.PlainText;font.pixelSize:Theme.textSize(10);color:Theme.colors.muted}
+        PanelLabel {id:footerHint;x:22;y:Math.max(23,footerStatus.y+footerStatus.implicitHeight+4);width:parent.width-44;wrapMode:Text.WordWrap;text:root.provider==="Clipboard"?"↑↓ to select   Return to copy   Tab for controls   Escape to close":"↑↓ to select   Return to open   Ctrl+Tab for categories   Escape to close";font.pixelSize:Theme.textSize(10);color:Theme.colors.muted}
     }
 }

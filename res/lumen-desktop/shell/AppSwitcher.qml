@@ -16,6 +16,20 @@ PanelWindow {
     WlrLayershell.keyboardFocus:visible?WlrKeyboardFocus.Exclusive:WlrKeyboardFocus.None
     onVisibleChanged:if(!visible && shell.popupOwner==="app-switcher")shell.popupOwner=""
     property var items:[]
+    // Measure the same Text layout as visible captions; fixed baseline size is intentional.
+    Item {id:captionMeasures;visible:false
+        Repeater {model:root.items
+            Item {
+                required property var modelData
+                readonly property real advanceScale:baseline.implicitWidth>0?scaled.implicitWidth/baseline.implicitWidth:Theme.textScale
+                Text {id:baseline;text:parent.modelData.label;textFormat:Text.PlainText;font.family:Theme.font;font.pixelSize:12}
+                Text {id:scaled;text:parent.modelData.label;textFormat:Text.PlainText;font.family:Theme.font;font.pixelSize:Theme.textRole("label")}
+            }
+        }
+    }
+    readonly property real captionAdvanceScale:Array.from(captionMeasures.children).reduce((factor,item)=>Math.max(factor,Number(item.advanceScale) || Theme.textScale),Theme.textScale)
+    readonly property int tileWidth:Math.max(104,Math.round(104*Theme.textScale),Math.ceil(96*captionAdvanceScale)+8)
+    onTileWidthChanged:if(visible)Qt.callLater(()=>{if(root.visible && root.selected>=0){view.forceLayout();view.positionViewAtIndex(root.selected,ListView.Contain);}})
     property int selected:-1
     property string phase:"closed"
     property int commits:0
@@ -94,22 +108,22 @@ PanelWindow {
         MouseArea {anchors.fill:parent;onClicked:root.command("cancel")}
         Rectangle {
             anchors.centerIn:parent
-            width:Math.min((root.screen?root.screen.width:1000)-64,root.items.length*104+32)
-            height:142;radius:20;color:Theme.colors.background;border.color:Theme.outline
+            width:Math.min((root.screen?root.screen.width:1000)-64,root.items.length*root.tileWidth+32)
+            height:Math.max(142,118+Math.ceil(Theme.textSize(12)*1.5));radius:20;color:Theme.colors.background;border.color:Theme.outline
             ListView {
                 id:view;anchors.fill:parent;anchors.margins:16;orientation:ListView.Horizontal
                 model:root.items;clip:true;spacing:0
                 delegate:AbstractButton {
                     required property var modelData
                     required property int index
-                    width:104;height:110
+                    width:root.tileWidth;height:Math.max(110,86+Math.ceil(Theme.textSize(12)*1.5))
                     Accessible.name:modelData.label
                     Accessible.selected:index===root.selected
                     onClicked:{root.selected=index;root.commit();}
                     background:Rectangle {radius:12;color:parent.index===root.selected?Theme.colors.surface:"transparent";border.width:parent.index===root.selected?2:0;border.color:Theme.colors.accent}
                     contentItem:Item {
                         AppIcon {anchors.horizontalCenter:parent.horizontalCenter;y:8;width:66;height:66;iconSource:modelData.icon}
-                        Text {anchors.bottom:parent.bottom;anchors.bottomMargin:6;width:parent.width-8;anchors.horizontalCenter:parent.horizontalCenter;horizontalAlignment:Text.AlignHCenter;elide:Text.ElideRight;text:parent.parent.Accessible.name;textFormat:Text.PlainText;color:Theme.colors.text;font.family:Theme.font;font.pixelSize:12}
+                        Text {anchors.bottom:parent.bottom;anchors.bottomMargin:6;width:parent.width-8;anchors.horizontalCenter:parent.horizontalCenter;horizontalAlignment:Text.AlignHCenter;elide:Text.ElideRight;text:parent.parent.Accessible.name;textFormat:Text.PlainText;color:Theme.colors.text;font.family:Theme.font;font.pixelSize:Theme.textRole("label")}
                     }
                 }
             }
