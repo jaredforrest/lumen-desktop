@@ -55,8 +55,8 @@ def wait(fn):
   time.sleep(.1)
  raise AssertionError('Timed out')
 def call(*args):return sp.check_output(args,env=env,text=True,timeout=10)
-def ipc(cmd):
- r=json.loads(call('swaymsg',cmd));assert all(x['success'] for x in r),r
+def ipc(cmd,success=True):
+ response=sp.run(['swaymsg','-r',cmd],env=env,text=True,capture_output=True,timeout=10);r=json.loads(response.stdout);assert all(x.get('success') is success for x in r),r
  time.sleep(.2)
 def assert_buttons(image,node,scale=1):
  r=node['deco_rect'];y=(r['y']+16)*scale
@@ -290,7 +290,7 @@ try:
  launch(['quickshell','-p',str(utility)],'utility.log');wait(lambda:any(n['name']=='Window Overview' for n in leaves()))
  wait(lambda:any(n['name']=='Window Overview' and n['rect']['width']==1280 and n['rect']['height']==868 for n in leaves()))
  before=next(n for n in leaves() if n['name']=='Window Overview')
- ipc('[title="^Window Overview$"] lumen_window minimize');ipc('[title="^Window Overview$"] lumen_window fill')
+ ipc('[title="^Window Overview$"] lumen_window minimize',False);ipc('[title="^Window Overview$"] lumen_window fill',False)
  after=next(n for n in leaves() if n['name']=='Window Overview')
  assert after['scratchpad_state']=='none' and after['rect']==before['rect'] and after['fullscreen_mode']==0,after
  ipc('[title="^Window Overview$"] lumen_window close');wait(lambda:not leaves())
