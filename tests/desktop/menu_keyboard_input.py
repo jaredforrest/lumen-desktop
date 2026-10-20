@@ -215,6 +215,9 @@ try:
     point(nested);wait(lambda:any(r['id']==14 and r['hover'] for c in json.loads(call('quickshell','-p',str(fixture),'ipc','call','globalmenu','layout')) for r in c['rows']),'pointer returns to parent row')
     assert state()['exportPath']==[10,14] and events()==[]
     key('-k','Escape');wait(lambda:state()['exportPath']==[10],'pointer child dismisses one level')
+    # Hold the physical pointer still beyond both submenu hover-delay policies.
+    time.sleep(.6);parent_state=state();(out/'stationary-parent.json').write_text(json.dumps(parent_state,indent=2))
+    assert parent_state['exportPath']==[10] and parent_state['selection'] and parent_state['selection']['id']==14,('Stationary pointer reopened dismissed submenu',parent_state)
     key('-k','Escape');wait(lambda:not state()['exportPath'],'pointer parent dismisses')
     before=len(exporter_state()['keys']);key('-k','k');wait(lambda:len(exporter_state()['keys'])==before+1,'pointer submenu returns original native focus')
     checks.append('Physical submenu hover, child entry and parent return preserve hierarchy without dispatch and restore native focus')
