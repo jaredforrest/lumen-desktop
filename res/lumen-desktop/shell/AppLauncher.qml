@@ -270,17 +270,18 @@ PanelSurface {
                 Accessible.name:"Search result preview"
                 Keys.onUpPressed:contentY=Math.max(0,contentY-Theme.textRole("body")*3)
                 Keys.onDownPressed:contentY=Math.min(Math.max(0,contentHeight-height),contentY+Theme.textRole("body")*3)
-                Keys.onPressed:event=>{if(event.key===Qt.Key_Home){contentY=0;event.accepted=true;}else if(event.key===Qt.Key_End){contentY=Math.max(0,contentHeight-height);event.accepted=true;}else event.accepted=false;}
+                Keys.onPressed:event=>{if(event.key===Qt.Key_Home){contentY=0;event.accepted=true;}else if(event.key===Qt.Key_End){contentY=Math.max(0,contentHeight-height);event.accepted=true;}else if(event.key===Qt.Key_PageDown){contentY=Math.min(Math.max(0,contentHeight-height),contentY+height);event.accepted=true;}else if(event.key===Qt.Key_PageUp){contentY=Math.max(0,contentY-height);event.accepted=true;}else event.accepted=false;}
                 ScrollBar.vertical:DesktopScrollBar {}
             Column {id:previewColumn;x:18;y:8;width:parent.width-36;spacing:8
                 PanelLabel {width:parent.width;text:root.current?root.current.title:"Select a result";textFormat:Text.PlainText;font.pixelSize:Theme.textSize(15);font.weight:Font.DemiBold}
                 PanelLabel {width:parent.width;text:root.current && root.current.kind==="file"?root.metadata(root.current):root.current?root.current.subtitle:"";textFormat:Text.PlainText;font.pixelSize:Theme.textSize(10);color:Theme.colors.muted}
                 PreviewResourceConsumer {manager:root.service.resourceRetirement;sourceObjects:[launcherPreviewImage]}
                 Image {id:launcherPreviewImage;visible:root.current && root.current.kind==="file" && root.service.preview.type==="image";width:parent.width;height:visible?Math.max(60,previewPane.height-120):0;source:visible?root.service.preview.uri || "":"";fillMode:Image.PreserveAspectFit;sourceSize.width:640;sourceSize.height:640;asynchronous:true;PanelLabel {anchors.centerIn:parent;visible:parent.status===Image.Error;text:"Image preview unavailable";font.pixelSize:Theme.textSize(11);color:Theme.colors.muted}}
-                Flickable {
+                PanelLabel {
+                    id:previewText
                     visible:!root.current || root.current.kind!=="file" || root.service.preview.type!=="image"
-                    width:parent.width;height:Math.max(40,previewPane.height-120);clip:true;contentHeight:previewText.height
-                    PanelLabel {id:previewText;width:parent.width;wrapMode:Text.WrapAnywhere;elide:Text.ElideNone;textFormat:Text.PlainText;font.pixelSize:Theme.textSize(12);text:!root.current?"":root.current.kind==="file"?(root.service.preview.text || (root.service.preview.type?"No preview available":"Loading preview…")):root.current.kind==="app"?"Open this application with Return.":root.current.subtitle}
+                    width:parent.width;wrapMode:Text.WrapAnywhere;elide:Text.ElideNone;textFormat:Text.PlainText;font.pixelSize:Theme.textSize(12)
+                    text:!root.current?"":root.current.kind==="file"?(root.service.preview.text || (root.service.preview.type?"No preview available":"Loading preview…")):root.current.kind==="app"?"Open this application with Return.":root.current.subtitle
                 }
                 PanelLabel {width:parent.width;visible:!!root.service.preview.truncated && root.current && root.current.kind==="file";text:"Preview shortened";font.pixelSize:Theme.textSize(10);color:Theme.colors.muted}
                 Row {spacing:8;visible:!!root.current

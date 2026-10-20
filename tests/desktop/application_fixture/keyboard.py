@@ -1,7 +1,7 @@
 """Stable full-US keyboard events for actual isolated application shortcuts."""
 import select,subprocess,time
 MODIFIERS={'shift':1,'ctrl':4,'alt':8,'logo':64}
-SPECIAL={'Escape':1,'Return':28,'Tab':15,'BackSpace':14,'Delete':111,'Left':105,'Right':106,'Up':103,'Down':108,'Home':102,'End':107,'F11':87,'F12':88,'space':57,'minus':12}
+SPECIAL={'Escape':1,'Return':28,'Tab':15,'BackSpace':14,'Delete':111,'Left':105,'Right':106,'Up':103,'Down':108,'Home':102,'End':107,'PageUp':104,'PageDown':109,'F11':87,'F12':88,'space':57,'minus':12}
 LETTERS={letter:code for letters,start in [('qwertyuiop',16),('asdfghjkl',30),('zxcvbnm',44)] for code,letter in enumerate(letters,start)}
 # Use physical evdev codes, not a replacement per-command keymap.
 PLAIN={**dict(zip('1234567890',range(2,12))),'-':12,'=':13,'[':26,']':27,';':39,"'":40,'`':41,'\\':43,',':51,'.':52,'/':53,' ':57,**LETTERS}

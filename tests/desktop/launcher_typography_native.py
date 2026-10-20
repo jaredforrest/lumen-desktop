@@ -7,13 +7,13 @@ from application_fixture.keyboard import PhysicalKeyboard
 from application_fixture.provenance import FrozenSource,generated
 from private_native_bus import start_private_bus
 from fixture_resources import close_reaped_pipes
-p=argparse.ArgumentParser();p.add_argument('--keyboard',type=Path,required=True);p.add_argument('--pointer-tool',type=Path,required=True);p.add_argument('--launcher',type=Path,required=True);p.add_argument('--sway',type=Path,required=True);p.add_argument('--font-config',type=Path,required=True);p.add_argument('--software-driver',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--effects',action='store_true');p.add_argument('--inside',action='store_true');a=p.parse_args();repo=Path(__file__).resolve().parents[2]
+p=argparse.ArgumentParser();p.add_argument('--keyboard',type=Path,required=True);p.add_argument('--pointer-tool',type=Path,required=True);p.add_argument('--launcher',type=Path,required=True);p.add_argument('--sway',type=Path,required=True);p.add_argument('--font-config',type=Path,required=True);p.add_argument('--software-driver',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--effects',action='store_true');p.add_argument('--long-preview-only',action='store_true');p.add_argument('--inside',action='store_true');a=p.parse_args();repo=Path(__file__).resolve().parents[2]
 for name in ('launcher','sway','font_config','software_driver','keyboard','pointer_tool'):
  value=getattr(a,name).resolve();assert str(value).startswith('/nix/store/') and value.exists();setattr(a,name,value)
 if not a.inside:
  a.output=a.output.resolve();a.output.mkdir(mode=0o700,parents=True,exist_ok=False)
  runtime=Path(sys.executable).resolve();frozen=FrozenSource(repo,__file__,[a.launcher,a.sway,a.font_config,a.keyboard,a.pointer_tool,runtime]);prefix=re.split(r'\n[ \t]*exec quickshell ',a.launcher.read_text(),maxsplit=1)[0];env=dict(v.decode().split('=',1) for v in sp.check_output(['bash','-c',prefix+'\nexec env -0']).split(b'\0') if b'=' in v)
- args=[str(runtime),'/source/tests/desktop/launcher_typography_native.py','--inside','--output','/artifacts']+sum((['--'+name.replace('_','-'),str(getattr(a,name))] for name in ('launcher','sway','font_config','software_driver','keyboard','pointer_tool')),[])+(['--effects'] if a.effects else [])
+ args=[str(runtime),'/source/tests/desktop/launcher_typography_native.py','--inside','--output','/artifacts']+sum((['--'+name.replace('_','-'),str(getattr(a,name))] for name in ('launcher','sway','font_config','software_driver','keyboard','pointer_tool')),[])+(['--effects'] if a.effects else [])+(['--long-preview-only'] if a.long_preview_only else [])
  code=1
  try:code=run(repo,a.output,args,env,software_graphics=a.effects)
  finally:frozen.finish(a.output,code)
@@ -77,7 +77,19 @@ try:
   wait(painted);return dict(capture=str(capture),state=frames[0],ink=receipts)
  def focus(label):
   ipc('focusLabel',label);wait(lambda:state()['control']and state()['control']['focus']);row=state()['control'];assert row['clipped']['width']>=row['rect']['width']-1 and row['clipped']['height']>=row['rect']['height']-1,row
- for small in [False,True]:
+ if a.long_preview_only:
+  call(a.sway.parent/'swaymsg','output HEADLESS-1 resolution 480x360')
+  for mode in ['light','dark']:
+   ipc('configure',mode,'1.5');ipc('open','launcher');ipc('openFiles');ipc('longPreview');wait(lambda:ipc('focusTarget')=='true');keyboard.type('private');wait(lambda:state()['launcher']['count']==1);focus('Search result preview');keyboard.key('-k','Home');wait(lambda:state()['control']['contentY']==0);initial=state();assert initial['control']['contentHeight']>1000,initial
+   keyboard.key('-k','Down');wait(lambda:state()['control']['contentY']>0);arrow=state();keyboard.key('-k','PageDown');wait(lambda:state()['control']['contentY']>arrow['control']['contentY']);page=state();keyboard.key('-k','End');wait(lambda:state()['control']['contentY']>=state()['control']['contentHeight']-state()['control']['rect']['height']-1);end=state();capture=out/(mode+'-long-end.png');call('grim',capture)
+   body=next(row for row in end['texts']if row['text'].endswith('FINAL PRIVATE PREVIEW LINE'));bottom=end['body']['y']+body['rect']['y']+body['rect']['height'];viewport=end['control']['rect'];assert viewport['y']<=bottom<=viewport['y']+viewport['height'],(body,end['control']);assert body['height']>1000,body
+   color=tuple(int(body['color'][i:i+2],16)for i in [1,3,5]);x=end['body']['x']+body['rect']['x']
+   with Image.open(capture)as image:
+    crop=image.convert('RGB').crop((round(x),round(bottom-24),round(x+body['width']),round(bottom)));ink=sum(max(abs(a-b)for a,b in zip(pixel,color))<=32 for pixel in crop.get_flattened_data());assert 4<=ink<crop.width*crop.height*.6,ink
+   keyboard.key('-k','PageUp');wait(lambda:state()['control']['contentY']<end['control']['contentY']);keyboard.key('-k','End');wait(lambda:state()['control']['contentY']>=state()['control']['contentHeight']-state()['control']['rect']['height']-1)
+   keyboard.key('-k','Tab');wait(lambda:'Open'in state()['focus']);keyboard.key('-k','Tab');wait(lambda:'Show Folder'in state()['focus']);keyboard.key('-k','Return');wait(lambda:bool(state()['actions']));assert state()['actions']==[dict(path='/home/fixture/document.txt',parent=True,token='private-token',browse=True)]
+   ipc('open','launcher');ipc('openFiles');ipc('longPreview');wait(lambda:ipc('focusTarget')=='true');keyboard.type('private');wait(lambda:state()['launcher']['count']==1);focus('Search result preview');keyboard.key('-k','Home');wait(lambda:state()['control']['contentY']==0);r=state()['control']['rect'];call(a.sway.parent/'swaymsg','seat seat0 cursor set '+str(round(r['x']+r['width']/2))+' '+str(round(r['y']+r['height']/2)));pointer.stdin.write('m 0 0\nw 1\n');pointer.stdin.flush();wait(lambda:state()['control']['contentY']>0);checks.append(dict(mode=mode,case='long-preview-keyboard-and-wheel',initial=initial,arrow=arrow,page=page,end=end,wheel=state()));keyboard.key('-k','Escape');wait(lambda:not state()['visible'])
+ for small in ([] if a.long_preview_only else [False,True]):
   call(a.sway.parent/'swaymsg','output HEADLESS-1 resolution '+('480x360'if small else'1200x900'))
   for mode in ['light','dark']:
    ipc('configure',mode,'1.5');ipc('open','launcher');wait(lambda:state()['family']=='launcher'and state()['visible']and state()['windowActive']and state()['width']==(480 if small else 1200));ipc('layout','list');wait(lambda:ipc('focusTarget')=='true');keyboard.type('application');wait(lambda:state()['query']=='application'and state()['launcher']['count']==2);keyboard.key('-k','Down');wait(lambda:state()['launcher']['selected']==1);receipt=presented(mode+'-'+str(small)+'-list');keyboard.key('-k','Return');wait(lambda:state()['actions']==['fixture.second']);checks.append(dict(mode=mode,small=small,case='list-selection-return',painted=receipt))
