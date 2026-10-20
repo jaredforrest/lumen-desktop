@@ -55,6 +55,19 @@ class TrashOperations(unittest.TestCase):
   self.item();self.engine.persist();recovery=self.engine.journal.parent;recovery.rename(self.root/'retired-recovery');recovery.mkdir(mode=0o700);plan=self.engine.prepare('empty')
   with self.assertRaises(ValueError):self.engine.confirm(plan['token'])
   self.assertFalse(self.engine.busy);self.assertTrue((self.root/'files/one').exists());self.assertEqual(list(recovery.iterdir()),[])
+ def test_actual_listing_emits_lossless_selected_identity(self):
+  from file_jobs import trash_items
+  from types import SimpleNamespace
+  path=self.item();native=path.lstat()
+  with patch.dict(os.environ,{'XDG_DATA_HOME':str(self.home)}):
+   row=trash_items()[0];self.assertEqual(row['identity'],file_identity.wire(native))
+   original=Path.lstat
+   def high(value,*args,**kwargs):
+    observed=original(value,*args,**kwargs)
+    if value!=path:return observed
+    return SimpleNamespace(st_dev=2**60+7,st_ino=2**63+9,st_mode=observed.st_mode,st_size=observed.st_size,st_mtime=observed.st_mtime)
+   with patch.object(Path,'lstat',high):row=trash_items()[0]
+   self.assertEqual(row['identity'],dict(device=str(2**60+7),inode=str(2**63+9)))
  def test_preparation_cancel_and_expiry_never_mutate(self):
   path=self.item();plan=self.engine.prepare('selected',[self.reference(path)]);self.assertEqual(plan['count'],1);self.assertIn('cannot be undone',plan['consequence']);self.assertTrue(path.exists())
   self.engine.cancel(plan['token'])
