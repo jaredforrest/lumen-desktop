@@ -1,5 +1,6 @@
 """Private native lock clients, D-Bus transport and painted notification privacy."""
 from fixture_resources import close_reaped_pipes
+from fixture_frames import latest_state_frame
 import argparse,json,os,re,select,shutil,signal,socket,stat,subprocess as sp,sys,tempfile,time
 from pathlib import Path
 import dbus
@@ -28,6 +29,12 @@ with tempfile.TemporaryDirectory(prefix='nlock-') as temporary:
     if value:return value
    except (ValueError,OSError,dbus.DBusException,sp.SubprocessError):pass
    time.sleep(.04)
+  diagnostics={}
+  for name,probe in [('ui',globals().get('ui_state')),('service',globals().get('snapshot')),('tree',lambda:json.loads(call(str(Path(a.sway).parent/'swaymsg'),'-t','get_tree','-r')))]:
+   if not callable(probe):continue
+   try:diagnostics[name]=probe()
+   except (ValueError,OSError,dbus.DBusException,sp.SubprocessError) as error:diagnostics[name]={'error':str(error)}
+  (a.output/'timeout-state.json').write_text(json.dumps(diagnostics,indent=2))
   raise AssertionError('Notification lock fixture timed out: '+str(a.output))
  def stop(proc):
   if proc.poll() is None:os.killpg(proc.pid,signal.SIGTERM)
@@ -86,7 +93,7 @@ ShellRoot {
   def unlock(proc):proc.stdin.write('u\n');proc.stdin.flush();proc.wait(timeout=5);wait(lambda:snapshot()['lock']=={'known':True,'locked':False})
   def redacted():
    value=snapshot();assert not value['previewsVisible'];assert all(not row['image'] and not row['icon'] and not row['actions'] for row in value['rows']);assert 'Private subject' not in json.dumps(value) and 'Private body' not in json.dumps(value) and 'Private action' not in json.dumps(value);return value
-  held=lock();redacted();wait(lambda:frames() and frames()[-1].get('lock',{}).get('locked') is True);locked_position=next(index for index,frame in enumerate(frames()) if frame.get('lock')=={'known':True,'locked':True});wait(lambda:'Private subject' not in json.dumps(ui_state()));call('quickshell','-p',str(fixture),'ipc','call','notificationAudit','inject',json.dumps(old_frame));assert 'Private subject' not in json.dumps(ui_state());notify('two');redacted();wait(lambda:len(ui_state()['rows'])==2);assert 'Private body' not in json.dumps(ui_state());wait(lambda:frames() and len(frames()[-1].get('rows',[]))==2);assert all('Private subject' not in json.dumps(frame) and 'Private body' not in json.dumps(frame) and 'Private action' not in json.dumps(frame) for frame in frames()[locked_position:])
+  held=lock();redacted();wait(lambda:latest_state_frame(frames()).get('lock',{}).get('locked') is True);locked_position=next(index for index,frame in enumerate(frames()) if frame.get('lock')=={'known':True,'locked':True});wait(lambda:'Private subject' not in json.dumps(ui_state()));call('quickshell','-p',str(fixture),'ipc','call','notificationAudit','inject',json.dumps(old_frame));assert 'Private subject' not in json.dumps(ui_state());notify('two');redacted();wait(lambda:len(ui_state()['rows'])==2);assert 'Private body' not in json.dumps(ui_state());wait(lambda:len(latest_state_frame(frames()).get('rows',[]))==2);assert all('Private subject' not in json.dumps(frame) and 'Private body' not in json.dumps(frame) and 'Private action' not in json.dumps(frame) for frame in frames()[locked_position:])
   retained=Path(env['LUMEN_NOTIFICATION_STATE'])/'history.json';assert 'Private body one' in retained.read_text() and 'Private body two' in retained.read_text();assert stat.S_IMODE(retained.stat().st_mode)==0o600 and stat.S_IMODE(retained.parent.stat().st_mode)==0o700
   unlock(held);wait(lambda:'Private subject two' in ui_state()['accessible'])
   # The production lock view, with a test-only unlock endpoint in a private copy.
