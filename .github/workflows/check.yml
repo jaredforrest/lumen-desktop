@@ -34,6 +34,7 @@ jobs:
           nix build .#shell --out-link artifacts/shell-package --option abort-on-warn true
           nix build .#test-offscreen-font-config --out-link artifacts/offscreen-font-config --option abort-on-warn true
           nix build .#test-owned-font-config --out-link artifacts/owned-typography-fonts --option abort-on-warn true
+          nix build .#test-session-bus --out-link artifacts/session-bus --option abort-on-warn true
           bash tests/ci/run-native.sh owned_typography_qml nix develop --command desktop-test-python tests/desktop/owned_typography_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/owned-typography-fonts" --output artifacts/owned-typography-qml
           bash tests/ci/run-native.sh owned_focus_qml nix develop --command desktop-test-python tests/desktop/owned_focus_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/owned-typography-fonts" --output artifacts/owned-focus-qml
           bash tests/ci/run-native.sh owned_utility_typography_qml nix develop --command desktop-test-python tests/desktop/owned_utility_typography_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/owned-typography-fonts" --output artifacts/owned-utility-typography
@@ -41,6 +42,7 @@ jobs:
           bash tests/ci/run-native.sh calendar_detail_typography_qml nix develop --command desktop-test-python tests/desktop/calendar_detail_typography_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/owned-typography-fonts" --output artifacts/calendar-detail-typography
           bash tests/ci/run-native.sh files_share_menu_qml nix develop --command desktop-test-python tests/desktop/files_share_menu_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --fontconfig "$PWD/artifacts/offscreen-font-config" --output artifacts/files-share-menu
           bash tests/ci/run-native.sh screen_saver_queue_qml nix develop --command desktop-test-python tests/desktop/screen_saver_queue_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --fontconfig "$PWD/artifacts/offscreen-font-config" --output artifacts/screen-saver-queue
+          bash tests/ci/run-native.sh focus_expiry_presentation nix develop --command desktop-test-python tests/desktop/focus_expiry_presentation.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/owned-typography-fonts" --bus "$PWD/artifacts/session-bus/bin/dbus-daemon" --output artifacts/focus-expiry-presentation
           bash tests/ci/run-native.sh dock_calendar_corpus nix develop --command desktop-test-python tests/desktop/dock_calendar_corpus.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/offscreen-font-config" --output artifacts/dock-calendar-corpus
           bash tests/ci/run-native.sh semantic_state_paint nix develop --command desktop-test-python tests/desktop/semantic_state_paint.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/offscreen-font-config" --output artifacts/semantic-state-paint
           bash tests/ci/run-native.sh switch_indicator_paint nix develop --command desktop-test-python tests/desktop/switch_indicator_paint.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/offscreen-font-config" --output artifacts/switch-indicator-paint
@@ -236,6 +238,7 @@ jobs:
             artifacts/reduced-motion-*
             artifacts/live-overlay-appearance-*
             artifacts/semantic-state-*
+            artifacts/focus-expiry-presentation
             artifacts/switch-indicator-paint
             artifacts/owned-utility-typography
             artifacts/owned-utility-native-*

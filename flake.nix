@@ -55,6 +55,7 @@
         test-speech-source = pkgs.speechd.src;
         test-speech-dispatcher = import ./tests/desktop/speech_dispatcher_package.nix { inherit pkgs; };
         test-session-lock = import ./tests/desktop/session_lock_driver.nix { inherit pkgs; };
+        test-session-bus = pkgs.dbus;
         clipboard-observer = import ./packages/clipboard-observer.nix { inherit pkgs; };
         test-clipboard-producer = import ./tests/desktop/clipboard_producer.nix { inherit pkgs; };
         test-window-relationships = import ./tests/desktop/window_relationship_client.nix { inherit pkgs; };
