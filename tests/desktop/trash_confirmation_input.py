@@ -38,6 +38,7 @@ ShellRoot {
  QtObject {id:stub;property int focusEpoch:0;property var windows:[];property var exportedMenu:exported;function activeFiles(window){}function focusWindow(window){}}
  D.FilesState {id:service;persistViewPreferences:false;path:"trash:";viewMode:"list"}
  D.FilesWindow {id:files;shell:stub;service:service;visible:true;implicitWidth:760;implicitHeight:560}
+ Component.onCompleted:files.openPath("trash:")
  function find(name,item){if(!item)return null;if(item.objectName===name)return item;for(const child of item.children || []){const result=find(name,child);if(result)return result;}return null;}
  function controller(){return find("trash-actions-state",files.contentItem);}
  function content(){return files.contentItem.Window.window.contentItem;}
