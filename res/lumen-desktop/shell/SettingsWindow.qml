@@ -4,6 +4,7 @@ import QtQuick.Window
 import QtQuick.Effects
 import Quickshell
 import "ScrollGeometry.js" as ScrollGeometry
+import "SettingsSearch.js" as SettingsSearch
 
 FloatingWindow {
     id:root
@@ -23,7 +24,12 @@ FloatingWindow {
     ClipboardState {id:settingsClipboard;active:root.visible && root.page==="Search";listWhenActive:false}
     property bool minimized:false
     property string page:"Appearance"
-    property var history:["Appearance"]
+    property string controlId:""
+    property var history:[{page:"Appearance",control:""}]
+    readonly property var searchResults:SettingsSearch.results(search.text,pages)
+    property int searchIndex:0
+    property var revealedControl:null
+    property int navigationGeneration:0
     property int historyIndex:0
     readonly property int sidebarWidth:width<680?182:214
     readonly property var pages:[
@@ -53,9 +59,37 @@ FloatingWindow {
     Timer {id:fitTimer;interval:100;onTriggered:root.fitScreen()}
     onScreenChanged:Qt.callLater(root.fitScreen)
     Connections {target:root.screen;function onWidthChanged(){fitTimer.restart();}function onHeightChanged(){fitTimer.restart();}}
-    function navigate(name) {
-        if(!pages.some(p=>p.name===name) || page===name)return;
-        history=history.slice(0,historyIndex+1).concat([name]);historyIndex=history.length-1;page=name;
+    function findControl(name,item) {
+        if(item.objectName===name)return item;
+        for(const child of item.children || []){const found=findControl(name,child);if(found)return found;}
+        return null;
+    }
+    function revealControl(generation) {
+        if(generation!==navigationGeneration || !controlId)return;
+        const entry=SettingsSearch.control(controlId);
+        if(!entry || entry.page!==page)return;
+        const item=findControl(entry.target,body);
+        revealedControl=item;
+        if(!item)return;
+        const at=item.mapToItem(scroller.contentItem,0,0);
+        scroller.contentY=ScrollGeometry.reveal(scroller.contentY,scroller.height,scroller.contentHeight,at.y,item.height,12);
+        if(item.enabled)item.forceActiveFocus(Qt.OtherFocusReason);
+    }
+    function navigate(name,control) {
+        const target=SettingsSearch.destination(name,control || "",pages);
+        if(!target)return false;
+        if(page!==target.page || controlId!==target.control){
+            history=history.slice(0,historyIndex+1).concat([target]);historyIndex=history.length-1;
+        }
+        page=target.page;controlId=target.control;revealedControl=null;
+        const generation=++navigationGeneration;
+        Qt.callLater(()=>root.revealControl(generation));return true;
+    }
+    function acceptSearch(result,query) {
+        if(query!==undefined && query!==search.text)return;
+        // Capture the record before clearing the model/query.
+        if(!result || !navigate(result.page,result.control))return;
+        search.text="";
     }
     function openPage(name) {
         if(name)navigate(name);
@@ -65,11 +99,12 @@ FloatingWindow {
         }
         const wasVisible=visible;
         visible=true;service.refresh();if(!wasVisible)fitTimer.restart();
-        Qt.callLater(()=>{if(content.Window.window){if(content.Window.window.visibility===Window.Minimized)content.Window.window.showNormal();content.Window.window.requestActivate();}content.forceActiveFocus();});
+        Qt.callLater(()=>{if(content.Window.window){if(content.Window.window.visibility===Window.Minimized)content.Window.window.showNormal();content.Window.window.requestActivate();}if(root.controlId)root.revealControl(root.navigationGeneration);else content.forceActiveFocus();});
     }
     function back(delta) {
         const next=historyIndex+delta;if(next<0 || next>=history.length)return;
-        historyIndex=next;page=history[next];
+        historyIndex=next;page=history[next].page;controlId=history[next].control;revealedControl=null;
+        const generation=++navigationGeneration;Qt.callLater(()=>root.revealControl(generation));
     }
     function revealFocus(){
         if(!content.Window.window)return;
@@ -88,7 +123,8 @@ FloatingWindow {
     Connections {target:Theme;function onTextScaleChanged(){Qt.callLater(root.revealFocus);}}
     onWidthChanged:Qt.callLater(root.revealFocus)
     onHeightChanged:Qt.callLater(root.revealFocus)
-    onPageChanged:scroller.contentY=0
+    onPageChanged:{scroller.contentY=0;revealedControl=null;}
+    Connections {target:body;function onChildrenChanged(){const generation=root.navigationGeneration;Qt.callLater(()=>root.revealControl(generation));}}
     Rectangle {id:windowMask;width:root.width;height:root.height;radius:Theme.nativeWindowFrame?0:12;layer.enabled:!Theme.nativeWindowFrame && GraphicsInfo.api !== GraphicsInfo.Software;visible:false}
     Item {
         layer.enabled:!Theme.nativeWindowFrame && GraphicsInfo.api !== GraphicsInfo.Software
@@ -120,11 +156,14 @@ FloatingWindow {
         TextField {
             placeholderTextColor:Theme.colors.muted;selectionColor:Theme.colors.accent;selectedTextColor:Theme.colors.selectedText
 
-            id:search;x:14;y:56;width:root.sidebarWidth-28;height:Math.max(30,implicitHeight+8)
+            id:search;objectName:"settings-search";x:14;y:56;width:root.sidebarWidth-28;height:Math.max(30,implicitHeight+8)
             placeholderText:"Search";color:Theme.colors.text;font.family:Theme.font;font.pixelSize:Theme.textSize(13)
             selectByMouse:true;Accessible.name:"Search settings"
             background:Rectangle {radius:7;color:Theme.colors.background;border.color:search.activeFocus?Theme.colors.accent:Theme.hairline}
-            onAccepted:{const found=root.pages.filter(p=>(p.name+" "+p.terms).toLowerCase().includes(text.toLowerCase()));if(found.length)root.navigate(found[0].name);}
+            onTextChanged:root.searchIndex=0
+            onAccepted:root.acceptSearch(root.searchResults[root.searchIndex])
+            Keys.onDownPressed:root.searchIndex=Math.min(root.searchResults.length-1,root.searchIndex+1)
+            Keys.onUpPressed:root.searchIndex=Math.max(0,root.searchIndex-1)
         }
         ScrollView {
             id:sidebarScroll
@@ -133,21 +172,26 @@ FloatingWindow {
             Column {
                 width:root.sidebarWidth-24;spacing:2
                 Repeater {
-                    model:root.pages.filter(p=>(p.name+" "+p.terms).toLowerCase().includes(search.text.toLowerCase()))
+                    model:search.text.trim()?root.searchResults:root.pages
                     AbstractButton {
                         required property var modelData
+                        required property int index
+                        property var pressedResult:null
+                        property string pressedQuery:""
+                        onPressed:{pressedResult=modelData;pressedQuery=search.text;}
+                        onCanceled:pressedResult=null
                         width:parent.width;height:Math.max(34,Theme.sidebarIconSize+14,navigationLabel.implicitHeight+14)
-                        objectName:"settings-navigation-"+modelData.name
-                        Accessible.name:modelData.name
-                        onClicked:root.navigate(modelData.name)
-                        background:Rectangle {radius:7;color:root.page===parent.modelData.name?root.selectionFill:parent.hovered || parent.activeFocus?Theme.colors.hover:"transparent"}
+                        objectName:search.text.trim()?"settings-result-"+(modelData.control || modelData.page):"settings-navigation-"+modelData.name
+                        Accessible.name:modelData.label || modelData.name
+                        onClicked:{const captured=pressedResult || modelData;pressedResult=null;if(pressedQuery.trim())root.acceptSearch(captured,pressedQuery);else if(!search.text.trim())root.navigate(captured.name);}
+                        background:Rectangle {radius:7;color:(search.text.trim()?index===root.searchIndex:root.page===parent.modelData.name)?root.selectionFill:parent.hovered || parent.activeFocus?Theme.colors.hover:"transparent"}
                         contentItem:Item {
-                            Rectangle {x:7;anchors.verticalCenter:parent.verticalCenter;width:Theme.sidebarIconSize+2;height:width;radius:5;color:modelData.color;SystemGlyph {anchors.centerIn:parent;name:modelData.icon;width:Theme.sidebarIconSize-4;height:width;ink:"white"}}
-                            PanelLabel {id:navigationLabel;x:Theme.sidebarIconSize+17;anchors.verticalCenter:parent.verticalCenter;width:parent.width-x-5;text:modelData.name;wrapMode:Text.Wrap;elide:Text.ElideNone;color:root.page===modelData.name?root.selectionText:Theme.colors.text}
+                            Rectangle {x:7;anchors.verticalCenter:parent.verticalCenter;width:Theme.sidebarIconSize+2;height:width;radius:5;color:modelData.color || Theme.colors.accent;SystemGlyph {anchors.centerIn:parent;name:modelData.icon || "gear";width:Theme.sidebarIconSize-4;height:width;ink:"white"}}
+                            PanelLabel {id:navigationLabel;x:Theme.sidebarIconSize+17;anchors.verticalCenter:parent.verticalCenter;width:parent.width-x-5;text:modelData.label || modelData.name;wrapMode:Text.Wrap;elide:Text.ElideNone;color:(search.text.trim()?index===root.searchIndex:root.page===modelData.name)?root.selectionText:Theme.colors.text}
                         }
                     }
                 }
-                PanelLabel {visible:root.pages.filter(p=>(p.name+" "+p.terms).toLowerCase().includes(search.text.toLowerCase())).length===0;text:"No matching settings";width:parent.width;wrapMode:Text.WordWrap;color:Theme.colors.muted}
+                PanelLabel {visible:search.text.trim() && root.searchResults.length===0;text:"No matching settings";width:parent.width;wrapMode:Text.WordWrap;color:Theme.colors.muted}
             }
         }
         Row {
@@ -168,7 +212,16 @@ FloatingWindow {
         Flickable {
             id:scroller;objectName:"settings-content-scroll";x:root.sidebarWidth+24;y:Math.max(63,pageHeader.y+pageHeader.height+20);width:parent.width-x-24;height:parent.height-y-18
             clip:true;contentWidth:width;contentHeight:body.height;boundsBehavior:Flickable.StopAtBounds
+            onContentHeightChanged:Qt.callLater(root.revealFocus)
             ScrollBar.vertical:DesktopScrollBar {}
+            Rectangle {
+                visible:root.revealedControl!==null && root.controlId!==""
+                x:{if(!root.revealedControl)return 0;const dependency=root.revealedControl.x;return root.revealedControl.mapToItem(scroller.contentItem,0,0).x-3;}
+                y:{if(!root.revealedControl)return 0;const dependency=root.revealedControl.y;return root.revealedControl.mapToItem(scroller.contentItem,0,0).y-3;}
+                width:root.revealedControl?root.revealedControl.width+6:0
+                height:root.revealedControl?root.revealedControl.height+6:0
+                color:"transparent";border.color:Theme.colors.accent;border.width:2;radius:7;z:5
+            }
             Column {
                 id:body;width:scroller.width;spacing:16
                 PanelLabel {width:parent.width;wrapMode:Text.WordWrap;visible:root.service.busy;text:root.service.applying===true?"Applying your preferences…":"Loading your preferences…";font.pixelSize:Theme.textSize(11);color:Theme.colors.muted}
@@ -184,6 +237,7 @@ FloatingWindow {
                                 AbstractButton {
                                     required property string modelData
                                     width:(parent.width-24)/3;height:116;enabled:root.service.available && !root.service.busy
+                                    objectName:"settings-appearance-"+modelData
                                     Accessible.name:modelData==="auto"?"Automatic appearance":modelData+" appearance"
                                     onClicked:root.service.setPreference("mode",modelData)
                                     contentItem:Column {
@@ -205,7 +259,7 @@ FloatingWindow {
                         }
                     }
                     Rectangle {
-                        width:parent.width;height:accentChoices.y+accentChoices.height+14;radius:10;color:Theme.colors.surface;border.color:Theme.hairline
+                        objectName:"settings-accent-colour";activeFocusOnTab:true;width:parent.width;height:accentChoices.y+accentChoices.height+14;radius:10;color:Theme.colors.surface;border.color:Theme.hairline
                         PanelLabel {id:accentTitle;x:14;y:12;width:parent.width-28;wrapMode:Text.Wrap;text:"Accent colour"}
                         Flow {
                             id:accentChoices;x:14;y:accentTitle.y+accentTitle.height+12;width:parent.width-28;spacing:12
@@ -251,24 +305,24 @@ FloatingWindow {
                     ClockSettings {width:parent.width;service:root.service}
                     HotCornerSettings {width:parent.width}
                     PanelLabel {text:"Desktop files";font.weight:Font.DemiBold}
-                    SettingsToggle {width:parent.width;text:"Show files on the desktop";detail:"Display the configured Desktop folder on the primary display";checked:root.service.desktopPreferences.showFiles===true;enabled:root.service.available && !root.service.busy;onClicked:root.service.setDesktopPreference("showFiles",checked)}
-                    DesktopComboBox {width:parent.width;model:["Name","Modified","Size","Kind"];currentIndex:["name","modified","size","kind"].indexOf(root.service.desktopPreferences.fileSort || "name");enabled:root.service.available && !root.service.busy;Accessible.name:"Sort desktop files";onActivated:index=>root.service.setDesktopPreference("fileSort",["name","modified","size","kind"][index])}
-                    SettingsToggle {width:parent.width;text:"Descending desktop order";checked:root.service.desktopPreferences.fileDescending===true;enabled:root.service.available && !root.service.busy;onClicked:root.service.setDesktopPreference("fileDescending",checked)}
+                    SettingsToggle {objectName:"settings-control-show-files-on-the-desktop";width:parent.width;text:"Show files on the desktop";detail:"Display the configured Desktop folder on the primary display";checked:root.service.desktopPreferences.showFiles===true;enabled:root.service.available && !root.service.busy;onClicked:root.service.setDesktopPreference("showFiles",checked)}
+                    DesktopComboBox {objectName:"settings-control-sort-desktop-files";width:parent.width;model:["Name","Modified","Size","Kind"];currentIndex:["name","modified","size","kind"].indexOf(root.service.desktopPreferences.fileSort || "name");enabled:root.service.available && !root.service.busy;Accessible.name:"Sort desktop files";onActivated:index=>root.service.setDesktopPreference("fileSort",["name","modified","size","kind"][index])}
+                    SettingsToggle {objectName:"settings-control-descending-desktop-order";width:parent.width;text:"Descending desktop order";checked:root.service.desktopPreferences.fileDescending===true;enabled:root.service.available && !root.service.busy;onClicked:root.service.setDesktopPreference("fileDescending",checked)}
                     PanelLabel {text:"Windows";font.weight:Font.DemiBold}
-                    SettingsToggle {width:parent.width;text:"Leave margins around tiled windows";checked:root.service.windowsPreferences.tileMargins!==false;enabled:root.service.available && !root.service.busy;onClicked:root.service.setWindowPreference("tileMargins",checked)}
-                    SettingsToggle {width:parent.width;text:"Drag windows to screen edges to tile";checked:root.service.windowsPreferences.edgeTiling!==false;enabled:root.service.available && !root.service.busy;onClicked:root.service.setWindowPreference("edgeTiling",checked)}
-                    SettingsToggle {width:parent.width;text:"Hold Option while dragging to tile";checked:root.service.windowsPreferences.optionTiling!==false;enabled:root.service.available && !root.service.busy;onClicked:root.service.setWindowPreference("optionTiling",checked)}
-                    SettingsToggle {width:parent.width;text:"Drag windows to the menu bar to fill the screen";checked:root.service.windowsPreferences.topEdgeFill!==false;enabled:root.service.available && !root.service.busy;onClicked:root.service.setWindowPreference("topEdgeFill",checked)}
-                    SettingsToggle {width:parent.width;text:"Hold a window at the top edge to open Overview";checked:root.service.windowsPreferences.topEdgeOverview!==false;enabled:root.service.available && !root.service.busy;onClicked:root.service.setWindowPreference("topEdgeOverview",checked)}
+                    SettingsToggle {objectName:"settings-control-leave-margins-around-tiled-windows";width:parent.width;text:"Leave margins around tiled windows";checked:root.service.windowsPreferences.tileMargins!==false;enabled:root.service.available && !root.service.busy;onClicked:root.service.setWindowPreference("tileMargins",checked)}
+                    SettingsToggle {objectName:"settings-control-drag-windows-to-screen-edges-to-tile";width:parent.width;text:"Drag windows to screen edges to tile";checked:root.service.windowsPreferences.edgeTiling!==false;enabled:root.service.available && !root.service.busy;onClicked:root.service.setWindowPreference("edgeTiling",checked)}
+                    SettingsToggle {objectName:"settings-control-hold-option-while-dragging-to-tile";width:parent.width;text:"Hold Option while dragging to tile";checked:root.service.windowsPreferences.optionTiling!==false;enabled:root.service.available && !root.service.busy;onClicked:root.service.setWindowPreference("optionTiling",checked)}
+                    SettingsToggle {objectName:"settings-control-drag-windows-to-the-menu-bar-to-fill-the-screen";width:parent.width;text:"Drag windows to the menu bar to fill the screen";checked:root.service.windowsPreferences.topEdgeFill!==false;enabled:root.service.available && !root.service.busy;onClicked:root.service.setWindowPreference("topEdgeFill",checked)}
+                    SettingsToggle {objectName:"settings-control-hold-a-window-at-the-top-edge-to-open-overview";width:parent.width;text:"Hold a window at the top edge to open Overview";checked:root.service.windowsPreferences.topEdgeOverview!==false;enabled:root.service.available && !root.service.busy;onClicked:root.service.setWindowPreference("topEdgeOverview",checked)}
                     PanelLabel {text:"Tile gap: "+Math.round(tileGapSlider.value)}
-                    SystemSlider {id:tileGapSlider;width:parent.width;from:0;to:32;stepSize:1;value:root.service.windowsPreferences.tileGap ?? 8;enabled:root.service.available && !root.service.busy && root.service.windowsPreferences.tileMargins!==false;Accessible.name:"Tile gap";onMoved:if(!pressed)root.service.setWindowPreference("tileGap",Math.round(value));onPressedChanged:if(!pressed && Math.round(value)!==(root.service.windowsPreferences.tileGap ?? 8))root.service.setWindowPreference("tileGap",Math.round(value))}
+                    SystemSlider {objectName:"settings-control-tile-gap";id:tileGapSlider;width:parent.width;from:0;to:32;stepSize:1;value:root.service.windowsPreferences.tileGap ?? 8;enabled:root.service.available && !root.service.busy && root.service.windowsPreferences.tileMargins!==false;Accessible.name:"Tile gap";onMoved:if(!pressed)root.service.setWindowPreference("tileGap",Math.round(value));onPressedChanged:if(!pressed && Math.round(value)!==(root.service.windowsPreferences.tileGap ?? 8))root.service.setWindowPreference("tileGap",Math.round(value))}
                     PanelLabel {text:"Double-click a title bar to"}
-                    DesktopComboBox {width:parent.width;model:["Fill","Minimize","Do nothing"];currentIndex:["fill","minimize","none"].indexOf(root.service.windowsPreferences.titlebarDoubleClick || "fill");enabled:root.service.available && !root.service.busy;Accessible.name:"Title bar double-click action";onActivated:index=>root.service.setWindowPreference("titlebarDoubleClick",["fill","minimize","none"][index])}
+                    DesktopComboBox {objectName:"settings-control-title-bar-double-click-action";width:parent.width;model:["Fill","Zoom","Minimize","Do nothing"];currentIndex:["fill","zoom","minimize","none"].indexOf(root.service.windowsPreferences.titlebarDoubleClick || "fill");enabled:root.service.available && !root.service.busy;Accessible.name:"Title bar double-click action";onActivated:index=>root.service.setWindowPreference("titlebarDoubleClick",["fill","zoom","minimize","none"][index])}
                     PanelLabel {text:"Dock position"}
-                    DesktopComboBox {width:parent.width;model:["Bottom","Left","Right"];currentIndex:["bottom","left","right"].indexOf(root.service.preferences.dockPosition || "bottom");enabled:root.service.available && !root.service.busy;Accessible.name:"Dock position";onActivated:index=>root.service.setPreference("dockPosition",["bottom","left","right"][index])}
+                    DesktopComboBox {objectName:"settings-control-dock-position";width:parent.width;model:["Bottom","Left","Right"];currentIndex:["bottom","left","right"].indexOf(root.service.preferences.dockPosition || "bottom");enabled:root.service.available && !root.service.busy;Accessible.name:"Dock position";onActivated:index=>root.service.setPreference("dockPosition",["bottom","left","right"][index])}
                     PanelLabel {text:"Dock size"}
-                    DesktopComboBox {width:parent.width;model:["Small","Medium","Large"];currentIndex:(root.service.preferences.dockSize || 48)<40?0:(root.service.preferences.dockSize || 48)>60?2:1;enabled:root.service.available && !root.service.busy;Accessible.name:"Dock size";onActivated:index=>root.service.setPreference("dockSize",[32,48,72][index])}
-                    SettingsToggle {width:parent.width;text:"Automatically hide the Dock";checked:!!root.service.preferences.dockAutoHide;enabled:root.service.available && !root.service.busy;onClicked:root.service.setPreference("dockAutoHide",checked)}
+                    DesktopComboBox {objectName:"settings-control-dock-size";width:parent.width;model:["Small","Medium","Large"];currentIndex:(root.service.preferences.dockSize || 48)<40?0:(root.service.preferences.dockSize || 48)>60?2:1;enabled:root.service.available && !root.service.busy;Accessible.name:"Dock size";onActivated:index=>root.service.setPreference("dockSize",[32,48,72][index])}
+                    SettingsToggle {objectName:"settings-control-automatically-hide-the-dock";width:parent.width;text:"Automatically hide the Dock";checked:!!root.service.preferences.dockAutoHide;enabled:root.service.available && !root.service.busy;onClicked:root.service.setPreference("dockAutoHide",checked)}
                     PanelLabel {text:"Dock files";font.weight:Font.DemiBold}
                     Repeater {model:root.service.preferences.dockFiles || []
                         Row {required property string modelData;required property int index;width:parent.width;spacing:8
@@ -277,7 +331,7 @@ FloatingWindow {
                         }
                     }
                     Row {width:parent.width;spacing:8
-                        TextField {id:dockFilePath;width:parent.width-90;placeholderText:"/absolute/file/path";Accessible.name:"Add file to Dock";color:Theme.colors.text;background:Rectangle {radius:6;color:Theme.colors.field;border.color:dockFilePath.activeFocus?Theme.colors.accent:Theme.hairline}}
+                        TextField {objectName:"settings-control-add-file-to-dock";id:dockFilePath;width:parent.width-90;placeholderText:"/absolute/file/path";Accessible.name:"Add file to Dock";color:Theme.colors.text;background:Rectangle {radius:6;color:Theme.colors.field;border.color:dockFilePath.activeFocus?Theme.colors.accent:Theme.hairline}}
                         DialogButton {width:82;text:"Add File";enabled:root.service.available && !root.service.busy && dockFilePath.text.startsWith("/") && !(root.service.preferences.dockFiles || []).includes(dockFilePath.text);onClicked:{root.service.setPreference("dockFiles",(root.service.preferences.dockFiles || []).concat([dockFilePath.text]));dockFilePath.text="";}}
                     }
                     PanelLabel {text:"Dock folders";font.weight:Font.DemiBold}
@@ -292,16 +346,16 @@ FloatingWindow {
                         }
                     }
                     Row {width:parent.width;spacing:8
-                        TextField {id:dockFolderPath;width:parent.width-90;placeholderText:"/absolute/folder/path";Accessible.name:"Add folder to Dock";color:Theme.colors.text;background:Rectangle {radius:6;color:Theme.colors.field;border.color:dockFolderPath.activeFocus?Theme.colors.accent:Theme.hairline}}
+                        TextField {objectName:"settings-control-add-folder-to-dock";id:dockFolderPath;width:parent.width-90;placeholderText:"/absolute/folder/path";Accessible.name:"Add folder to Dock";color:Theme.colors.text;background:Rectangle {radius:6;color:Theme.colors.field;border.color:dockFolderPath.activeFocus?Theme.colors.accent:Theme.hairline}}
                         DialogButton {width:82;text:"Add Folder";enabled:root.service.available && !root.service.busy && dockFolderPath.text.startsWith("/") && !(root.service.preferences.dockFolders || []).some(f=>f.path===dockFolderPath.text);onClicked:{root.service.setPreference("dockFolders",(root.service.preferences.dockFolders || []).concat([{path:dockFolderPath.text,sort:"modified",descending:true,presentation:"auto"}]));dockFolderPath.text="";}}
                     }
                     PanelLabel {text:"Show scroll bars"}
-                    DesktopComboBox {width:parent.width;model:["Automatically","When scrolling","Always"];currentIndex:["auto","when_scrolling","always"].indexOf(root.service.preferences.scrollbars || "auto");enabled:root.service.available && !root.service.busy;Accessible.name:"Show scroll bars";onActivated:index=>root.service.setPreference("scrollbars",["auto","when_scrolling","always"][index])}
+                    DesktopComboBox {objectName:"settings-control-show-scroll-bars";width:parent.width;model:["Automatically","When scrolling","Always"];currentIndex:["auto","when_scrolling","always"].indexOf(root.service.preferences.scrollbars || "auto");enabled:root.service.available && !root.service.busy;Accessible.name:"Show scroll bars";onActivated:index=>root.service.setPreference("scrollbars",["auto","when_scrolling","always"][index])}
                     PanelLabel {text:"Sidebar icon size"}
-                    DesktopComboBox {width:parent.width;model:["Small","Medium","Large"];currentIndex:["small","medium","large"].indexOf(root.service.preferences.sidebarIconSize || "medium");enabled:root.service.available && !root.service.busy;Accessible.name:"Sidebar icon size";onActivated:index=>root.service.setPreference("sidebarIconSize",["small","medium","large"][index])}
-                    SettingsToggle {width:parent.width;text:"Show recent applications";detail:"Include recently used apps after pinned apps";checked:root.service.preferences.dockRecentApps!==false;enabled:root.service.available && !root.service.busy;onClicked:root.service.setPreference("dockRecentApps",checked)}
-                    SettingsToggle {width:parent.width;text:"Show indicators for open applications";checked:root.service.preferences.dockIndicators!==false;enabled:root.service.available && !root.service.busy;onClicked:root.service.setPreference("dockIndicators",checked)}
-                    SettingsToggle {width:parent.width;text:"Magnification";detail:"Enlarge Dock icons when you move the pointer over them";checked:!!root.service.preferences.dockMagnification;enabled:root.service.available && !root.service.busy;onClicked:root.service.setPreference("dockMagnification",checked)}
+                    DesktopComboBox {objectName:"settings-control-sidebar-icon-size";width:parent.width;model:["Small","Medium","Large"];currentIndex:["small","medium","large"].indexOf(root.service.preferences.sidebarIconSize || "medium");enabled:root.service.available && !root.service.busy;Accessible.name:"Sidebar icon size";onActivated:index=>root.service.setPreference("sidebarIconSize",["small","medium","large"][index])}
+                    SettingsToggle {objectName:"settings-control-show-recent-applications";width:parent.width;text:"Show recent applications";detail:"Include recently used apps after pinned apps";checked:root.service.preferences.dockRecentApps!==false;enabled:root.service.available && !root.service.busy;onClicked:root.service.setPreference("dockRecentApps",checked)}
+                    SettingsToggle {objectName:"settings-control-show-indicators-for-open-applications";width:parent.width;text:"Show indicators for open applications";checked:root.service.preferences.dockIndicators!==false;enabled:root.service.available && !root.service.busy;onClicked:root.service.setPreference("dockIndicators",checked)}
+                    SettingsToggle {objectName:"settings-control-magnification";width:parent.width;text:"Magnification";detail:"Enlarge Dock icons when you move the pointer over them";checked:!!root.service.preferences.dockMagnification;enabled:root.service.available && !root.service.busy;onClicked:root.service.setPreference("dockMagnification",checked)}
                 }
                 Column {
                     visible:root.page==="Accessibility";width:parent.width;spacing:12
@@ -309,8 +363,17 @@ FloatingWindow {
                     DesktopComboBox {objectName:"settings-text-size";width:parent.width;model:["Default (100%)","Larger (115%)","Large (130%)","Largest (150%)"];currentIndex:[1,1.15,1.3,1.5].indexOf(root.service.preferences.textScale || 1);Accessible.name:"Interface text size";enabled:root.service.available && !root.service.busy;onActivated:index=>root.service.setPreference("textScale",[1,1.15,1.3,1.5][index])}
                     PanelLabel {width:parent.width;wrapMode:Text.Wrap;text:"Enlarges shared desktop text and supported controls. Individual app interfaces and output scaling have separate settings.";color:Theme.colors.muted}
                     SettingsToggle {objectName:"settings-increase-contrast";width:parent.width;text:"Increase contrast";detail:"Stronger text and boundaries with opaque desktop materials";checked:!!root.service.preferences.increaseContrast;enabled:root.service.available && !root.service.busy;onClicked:root.service.setPreference("increaseContrast",checked)}
-                    SettingsToggle {width:parent.width;text:"Reduce transparency";detail:"Use opaque desktop sidebars and popovers";checked:!!root.service.preferences.reduceTransparency;enabled:root.service.available && !root.service.busy;onClicked:root.service.setPreference("reduceTransparency",checked)}
+                    SettingsToggle {objectName:"settings-control-reduce-transparency";width:parent.width;text:"Reduce transparency";detail:"Use opaque desktop sidebars and popovers";checked:!!root.service.preferences.reduceTransparency;enabled:root.service.available && !root.service.busy;onClicked:root.service.setPreference("reduceTransparency",checked)}
                     SettingsToggle {objectName:"settings-reduce-motion";width:parent.width;text:"Reduce motion";detail:"Reduce desktop interface animations";checked:!!root.service.preferences.reduceMotion;enabled:root.service.available && !root.service.busy;onClicked:root.service.setPreference("reduceMotion",checked)}
+                    Column {
+                        objectName:"settings-configured-shortcuts";activeFocusOnTab:true;Accessible.role:Accessible.Grouping;Accessible.name:"Configured Shortcuts";width:parent.width;spacing:6
+                        PanelLabel {text:"Configured Shortcuts";font.weight:Font.DemiBold}
+                        PanelLabel {width:parent.width;wrapMode:Text.Wrap;color:Theme.colors.muted;text:root.shell.shortcuts && root.shell.shortcuts.available?"Effective bindings supplied by system configuration. Rebuild the configuration to change them.":root.shell.shortcuts && root.shell.shortcuts.error?root.shell.shortcuts.error:"Configured shortcut information is unavailable."}
+                        Repeater {
+                            model:root.shell.shortcuts && root.shell.shortcuts.available?root.shell.shortcuts.bindings.filter(row=>row.enabled):[]
+                            PanelLabel {required property var modelData;width:parent.width;wrapMode:Text.Wrap;textFormat:Text.PlainText;text:modelData.action+" · "+modelData.chord+" · "+modelData.scope+(modelData.appId?" · "+modelData.appId:"")}
+                        }
+                    }
                 }
                 Column {
                     visible:root.page==="General";width:parent.width;spacing:14
@@ -328,7 +391,7 @@ FloatingWindow {
                 Column {
                     visible:root.page==="Sound";width:parent.width;spacing:12
                     SoundControl {width:parent.width;shell:root.shell}
-                    SettingsToggle {width:parent.width;text:"Mute";checked:root.shell.audioState.muted;enabled:root.shell.audioState.available;onClicked:root.shell.audioState.toggleMute()}
+                    SettingsToggle {objectName:"settings-control-mute";width:parent.width;text:"Mute";checked:root.shell.audioState.muted;enabled:root.shell.audioState.available;onClicked:root.shell.audioState.toggleMute()}
                     PanelLabel {text:"Output";font.weight:Font.DemiBold}
                     Repeater {
                         model:root.shell.audioState.outputs
@@ -342,7 +405,7 @@ FloatingWindow {
                     Loader {width:parent.width;active:root.shell.audioState.inputAvailable;sourceComponent:Component {AudioDeviceControl {node:root.shell.audioState.source}}}
                     PanelLabel {text:"Applications";font.weight:Font.DemiBold;visible:root.shell.audioState.streams.length>0}
                     Repeater {model:root.shell.audioState.streams;AudioDeviceControl {required property var modelData;node:modelData}}
-                    ControlRow {width:parent.width;text:"Advanced Sound Settings…";detail:"Input devices and per-application volume";onClicked:AppLaunch.run(["pavucontrol"])}
+                    ControlRow {objectName:"settings-control-advanced-sound-settings";width:parent.width;text:"Advanced Sound Settings…";detail:"Input devices and per-application volume";onClicked:AppLaunch.run(["pavucontrol"])}
                 }
                 Column {
                     visible:root.page==="Displays";width:parent.width;spacing:14
@@ -365,16 +428,16 @@ FloatingWindow {
                 Column {
                     visible:root.page==="Notifications";width:parent.width;spacing:12
                     PanelLabel {text:"Show notification previews"}
-                    DesktopComboBox {width:parent.width;model:["Always","When Unlocked","Never"];currentIndex:["always","when_unlocked","never"].indexOf(root.service.notificationsPreferences.preview);enabled:root.service.available && !root.service.busy;Accessible.name:"Show notification previews";onActivated:index=>root.service.setNotificationPreference("preview",["always","when_unlocked","never"][index])}
+                    DesktopComboBox {objectName:"settings-control-show-notification-previews";width:parent.width;model:["Always","When Unlocked","Never"];currentIndex:["always","when_unlocked","never"].indexOf(root.service.notificationsPreferences.preview);enabled:root.service.available && !root.service.busy;Accessible.name:"Show notification previews";onActivated:index=>root.service.setNotificationPreference("preview",["always","when_unlocked","never"][index])}
                     PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:"Never hides message content and actions while keeping the source application and time visible. Previews while locked also require system permission.";font.pixelSize:Theme.textSize(11);color:Theme.colors.muted}
-                    SettingsToggle {width:parent.width;text:"Do Not Disturb";detail:"Silence banners while keeping notifications in Notification Centre";checked:root.shell.notifications.dnd;enabled:root.shell.notifications.available;onClicked:root.shell.notifications.command({action:"dnd",enabled:checked})}
+                    SettingsToggle {objectName:"settings-control-do-not-disturb";width:parent.width;text:"Do Not Disturb";detail:"Silence banners while keeping notifications in Notification Centre";checked:root.shell.notifications.dnd;enabled:root.shell.notifications.available;onClicked:root.shell.notifications.command({action:"dnd",enabled:checked})}
                     Repeater {model:root.shell.notifications.applications
                         Column {required property var modelData;width:parent.width;spacing:5
                             PanelLabel {width:parent.width;text:modelData.name;textFormat:Text.PlainText;font.weight:Font.DemiBold}
                             DesktopComboBox {width:parent.width;model:["Banners and history","History only","Off"];currentIndex:["banners","silent","off"].indexOf(root.shell.notifications.policies[parent.modelData.key] || "banners");Accessible.name:parent.modelData.name+" notification policy";onActivated:index=>root.shell.notifications.command({action:"policy",app:parent.modelData.key,policy:["banners","silent","off"][index]})}
                         }
                     }
-                    ControlRow {width:parent.width;text:"Open Notification Centre";detail:root.shell.notifications.history.length+" saved notifications";onClicked:{root.visible=false;root.shell.showMenu("Date");}}
+                    ControlRow {objectName:"settings-control-open-notification-centre";width:parent.width;text:"Open Notification Centre";detail:root.shell.notifications.history.length+" saved notifications";onClicked:{root.visible=false;root.shell.showMenu("Date");}}
                     PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:root.shell.notifications.available?"Notifications are available.":"Connecting to notifications…";color:Theme.colors.muted}
                     PanelLabel {visible:root.shell.notifications.error!=="";width:parent.width;wrapMode:Text.WordWrap;text:root.shell.notifications.error;color:Theme.colors.muted}
                 }
@@ -388,8 +451,8 @@ FloatingWindow {
                     visible:root.page==="Search";width:parent.width;spacing:12
                     PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:"Search applications, personal folders and ~/data.";font.pixelSize:Theme.textSize(14)}
                     PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:"Desktop, Documents, Downloads, Pictures, Music, Videos and data. Filters: kind:folder, kind:file, ext:pdf, in:Documents, since:2026-01-01, before:2027-01-01. Dates filter the last modification time.";color:Theme.colors.muted}
-                    SettingsToggle {width:parent.width;text:"Save recent search queries";detail:"Keep up to 20 queries on this device. Queries can contain sensitive text. Clipboard searches are excluded.";checked:root.service.searchPreferences.queryHistory===true;enabled:root.service.available && !root.service.busy;onClicked:root.service.setSearchPreference("queryHistory",checked)}
-                    ControlRow {width:parent.width;text:"Clear Search History";enabled:!settingsHistory.busy;onClicked:settingsHistory.clear()}
+                    SettingsToggle {objectName:"settings-control-save-recent-search-queries";width:parent.width;text:"Save recent search queries";detail:"Keep up to 20 queries on this device. Queries can contain sensitive text. Clipboard searches are excluded.";checked:root.service.searchPreferences.queryHistory===true;enabled:root.service.available && !root.service.busy;onClicked:root.service.setSearchPreference("queryHistory",checked)}
+                    ControlRow {objectName:"settings-control-clear-search-history";width:parent.width;text:"Clear Search History";enabled:!settingsHistory.busy;onClicked:settingsHistory.clear()}
                     PanelLabel {visible:!!settingsHistory.error;width:parent.width;wrapMode:Text.WordWrap;text:settingsHistory.error;color:Theme.colors.muted}
                     PanelLabel {text:"Include in Search";font.weight:Font.DemiBold}
                     Repeater {model:[{id:"applications",label:"Applications"},{id:"files",label:"Files and folders"},{id:"actions",label:"Desktop and application actions"},{id:"clipboard",label:"Clipboard history"}]
@@ -399,12 +462,12 @@ FloatingWindow {
                             onClicked:{let disabled=(root.service.searchPreferences.disabledProviders || []).filter(id=>id!==modelData.id);if(!checked)disabled.push(modelData.id);root.service.setSearchPreference("disabledProviders",disabled);}
                         }
                     }
-                    ControlRow {width:parent.width;text:"Disable Clipboard History";detail:settingsClipboard.enabled?"Stop collection and remove saved entries":"History collection is disabled";enabled:settingsClipboard.enabled && !settingsClipboard.busy;onClicked:settingsClipboard.disable()}
-                    ControlRow {width:parent.width;text:"Clear Clipboard History";enabled:settingsClipboard.enabled && !settingsClipboard.busy;onClicked:settingsClipboard.clear()}
+                    ControlRow {objectName:"settings-control-disable-clipboard-history";width:parent.width;text:"Disable Clipboard History";detail:settingsClipboard.enabled?"Stop collection and remove saved entries":"History collection is disabled";enabled:settingsClipboard.enabled && !settingsClipboard.busy;onClicked:settingsClipboard.disable()}
+                    ControlRow {objectName:"settings-control-clear-clipboard-history";width:parent.width;text:"Clear Clipboard History";enabled:settingsClipboard.enabled && !settingsClipboard.busy;onClicked:settingsClipboard.clear()}
                     PanelLabel {visible:!!settingsClipboard.error;width:parent.width;wrapMode:Text.WordWrap;text:settingsClipboard.error;color:Theme.colors.muted}
                     PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:"Disabled providers are excluded from results. Disabling Clipboard here does not revoke collection consent; use Disable Clipboard History above to stop collection. Query history is saved only when enabled above.";color:Theme.colors.muted;font.pixelSize:Theme.textSize(11)}
-                    ControlRow {width:parent.width;text:"Open Search";detail:"Super+P";onClicked:{root.visible=false;root.shell.launchApps();}}
-                    ControlRow {width:parent.width;text:"Refresh file index";enabled:root.shell.search.available && !root.shell.search.scanning;onClicked:root.shell.search.refresh()}
+                    ControlRow {objectName:"settings-control-open-search";width:parent.width;text:"Open Search";detail:"Super+P";onClicked:{root.visible=false;root.shell.launchApps();}}
+                    ControlRow {objectName:"settings-control-refresh-file-index";width:parent.width;text:"Refresh file index";enabled:root.shell.search.available && !root.shell.search.scanning;onClicked:root.shell.search.refresh()}
                     PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:!root.shell.search.available?"The index starts when Search opens.":root.shell.search.scanning?"Updating the index…":root.shell.search.indexed+" files and folders indexed";color:Theme.colors.muted}
                 }
             }

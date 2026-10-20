@@ -1,0 +1,11 @@
+# Settings navigation
+
+Search returns authored control labels and categories. Exact visible labels rank before partial matches; words may appear in any order. Up/Down choose a result and Enter opens it. A pointer press captures the result and query, so replacing the query before release cannot activate a different control.
+
+Control records declare an identifier, owning page, visible label and authored visual anchor in `SettingsSearch.js`. Navigation validates the page/control pair, reveals and focuses the actual control without changing its value, and outlines the selection. Disabled controls remain disabled. Back/Forward retain the page and control together. Closing and reopening the same settings window retains this navigation context; it is not a promise of persistent search text or history after shell replacement.
+
+The catalogue covers 49 authored controls, including appearance choices, window and Dock preferences, accessibility, notification/search controls and existing saver/wallpaper/input/menu anchors. Provider-generated devices, accounts, application policies and per-device capabilities remain within their page. They do not receive fabricated static identities or availability claims. An unavailable provider cannot be made available by searching for its page.
+
+Configured Shortcuts is read-only and shows the effective validated model supplied by system configuration. It lists action, chord and scope, including application scope when present. No shortcut editing or command execution is introduced here.
+
+The offscreen production-window test proves signal routing, exact control focus/reveal after layout, history/reopen and stale-query refusal. `settings_search_input.py` independently drives the installed production window with actual private Wayland keyboard/pointer input, using a fixed synthetic preference service. Its optional effects mode requires genuine software GLES/udmabuf assertions; neither variant touches host preferences or live input.
