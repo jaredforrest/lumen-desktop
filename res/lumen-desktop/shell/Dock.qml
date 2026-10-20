@@ -33,7 +33,7 @@ PanelWindow {
     property real pressY:0
     property var pressIntent:null
     function cancelDrag(){pressedKey="";pressIntent=null;dragging=false;dragCompleted=true;}
-    function removableDrag(){const item=dragIntentValid()?pressIntent.item:null;return item && (["file","folder"].includes(item.action) || (item.entry && shell.canConfigureDockEntry(item.entry) && shell.isDockPinned(item.entry)));}
+    function removableDrag(){const item=dragIntentValid()?pressIntent.item:null;return item && (["file","folder"].includes(item.action) || (item.action!=="minimized-window" && item.entry && shell.canConfigureDockEntry(item.entry) && shell.isDockPinned(item.entry)));}
     function dragIntentValid(){return pressIntent && pressIntent.items===shell.referenceDock && !shell.dockPreferencesBusy && shell.referenceDock.includes(pressIntent.item);}
     Connections {target:shell;function onDockPreferencesBusyChanged(){if(shell.dockPreferencesBusy && dock.pressIntent)dock.cancelDrag();}function onReferenceDockChanged(){if(dock.pressIntent && !dock.dragIntentValid())dock.cancelDrag();}}
     property bool dragging:false
@@ -75,6 +75,7 @@ PanelWindow {
     function contextSelected(row){return !!contextSelection && (row.action==="window"?contextSelection.row.action==="window" && row.win===contextSelection.row.win:row.action===contextSelection.row.action);}
     function selectContext(index){contextIndex=index;const row=contextItems.model[index];contextSelection=row?captureContext(row):null;}
     function openContext(item,index){
+        if(item.action==="minimized-window")return;
         contextGeneration++;contextIndex=-1;contextSelection=null;
         contextWindowSnapshot=item.entry?shell.windowsFor(item.entry).slice():[];contextInstanceSnapshot=item.entry && typeof shell.applicationInstanceKey==="function"?shell.applicationInstanceKey(item.entry):"";
         dock.keyboardMode=false;contextEntry=item.entry || null;contextAlias=item.entry?null:item;
@@ -203,9 +204,12 @@ PanelWindow {
 
                     Behavior on width { NumberAnimation { duration:Theme.preferences.reduceMotion?0:150; easing.type:Easing.OutCubic } }
                 }
-                Rectangle { anchors.horizontalCenter:parent.horizontalCenter; y:dock.shelfThickness-8; width:4; height:4; radius:2; color:Theme.colors.text; visible:Theme.preferences.dockIndicators!==false && (tile.appWindows.length>0 || (!!tile.modelData.entry && dock.applicationRunning(tile.modelData.entry))) }
+                Rectangle {visible:tile.modelData.action==="minimized-window";x:icon.x+icon.width-18;y:icon.y+icon.height-16;width:18;height:14;radius:3;color:Theme.colors.background;border.color:Theme.colors.text;border.width:1;Accessible.ignored:true
+                    Rectangle {x:2;y:3;width:14;height:1;color:Theme.colors.text}
+                }
+                Rectangle { anchors.horizontalCenter:parent.horizontalCenter; y:dock.shelfThickness-8; width:4; height:4; radius:2; color:Theme.colors.text; visible:tile.modelData.action!=="minimized-window" && Theme.preferences.dockIndicators!==false && (tile.appWindows.length>0 || (!!tile.modelData.entry && dock.applicationRunning(tile.modelData.entry))) }
                 DropArea {anchors.fill:parent;keys:["text/uri-list"]
-                    enabled:!!tile.modelData.entry && !dock.dragging
+                    enabled:tile.modelData.action!=="minimized-window" && !!tile.modelData.entry && !dock.dragging
                     onEntered:drag=>{if(!drag.hasUrls || !(drag.supportedActions & Qt.CopyAction))drag.accepted=false;}
                     onDropped:drop=>{if(drop.hasUrls && tile.modelData.entry){dock.dropFiles(tile.modelData.entry,drop.urls);drop.accept(Qt.CopyAction);}}
                 }
@@ -231,7 +235,7 @@ PanelWindow {
             dock.trackPointer(mouse.x, mouse.y);
             if((mouse.buttons & Qt.LeftButton) && dock.pressedKey && Math.hypot(mouse.x-dock.pressX,mouse.y-dock.pressY)>12 && !shell.dockPreferencesBusy){
                 const item=dock.dragIntentValid()?dock.pressIntent.item:null;
-                if(item && ((item.entry && shell.canConfigureDockEntry(item.entry)) || ["file","folder"].includes(item.action)) && !["files","applications","downloads","trash"].includes(item.key)){dock.dragging=true;keyboard.forceActiveFocus();}
+                if(item && ((item.action!=="minimized-window" && item.entry && shell.canConfigureDockEntry(item.entry)) || ["file","folder"].includes(item.action)) && !["files","applications","downloads","trash"].includes(item.key)){dock.dragging=true;keyboard.forceActiveFocus();}
             }
         }
         onExited:{dock.clearPointer();hideTimer.restart();}
@@ -247,8 +251,8 @@ PanelWindow {
                 const target=shell.referenceDock[dock.hovered];
                 if(source && !containsMouse){
                     if(["file","folder"].includes(source.action))shell.removeDockAlias(source);
-                    else if(source.entry && shell.canConfigureDockEntry(source.entry) && shell.isDockPinned(source.entry))shell.updateDockPin(source.entry,"remove");
-                }else if(containsMouse && source && target && source.entry && target.entry && shell.isDockPinned(target.entry))shell.reorderDockPin(source.entry,target.entry);
+                    else if(source.action!=="minimized-window" && source.entry && shell.canConfigureDockEntry(source.entry) && shell.isDockPinned(source.entry))shell.updateDockPin(source.entry,"remove");
+                }else if(containsMouse && source && target && source.action!=="minimized-window" && target.action!=="minimized-window" && source.entry && target.entry && shell.isDockPinned(target.entry))shell.reorderDockPin(source.entry,target.entry);
                 dock.cancelDrag();
             }
             if(!containsMouse){dock.pressIntent=null;dock.pressedKey="";dock.clearPointer();}
@@ -261,6 +265,7 @@ PanelWindow {
             const item = DockInteraction.releaseTarget(shell.referenceDock,dock.pressedKey,index);
             dock.pressedKey="";dock.pressIntent=null;
             if (!item) return;
+            if(item.action==="minimized-window" && (mouse.button===Qt.RightButton || (mouse.modifiers & Qt.ControlModifier)))return;
             if ((mouse.button === Qt.RightButton || (mouse.modifiers & Qt.ControlModifier)) && (item.entry || ["file","folder"].includes(item.action))) {
                 dock.openContext(item,index);
             } else shell.activateDock(item, !!(mouse.modifiers & Qt.ShiftModifier), dock.outputName, mouse.modifiers);

@@ -1,0 +1,9 @@
+# Minimized-window destination
+
+`appearance.dockMinimizeDestination` accepts `application` (default) or `windows`. Application mode keeps minimized windows in the existing application's window menu. Windows mode additionally puts separate labeled window entries before the Dock's document stacks. The application icon remains present; each window entry uses its application icon with a window badge, not a captured thumbnail.
+
+`MinimizedWindowState` retains a live foreign-toplevel protocol object and a session-local record for each entry. Neither title nor application name is an action selector. An entry activates only while its same record and object remain live and minimized and the destination is enabled. Activation uses that object's protocol request directly. It cannot launch an app, fall back to title matching, or retry against a replacement. A restored or destroyed window removes its entry. Switching the preference does not change native minimized state.
+
+Separate entries cannot be pinned, reordered as applications, receive file drops, or use the application's context actions. Application window-menu behavior remains available on the application icon. Current entries support the Dock's pointer, keyboard and accessibility activation routes. Their ephemeral identities are never persisted in configuration.
+
+The acceptance fixture uses two same-title disposable clients on different synthetic outputs. It checks native minimized state, exact native container identity, visibility and restored geometry after actual keyboard/pointer activation; stale held input and destination changes must not activate replacements. This is not a thumbnail or physical multi-monitor/reference comparison claim.

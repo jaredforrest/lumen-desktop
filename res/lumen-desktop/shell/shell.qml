@@ -173,12 +173,13 @@ ShellRoot {
         for(const app of runningApplications){const e=entryFor({appId:app.appId,title:""});if(e && !result.some(x=>x.id===e.id))result.push(e);}
         return result;
     }
-    property var dockApps: referenceDock.filter(item=>item.entry).map(item=>item.entry)
+    MinimizedWindowState {id:minimizedWindows;enabled:Theme.preferences.dockMinimizeDestination==="windows";windows:root.windows;entryForWindow:window=>root.entryFor(window)}
+    property var dockApps: referenceDock.filter(item=>item.action!=="minimized-window" && item.entry).map(item=>item.entry)
     property var recentAppIds:[]
     readonly property var recentApps:recentAppIds.map(id=>entries.find(entry=>DockModel.sameEntry(id,entry.id))).filter(Boolean)
     readonly property bool dockPreferencesBusy:settingsState.busy
     readonly property var configuredDockPins:DockModel.configuredPins(ReferenceDock.items,entries,Theme.preferences.dockPins)
-    property var referenceDock: DockModel.build(ReferenceDock.items, entries, runningExtras, Theme.preferences.dockPins, recentApps, Theme.preferences.dockRecentApps!==false,Theme.preferences.dockFolders,Theme.preferences.dockFiles)
+    property var referenceDock: DockModel.build(ReferenceDock.items, entries, runningExtras, Theme.preferences.dockPins, recentApps, Theme.preferences.dockRecentApps!==false,Theme.preferences.dockFolders,Theme.preferences.dockFiles,Theme.preferences.dockMinimizeDestination==="windows"?minimizedWindows.items:[])
     function canConfigureDockEntry(entry){return !DockModel.sameEntry(entry.id,"lumen-files");}
     function isDockPinned(entry){return configuredDockPins.some(id=>DockModel.sameEntry(id,entry.id));}
     function updateDockPin(entry,action){if(!dockPreferencesBusy)settingsState.setPreference("dockPins",DockModel.updatePins(configuredDockPins,entry.id,action));}
@@ -200,10 +201,11 @@ ShellRoot {
         stdout:StdioCollector {onStreamFinished:{try{const result=JSON.parse(text);fileAliasWorker.received=true;root.aliasError=result.error || "";}catch(error){root.aliasError="The file alias could not be opened";}aliasErrorTimer.restart();}}
         onExited:(code,status)=>{if(!received){root.aliasError="The file alias service is unavailable";aliasErrorTimer.restart();}}
     }
-    function dockWindows(item) { if(item.action==="calendar")return windows.filter(w=>w.appId==="org.quickshell" && w.title==="Calendar");if(item.action==="files")return windows.filter(w=>w.appId==="org.quickshell" && w.title.startsWith("Files"));if(item.action==="settings")return windows.filter(w=>w.appId==="org.quickshell" && w.title==="System Settings");return item.entry ? windowsFor(item.entry) : []; }
-    function dockLabel(item) { return item.entry ? appLabel(item.entry) : item.name; }
+    function dockWindows(item) { if(item.action==="minimized-window")return minimizedWindows.valid(item)?[item.window]:[];if(item.action==="calendar")return windows.filter(w=>w.appId==="org.quickshell" && w.title==="Calendar");if(item.action==="files")return windows.filter(w=>w.appId==="org.quickshell" && w.title.startsWith("Files"));if(item.action==="settings")return windows.filter(w=>w.appId==="org.quickshell" && w.title==="System Settings");return item.entry ? windowsFor(item.entry) : []; }
+    function dockLabel(item) { if(item.action==="minimized-window")return item.name;return item.entry ? appLabel(item.entry) : item.name; }
     function activateDock(item, newWindow, outputName, modifiers) {
         if (!item) return;
+        if(item.action==="minimized-window"){if(!minimizedWindows.activate(item)){applicationCommandError="That minimized window is no longer available.";applicationCommandTimer.restart();}return;}
         if (item.entry && modifiers && (modifiers & Qt.AltModifier) && !(modifiers & Qt.GroupSwitchModifier)) {
             const matches=windowsFor(item.entry);
             const hideOthers=!!(modifiers & Qt.MetaModifier);

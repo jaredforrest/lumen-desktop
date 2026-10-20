@@ -63,6 +63,15 @@ class NixSettingsTest(unittest.TestCase):
         self.source.write_text(settings.serialize({'menuBar':{'visibility':'desktop','fullscreenVisibility':'automatic'}}))
         with self.assertRaises(ValueError):settings.transaction()
 
+    def test_minimized_destination_schema_transaction(self):
+        self.assertEqual(settings.transaction()['appearance']['dockMinimizeDestination'],'application')
+        self.assertEqual(settings.transaction('appearance',{'dockMinimizeDestination':'windows'},merge=True)['appearance']['dockMinimizeDestination'],'windows')
+        saved=self.source.read_bytes()
+        for value in (True,None,'separate',[],{}):
+            with self.assertRaises(ValueError):settings.transaction('appearance',{'dockMinimizeDestination':value},merge=True)
+            self.assertEqual(self.source.read_bytes(),saved)
+        self.assertEqual(settings.transaction('appearance',{'accent':'green'},merge=True)['appearance']['dockMinimizeDestination'],'windows')
+
     def test_text_scale_is_typed_and_persistent(self):
         values=settings.transaction('appearance',{'textScale':1.5},merge=True)
         self.assertEqual(values['appearance']['textScale'],1.5)

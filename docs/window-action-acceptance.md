@@ -10,4 +10,4 @@ Window behavior is covered by several independent fixture scopes, rather than on
 
 Unavailable entry commands fail explicitly. Fullscreen exit and placement restore remain available to release an existing state even when entry capability has changed. Close remains cooperative with the application; constraints do not imply that every action is unavailable.
 
-The existing application-menu destination is covered. A configurable separate minimized-window destination is a distinct product capability; these tests do not claim it exists. Inactive-control reference comparison and third-party main-document adapters are separate scopes.
+The existing application-menu destination is covered. The separate minimized-window destination has its own `minimized_dock_native.py` acceptance; this control fixture does not claim that scope. Inactive-control reference comparison and third-party main-document adapters are separate scopes.

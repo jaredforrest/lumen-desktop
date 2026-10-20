@@ -27,6 +27,11 @@ class AppearancePreferences(unittest.TestCase):
     def test_text_scale_is_closed_and_rejects_booleans(self):
         for value in (1,1.15,1.3,1.5):self.assertTrue(module.valid('textScale',value))
         for value in (True,False,0,2,'1.5',1.25,None):self.assertFalse(module.valid('textScale',value))
+    def test_minimized_destination_is_typed_and_default_preserving(self):
+        self.assertEqual(module.DEFAULTS['dockMinimizeDestination'],'application')
+        for value in ('application','windows'):self.assertTrue(module.valid('dockMinimizeDestination',value))
+        for value in (True,None,'window','',[],{}):self.assertFalse(module.valid('dockMinimizeDestination',value))
+
     def test_closed_preferences(self):
         for key,value in module.DEFAULTS.items():self.assertTrue(module.valid(key,value),(key,value))
         for key,value in [('increaseContrast',1),('scrollbars','never'),('sidebarIconSize','huge'),('dockPins',['a','a']),('dockPins',['../a']),('dockPins',[False]),('dockPins','a'),('dockPins',['x'*257])]:

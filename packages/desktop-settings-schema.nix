@@ -40,6 +40,7 @@ let
             iconAppearance = mkOption { type = types.enum [ "default" "auto" "dark" ]; default = "auto"; };
             switchToAppSpace = mkOption { type = types.bool; default = true; };
             dockPosition = mkOption { type = types.enum [ "bottom" "left" "right" ]; default = "bottom"; };
+            dockMinimizeDestination = mkOption { type = types.enum [ "application" "windows" ]; default = "application"; };
             dockAutoHide = mkOption { type = types.bool; default = false; };
             dockSize = mkOption { type = types.ints.between 32 72; default = 48; };
             dockFiles = mkOption { type = types.addCheck (types.listOf (types.addCheck (types.strMatching "/[^[:cntrl:]]*") (path: lib.stringLength path <= 4096))) (paths: lib.length paths == lib.length (lib.unique paths)); default = []; };

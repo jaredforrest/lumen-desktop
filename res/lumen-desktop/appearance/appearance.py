@@ -24,7 +24,7 @@ def write(path,text):
 def run(*args):
     return subprocess.run(args,check=False,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode
 
-DEFAULTS={'textScale':1,'mode':'auto','accent':'blue','iconAppearance':'auto','switchToAppSpace':True,'dockMagnification':True,'reduceMotion':False,'reduceTransparency':False,'scrollbars':'auto','increaseContrast':False,'sidebarIconSize':'medium','dockPins':None,'dockRecentApps':True,'dockIndicators':True,'dockFolders':[],'dockPosition':'bottom','dockAutoHide':False,'dockSize':48,'dockFiles':[]}
+DEFAULTS={'textScale':1,'mode':'auto','accent':'blue','iconAppearance':'auto','switchToAppSpace':True,'dockMagnification':True,'reduceMotion':False,'reduceTransparency':False,'scrollbars':'auto','increaseContrast':False,'sidebarIconSize':'medium','dockPins':None,'dockRecentApps':True,'dockIndicators':True,'dockFolders':[],'dockPosition':'bottom','dockAutoHide':False,'dockMinimizeDestination':'application','dockSize':48,'dockFiles':[]}
 ACCENTS={'blue':('#007aff','#0a84ff'),'purple':('#a855c7','#bf5af2'),'pink':('#d94382','#ff6482'),'red':('#df3038','#ff453a'),'orange':('#b65c00','#ff9f0a'),'yellow':('#947500','#ffd60a'),'green':('#248a3d','#30d158'),'graphite':('#707078','#98989f')}
 
 def valid(key,value):
@@ -40,6 +40,7 @@ def valid(key,value):
             if folder.get('sort','modified') not in ('name','modified','size','type') or type(folder.get('descending',True)) is not bool or folder.get('presentation','auto') not in ('list','grid','auto'):return False
             paths.append(path)
         return len(paths)==len(set(paths))
+    if key=='dockMinimizeDestination':return value in ('application','windows')
     if key=='dockPosition':return value in ('bottom','left','right')
     if key=='dockSize':return type(value) is int and 32<=value<=72
     if key=='dockPins':
