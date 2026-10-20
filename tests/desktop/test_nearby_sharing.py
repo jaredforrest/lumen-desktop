@@ -114,6 +114,24 @@ class Provider(unittest.TestCase):
             with self.subTest(path=path), self.assertRaises(ValueError):
                 nearby.configured({'LUMEN_NEARBY_SHARING_PROVIDER': path})
 
+    def test_mutable_alias_cannot_redirect_validated_provider(self):
+        interpreter = Path(sys.executable).resolve()
+        self.assertTrue(str(interpreter).startswith('/nix/store/'))
+        with tempfile.TemporaryDirectory() as directory:
+            alias = Path(directory) / 'configured-provider'
+            alias.symlink_to(interpreter)
+            selected = nearby.configured({'LUMEN_NEARBY_SHARING_PROVIDER': str(alias)})
+            replacement = Path(directory) / 'replacement'
+            replacement.write_text('#!' + sys.executable + '\nprint("mutable replacement")\n')
+            replacement.chmod(0o700)
+            alias.unlink()
+            alias.symlink_to(replacement)
+            self.assertEqual(selected, interpreter)
+            output = nearby.subprocess.check_output([str(selected), '-c', 'print("immutable identity")'], text=True)
+            self.assertEqual(output, 'immutable identity\n')
+            with self.assertRaises(ValueError):
+                nearby.configured({'LUMEN_NEARBY_SHARING_PROVIDER': str(alias)})
+
     def test_send_preserves_literal_argument_boundaries(self):
         paths = ['/tmp/a file', '/tmp/$(not-a-command)', '/tmp/é']
         with patch.object(nearby.sys, 'argv', ['helper', 'send', *paths]), patch.object(nearby, 'configured', return_value=Path('/nix/store/provider')), patch.object(nearby, 'status', return_value=dict(canSend=True)), patch.object(nearby.os, 'execv', side_effect=SystemExit) as execute:

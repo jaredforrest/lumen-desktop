@@ -91,9 +91,13 @@ def configured(environment):
     if not value:
         return None
     path = Path(value)
-    if not path.is_absolute() or not str(path.resolve()).startswith('/nix/store/') or not path.is_file() or not os.access(path, os.X_OK):
+    if not path.is_absolute():
         raise ValueError('Immutable configured provider required')
-    return path
+    resolved = path.resolve()
+    if not str(resolved).startswith('/nix/store/') or not resolved.is_file() or not os.access(resolved, os.X_OK):
+        raise ValueError('Immutable configured provider required')
+    # Execute the immutable identity we validated, never a mutable alias.
+    return resolved
 
 
 def main():
