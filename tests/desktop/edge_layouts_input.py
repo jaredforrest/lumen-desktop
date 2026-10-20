@@ -1,9 +1,31 @@
 """Physical drag previews and placement on a private two-output compositor."""
 from fixture_resources import close_reaped_pipes
-import argparse,json,os,select,signal,socket,struct,subprocess as sp,tempfile,time
+import argparse,json,os,select,signal,socket,struct,subprocess as sp,tempfile,time,shutil,sys
+from application_fixture.isolation import run as isolated_run
+from application_fixture.provenance import FrozenSource,generated
 from pathlib import Path
 from private_native_bus import start_private_bus
-p=argparse.ArgumentParser();p.add_argument('--sway',required=True);p.add_argument('--pointer',required=True);p.add_argument('--keyboard',required=True);p.add_argument('--lock',required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--effects',action='store_true');p.add_argument('--quickshell');p.add_argument('--constraint-client');p.add_argument('--constraints-only',action='store_true');a=p.parse_args();a.output.mkdir(parents=True,exist_ok=False);processes=[];events=[]
+p=argparse.ArgumentParser();p.add_argument('--sway',required=True);p.add_argument('--pointer',required=True);p.add_argument('--keyboard',required=True);p.add_argument('--lock',required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--effects',action='store_true');p.add_argument('--quickshell');p.add_argument('--constraint-client');p.add_argument('--constraints-only',action='store_true');p.add_argument('--inside',action='store_true');p.add_argument('--font-config',type=Path,required=True);p.add_argument('--software-driver',type=Path);a=p.parse_args();repo=Path(__file__).resolve().parents[2]
+if not a.inside:
+ a.output=a.output.resolve();a.output.mkdir(mode=0o700,parents=True,exist_ok=False);dependencies=[Path(sys.executable).resolve(),a.font_config.resolve()]
+ for name in ('sway','pointer','keyboard','lock','quickshell','constraint_client'):
+  value=getattr(a,name)
+  if value:
+   path=Path(shutil.which(value) or value).resolve();assert str(path).startswith('/nix/store/') and path.is_file(),(name,path);setattr(a,name,str(path));dependencies.append(path)
+ tools={name:str(Path(shutil.which(name)).resolve()) for name in ('foot','grim','swaymsg','sleep','dbus-daemon')};dependencies.extend(Path(value) for value in tools.values());assert all(str(path).startswith('/nix/store/') and path.is_file() for path in dependencies)
+ if a.effects:assert a.software_driver and str(a.software_driver.resolve()).startswith('/nix/store/') and (a.software_driver/'share/glvnd/egl_vendor.d/50_mesa.json').is_file()
+ frozen=FrozenSource(repo,__file__,dependencies);command=[str(Path(sys.executable).resolve()),'/source/tests/desktop/edge_layouts_input.py','--inside','--output','/artifacts','--font-config',str(a.font_config.resolve())]
+ for name in ('sway','pointer','keyboard','lock','quickshell','constraint_client'):
+  if getattr(a,name):command+=['--'+name.replace('_','-'),getattr(a,name)]
+ if a.constraints_only:command+=['--constraints-only']
+ if a.effects:command+=['--effects','--software-driver',str(a.software_driver.resolve())]
+ code=1
+ try:code=isolated_run(repo,a.output,command,dict(os.environ),software_graphics=a.effects,private_pty=True)
+ finally:
+  (a.output/'required-tools.json').write_text(json.dumps(tools,indent=2));frozen.finish(a.output,code)
+ raise SystemExit(code)
+assert repo==Path('/source') and os.getuid()!=0 and os.environ['HOME']=='/home/fixture' and not Path('/.old-root').exists();assert not any((Path('/dev')/name).exists() for name in ('dri','snd','video0','tty'))
+processes=[];events=[]
 def wait(fn):
  end=time.monotonic()+10
  while time.monotonic()<end:
@@ -13,6 +35,8 @@ def wait(fn):
  raise AssertionError('Timed out')
 with tempfile.TemporaryDirectory(prefix='lumen-edge-') as private:
  env=dict(os.environ,HOME=private,XDG_RUNTIME_DIR=private,WLR_BACKENDS='headless',WLR_HEADLESS_OUTPUTS='2',WLR_RENDERER='gles2' if a.effects else 'pixman',WLR_RENDERER_FORCE_SOFTWARE='1' if a.effects else '0',WLR_RENDERER_ALLOW_SOFTWARE='1',WLR_LIBINPUT_NO_DEVICES='1',LIBGL_ALWAYS_SOFTWARE='1',QT_QPA_PLATFORM='wayland',QT_QUICK_BACKEND='software',QT_QPA_PLATFORMTHEME='',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
+ env['FONTCONFIG_FILE']=str(a.font_config)
+ if a.effects:env.update(MESA_LOADER_DRIVER_OVERRIDE='llvmpipe',LIBGL_DRIVERS_PATH=str(a.software_driver/'lib/dri'),__EGL_VENDOR_LIBRARY_FILENAMES=str(a.software_driver/'share/glvnd/egl_vendor.d/50_mesa.json'))
  for key in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK','AT_SPI_BUS_ADDRESS','DBUS_SESSION_BUS_ADDRESS'):env.pop(key,None)
  for key in ('CONFIG','STATE','DATA','CACHE'):env['XDG_'+key+'_HOME']=str(Path(private)/key.lower())
  def launch(args,name,**kwargs):
@@ -53,7 +77,7 @@ with tempfile.TemporaryDirectory(prefix='lumen-edge-') as private:
   def motion(dx,dy):pointer.stdin.write(f'm {dx} {dy}\n');pointer.stdin.flush();collect()
   def button(value):pointer.stdin.write(value+'\n');pointer.stdin.flush();collect(.16)
   def at(x,y):ipc(f'seat seat0 cursor set {x} {y}')
-  launch(['foot','-o','resize-by-cells=no','--app-id=edge-test','sleep','180'],'foot.log');wait(window);cid=window()['id']
+  launch(['foot','-o','resize-by-cells=no','-o','font=DejaVu Sans Mono:size=10','--app-id=edge-test','sleep','180'],'foot.log');wait(window);cid=window()['id']
   def outer():
    node=window();box=dict(node['rect']);box['y']-=node['deco_rect']['height'];box['height']+=node['deco_rect']['height'];return box
   def reset():
@@ -77,7 +101,7 @@ with tempfile.TemporaryDirectory(prefix='lumen-edge-') as private:
    placed=outer();assert placed=={k:preview[k] for k in ('x','y','width','height')},(placed,preview)
    ipc(f'[con_id={cid}] lumen_window restore');time.sleep(.15);assert outer()==original,(outer(),original)
    # Every corner and side captures the dragged ID, leaving another client untouched.
-   launch(['foot','-o','resize-by-cells=no','--app-id=edge-bystander','sleep','180'],'bystander.log')
+   launch(['foot','-o','resize-by-cells=no','-o','font=DejaVu Sans Mono:size=10','--app-id=edge-bystander','sleep','180'],'bystander.log')
    other=wait(lambda:next((x for x in nodes(sway('-t','get_tree')) if x.get('app_id')=='edge-bystander'),None))
    other_id=other['id'];ipc(f'[con_id={other_id}] floating enable, resize set 240 px 180 px, move absolute position 800 px 400 px')
    time.sleep(.2)
@@ -119,7 +143,7 @@ with tempfile.TemporaryDirectory(prefix='lumen-edge-') as private:
    assert sway('-t','get_version')['native_edge_tiling']
   else:
    ipc(f"[con_id={cid}] kill");wait(lambda:window() is None);preview=None;preview2=None
-  constraints_checked=[]
+  constraints_checked=[];constraint_receipts=[]
   if a.constraint_client:
    motion(0,0)  # Flush the virtual device registration before binding wl_seat.
    subject_app='constraint-test'
@@ -130,7 +154,15 @@ with tempfile.TemporaryDirectory(prefix='lumen-edge-') as private:
      # IPC and physical drag both refuse layouts outside the client constraints.
      if kind=='fixed':
       at(original['x']+60,original['y']+16);button('p');release();assert outer()==original and not window()['lumen_state']['filled']
-     ipc(f'[con_id={cid}] lumen_window left');time.sleep(.2);assert outer()==original,(kind,outer(),original);assert not window()['lumen_state']['filled']
+     before=window();command=f'[con_id={cid}] lumen_window left'
+     if kind=='fixed':
+      refusal=sp.run(['swaymsg','-r',command],env=env,text=True,capture_output=True,check=False,timeout=6);after=window()
+      receipt=dict(kind=kind,command=command,returnCode=refusal.returncode,stdout=refusal.stdout,stderr=refusal.stderr,before=before,after=after);constraint_receipts.append(receipt);(a.output/'constraint-command-receipts.json').write_text(json.dumps(constraint_receipts,indent=2))
+      result=json.loads(refusal.stdout);assert refusal.returncode==2 and len(result)==1 and result[0].get('success') is False and result[0].get('parse_error') is True and result[0].get('error')=='Window action is unavailable',receipt
+      fields=('id','pid','rect','window_rect','deco_rect','lumen_state','fullscreen_mode','floating');assert {key:before.get(key) for key in fields}=={key:after.get(key) for key in fields},receipt
+     else:
+      result=ipc(command);assert len(result)==1 and result[0].get('success') is True,result;after=window();constraint_receipts.append(dict(kind=kind,command=command,returnCode=0,response=result,before=before,after=after));(a.output/'constraint-command-receipts.json').write_text(json.dumps(constraint_receipts,indent=2))
+     time.sleep(.2);assert outer()==original,(kind,outer(),original);assert not window()['lumen_state']['filled']
      original=start();begin=len(events);to(0,360);collect(.35)
      assert 'preview' not in phases(begin),events[begin:]
      sp.run([a.keyboard,'-k','Escape'],env=env,check=True);release();assert outer()==original
@@ -139,6 +171,11 @@ with tempfile.TemporaryDirectory(prefix='lumen-edge-') as private:
       start();begin=len(events);to(2279.5,400);collect(.32);release()
       assert 'commit' in phases(begin),events[begin:]
       ipc(f'[con_id={cid}] lumen_window restore');time.sleep(.2);assert outer()==original,(outer(),original)
+      # This same bounded client also permits the explicit left command on the narrower output.
+      ipc(f'[con_id={cid}] move container to output HEADLESS-2');time.sleep(.2);before_narrow=window();saved_narrow=outer();result=ipc(f'[con_id={cid}] lumen_window left');assert len(result)==1 and result[0].get('success') is True,result;time.sleep(.2);after_narrow=window()
+      assert outer()!=saved_narrow and outer()['x']>=1280 and after_narrow['window_rect']['width']<=500,(before_narrow,after_narrow)
+      ipc(f'[con_id={cid}] lumen_window restore');time.sleep(.2);assert outer()==saved_narrow,(outer(),saved_narrow)
+      constraint_receipts.append(dict(kind='bounded-narrow-left',returnCode=0,response=result,before=before_narrow,after=after_narrow,restored=window()));(a.output/'constraint-command-receipts.json').write_text(json.dumps(constraint_receipts,indent=2))
     else:
      for command,active in [('l','locked'),('c','confined')]:
       original=reset();at(original['x']+150,original['y']+100);motion(1,1)
@@ -153,8 +190,9 @@ with tempfile.TemporaryDirectory(prefix='lumen-edge-') as private:
      # Once the client releases its pointer constraint a valid titlebar gesture works.
      start();begin=len(events);to(0,360);collect(.32);release();assert 'commit' in phases(begin)
     constraints_checked.append(kind);client.stdin.write('q\n');client.stdin.flush();client.wait(timeout=3);wait(lambda:window() is None)
-  (a.output/'result.json').write_text(json.dumps({'passed':True,'fullDragSuite':not a.constraints_only,'constraints':constraints_checked,'events':events,'capturedID':cid,'preview':preview,'secondOutput':preview2},indent=2));print('PASS native fixed/bounded sizes, pointer lock/confinement and released-constraint drag' if a.constraints_only else 'PASS native drag preview/leave/cancel/commit/restore/modifiers/top arbitration/lock'+(' and client constraints' if a.constraint_client else ''))
+  (a.output/'result.json').write_text(json.dumps({'passed':True,'fullDragSuite':not a.constraints_only,'constraints':constraints_checked,'constraintCommands':constraint_receipts,'events':events,'capturedID':cid,'preview':preview,'secondOutput':preview2},indent=2));print('PASS native fixed/bounded sizes, pointer lock/confinement and released-constraint drag' if a.constraints_only else 'PASS native drag preview/leave/cancel/commit/restore/modifiers/top arbitration/lock'+(' and client constraints' if a.constraint_client else ''))
  finally:
+  generated(a.output,a.output)
   if 'subscriber' in locals():subscriber.close()
   for proc in reversed(processes):
    try:os.killpg(proc.pid,signal.SIGTERM)
