@@ -142,11 +142,12 @@ try:
     (out/'software-effects-proof.json').write_text(json.dumps(list(required),indent=2))
    actions={'APP-BROWSE-02':('edit_url','select_url','navigate')}
    by_workflow={
-    'basic':{'APP-BROWSE-01':('new_tab','close_tab','reopen_tab'),'APP-BROWSE-08':('zoom_in','zoom_reset'),'APP-BROWSE-09':('browser_fullscreen','page_fullscreen','escape_fullscreen','resume_page_input')},
+    'basic':{'APP-BROWSE-01':('new_tab','close_tab','reopen_tab'),'APP-BROWSE-08':('zoom_in','zoom_reset'),'APP-BROWSE-09':('browser_fullscreen','resume_page_input')},
     'downloads':{'APP-BROWSE-04':('running_download','completed_download_hash','pause_download','resume_download','cancel_download','downloads_manager')},
     'permissions':{'APP-BROWSE-05':('notifications_allow','notifications_deny','notifications_revoke')},
     'library':{'APP-BROWSE-03':('bookmark_add','bookmark_edit','bookmark_delete','private_history_isolation'),'APP-BROWSE-06':('private_window','cookie_isolation','history_isolation')},
     'new-save':{},
+    'page-fullscreen':{'APP-BROWSE-09':('page_fullscreen','escape_fullscreen','resume_page_input')},
    }
    actions.update(by_workflow[a.workflow])
    for capability,names in actions.items():

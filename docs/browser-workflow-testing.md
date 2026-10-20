@@ -36,7 +36,7 @@ bash tests/ci/run-native.sh browser_workflows_input \
   --workflow basic --output artifacts/browser-basic
 ```
 
-Use a new output directory for every run. Repeat with `--workflow downloads`, `permissions`, `library` or `new-save`. For effects, build `.#compositor` instead and add `--effects`. The runner retains source hashes/revision, exact dependency paths, version, actual painted captures, native trees, typed per-action observations and provider/filesystem outcomes. Download rows and the private-page sentinel must match an actual browser readback in the presented native screenshot, including foreground pixels; logical provider readiness alone cannot pass a blank frame. Matching permits at most one raster pixel of alignment and three channel values of quantization. The application corpus currently uses one 1400×1000 output at scale one. A passing case never closes an entire multi-action row.
+Use a new output directory for every run. Repeat accepted cases with `--workflow downloads`, `library` or `new-save`. `permissions` and `page-fullscreen` retain diagnostic scenarios independently. For effects, build `.#compositor` instead and add `--effects`. The runner retains source hashes/revision, exact dependency paths, version, actual painted captures, native trees, typed per-action observations and provider/filesystem outcomes. Download rows and the private-page sentinel must match an actual browser readback in the presented native screenshot, including foreground pixels; logical provider readiness alone cannot pass a blank frame. Matching permits at most one raster pixel of alignment and three channel values of quantization. The application corpus currently uses one 1400×1000 output at scale one. A passing case never closes an entire multi-action row.
 
 ## Accepted scope
 
@@ -44,7 +44,6 @@ Use a new output directory for every run. Repeat with `--workflow downloads`, `p
 | --- | --- |
 | `basic` | Main/chooser frame ownership; genuine Save As Cancel; new/close/reopen captured tabs; page zoom/reset; browser fullscreen and input return |
 | `downloads` | Genuine target chooser; independent running partial, pause/resume same ID, complete with exact whole-file hash, cancel a different transfer and remove its partial |
-| `permissions` | Captured-origin notification deny, actual site-controls reset, native reload, allow, and revoke back to default |
 | `library` | Bookmark add/edit same ID/remove; native private window with independent cookies/local storage; private-history exclusion in live provider and durable history after actual native Exit |
 | `new-save` | Genuine chooser accepts a new exact target; filesystem content/hash and actual provider complete state agree |
 
@@ -55,3 +54,5 @@ Overwrite cancel/commit, read-only errors and an actual disconnected mount remai
 `nix flake check` runs the pure invocation, inventory, physical-map, read-only SQLite, actual loopback server, subprocess pipe and ambient-entry rejection regressions. Namespace syscalls are a separate native prerequisite: run `tests/desktop/application_isolation_native.py --output <fresh-directory>` through the pinned development runtime and native warning wrapper. The pure `test_browser_isolation.py` only checks safe preflight and must remain usable in restricted build sandboxes. Optional application runs require the explicit browser dependency and are not inferred from passing unit or namespace checks.
 
 Page-requested fullscreen remains unaccepted: an actual painted-frame probe found a viewport/native-content mapping discrepancy. Logical DOM and compositor fullscreen flags alone are insufficient evidence; this tranche does not close that action.
+
+The notification lifecycle diagnostic has previously passed denial/reset/allow/revocation, but its latest replay lost the application accessibility root after Allow (an actual NoReply response). It remains outside this accepted tranche pending a reproducible diagnosis; permission-provider state alone does not prove the final native revoke action.
