@@ -36,6 +36,7 @@
         default = session.shellLauncher;
         shell = session.shellLauncher;
         desktop-action = session.desktopAction;
+        app-launcher = session.appLauncher;
         settings-adapter = settings;
         authorization-agent = import ./packages/lumen-authorization-agent.nix { inherit pkgs; };
         compositor = import ./packages/sway-window-controls.nix { pkgs = compositorPkgs; effects = true; };

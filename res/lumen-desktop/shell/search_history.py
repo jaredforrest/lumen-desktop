@@ -3,6 +3,7 @@ import contextlib
 import fcntl
 import json
 import os
+import secrets
 from pathlib import Path
 import stat
 import sys
@@ -52,21 +53,32 @@ def handle(data):
     if not isinstance(data,dict):raise ValueError('A search-history request is required')
     action=data.get('action')
     if action not in ('list','record','clear'):raise ValueError('Unsupported search-history action')
-    allowed=enabled()
     with store() as path:
+        allowed=enabled()
+        epoch_path=path.with_name('generation.json')
+        if epoch_path.exists():
+            private(epoch_path)
+            if epoch_path.stat().st_size>128:raise ValueError('Invalid history generation')
+            generation=json.loads(epoch_path.read_text())
+            if not isinstance(generation,str) or len(generation)!=64 or any(c not in '0123456789abcdef' for c in generation):raise ValueError('Invalid history generation')
+        else:
+            generation=secrets.token_hex(32);write(epoch_path,generation)
         if action=='clear' or not allowed:
             # Disabling the preference also removes the previous history on the
             # next history request; never return old text while disabled.
+            generation=secrets.token_hex(32);write(epoch_path,generation)
             path.unlink(missing_ok=True)
-            return {'enabled':allowed,'queries':[]}
+            return {'enabled':allowed,'queries':[],'generation':generation}
         values=read(path)
         if action=='record':
+            if data.get('generation')!=generation:
+                return {'enabled':allowed,'queries':values[:LIMIT],'generation':generation,'retired':True}
             query=data.get('query')
             if not isinstance(query,str):raise ValueError('A query string is required')
             query=query.strip()
             if len(query)>MAX_QUERY or any(ord(c)<32 for c in query):raise ValueError('Query cannot be saved to history')
             if query:values=[query]+[old for old in values if old!=query];write(path,values[:LIMIT])
-        return {'enabled':allowed,'queries':values[:LIMIT]}
+        return {'enabled':allowed,'queries':values[:LIMIT],'generation':generation}
 
 def main():
     line=sys.stdin.readline(65537)

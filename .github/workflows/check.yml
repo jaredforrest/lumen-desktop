@@ -45,6 +45,7 @@ jobs:
           bash tests/ci/run-native.sh window_overview_lifecycle nix develop --command desktop-test-python tests/desktop/window_overview_lifecycle.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/overview-lifecycle
           bash tests/ci/run-native.sh smoke_installed nix develop --command desktop-test-python tests/desktop/smoke_installed.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/shell
       - run: |
+          nix build .#app-launcher --out-link artifacts/app-launcher --option abort-on-warn true
           nix build .#desktop-action --out-link artifacts/desktop-action --option abort-on-warn true
           nix build .#test-pointer --out-link artifacts/pointer --option abort-on-warn true
           nix build .#test-session-lock --out-link artifacts/session-lock --option abort-on-warn true
@@ -59,6 +60,7 @@ jobs:
             bash tests/ci/run-native.sh files_history_input nix develop --command desktop-test-python tests/desktop/files_history_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/files-history-$compositor"
             bash tests/ci/run-native.sh installed_switcher_input nix develop --command desktop-test-python tests/desktop/installed_switcher_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --action "$PWD/artifacts/desktop-action/bin/lumen-desktop-action" --sway "$PWD/artifacts/$compositor/bin/sway" --output "artifacts/installed-switcher-$compositor"
             bash tests/ci/run-native.sh clipboard_native_input nix develop --command desktop-test-python tests/desktop/clipboard_native_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --producer "$PWD/artifacts/clipboard-producer/bin/lumen-test-clipboard-producer" --observer "$PWD/artifacts/clipboard-observer/bin/lumen-clipboard-observer" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/clipboard-native-$compositor"
+            bash tests/ci/run-native.sh search_history_input nix develop --command desktop-test-python tests/desktop/search_history_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --app-launcher "$PWD/artifacts/app-launcher/bin/lumen-app-launcher" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/search-history-$compositor"
             bash tests/ci/run-native.sh search_native_input nix develop --command desktop-test-python tests/desktop/search_native_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/search-native-$compositor"
             bash tests/ci/run-native.sh group_membership_input nix develop --command desktop-test-python tests/desktop/group_membership_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --client "$PWD/artifacts/window-relationships-client/bin/lumen-test-window-relationships" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --locker "$PWD/artifacts/session-lock/bin/lumen-test-session-lock" --output "artifacts/group-membership-$compositor"
             bash tests/ci/run-native.sh group_selector_input nix develop --command desktop-test-python tests/desktop/group_selector_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --client "$PWD/artifacts/window-relationships-client/bin/lumen-test-window-relationships" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --locker "$PWD/artifacts/session-lock/bin/lumen-test-session-lock" --output "artifacts/group-selector-$compositor"
@@ -131,6 +133,7 @@ jobs:
             artifacts/backends
             artifacts/clipboard-native-*
             artifacts/search-native-*
+            artifacts/search-history-*
             artifacts/force-quit
             artifacts/software-effects-kernel
             artifacts/effects-software-render

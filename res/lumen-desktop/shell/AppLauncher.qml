@@ -141,9 +141,7 @@ PanelSurface {
             onTextChanged:{root.selectedIndex=0;if(root.visible){if(root.provider==="Clipboard")clipboard.search(text);else if(root.providerEnabled("Files"))root.service.search(text);}}
             PanelLabel {visible:search.text.length===0;text:"Search";font.pixelSize:24;color:Theme.colors.muted}
             Keys.onPressed:event=>{
-                if((event.modifiers & Qt.AltModifier) && event.key===Qt.Key_Up){root.recallHistory(1);event.accepted=true;}
-                else if((event.modifiers & Qt.AltModifier) && event.key===Qt.Key_Down){root.recallHistory(-1);event.accepted=true;}
-                else if((event.modifiers & Qt.ControlModifier) && event.key===Qt.Key_1){if(root.providerEnabled("Applications")){root.provider="Applications";root.gridMode=true;}event.accepted=true;}
+                if((event.modifiers & Qt.ControlModifier) && event.key===Qt.Key_1){if(root.providerEnabled("Applications")){root.provider="Applications";root.gridMode=true;}event.accepted=true;}
                 else if((event.modifiers & Qt.ControlModifier) && event.key===Qt.Key_2){root.setProvider("Files");event.accepted=true;}
                 else if((event.modifiers & Qt.ControlModifier) && event.key===Qt.Key_3){root.setProvider("Actions");event.accepted=true;}
                 else if((event.modifiers & Qt.ControlModifier) && event.key===Qt.Key_4){root.setProvider("Clipboard");event.accepted=true;}
@@ -153,8 +151,8 @@ PanelSurface {
                 else if(event.key===Qt.Key_Tab && (event.modifiers & Qt.ControlModifier)){root.cycleProvider();event.accepted=true;}
                 else event.accepted=false;
             }
-            Keys.onDownPressed:root.moveSelection(root.gridMode?5:1)
-            Keys.onUpPressed:root.moveSelection(root.gridMode?-5:-1)
+            Keys.onDownPressed:event=>{if(event.modifiers & Qt.AltModifier)root.recallHistory(-1);else root.moveSelection(root.gridMode?5:1);event.accepted=true;}
+            Keys.onUpPressed:event=>{if(event.modifiers & Qt.AltModifier)root.recallHistory(1);else root.moveSelection(root.gridMode?-5:-1);event.accepted=true;}
             Keys.onReturnPressed:event=>root.launch(root.selectedIndex,!!(event.modifiers & Qt.ControlModifier))
             Keys.onEscapePressed:root.closeRequested()
             Accessible.name:"Search applications, files, actions and clipboard history"

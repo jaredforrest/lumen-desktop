@@ -1,5 +1,5 @@
 """Opt-in query history keeps bounded private data and clears on disable."""
-import importlib.util,json,os,sys,tempfile,unittest
+import importlib.util,json,os,signal,subprocess,sys,tempfile,unittest
 from pathlib import Path
 from unittest.mock import patch
 ROOT=Path(__file__).resolve().parents[2]
@@ -11,14 +11,45 @@ class SearchHistory(unittest.TestCase):
         self.environment=patch.dict(os.environ,{'XDG_STATE_HOME':str(self.root)});self.environment.start()
         self.settings=patch.object(history,'read_settings',return_value={'search':{'queryHistory':True}});self.settings.start()
     def tearDown(self):self.settings.stop();self.environment.stop();self.temp.cleanup()
-    def call(self,action,**values):return history.handle(dict(action=action,**values))
+    def call(self,action,**values):
+        if action=='record' and 'generation' not in values:values['generation']=history.handle({'action':'list'})['generation']
+        return history.handle(dict(action=action,**values))
     def test_history_is_explicit_opt_in_and_disable_removes_data(self):
         self.call('record',query='private fixture')
         path=self.root/'lumen-desktop/search/queries.json';self.assertTrue(path.exists())
         with patch.object(history,'enabled',return_value=False):
-            self.assertEqual(self.call('list'),{'enabled':False,'queries':[]})
+            self.assertEqual(self.call('list')['queries'],[])
             self.call('record',query='must never be stored')
         self.assertFalse(path.exists())
+    def test_retired_record_after_clear_or_disable_cannot_reappear(self):
+        generation=self.call('list')['generation']
+        self.call('clear')
+        self.assertTrue(self.call('record',query='retired',generation=generation)['retired'])
+        generation=self.call('list')['generation']
+        with patch.object(history,'enabled',return_value=False):self.call('list')
+        self.assertTrue(self.call('record',query='revoked',generation=generation)['retired'])
+        self.assertEqual(self.call('list')['queries'],[])
+        self.assertTrue(history.handle({'action':'record','query':'no authority'})['retired'])
+    def test_real_queued_worker_cannot_restore_cleared_generation(self):
+        policy=self.root/'policy.json';policy.write_text(json.dumps({'search':{'queryHistory':True}}))
+        environment=dict(os.environ,LUMEN_NIX_SETTINGS_ACTIVE=str(policy))
+        def cli(data):
+            return json.loads(subprocess.check_output([sys.executable,str(Path(history.__file__))],input=json.dumps(data)+'\n',text=True,env=environment))
+        epoch=cli({'action':'list'})['generation']
+        child=subprocess.Popen([sys.executable,str(Path(history.__file__))],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,env=environment)
+        try:
+            os.kill(child.pid,signal.SIGSTOP)
+            child.stdin.write(json.dumps({'action':'record','query':'queued private fixture','generation':epoch})+'\n');child.stdin.flush()
+            cleared=cli({'action':'clear'});self.assertNotEqual(cleared['generation'],epoch)
+            os.kill(child.pid,signal.SIGCONT);stdout,stderr=child.communicate(timeout=5)
+            self.assertEqual(child.returncode,0,stderr);response=json.loads(stdout)
+            self.assertTrue(response['retired']);self.assertEqual(response['queries'],[])
+            self.assertEqual(cli({'action':'list'})['queries'],[])
+            self.assertEqual(cli({'action':'record','query':'new intent','generation':cleared['generation']})['queries'],['new intent'])
+        finally:
+            if child.poll() is None:child.kill();child.wait(timeout=3)
+            for stream in (child.stdin,child.stdout,child.stderr):
+                if stream:stream.close()
     def test_deduplicated_mru_bounded_and_clear(self):
         for i in range(25):self.call('record',query='query '+str(i))
         values=self.call('record',query='query 17')['queries']
