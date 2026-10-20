@@ -1,5 +1,5 @@
 # Exercise the actual merged-binding export without starting a desktop session.
-{ nixpkgs, system, extraBindings ? {}, applicationBindings ? [], reservedBindings ? [] }:
+{ nixpkgs, system, extraBindings ? {}, applicationBindings ? [], reservedBindings ? [], rebind ? null, bundle ? false }:
 let
   lib = nixpkgs.lib;
   evaluated = lib.nixosSystem {
@@ -18,6 +18,8 @@ let
   };
   pkgs = evaluated.pkgs;
   unwrap = value: if builtins.isAttrs value && value ? _type && value._type == "override" then unwrap value.content else value;
+  defaults = lib.mapAttrs (_: unwrap) (unwrap home.wayland.windowManager.sway.config.keybindings);
+  effective = defaults // extraBindings // lib.optionalAttrs (rebind != null) { ${rebind.from} = null; ${rebind.to} = defaults.${rebind.from}; };
   home = evaluated.config.home-manager.users.test-user {
     inherit lib;
     config = {
@@ -25,7 +27,8 @@ let
       home.homeDirectory = "/home/test-user";
       xdg.stateHome = "/home/test-user/.local/state";
       programs.rofi.package = pkgs.rofi;
-      wayland.windowManager.sway.config.keybindings = (lib.mapAttrs (_: unwrap) (unwrap home.wayland.windowManager.sway.config.keybindings)) // extraBindings;
+      wayland.windowManager.sway.config.keybindings = effective;
     };
   };
-in home.xdg.configFile."lumen-desktop/shortcuts.json".source
+  registry = home.xdg.configFile."lumen-desktop/shortcuts.json".source;
+in if !bundle then registry else pkgs.writeText "lumen-shortcut-fixture.json" (builtins.toJSON { inherit registry; dispatch = lib.filterAttrs (_: command: command != null) effective; })

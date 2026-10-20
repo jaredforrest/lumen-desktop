@@ -90,8 +90,19 @@ def validate(document):
         if not left['enabled']:continue
         for right in values[index+1:]:
             if right['enabled'] and overlaps(left,right):diagnostics.append({'code':'shortcut_collision','bindings':[left['id'],right['id']],'actions':[left['action'],right['action']],'chord':'+'.join(left['physical']['modifiers']+[left['physical']['key']]),'trigger':left['physical']['trigger'],'message':'Overlapping active shortcut scopes; disable or explicitly rescope one declaration.'})
-    return {'version':1,'valid':not diagnostics,'bindings':values,'diagnostics':diagnostics}
+    return {'version':1,'valid':not diagnostics,'bindings':values,'diagnostics':diagnostics,'hints':action_hints(values) if not diagnostics else []}
 
+
+
+def action_hints(values):
+    """Hints describe validated, reachable press bindings; never infer commands."""
+    result={}
+    for item in values:
+        physical=item['physical']
+        if not item['enabled'] or item.get('owner') == 'reserved' or item['action']=='consumer.binding' or item['mode']!='default' or physical['device']!='*' or physical['trigger']!='press':continue
+        key=(item['scope'],item['appId'],item['action'])
+        result.setdefault(key,[]).append({'id':item['id'],'chord':item['chord'],'physical':physical})
+    return [{'scope':key[0],'appId':key[1],'action':key[2],'bindings':sorted(rows,key=lambda row:(len(row['physical']['modifiers']),row['chord']))} for key,rows in sorted(result.items())]
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('registry',type=Path);parser.add_argument('--output',type=Path);args=parser.parse_args()

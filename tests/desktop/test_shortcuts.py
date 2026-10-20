@@ -37,6 +37,12 @@ class Shortcuts(unittest.TestCase):
  def test_default_registry_is_valid(self):
   result=module.validate(json.loads((ROOT/'res/lumen-desktop/runtime/shortcut-defaults.json').read_text()));self.assertTrue(result['valid'],result['diagnostics'])
   self.assertIn('window.fill',{r['action'] for r in result['bindings']})
+ def test_hints_exclude_unreachable_and_reserved_but_preserve_aliases(self):
+  result=validate(entry('a','Super+x',action='open'),entry('b','Ctrl+y',action='open'),entry('release','--release Super_L'),entry('mode','Ctrl+z',mode='resize'),entry('device','Ctrl+w',device='test'),entry('disabled','Ctrl+a',enabled=False),entry('reserved','Ctrl+b',owner='reserved'),entry('unknown','Ctrl+c',action='consumer.binding'))
+  self.assertTrue(result['valid']);self.assertEqual(len(result['hints']),1)
+  group=result['hints'][0];self.assertEqual(group['action'],'open');self.assertEqual({row['id'] for row in group['bindings']},{'a','b'})
+ def test_invalid_registry_never_publishes_hint_authority(self):
+  self.assertEqual(validate(entry('a','Ctrl+s'),entry('b','Control+s'))['hints'],[])
  def test_cli_fails_with_structured_collision_diagnostics(self):
   with tempfile.TemporaryDirectory() as directory:
    source=Path(directory)/'input.json';output=Path(directory)/'output.json';source.write_text(json.dumps(dict(version=1,bindings=[entry('a','Super+x'),entry('b','Mod4+x')])))

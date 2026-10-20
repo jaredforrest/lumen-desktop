@@ -18,6 +18,8 @@ ShellRoot {
     signal dismissPopups(string owner)
     MenuVisibilityState {id:menuVisibilityState}
     property alias menuVisibility:menuVisibilityState
+    ShortcutState {id:shortcutState}
+    property alias shortcuts:shortcutState
     property var bars: ({})
     property string popupOwner: ""
     property alias exportedMenu: exported

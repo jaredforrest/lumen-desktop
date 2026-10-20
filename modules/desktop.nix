@@ -152,12 +152,13 @@ in {
     desktopKeybindings = baseDesktopKeybindings // readerBindings;
     shortcutDefaults = (builtins.fromJSON (builtins.readFile ../res/lumen-desktop/runtime/shortcut-defaults.json)).bindings;
     effectiveShortcutBindings = lib.mapAttrsToList (key: command:
-      let known = lib.findFirst (item: item.chord == key) null shortcutDefaults;
+      let known = lib.findFirst (item: builtins.hasAttr item.chord baseDesktopKeybindings && command == baseDesktopKeybindings.${item.chord}) null shortcutDefaults;
+          readerKey = lib.findFirst (name: command == readerBindings.${name}) null (builtins.attrNames readerBindings);
           owned = builtins.hasAttr key desktopKeybindings && command == desktopKeybindings.${key};
       in { id = "sway:" + key; chord = key; scope = "global";
-        action = if owned && builtins.hasAttr key readerBindings then "reader." + cfg.shortcuts.readerBindings.${key} else if owned && known != null then known.action else "consumer.binding";
+        action = if readerKey != null then "reader." + cfg.shortcuts.readerBindings.${readerKey} else if known != null then known.action else "consumer.binding";
         owner = if owned then "desktop" else "consumer";
-        fallback = if owned && known != null then known.fallback else "Consumer-defined binding";
+        fallback = if known != null then known.fallback else "Consumer-defined binding";
       }) (lib.filterAttrs (_: command: command != null) config.wayland.windowManager.sway.config.keybindings);
     shortcutRegistryInput = pkgs.writeText "lumen-shortcut-declarations.json" (builtins.toJSON {
       version = 1;

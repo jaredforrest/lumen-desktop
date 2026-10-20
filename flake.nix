@@ -83,6 +83,19 @@
       };
       checks.${system} = {
         shortcut-registry = import ./tests/project/shortcuts.nix { inherit nixpkgs system; };
+        shortcut-hints = let
+          defaults = import ./tests/project/shortcuts.nix { inherit nixpkgs system; bundle = true; };
+          rebound = import ./tests/project/shortcuts.nix { inherit nixpkgs system; bundle = true; rebind = { from = "Mod4+Control+f"; to = "Mod4+Control+x"; }; };
+          removed = import ./tests/project/shortcuts.nix { inherit nixpkgs system; extraBindings."Mod4+Control+f" = null; };
+          replaced = import ./tests/project/shortcuts.nix { inherit nixpkgs system; extraBindings."Mod4+Control+f" = "exec printf consumer"; };
+        in pkgs.runCommand "lumen-shortcut-hint-fixture" { nativeBuildInputs = [ pkgs.python3 ]; } ''
+          mkdir "$out"
+          cp ${defaults} "$out/default.json"
+          cp ${rebound} "$out/rebound.json"
+          cp ${removed} "$out/removed.json"
+          cp ${replaced} "$out/replaced.json"
+          python3 ${self}/tests/desktop/check_shortcut_generation.py "$out"
+        '';
         javascript-models = pkgs.runCommand "lumen-javascript-models" { nativeBuildInputs = [ pkgs.nodejs ]; } ''
           cd ${self}
           for test in ${self}/tests/desktop/test_*.cjs; do

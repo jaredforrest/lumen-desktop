@@ -7,8 +7,9 @@ last-definition-wins policy between equivalent physical chords.
 
 The export includes consumer keybindings and preserves consumer overrides. It
 contains action identities, physical chords, owners and diagnostics, **not shell
-commands**. A consumer replacement is labelled `consumer.binding` rather than
-incorrectly retaining the desktop action's identity. The public defaults metadata
+commands**. Action identity is resolved from exact configured desktop dispatch commands, so
+moving one to a new chord preserves its identity. An unrelated consumer command
+is labelled `consumer.binding` and cannot inherit the old chord's action. The public defaults metadata
 is in `res/lumen-desktop/runtime/shortcut-defaults.json`.
 
 Modifier order and aliases such as `Super`/`Mod4`, `Ctrl`/`Control` and `Alt`/`Mod1`
@@ -53,11 +54,32 @@ The input is `{ "version": 1, "bindings": [...] }`. Bindings require `id`,
 unsupported options and ambiguous declarations fail validation. The command exits
 with 1 for collisions and 2 for an invalid registry.
 
+## Effective hints
+
+The same validated export contains action-scoped `hints`, generated only for
+enabled default-mode, wildcard-device press bindings. Release edges, reservations,
+device-specific declarations and unrelated consumer commands are not advertised
+as general shortcuts. Multiple aliases are retained; shorter physical chords are
+shown first. The shell loads the effective file through `ShortcutState`, clears
+hints on missing/malformed input and watches atomic replacements. It does not
+silently fall back to bundled defaults when a consumer disables a binding.
+
+Owned Window menu fullscreen/fill and desktop-reveal commands display their
+configured chord alongside the label and in the accessible description. Hints
+are presentation, never permission to dispatch a command. Exported application
+menus retain their provider-owned shortcut data; a declared application adapter
+can query the model with an exact application identity without intercepting input.
+
+The module-derived fixture checks moving the fullscreen command, disabling it and
+replacing it with an unrelated command. Real native acceptance then installs that
+exact generated configuration in a private compositor, checks the old key is
+inert, the new key toggles the captured native window, and the owned menu renders
+the new hint. Actual Qt file reload tests cover malformed and deleted exports.
+
 ## Current boundary
 
 This is a build-time default-mode collision registry and diagnostic export, not a
 shortcut editor or an input broker. Raw `extraConfig` bindings, separately declared
 Sway modes, physical keycodes and runtime changes are not yet imported. Application
-conflicts are known only when an adapter declares them. The current menu hints,
-layout-dependent symbol discovery, remote key-delivery diagnostics and user rebind
-UI do not yet consume this registry. Those acceptance clauses remain open.
+conflicts are known only when an adapter declares them. Layout-dependent symbol discovery, remote key-delivery diagnostics and user rebind
+UI are not implemented by this registry. Those acceptance clauses remain open.

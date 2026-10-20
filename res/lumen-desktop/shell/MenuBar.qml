@@ -46,6 +46,7 @@ PanelWindow {
     readonly property int visibleHeadingCount:MenuLayout.fit(menuHeadings.map(n=>headingMetrics.advanceWidth(n.label)+20),menuBudget-brandButton.width-applicationButton.width,38,hiddenStatus.length>0)
     readonly property var overflowItems:menuHeadings.slice(visibleHeadingCount).map(n=>({label:n.label,exportId:n.exportId,action:n.enabled?(n.heading?"heading:"+n.heading:"export-menu"):undefined})).concat(hiddenStatus)
     function menuLayoutStatus(){return {width:width,menuEnd:headings.x+headings.width,statusStart:captureIndicator.visible?captureIndicator.x:statusIcons.x,clockWidth:clockButton.width,visible:visibleHeadingCount,headings:menuHeadings.length,overflow:overflowItems.length,overflowLabels:overflowItems.map(n=>n.label)};}
+    function shortcutHint(row){return row && row.enabled!==false && shell.shortcuts?shell.shortcuts.menuHint(row.action || ""):"";}
     property int builtinIndex:-1
     property var builtinSelection:null
     property bool builtinResetting:false
@@ -273,7 +274,7 @@ PanelWindow {
             Accessible.role:Accessible.PopupMenu
             Accessible.name:bar.menu
             visible:bar.menu!=="" && !bar.special
-            x: Math.max(8,Math.min(bar.menuX,parent.width-width-8)); y: Theme.barHeight+1; width: Math.max(220,Math.min(360,builtinItems.model.reduce((w,n)=>Math.max(w,plainMetrics.advanceWidth(n.label || "")+54),0))); height: Math.min(items.height+12,parent.height-Theme.barHeight-100)
+            x: Math.max(8,Math.min(bar.menuX,parent.width-width-8)); y: Theme.barHeight+1; width: Math.max(220,Math.min(360,builtinItems.model.reduce((w,n)=>Math.max(w,plainMetrics.advanceWidth(n.label || "")+plainMetrics.advanceWidth(bar.shortcutHint(n))+74),0))); height: Math.min(items.height+12,parent.height-Theme.barHeight-100)
             radius: Theme.menuRadius; color: Theme.colors.background; border.color: Theme.outline; border.width: 1
             FontMetrics {id:plainMetrics;font.family:Theme.font;font.pixelSize:13}
             MouseArea { anchors.fill: parent }
@@ -331,9 +332,12 @@ PanelWindow {
                         }
                         width:items.width;height:modelData.separator?9:Theme.menuRowHeight
                         background:Rectangle {radius:5;color:bar.builtinIndex===builtinRow.index && builtinRow.enabled?Theme.colors.accent:"transparent"}
+                        readonly property string shortcutHint:bar.shortcutHint(modelData)
+                        Accessible.description:shortcutHint?"Shortcut: "+shortcutHint:""
                         contentItem:Item {
                             SystemGlyph {visible:!builtinRow.modelData.separator && name!=="";x:7;anchors.verticalCenter:parent.verticalCenter;width:14;height:14;name:(builtinRow.modelData.label || "").startsWith("About")?"info":builtinRow.modelData.action==="settings"?"gear":builtinRow.modelData.action==="apps"?"grid":builtinRow.modelData.action==="terminal"?"screen":builtinRow.modelData.action==="lock"?"lock":"";ink:bar.builtinIndex===builtinRow.index && builtinRow.enabled?Theme.colors.selectedText:Theme.colors.text}
-                            Text {anchors.left:parent.left;anchors.leftMargin:28;anchors.right:parent.right;anchors.rightMargin:8;anchors.verticalCenter:parent.verticalCenter;visible:!builtinRow.modelData.separator;text:builtinRow.modelData.label || "";elide:Text.ElideRight;color:builtinRow.enabled?(bar.builtinIndex===builtinRow.index?Theme.colors.selectedText:Theme.colors.text):Theme.colors.muted;font.family:Theme.font;font.pixelSize:13}
+                            Text {anchors.left:parent.left;anchors.leftMargin:28;anchors.right:parent.right;anchors.rightMargin:shortcutText.visible?shortcutText.implicitWidth+20:8;anchors.verticalCenter:parent.verticalCenter;visible:!builtinRow.modelData.separator;text:builtinRow.modelData.label || "";elide:Text.ElideRight;color:builtinRow.enabled?(bar.builtinIndex===builtinRow.index?Theme.colors.selectedText:Theme.colors.text):Theme.colors.muted;font.family:Theme.font;font.pixelSize:13}
+                            Text {id:shortcutText;anchors.right:parent.right;anchors.rightMargin:8;anchors.verticalCenter:parent.verticalCenter;text:builtinRow.shortcutHint;visible:text!=="" && !builtinRow.modelData.separator;color:builtinRow.enabled?(bar.builtinIndex===builtinRow.index?Theme.colors.selectedText:Theme.colors.muted):Theme.colors.muted;font.family:Theme.font;font.pixelSize:12}
                             Rectangle {visible:!!builtinRow.modelData.separator;anchors.centerIn:parent;width:parent.width-12;height:1;color:Theme.colors.border;opacity:0.5}
                         }
                     }
