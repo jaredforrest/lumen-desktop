@@ -5,12 +5,20 @@ sys.path.insert(0,str(Path(__file__).resolve().parent/'application_fixture'))
 import isolation
 ROOT=Path(__file__).resolve().parents[2]
 class Isolation(unittest.TestCase):
+ def test_existing_or_insecure_output_is_rejected_before_namespace_setup(self):
+  with tempfile.TemporaryDirectory() as temporary:
+   root=Path(temporary);(root/'existing').write_text('unchanged')
+   with self.assertRaises(ValueError):isolation.run(ROOT,root,[sys.executable,'-c','raise SystemExit(99)'])
+   self.assertEqual((root/'existing').read_text(),'unchanged')
+   (root/'existing').unlink();root.chmod(0o777)
+   with self.assertRaises(ValueError):isolation.run(ROOT,root,[sys.executable,'-c','raise SystemExit(99)'])
  def test_actual_nonroot_private_filesystem_process_and_loopback_only(self):
   with tempfile.TemporaryDirectory(prefix='lumen-browser-probe-') as temporary:
    root=Path(temporary);out=root/'output';out.mkdir();sentinel=root/'must-not-be-visible';sentinel.write_text('synthetic outside boundary')
    code='''import json,os,socket,threading,subprocess,sys
 from pathlib import Path
 assert os.getuid()!=0
+assert socket.gethostname()=="fixture"
 assert "FIXTURE_SECRET" not in os.environ and "LD_PRELOAD" not in os.environ
 assert not Path(%r).exists()
 assert [path.name for path in Path('/home').iterdir()]==['fixture']

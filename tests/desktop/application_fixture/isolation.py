@@ -1,5 +1,5 @@
 """Disposable filesystem/network/process boundary for optional application tests."""
-import ctypes,errno,json,os,socket,struct,subprocess,sys,tempfile
+import ctypes,errno,json,os,socket,stat,struct,subprocess,sys,tempfile
 from pathlib import Path
 
 MS_RDONLY=1;MS_NOSUID=2;MS_NODEV=4;MS_NOEXEC=8;MS_REMOUNT=32;MS_BIND=4096;MS_REC=16384;MS_PRIVATE=1<<18
@@ -56,6 +56,7 @@ def setup(root,source,output,environment,command):
     (root/'etc/passwd').write_text('fixture:x:%d:%d:Disposable fixture:/home/fixture:/bin/sh\n'%(uid,gid));(root/'etc/group').write_text('fixture:x:%d:\n'%gid)
     (root/'etc/hosts').write_text('127.0.0.1 localhost fixture.test\n::1 localhost\n');(root/'etc/nsswitch.conf').write_text('passwd: files\ngroup: files\nhosts: files\n');(root/'etc/resolv.conf').write_text('');(root/'etc/machine-id').write_text('0123456789abcdef0123456789abcdef\n')
     loopback()
+    if libc.sethostname(b'fixture',7):raise OSError(ctypes.get_errno(),'Could not set private fixture hostname')
     env=runtime_environment(environment)
     env['PATH']=':'.join(value for value in env.get('PATH','').split(':') if value.startswith('/nix/store/'))
     env.update(HOME='/home/fixture',USER='fixture',LOGNAME='fixture',XDG_RUNTIME_DIR='/run/fixture',XDG_CONFIG_HOME='/home/fixture/.config',XDG_DATA_HOME='/home/fixture/.local/share',XDG_STATE_HOME='/home/fixture/.local/state',XDG_CACHE_HOME='/home/fixture/.cache',XDG_DATA_DIRS='/nonexistent',DBUS_SESSION_BUS_ADDRESS='unix:path=/run/fixture/inert-session',DBUS_SYSTEM_BUS_ADDRESS='unix:path=/run/fixture/inert-system',PULSE_SERVER='unix:/run/fixture/inert-audio',PIPEWIRE_REMOTE='inert-pipewire',GTK_A11Y='none',NO_AT_BRIDGE='1',PYTHONWARNINGS='error')
@@ -70,6 +71,8 @@ def setup(root,source,output,environment,command):
 def run(source,output,command,environment=None):
     source,output=Path(source).resolve(),Path(output).resolve()
     if not source.is_dir() or not output.is_dir():raise ValueError('Existing source and fresh artifact directories are required')
+    info=output.stat()
+    if info.st_uid!=os.getuid() or stat.S_IMODE(info.st_mode)&0o022 or any(output.iterdir()):raise ValueError('Artifact directory must be empty, owned and writable only by this user')
     with tempfile.TemporaryDirectory(prefix='lumen-browser-root-') as private:
         descriptor=Path(private)/'launch.json';descriptor.write_text(json.dumps(dict(root=str(Path(private)/'root'),source=str(source),output=str(output),environment=runtime_environment(os.environ if environment is None else environment),command=command)));(Path(private)/'root').mkdir()
         return subprocess.call(['unshare','--user','--map-current-user','--keep-caps','--mount','--pid','--net','--ipc','--uts','--fork','--kill-child','--mount-proc',sys.executable,str(Path(__file__).resolve()),str(descriptor)])
