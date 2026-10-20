@@ -81,7 +81,7 @@
 + struct sway_workspace *ws = con->pending.workspace;
 + int border = con->pending.border == B_CSD || con->pending.border == B_NONE ?
 +  0 : con->pending.border_thickness;
-+ int top = con->pending.border == B_NORMAL ? container_titlebar_height() : border;
++ double top = con->pending.border == B_NORMAL ? (double)container_titlebar_height() : border;
 + double minw, maxw, minh, maxh;
 + view_get_constraints(con->view, &minw, &maxw, &minh, &maxh);
 + double availablew = ws->width - 2 * border;
