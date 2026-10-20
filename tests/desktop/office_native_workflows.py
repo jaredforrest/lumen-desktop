@@ -5,8 +5,8 @@ from application_fixture.isolation import run as isolate
 from application_fixture.keyboard import PhysicalKeyboard
 from fixture_resources import close_reaped_pipes
 from office_fixture import corpus,formats,live
-from office_fixture.control import Control
-p=argparse.ArgumentParser();p.add_argument('--writer',required=True);p.add_argument('--sheet',required=True);p.add_argument('--slides',required=True);p.add_argument('--software-driver',required=True);p.add_argument('--sway',required=True);p.add_argument('--keyboard-tool',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--effects',action='store_true');p.add_argument('--writer-close-outcome',choices=['cancel','discard','save'],default='cancel');p.add_argument('--app',choices=['writer','sheet','slides'],default='writer');p.add_argument('--output',type=Path,required=True);p.add_argument('--inside',action='store_true');p.add_argument('--profiles-json',default='');p.add_argument('--source-sha',default='');a=p.parse_args()
+from office_fixture.control import Control,ControlError
+p=argparse.ArgumentParser();p.add_argument('--writer',required=True);p.add_argument('--sheet',required=True);p.add_argument('--slides',required=True);p.add_argument('--software-driver',required=True);p.add_argument('--sway',required=True);p.add_argument('--keyboard-tool',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--close-probe',action='store_true');p.add_argument('--effects',action='store_true');p.add_argument('--writer-close-outcome',choices=['cancel','discard','save'],default='cancel');p.add_argument('--app',choices=['writer','sheet','slides'],default='writer');p.add_argument('--output',type=Path,required=True);p.add_argument('--inside',action='store_true');p.add_argument('--profiles-json',default='');p.add_argument('--source-sha',default='');a=p.parse_args()
 if not a.inside:
  source=Path(__file__).resolve().parents[2];out=a.output.resolve();out.mkdir(mode=0o700,parents=True,exist_ok=False)
  for binary in [a.writer,a.sheet,a.slides,a.sway,a.pointer_tool,a.keyboard_tool]:
@@ -15,6 +15,7 @@ if not a.inside:
  sha=subprocess.check_output(['git','-C',str(source),'rev-parse','HEAD'],text=True).strip()
  args=[sys.executable,'/source/tests/desktop/office_native_workflows.py','--inside','--writer',a.writer,'--sheet',a.sheet,'--slides',a.slides,'--software-driver',a.software_driver,'--sway',a.sway,'--keyboard-tool',a.keyboard_tool,'--pointer-tool',a.pointer_tool,'--writer-close-outcome',a.writer_close_outcome,'--app',a.app,'--profiles-json',policies,'--source-sha',sha,'--output','/artifacts']
  if a.effects:args.append('--effects')
+ if a.close_probe:args.append('--close-probe')
  raise SystemExit(isolate(source,out,args,software_graphics=a.effects))
 assert os.getpid()==1 and os.getuid()!=0 and os.uname().nodename=='fixture' and Path.home()==Path('/home/fixture')
 assert not any((Path('/dev')/name).exists() for name in ('dri','snd','video0')) and Path('/dev/udmabuf').exists()==a.effects
@@ -71,6 +72,33 @@ def key(*args):
   for char in args[-1]:keyboard.type(char);time.sleep(.04)
   time.sleep(.1)
  else:keyboard.key(*args)
+def pointer_events(x,y,events):
+ command(['swaymsg','seat','seat0','cursor','set',str(x),str(y)])
+ for event in ['m 0.5 0.5',*events]:
+  pointer.stdin.write(event+'\n');pointer.stdin.flush();time.sleep(.12)
+
+def inspect_dirty_close():
+ expected_hash=formats.digest(source);marker='Unsaved provider close fixture'
+ assert native()['id']==window['id'],'Native close target changed'
+ if a.app=='sheet':
+  pointer_events(156,289,['p','r']);wait(lambda:control.command('sheet','document.inspect')['activeCell']=='C2','captured dirty-close cell selected',provider)
+  key('--',marker);key('-k','Return');facts['closeProbeDirtyCell']=wait(lambda:(value if marker in json.dumps(value:=control.tool('get_cell',dict(cell='Summary!C2'))) else None),'dirty close cell acknowledged',provider)
+ else:
+  pointer_events(520,320,['p','r','p','r']);key('-k','End');key('--',marker)
+  facts['closeProbeDirtySlide']=wait(lambda:(value if marker in json.dumps(value:=control.tool('inspect_slide',dict(index=0))) else None),'dirty close slide acknowledged',provider)
+ facts['closeProbeBefore']=control.command(a.app,'document.inspect');assert facts['closeProbeBefore']['dirty'] and formats.digest(source)==expected_hash
+ command(['swaymsg','[con_id='+str(window['id'])+'] kill']);time.sleep(.3)
+ facts['closeProbeProcessState']=dict(wrapperExit=provider.poll(),capturedNativePidPresent=Path('/proc/'+str(pid)).exists(),capturedWindowPresent=any(node.get('id')==window['id'] for node in walk(tree())))
+ try:facts['closeProbeAfter']=control.command(a.app,'document.inspect')
+ except ControlError:
+  facts['closeProbeDocumentInspection']='refused_after_close_request_cause_unconfirmed'
+  facts['closeProbeRefusal']=control.frames[-1]
+ if a.app=='slides':facts['closeProbeUi']=control.tool('call_app',dict(method='ui.inspect'))
+ else:facts['closeProbeUi']=json.loads(command([cli,'send',str(port),'ui.inspect','{}']))
+ facts['closeProbeTree']=tree();facts['exploratoryCloseProbe']=True
+ assert formats.digest(source)==expected_hash
+ command(['grim',str(out/'close-probe.png')])
+
 def reopen_saved():
  saved_hash=formats.digest(source);parse={'writer':formats.writer,'sheet':formats.spreadsheet,'slides':formats.presentation}[a.app];saved_facts=parse(source)
  before_live=live.snapshot(control,a.app);facts['beforeReopen']=before_live
@@ -184,6 +212,7 @@ try:
   facts['savedSha256']=formats.digest(source);facts['savedDocument']=saved
   checks.append('Physical presentation text edit is acknowledged live and independently parsed after explicit Save')
   reopen_saved()
+ if a.close_probe and a.app in ('sheet','slides'):inspect_dirty_close()
  if a.effects:
   renderer_log=(out/'sway.log').read_text()
   required=('Creating scenefx FX renderer','Using OpenGL ES','GL renderer: llvmpipe','FX RENDERER: Shaders Initialized Successfully','Trying udmabuf allocator','Created GL FBO for buffer')
@@ -195,6 +224,11 @@ try:
  with Image.open(out/'opened.png') as painted:
   colors=painted.convert('RGB').getcolors(painted.width*painted.height);nonblack=sum(count for count,color in colors if color!=(0,0,0));assert nonblack>painted.width*painted.height//4,'Native application paint is blank';facts['paintedNonBlackPixels']=nonblack
  (out/'tree-opened.json').write_text(json.dumps(tree(),indent=2));(out/'result.json').write_text(json.dumps(dict(passed=True,phase='native_partial' if len(checks)>1 else 'startup_only',app=a.app,workflowComplete=False,checks=checks,facts=facts,source=a.source_sha),indent=2))
+except BaseException:
+ (out/'failure-facts.json').write_text(json.dumps(facts,indent=2))
+ try:(out/'failure-tree.json').write_text(json.dumps(tree(),indent=2));command(['grim',str(out/'failure.png')])
+ except (OSError,ValueError,subprocess.SubprocessError):pass
+ raise
 finally:
  if keyboard is not None:keyboard.close()
  if control is not None:control.close()
