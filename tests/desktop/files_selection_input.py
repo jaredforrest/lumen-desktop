@@ -2,7 +2,7 @@
 from fixture_resources import close_reaped_pipes
 import argparse,hashlib,json,os,re,shutil,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
-p=argparse.ArgumentParser();p.add_argument('--launcher',type=Path,required=True);p.add_argument('--sway',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--effects',action='store_true');p.add_argument('--views',nargs='+',choices=['list','grid','gallery','columns'],default=['list','grid','gallery','columns']);p.add_argument('--output',type=Path,required=True);p.add_argument('--inside',action='store_true');a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--launcher',type=Path,required=True);p.add_argument('--sway',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--lock-client',required=True);p.add_argument('--effects',action='store_true');p.add_argument('--views',nargs='+',choices=['list','grid','gallery','columns'],default=['list','grid','gallery','columns']);p.add_argument('--output',type=Path,required=True);p.add_argument('--inside',action='store_true');a=p.parse_args()
 if not a.inside:
  with tempfile.TemporaryDirectory(prefix='lumen-selection-input-') as private:
   env=dict(os.environ,HOME=private,XDG_RUNTIME_DIR=private,DBUS_SYSTEM_BUS_ADDRESS='unix:path='+private+'/no-system-bus')
@@ -18,6 +18,7 @@ env.update(PULSE_SERVER='unix:'+env['XDG_RUNTIME_DIR']+'/no-audio',PIPEWIRE_RUNT
 docs=Path(env['HOME'])/'Documents';docs.mkdir()
 for index in range(160):(docs/f'item-{index:03}.txt').write_text('synthetic '+str(index))
 palettes=json.loads((repo/'res/lumen-desktop/appearance/palette.json').read_text());appearance=out/'appearance.json';appearance.write_text(json.dumps(dict(font=palettes['font'],palette=palettes['dark'],preferences={})));env['LUMEN_APPEARANCE_STATE']=str(appearance)
+settings=out/'settings.json';settings.write_text('{}');env['LUMEN_NIX_SETTINGS_ACTIVE']=str(settings)
 assets=out/'assets';shutil.copytree(Path(env['LUMEN_NOTIFICATION_HELPER']).parent.parent,assets)
 backend=assets/'shell/files.py';original=backend.read_text();needle="    if action=='volumes':\n";assert original.count(needle)==1
 column_needle="    if action=='column-list':return listing(data)";assert original.count(column_needle)==1
@@ -36,7 +37,8 @@ ShellRoot {
  property int beganCount:0
  Connections {target:fixture.observedBand;function onBegan(){fixture.beganCount++;}function onCanceled(reason){fixture.lastCancel=reason;}}
  QtObject {id:exported;property var state:({appName:"",title:"",windowId:0})}
- QtObject {id:permission;property bool permitted:true}
+ D.ScreenSaverState {id:permission;active:true}
+ Window {id:bystander;visible:false;title:"Selection bystander";width:240;height:100;color:"#303030"}
  QtObject {id:stub;property int focusEpoch:0;property var windows:[];property var exportedMenu:exported;property var screenSaverPreferences:permission;function activeFiles(window){}function focusWindow(window){}}
  D.FilesState {id:service;persistViewPreferences:false;preferencesLoaded:true;path:'''+json.dumps(str(docs))+''';viewMode:"list"}
  D.FilesWindow {id:files;shell:stub;service:service;visible:true}
@@ -45,9 +47,10 @@ ShellRoot {
  function band(){return find("files-"+(service.viewMode==="columns"?"column-band-"+service.path:service.viewMode+"-band-selection"),files.contentItem);}
  IpcHandler {target:"selectionAudit"
   function mode(value:string):void {service.viewMode=value;}
+  function showBystander(value:bool):void {bystander.visible=value;}
   function refresh():void {service.refresh();}
   function reverse():void {service.descending=!service.descending;service.refresh();}
-  function state():string {const b=fixture.band();return JSON.stringify({ready:service.ready && !service.busy && service.rows.length===160,mode:service.viewMode,selection:files.selectedPaths,preview:files.bandPreviewPaths,current:files.current?files.current.path:null,pending:!!b && b.pending,active:!!b && b.active,error:service.error,dragging:files.dragging,lastCancel:fixture.lastCancel,beganCount:fixture.beganCount,bandFocus:!!b && b.activeFocus});}
+  function state():string {const b=fixture.band();return JSON.stringify({ready:service.ready && !service.busy && service.rows.length===160,mode:service.viewMode,selection:files.selectedPaths,preview:files.bandPreviewPaths,current:files.current?files.current.path:null,pending:!!b && b.pending,active:!!b && b.active,error:service.error,dragging:files.dragging,lastCancel:fixture.lastCancel,beganCount:fixture.beganCount,bandFocus:!!b && b.activeFocus,lock:permission.lock,permitted:permission.permitted,filesActive:files.selectionActive});}
   function geometry():string {const b=fixture.band();if(!b || !b.permitted)return "null";fixture.observedBand=b;const boxes=b.boxes().filter(box=>box.x>=b.view.contentX && box.y>=b.view.contentY && box.x+box.width<b.view.contentX+b.width && box.y+box.height<b.view.contentY+b.height);if(!boxes.length)return "null";const first=boxes[0],at=b.mapToItem(files.contentItem,0,0),horizontal=service.viewMode==="gallery";const start=horizontal?{x:first.x+first.width/2,y:b.view.contentY+b.height-b.bottomInset-6}:{x:first.x+first.width+6,y:first.y+first.height/2};const end={x:first.x+1,y:first.y+1};return JSON.stringify({debug:{parentIsView:b.parent===b.view,parentType:String(b.parent),viewType:String(b.view),visible:b.visible,enabled:b.enabled,indexAtStart:b.view.indexAt(start.x,start.y),width:b.width,height:b.height,rightInset:b.rightInset,contentX:b.view.contentX,contentY:b.view.contentY,at:at,first:first,areas:b.children.filter(child=>child.acceptedButtons!==undefined).map(child=>({width:child.width,height:child.height,enabled:child.enabled,visible:child.visible}))},start:{x:at.x+start.x-b.view.contentX,y:at.y+start.y-b.view.contentY},end:{x:at.x+end.x-b.view.contentX,y:at.y+end.y-b.view.contentY},row:{x:at.x+first.x-b.view.contentX+first.width/2,y:at.y+first.y-b.view.contentY+first.height/2},path:first.row.path,populated:horizontal?b.view.contentWidth>b.width:b.view.contentHeight>b.height});}
  }
 }''')
@@ -95,6 +98,10 @@ try:
   point(box['row']);button('p');button('r');wait(lambda:state()['selection']==[box['path']]);record(mode+': ordinary delegate pointer selection remains available')
   before=state()['selection'];begin(box);ipc('reverse');wait(lambda:not state()['pending'] and state()['ready']);button('r');assert state()['selection']==before and state()['preview'] is None;record(mode+': actual resort cancels held geometry without selecting another object')
   box=wait(lambda:json.loads(ipc('geometry')));before=state()['selection'];begin(box);pointer.stdin.write('w 1\n');pointer.stdin.flush();wait(lambda:not state()['pending']);button('r');assert state()['selection']==before and state()['preview'] is None;record(mode+': physical wheel cancels held viewport preview')
+  box=wait(lambda:json.loads(ipc('geometry')));before=state()['selection'];begin(box);ipc('showBystander','true');other=wait(lambda:next((node for node in nodes(json.loads(call('swaymsg','-r','-t','get_tree'))) if node.get('name')=='Selection bystander'),None));call('swaymsg','[con_id='+str(other['id'])+'] focus');wait(lambda:not state()['pending'] and not state()['filesActive']);button('r');assert state()['selection']==before and state()['preview'] is None;ipc('showBystander','false');call('swaymsg','[con_id='+str(native['id'])+'] focus');wait(lambda:state()['filesActive']);record(mode+': actual focus transfer cancels without stealing focus or committing')
+  box=wait(lambda:json.loads(ipc('geometry')));before=state()['selection'];begin(box)
+  with (out/('lock-'+mode+'.log')).open('w') as log:locker=sp.Popen([a.lock_client],env=env,stdin=sp.PIPE,stdout=log,stderr=sp.STDOUT,text=True,start_new_session=True)
+  processes.append(locker);wait(lambda:state()['lock']=={'known':True,'locked':True} and not state()['pending']);assert state()['selection']==before and state()['preview'] is None;button('r');locker.stdin.write('u\n');locker.stdin.flush();locker.wait(timeout=5);wait(lambda:state()['permitted']);call('swaymsg','[con_id='+str(native['id'])+'] focus');wait(lambda:state()['filesActive']);record(mode+': actual native session lock invalidates held selection and restores usable state after unlock')
   if mode in ('list','grid'):
    box=wait(lambda:json.loads(ipc('geometry')));point(box['row']);button('p');point({"x":box['row']['x']+20,"y":box['row']['y']+20});point({"x":box['row']['x']+40,"y":box['row']['y']+40})
    wait(lambda:any(seat.get('lumen_drag',{}).get('active') for seat in json.loads(call('swaymsg','-r','-t','get_seats'))));assert not state()['pending'];key('-k','Escape');button('r');wait(lambda:not any(seat.get('lumen_drag',{}).get('active') for seat in json.loads(call('swaymsg','-r','-t','get_seats'))));record(mode+': actual delegate drag starts native offer rather than a selection band')

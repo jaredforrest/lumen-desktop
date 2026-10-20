@@ -45,3 +45,12 @@ exercises sort/replacement focus, deferred-restore retirement, production delega
 geometry, preview-only state and cancellation/focus routing. Its direct component
 protocol calls do not claim genuine pointer input; native acceptance is a separate
 gate.
+
+`files_selection_input.py` drives actual installed components in a disposable
+compositor with full folders. It checks physical modifier gestures, preview-only
+state, exact-row release, Escape, wheel, native focus transfer, actual session
+lock and row-order invalidation in all four views. List and icon delegates also
+retain native file-drag offers. The active leaf uses the captured service row
+array after checking equality with the view adapter's ordered identities; the
+view adapter itself is not treated as an authoritative array. Native acceptance
+artifacts are required separately from the source and offscreen tests.
