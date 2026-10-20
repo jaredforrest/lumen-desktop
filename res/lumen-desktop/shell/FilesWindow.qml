@@ -533,7 +533,7 @@ Accessible.name:FileLinks.accessible(modelData);Accessible.selected:root.isSelec
                         contentItem:Item {
                             Image {id:galleryThumb;anchors.horizontalCenter:parent.horizontalCenter;y:4;width:72;height:46;source:modelData.directory?"icons/folder.svg":(["image/png","image/jpeg","image/webp","image/gif","image/bmp"].includes(modelData.kind) && modelData.size<=33554432?modelData.uri:"");sourceSize:Qt.size(144,92);fillMode:Image.PreserveAspectFit;asynchronous:true}
                             SystemGlyph {visible:!galleryThumb.source || galleryThumb.status===Image.Error;anchors.horizontalCenter:parent.horizontalCenter;y:5;width:36;height:42;name:"document";ink:Theme.colors.muted}
-                            PanelLabel {y:52;width:parent.width;height:36;text:FileLinks.label(modelData);textFormat:Text.PlainText;wrapMode:Text.Wrap;maximumLineCount:2;horizontalAlignment:Text.AlignHCenter;font.pixelSize:11}}
+                            PanelLabel {y:52;width:parent.width;height:36;text:FileLinks.markedLabel(modelData);textFormat:Text.PlainText;wrapMode:Text.Wrap;maximumLineCount:2;horizontalAlignment:Text.AlignHCenter;font.pixelSize:11}}
                     }
                 }
             }

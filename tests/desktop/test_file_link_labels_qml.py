@@ -38,9 +38,9 @@ ShellRoot {
  function labels(item,out){if(item.text!==undefined)out.push(item.text);for(const child of item.children || [])labels(child,out);return out;}
  Timer {interval:40;repeat:true;running:true;onTriggered:{try {
   if(++ticks>75)throw Error("Link label readiness failed");
-  const values=labels(columns,[]),expected=rows.map(row=>Links.label(row));
+  const values=labels(columns,[]),expected=rows.map(row=>Links.markedLabel(row));
   if(!expected.every(value=>values.includes(value)))return;
-  if(Links.accessible(rows[0])!=="ordinary" || !Links.accessible(rows[2]).includes("symbolic link") || Links.label(rows[3])!=="chain (unresolved link)")throw Error("Misleading link semantics");
+  if(Links.accessible(rows[0])!=="ordinary" || !Links.accessible(rows[2]).includes("symbolic link") || Links.label(rows[3])!=="chain (unresolved link)" || !values.includes("↗ resolved"))throw Error("Misleading link semantics");
   const details=labels(info,[]);if(!details.includes("Link Status:") || !details.includes(info.details.linkDetail))throw Error("Missing recoverable information");
   console.log("LINK_LABELS_QT_PASS");Qt.quit();
  }catch(error){console.error("LINK_LABELS_QT_FAIL "+error);Qt.quit();}}}
