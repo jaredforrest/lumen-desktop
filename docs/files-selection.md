@@ -11,7 +11,7 @@ model for list, icon and gallery views and the active leaf column. The leaf
 column query and ordered identity rows must match the active folder. Ancestor
 columns retain navigation. A press inside an existing row remains available to
 its original file-drag, click or context-menu implementation. Scrollbar strips
-are excluded. A visible12-pixel blank selection gutter is reserved next to
+are excluded. A visible 12-pixel blank selection gutter is reserved next to
 vertical list/column rows, between icon cells and above the gallery scrollbar,
 including fully packed folders. This is a provisional engineering affordance, not
 a reference geometry measurement. Row interaction stays within the actual
