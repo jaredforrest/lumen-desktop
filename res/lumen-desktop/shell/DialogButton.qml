@@ -1,15 +1,25 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Window
 AbstractButton {
     id: control
     property bool primary: false
     property bool destructive: false
     property bool defaultAction: primary && !destructive
     readonly property color actionColor: destructive ? Theme.errorText : Theme.colors.accent
+    function anotherButtonOwnsReturn() {
+        let item=control.Window.window?control.Window.window.activeFocusItem:null;
+        while(item){
+            if(item===control)return false;
+            if(item instanceof AbstractButton)return true;
+            item=item.parent;
+        }
+        return false;
+    }
     Accessible.name: text
     Keys.onReturnPressed: if (enabled) clicked()
     Keys.onEnterPressed: if (enabled) clicked()
-    Shortcut {sequence:"Return";context:Qt.WindowShortcut;enabled:control.defaultAction && control.enabled && control.visible && !control.activeFocus;onActivated:control.clicked()}
+    Shortcut {sequence:"Return";context:Qt.WindowShortcut;enabled:control.defaultAction && control.enabled && control.visible && !control.activeFocus && !control.anotherButtonOwnsReturn();onActivated:control.clicked()}
     implicitHeight: Math.max(28,label.implicitHeight+12)
     implicitWidth: Math.max(80, label.implicitWidth + 28)
     opacity: enabled ? 1 : 0.45

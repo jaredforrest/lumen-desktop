@@ -1,0 +1,13 @@
+# Shared control text and focused actions
+
+Device names and errors in AudioDeviceControl, brightness tooltip text, date/time labels and editable numeric spin values use shared text roles. Device labels and spin values retain 12-pixel defaults; error, tooltip and date labels retain 11-pixel defaults. Spin arrows, sun artwork, tracks and other optical symbols retain their dimensions. StatusMessage and the brightness heading already honored enlargement and remain unchanged.
+
+Audio action rows grow with their text. Brightness tooltips wrap within the owning slider width. Calendar's event editor scales its labels and fields; its real inspector viewport reveals focused date fields and footer actions. The nonediting noncompact Calendar details inspector still has essential unscaled text and remains a separate, unblocked migration. Invisible adjacent-month cards are data loaders; compact calendar widgets already honor enlargement. Creative font previews retain their user-selected document point sizes, independent of UI text size.
+
+Default Return dispatch respects actual focus ancestry. A focused Cancel or another button owns Return, including when focus is on its descendant. The primary action remains the default in a text field and responds exactly once when focused. Hidden or disabled primaries do not dispatch. This prevents Calendar's focused Cancel from accidentally creating an event.
+
+`shared_control_typography_qml.py` paints 80 configurations and 96 receipts: five consumers, light/dark, 100/115/130/150 percent, normal/constrained dimensions, with separate date/footer frames in the actual CalendarWindow. It records public-font resolution, numeric widths, focus/clip bounds, presented ink and per-segment work timings. Each isolated consumer/colour process retains a fixed 25-second budget, not a product speed claim.
+
+`shared_control_typography_native.py` uses physical volume/date input, actual button ancestry and eight Return routes, constrained Calendar cancellation with zero provider mutations, and real pointer-hover tooltip paint. Private synthetic providers record audio arguments and reject calendar writes; no host devices, accounts or services are accessed. CI retains both compositor variants and all failure artifacts.
+
+Optional `--protocol-trace` records only the private application client, with phase offsets and a cooperative 8 MiB guard. Runtime warnings are collected after all children have been reaped. Protocol traces remain private artifacts; a passing functional result is not a warning-clean runtime claim.

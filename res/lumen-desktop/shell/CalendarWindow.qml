@@ -273,7 +273,9 @@ FloatingWindow {
         }
         Rectangle {visible:root.inspector;anchors.fill:parent;color:"#30000000";MouseArea {anchors.fill:parent;onClicked:{root.inspector=false;calendar.editing=false;}}}
         ScrollView {id:inspectorScroll;visible:root.inspector;anchors.right:parent.right;anchors.rightMargin:18;y:root.toolbarHeight+6;width:Math.min(350*Theme.textScale,parent.width-36);height:Math.min(parent.height-y-18,calendar.implicitHeight);clip:true
+            FocusFlickable {objectName:"calendar-inspector-content";width:inspectorScroll.availableWidth;height:inspectorScroll.availableHeight;contentWidth:width;contentHeight:calendar.implicitHeight
             CalendarCard {id:calendar;width:inspectorScroll.availableWidth;today:root.shell.currentDate;detailsOnly:true;active:root.visible;onOpenCalendar:root.inspector=false;onAccountsRequested:root.shell.openSettings("Internet Accounts")}
+            }
         }
     }
 }

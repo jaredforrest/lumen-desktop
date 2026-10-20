@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 SpinBox {
         id:part
-        font.family:Theme.font;font.pixelSize:12
+        font.family:Theme.font;font.pixelSize:Theme.textRole("label")
         background:Rectangle {radius:6;color:Theme.colors.field;border.color:part.activeFocus?Theme.colors.accent:Theme.hairline}
         contentItem:TextInput {
             text:part.textFromValue(part.value,part.locale);font:part.font;color:Theme.colors.text;selectionColor:Theme.colors.accent;selectedTextColor:Theme.colors.selectedText

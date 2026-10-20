@@ -23,19 +23,19 @@ Column {
         writingNode=String(node.id);writer.running=true;
     }
     onNodeChanged:{debounce.stop();reconcile.stop();pendingVolume=-1;optimisticVolume=-1;pendingMute=null;error="";}
-    PanelLabel {width:parent.width;text:root.label;textFormat:Text.PlainText;font.pixelSize:12}
+    PanelLabel {width:parent.width;text:root.label;textFormat:Text.PlainText;wrapMode:Text.Wrap;font.pixelSize:Theme.textRole("label")}
     Row {width:parent.width;spacing:8
         SystemSlider {
-            id:level;width:parent.width-78;height:26;from:0;to:1;stepSize:0.01
+            id:level;width:parent.width-mute.width-8;height:mute.height;from:0;to:1;stepSize:0.01
             value:root.optimisticVolume>=0?root.optimisticVolume:root.available?root.node.audio.volume:0
             enabled:root.available;Accessible.name:root.label+" volume"
             onMoved:root.setVolume(value)
             onPressedChanged:if(!pressed)root.flush()
 
         }
-        DialogButton {width:70;height:26;text:root.available && root.node.audio.muted?"Unmute":"Mute";enabled:root.available;Accessible.name:text+" "+root.label;onClicked:root.toggleMute()}
+        DialogButton {id:mute;width:70+(Theme.textRole("body")-13)*5;height:26+(Theme.textRole("body")-13)*2;text:root.available && root.node.audio.muted?"Unmute":"Mute";enabled:root.available;Accessible.name:text+" "+root.label;onClicked:root.toggleMute()}
     }
-    PanelLabel {visible:!!root.error;width:parent.width;text:root.error;font.pixelSize:11;color:Theme.colors.muted;wrapMode:Text.WordWrap}
+    PanelLabel {visible:!!root.error;width:parent.width;text:root.error;font.pixelSize:Theme.textRole("metadata");color:Theme.colors.muted;wrapMode:Text.WordWrap}
     Timer {id:debounce;interval:60;onTriggered:root.flush()}
     Timer {id:reconcile;interval:200;onTriggered:if(!writer.running && root.pendingVolume<0)root.optimisticVolume=-1}
     // WirePlumber also handles nodes whose channel map is not exposed to Quickshell.

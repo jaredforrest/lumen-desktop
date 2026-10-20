@@ -19,7 +19,7 @@ Column {
     }
     component DatePart: DesktopSpinBox {}
     onTextChanged: sync()
-    PanelLabel {text:root.label;color:Theme.colors.muted;font.pixelSize:11}
+    PanelLabel {text:root.label;color:Theme.colors.muted;font.pixelSize:Theme.textRole("metadata")}
     Row {
         spacing:5;width:parent.width
         DatePart {id:day;objectName:root.objectName+"-day";width:65;from:1;to:new Date(year.value,month.currentIndex+1,0).getDate();editable:true;Accessible.name:root.label+" day";onValueModified:root.commit()}

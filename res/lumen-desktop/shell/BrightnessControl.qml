@@ -33,6 +33,7 @@ Column {
         onMoved:{root.level=value;root.pending=value;root.revision++;root.error="";debounce.restart();}
         ToolTip {
             id: brightnessTip
+            width:Math.min(slider.width,tooltipText.implicitWidth+2*padding)
             parent: slider
             visible: slider.hovered && !slider.pressed
             delay: 700
@@ -42,9 +43,11 @@ Column {
             y: slider.height+8
             padding: 7
             contentItem: Text {
+                id:tooltipText
+                wrapMode:Text.Wrap
                 text: brightnessTip.text
                 font.family: Theme.font
-                font.pixelSize: 11
+                font.pixelSize: Theme.textRole("metadata")
                 color: Theme.colors.text
                 textFormat: Text.PlainText
             }
