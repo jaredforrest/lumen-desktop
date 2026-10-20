@@ -3,7 +3,8 @@ import sys,unittest
 from pathlib import Path
 from unittest.mock import Mock,patch
 sys.path.insert(0,str(Path(__file__).parent/'application_fixture'))
-from accessibility import bounded_call
+from accessibility import bounded_call,Observer
+import dbus
 class Budget(unittest.TestCase):
  def test_remaining_budget_bounds_last_roundtrip(self):
   method=Mock(return_value='row')
@@ -18,6 +19,10 @@ class Budget(unittest.TestCase):
   with patch('accessibility.time.monotonic',return_value=5):
    with self.assertRaisesRegex(ValueError,'budget'):bounded_call(method,deadline=5)
   method.assert_not_called()
+ def test_unavailable_last_row_cannot_return_after_deadline(self):
+  observer=Observer.__new__(Observer);observer.describe=Mock(side_effect=dbus.DBusException('unavailable'))
+  with patch('accessibility.time.monotonic',side_effect=[0,0,5.01]):
+   with self.assertRaisesRegex(ValueError,'budget'):observer.snapshot()
  def test_individual_cap_unchanged(self):
   method=Mock(return_value=True)
   with patch('accessibility.time.monotonic',side_effect=[1,1.2]):self.assertTrue(bounded_call(method,deadline=5))
