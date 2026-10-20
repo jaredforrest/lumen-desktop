@@ -360,7 +360,7 @@ jobs:
           nix build .#gridcraft --out-link artifacts/gridcraft --option abort-on-warn true
           nix build .#deckcraft --out-link artifacts/deckcraft --option abort-on-warn true
       - run: bash tests/ci/run-native.sh provider_save_namespace_prepare nix develop --command desktop-test-python tests/ci/native_namespace_policy.py prepare --output artifacts/provider-save-namespace
-      - run: bash tests/ci/run-native.sh provider_atomic_save nix develop --command desktop-test-python tests/desktop/provider_atomic_save.py --wordcraft "$PWD/artifacts/wordcraft/bin/wordcraft-cli" --gridcraft "$PWD/artifacts/gridcraft/bin/gridcraft-cli" --deckcraft "$PWD/artifacts/deckcraft/bin/deckcraft-cli" --output artifacts/provider-atomic-save --profiles-json "$(nix eval --json --file config/application-profiles.nix)"
+      - run: bash tests/ci/run-native.sh provider_atomic_save nix develop --command desktop-test-python tests/desktop/provider_atomic_save.py --wordcraft "$PWD/artifacts/wordcraft/bin/wordcraft-cli" --gridcraft "$PWD/artifacts/gridcraft/bin/gridcraft-cli" --deckcraft "$PWD/artifacts/deckcraft/bin/deckcraft-cli" --output artifacts/provider-atomic-save
       - if: always()
         run: bash tests/ci/run-native.sh provider_save_namespace_cleanup nix develop --command desktop-test-python tests/ci/native_namespace_policy.py cleanup --output artifacts/provider-save-namespace
       - if: always()

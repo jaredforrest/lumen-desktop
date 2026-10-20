@@ -4,19 +4,17 @@ from pathlib import Path
 from xml.etree import ElementTree
 from application_fixture import isolation,offscreen
 from office_fixture import corpus
-p=argparse.ArgumentParser();p.add_argument('--wordcraft',type=Path,required=True);p.add_argument('--gridcraft',type=Path,required=True);p.add_argument('--deckcraft',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--profiles-json',required=True);p.add_argument('--inside',action='store_true');a=p.parse_args();repo=Path(__file__).resolve().parents[2]
+p=argparse.ArgumentParser();p.add_argument('--wordcraft',type=Path,required=True);p.add_argument('--gridcraft',type=Path,required=True);p.add_argument('--deckcraft',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--inside',action='store_true');a=p.parse_args();repo=Path(__file__).resolve().parents[2]
 tools={name:offscreen.immutable_file(getattr(a,name)) for name in ('wordcraft','gridcraft','deckcraft')}
 def digest(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 if not a.inside:
  assert not sp.check_output(['git','-C',str(repo),'status','--porcelain'],text=True).strip(),'Freeze source before acceptance'
  revision=sp.check_output(['git','-C',str(repo),'rev-parse','HEAD'],text=True).strip();hashes={name:digest(path) for name,path in tools.items()};out=a.output.resolve();out.mkdir(mode=0o700,parents=True,exist_ok=False)
- command=[str(offscreen.immutable_file(sys.executable)),'/source/tests/desktop/provider_atomic_save.py','--inside','--output','/artifacts','--profiles-json',a.profiles_json]+sum(([ '--'+name,str(path)]for name,path in tools.items()),[])
+ command=[str(offscreen.immutable_file(sys.executable)),'/source/tests/desktop/provider_atomic_save.py','--inside','--output','/artifacts']+sum(([ '--'+name,str(path)]for name,path in tools.items()),[])
  result=isolation.run(repo,out,command)
  unchanged=sp.check_output(['git','-C',str(repo),'rev-parse','HEAD'],text=True).strip()==revision and not sp.check_output(['git','-C',str(repo),'status','--porcelain'],text=True).strip() and all(digest(tools[name])==value for name,value in hashes.items())
  (out/'provenance.json').write_text(json.dumps(dict(sourceRevision=revision,sourceUnchanged=unchanged,tools={name:str(path) for name,path in tools.items()},toolHashes=hashes,exitCode=result),indent=2)+'\n');assert unchanged;raise SystemExit(result)
 assert repo==Path('/source') and os.environ['HOME']=='/home/fixture' and os.getuid()!=0 and not Path('/.old-root').exists()
-profiles=json.loads(a.profiles_json);assert isinstance(profiles,dict) and all(isinstance(profiles.get(name),dict) for name in tools)
-settings=Path('/etc/nix');settings.mkdir();(settings/'desktop-settings.json').write_text(json.dumps(dict(applicationPreferences=profiles)))
 out=a.output;fixture=corpus.create();records=[]
 def commands(values):return [arg for name,value in values for arg in ('--cmd',name+'='+json.dumps(value))]
 def invoke(tool,values,save,flag,source=None,sourceflag='--in',timeout=30,label='run'):
