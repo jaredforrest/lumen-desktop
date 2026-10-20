@@ -5,7 +5,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'res/lumen-desktop/she
 import capture_observation as capture
 p=argparse.ArgumentParser();p.add_argument('--pipewire',type=Path,required=True);p.add_argument('--parent-net',required=True);a=p.parse_args()
 assert os.getuid()!=0 and os.readlink('/proc/self/ns/net')!=a.parent_net
-assert not Path('/dev/snd').exists() and not Path('/home/jalio').exists()
+assert not Path('/dev/snd').exists() and list(Path('/home').iterdir())==[Path.home()]
 out=Path('/artifacts');runtime=Path(os.environ['XDG_RUNTIME_DIR']);env=dict(os.environ,PIPEWIRE_REMOTE='capture-fixture',PIPEWIRE_RUNTIME_DIR=str(runtime))
 config=out/'pipewire.conf';config.write_text('''context.properties = { core.daemon = true core.name = capture-fixture support.dbus = false }
 context.spa-libs = { audio.convert.* = audioconvert/libspa-audioconvert audio.adapt = audioconvert/libspa-audioconvert support.* = support/libspa-support audiotestsrc = audiotestsrc/libspa-audiotestsrc }
