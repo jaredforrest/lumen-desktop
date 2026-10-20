@@ -110,7 +110,7 @@ PanelWindow {
                     onHoveredChanged:if(hovered)root.selected=index
                     onClicked:root.apply(index)
                     background:Rectangle {radius:5;color:root.supported && root.selected===index?Theme.colors.accent:"transparent"}
-                    contentItem:Text {text:parent.text;color:root.supported && root.selected===parent.index?"white":Theme.colors.text;font.family:Theme.font;verticalAlignment:Text.AlignVCenter;leftPadding:8;font.pixelSize:13}
+                    contentItem:Text {text:parent.text;color:root.supported && root.selected===parent.index?Theme.colors.selectedText:Theme.colors.text;font.family:Theme.font;verticalAlignment:Text.AlignVCenter;leftPadding:8;font.pixelSize:13}
                 }
             }
         }

@@ -81,8 +81,8 @@ PanelWindow {
             ScrollBar.vertical:DesktopScrollBar {}
             delegate:Rectangle {
                 id:row;required property var modelData;required property int index;objectName:"window-group-row-"+modelData.id;width:list.width;height:54;radius:9;opacity:root.membershipMode && modelData.id===root.membership.source.sourceGroup?0.45:1;color:((root.membershipMode && root.membership.target && root.membership.target.groupId===modelData.id) || (!root.membershipMode && root.selected===index))?Theme.colors.accent:Theme.colors.surface
-                PanelLabel {x:10;y:8;width:parent.width-20;text:"Group "+row.modelData.id;textFormat:Text.PlainText;font.pixelSize:12;color:root.selected===row.index?"white":Theme.colors.text}
-                PanelLabel {x:10;y:29;width:parent.width-20;text:row.modelData.count+(row.modelData.count===1?" window":" windows")+(row.modelData.selected?" · selected":"");font.pixelSize:10;color:root.selected===row.index?"white":Theme.colors.muted}
+                PanelLabel {x:10;y:8;width:parent.width-20;text:"Group "+row.modelData.id;textFormat:Text.PlainText;font.pixelSize:12;color:root.selected===row.index?Theme.colors.selectedText:Theme.colors.text}
+                PanelLabel {x:10;y:29;width:parent.width-20;text:row.modelData.count+(row.modelData.count===1?" window":" windows")+(row.modelData.selected?" · selected":"");font.pixelSize:10;color:root.selected===row.index?Theme.colors.selectedText:Theme.colors.muted}
                 DropArea {anchors.fill:parent;keys:["application/x-lumen-group-intent"]
                     onEntered:drag=>{if(!root.membershipMode || row.modelData.id===root.membership.source.sourceGroup || !root.membership.accepts(drag)){drag.accepted=false;return;}root.membership.preview({kind:"group",groupId:row.modelData.id});drag.accept(Qt.MoveAction);}
                     onExited:if(root.membership)root.membership.target=null

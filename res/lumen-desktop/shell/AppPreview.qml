@@ -107,9 +107,9 @@ PanelSurface {
             required property var modelData
             required property int index
             width:fileList.width;height:29;radius:5;color:root.selectedFile===index?Theme.colors.accent:index%2?Theme.colors.background:"transparent"
-            SystemGlyph {x:8;anchors.verticalCenter:parent.verticalCenter;name:modelData.directory?"folder":"document";width:17;height:17;ink:root.selectedFile===index?"white":Theme.colors.accent}
-            PanelLabel {x:33;width:parent.width-140;anchors.verticalCenter:parent.verticalCenter;text:modelData.name;color:root.selectedFile===index?"white":Theme.colors.text}
-            PanelLabel {anchors.right:parent.right;anchors.rightMargin:12;anchors.verticalCenter:parent.verticalCenter;text:modelData.directory?"Folder":"Document";font.pixelSize:11;color:root.selectedFile===index?"white":Theme.colors.muted}
+            SystemGlyph {x:8;anchors.verticalCenter:parent.verticalCenter;name:modelData.directory?"folder":"document";width:17;height:17;ink:root.selectedFile===index?Theme.colors.selectedText:Theme.colors.accent}
+            PanelLabel {x:33;width:parent.width-140;anchors.verticalCenter:parent.verticalCenter;text:modelData.name;color:root.selectedFile===index?Theme.colors.selectedText:Theme.colors.text}
+            PanelLabel {anchors.right:parent.right;anchors.rightMargin:12;anchors.verticalCenter:parent.verticalCenter;text:modelData.directory?"Folder":"Document";font.pixelSize:11;color:root.selectedFile===index?Theme.colors.selectedText:Theme.colors.muted}
             MouseArea {anchors.fill:parent;onClicked:root.selectedFile=index}
         }
     }
