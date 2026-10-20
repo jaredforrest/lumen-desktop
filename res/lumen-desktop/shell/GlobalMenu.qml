@@ -16,13 +16,13 @@ Item {
         latestState=next;
         if (holdDisplay || resume.running) return;
         if(next.token!==state.token || next.windowId!==state.windowId) path=[];
-        if(next!==state){selection=null;highlighted={};}
+        if(next!==state){selection=null;highlighted={};hoverBlock=null;}
         state=next;
         for(let depth=0;depth<path.length;depth++){const n=node(path[depth],state.menu);if(!n || !n.visible || !n.enabled || !n.submenu){path=path.slice(0,depth);break;}}
     }
     onHoldDisplayChanged: {if(holdDisplay){release.stop();if(state.supported && state.token)command("hold",0);}else{resume.restart();if(!path.length)release.restart();}}
     Timer {id:resume;interval:120;onTriggered:root.acceptState(root.latestState)}
-    onPathChanged: if(!path.length) {release.restart();highlighted={};selection=null;if(shell.popupOwner==="exported")shell.popupOwner="";}
+    onPathChanged: if(!path.length) {release.restart();highlighted={};selection=null;hoverBlock=null;if(shell.popupOwner==="exported")shell.popupOwner="";}
     property var path: []
     property var invokingContext:null
     property var selection:null
@@ -39,7 +39,7 @@ Item {
         if(context)invokingContext=context;else if(!path.length)invokingContext={window:shell.active,hasWindow:!!shell.active,files:shell.filesWindow || null,epoch:shell.focusEpoch || 0,appName:shell.activeName,exportState:state};
         const closing=path[0]===id && output===screen;
         shell.claimPopup("exported");output=screen || Quickshell.screens.find(s=>s.name===shell.preferredOutput()) || Quickshell.screens[0];
-        command("hold",id);menuX=x;highlighted={};selection=null;pathY=[];path=closing?[]:[id];if(path.length)command("open",id);
+        command("hold",id);menuX=x;highlighted={};selection=null;hoverBlock=null;pathY=[];path=closing?[]:[id];if(path.length)command("open",id);
     }
     property var highlighted: ({})
     function capture(depth,id){const n=node(id,state.menu),parent=node(path[depth],state.menu);return path.length>depth && parent && parent.children.includes(n) && n && n.enabled && n.visible && !n.separator?{token:state.token,revision:state.revision,state:state,node:n,depth:depth,id:id,path:path.slice(0,depth+1)}:null;}
@@ -63,8 +63,23 @@ Item {
         if(!c || !valid(intent) || intent.depth!==depth)return;
         if(intent.node.submenu){openChild(depth,intent.id,c.rowY(intent.id),intent);Qt.callLater(()=>{if(path[depth+1]===intent.id)step(1);});}else activateIntent(intent);
     }
-    function back() {if(path.length>1){path=path.slice(0,-1);const depth=path.length-1;select(depth,highlighted[depth]);const c=cards.itemAt(depth);if(c)c.focusItem(highlighted[depth]);}else path=[];}
+    function back() {if(path.length>1){blockClosedHover(path.length-2,path[path.length-1]);path=path.slice(0,-1);const depth=path.length-1;select(depth,highlighted[depth]);const c=cards.itemAt(depth);if(c)c.focusItem(highlighted[depth]);}else path=[];}
     function switchTop(delta) {const bar=output?shell.bars[output.name]:null;if(bar)bar.switchHeading(delta,path[0]);}
+    property var hoverBlock:null
+    property var hoverPosition:({known:false,x:0,y:0})
+    function trackHoverPointer(x,y) {
+        const block=hoverBlock;
+        if(block && (Math.abs(x-block.x)>0.01 || Math.abs(y-block.y)>0.01))hoverBlock=null;
+        hoverPosition={known:true,x:x,y:y};
+    }
+    function blockClosedHover(depth,id) {
+        const card=cards.itemAt(depth),intent=capture(depth,id),point=hoverPosition;
+        hoverBlock=card && card.pointerOver(id) && intent && point.known?{intent:intent,x:point.x,y:point.y}:null;
+    }
+    function hoverBlocked(depth,id) {
+        const block=hoverBlock;
+        return !!block && block.intent.depth===depth && block.intent.id===id && valid(block.intent);
+    }
     property var pointer: ({x:0,y:0,time:0})
     function hoverDelay(depth,x,y) {
         const child=cards.itemAt(depth+1),p=pointer;
@@ -144,6 +159,7 @@ Item {
         WlrLayershell.keyboardFocus:WlrKeyboardFocus.Exclusive
         FocusScope {
             anchors.fill:parent;focus:true
+            HoverHandler {blocking:false;onPointChanged:if(hovered)root.trackHoverPointer(point.position.x,point.position.y);onHoveredChanged:if(!hovered)root.hoverBlock=null}
             Keys.onEscapePressed:root.back()
             Keys.onDownPressed:root.step(1)
             Keys.onUpPressed:root.step(-1)

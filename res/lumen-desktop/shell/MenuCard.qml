@@ -7,6 +7,7 @@ PanelSurface {
     required property real availableHeight
     property real maximumWidth:410
     function debugRows() {let a=[];for(let i=0;i<delegates.count;i++){const r=delegates.itemAt(i);a.push({id:r.modelData.id,y:card.y+scroll.y+r.y-scroll.contentY,hover:r.pointerInside});}return a;}
+    function pointerOver(id) {for(let i=0;i<delegates.count;i++){const row=delegates.itemAt(i);if(row.modelData.id===id)return row.pointerInside;}return false;}
     function rowY(id) {for(let i=0;i<delegates.count;i++){const r=delegates.itemAt(i);if(r.modelData.id===id)return card.y+scroll.y+r.y-scroll.contentY;}return card.y+6;}
     function focusItem(id){for(let i=0;i<delegates.count;i++){const r=delegates.itemAt(i);if(r.modelData.id===id && r.enabled){r.forceActiveFocus();return;}}}
     function reveal(id) {for(let i=0;i<delegates.count;i++){const r=delegates.itemAt(i);if(r.modelData.id!==id)continue;if(r.y<scroll.contentY)scroll.contentY=r.y;else if(r.y+r.height>scroll.contentY+scroll.height)scroll.contentY=r.y+r.height-scroll.height;}}
@@ -52,21 +53,24 @@ PanelSurface {
                     SystemGlyph {visible:modelData.submenu;anchors.right:parent.right;anchors.rightMargin:7;anchors.verticalCenter:parent.verticalCenter;name:"chevron-right";width:12;height:12;ink:row.selected?Theme.colors.selectedText:Theme.colors.text;opacity:modelData.enabled?1:0.4}
                     Timer {
                         id:expand;interval:160
-                        onTriggered:{if(!card.host.valid(row.hoverIntent))return;if(row.modelData.submenu)card.host.openChild(card.depth,row.modelData.id,card.y+scroll.y+row.y-scroll.contentY,row.hoverIntent);else card.host.closeBelow(card.depth);}
+                        onTriggered:{if(!card.host.valid(row.hoverIntent) || card.host.hoverBlocked(card.depth,row.modelData.id))return;if(row.modelData.submenu)card.host.openChild(card.depth,row.modelData.id,card.y+scroll.y+row.y-scroll.contentY,row.hoverIntent);else card.host.closeBelow(card.depth);}
                     }
                     MouseArea {
                         id:hit;anchors.fill:parent;hoverEnabled:true;enabled:!modelData.separator
-                        onEntered:if(row.modelData.enabled){
+                        onEntered:if(row.modelData.enabled && !card.host.hoverBlocked(card.depth,row.modelData.id)){
                             card.host.hover(card.depth,row.modelData.id);row.hoverIntent=card.host.capture(card.depth,row.modelData.id);
                             expand.interval=card.host.hoverDelay(card.depth,card.x+row.x+mouseX,card.y+scroll.y+row.y-scroll.contentY+mouseY);expand.restart();
                         }
-                        onPositionChanged:mouse=>card.host.rememberPointer(card.x+row.x+mouse.x,card.y+scroll.y+row.y-scroll.contentY+mouse.y)
+                        onPositionChanged:mouse=>{
+                            card.host.rememberPointer(card.x+row.x+mouse.x,card.y+scroll.y+row.y-scroll.contentY+mouse.y);
+                            const point=hit.mapToItem(null,mouse.x,mouse.y);card.host.trackHoverPointer(point.x,point.y);
+                        }
                         onExited:expand.stop()
                         onPressed:row.pressedIntent=card.host.capture(card.depth,row.modelData.id)
                         onCanceled:row.pressedIntent=null
                         onClicked:{
                             const intent=row.pressedIntent;row.pressedIntent=null;if(!card.host.valid(intent))return;
-                            expand.stop();
+                            expand.stop();card.host.hoverBlock=null;
                             if(modelData.submenu)card.host.openChild(card.depth,modelData.id,card.y+scroll.y+row.y-scroll.contentY,intent);
                             else card.host.activateIntent(intent);
                         }

@@ -63,7 +63,7 @@ text=head+'''
  IpcHandler {target:"menuAudit"
   function open(name:string):void{const bar=root.bars["HEADLESS-1"];bar.selectedWindow=root.active;bar.toggle(name,16);}
   function clear():void{}
-  function status():string {const b=root.bars["HEADLESS-1"];return JSON.stringify({ready:!!b,menu:b?b.menu:"",layout:b?b.popupLayout():null,active:root.active?root.active.appId:"",bridge:root.exportedMenu.state,latestBridge:root.exportedMenu.latestState,headingLayout:b?b.menuLayoutStatus():null,hiddenAnchor:b?b.exportX(37):0,exportPath:root.exportedMenu.path,exportTarget:root.exportedMenu.invokingContext && root.exportedMenu.invokingContext.window?root.exportedMenu.invokingContext.window.title:"",highlighted:root.exportedMenu.highlighted,selection:root.exportedMenu.selection?{id:root.exportedMenu.selection.id,revision:root.exportedMenu.selection.revision}:null,target:b && b.menuWindow?b.menuWindow.title:"",filesContext:b?b.filesFocused:false,windows:root.windows.map(w=>({app:w.appId,title:w.title}))});}
+  function status():string {const b=root.bars["HEADLESS-1"];return JSON.stringify({ready:!!b,menu:b?b.menu:"",layout:b?b.popupLayout():null,active:root.active?root.active.appId:"",bridge:root.exportedMenu.state,latestBridge:root.exportedMenu.latestState,headingLayout:b?b.menuLayoutStatus():null,hiddenAnchor:b?b.exportX(37):0,exportPath:root.exportedMenu.path,exportTarget:root.exportedMenu.invokingContext && root.exportedMenu.invokingContext.window?root.exportedMenu.invokingContext.window.title:"",highlighted:root.exportedMenu.highlighted,hoverBlock:root.exportedMenu.hoverBlock?{id:root.exportedMenu.hoverBlock.intent.id,depth:root.exportedMenu.hoverBlock.intent.depth}:null,selection:root.exportedMenu.selection?{id:root.exportedMenu.selection.id,revision:root.exportedMenu.selection.revision}:null,target:b && b.menuWindow?b.menuWindow.title:"",filesContext:b?b.filesFocused:false,windows:root.windows.map(w=>({app:w.appId,title:w.title}))});}
  }
 }'''+tail
 (source/'shell.qml').write_text(text)
@@ -218,6 +218,18 @@ try:
     # Hold the physical pointer still beyond both submenu hover-delay policies.
     time.sleep(.6);parent_state=state();(out/'stationary-parent.json').write_text(json.dumps(parent_state,indent=2))
     assert parent_state['exportPath']==[10] and parent_state['selection'] and parent_state['selection']['id']==14,('Stationary pointer reopened dismissed submenu',parent_state)
+    call('swaymsg','seat','seat0','cursor','set','1000','700');pointer_command('m 0.5 0.5')
+    wait(lambda:state()['hoverBlock'] is None,'actual pointer departure clears dismissed-row suppression')
+    nested,_=wait(lambda:named('Nested'),'fresh row after stationary dismissal');point(nested)
+    wait(lambda:state()['exportPath']==[10,14],'genuine pointer re-entry reopens submenu')
+    key('-k','Escape');wait(lambda:state()['exportPath']==[10],'re-entered submenu dismisses one level');time.sleep(.6)
+    assert state()['exportPath']==[10]
+    key('-k','Right');wait(lambda:state()['exportPath']==[10,14] and state()['selection'] and state()['selection']['id']==141,'explicit keyboard reopens stationary parent')
+    key('-k','Escape');wait(lambda:state()['exportPath']==[10],'keyboard child dismissal');time.sleep(.6)
+    assert state()['exportPath']==[10]
+    pointer_command('p');pointer_command('r');wait(lambda:state()['exportPath']==[10,14],'explicit stationary pointer click reopens parent')
+    key('-k','Escape');wait(lambda:state()['exportPath']==[10],'clicked child dismissal');time.sleep(.6)
+    assert state()['exportPath']==[10] and events()==[]
     key('-k','Escape');wait(lambda:not state()['exportPath'],'pointer parent dismisses')
     before=len(exporter_state()['keys']);key('-k','k');wait(lambda:len(exporter_state()['keys'])==before+1,'pointer submenu returns original native focus')
     checks.append('Physical submenu hover, child entry and parent return preserve hierarchy without dispatch and restore native focus')
