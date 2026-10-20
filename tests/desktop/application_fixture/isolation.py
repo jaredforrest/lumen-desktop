@@ -58,9 +58,10 @@ def bind_software_device(target):
     bound=Path(target).lstat()
     if not stat.S_ISCHR(bound.st_mode) or (bound.st_dev,bound.st_ino,bound.st_rdev)!=expected or software_device()!=expected:raise ValueError('Software allocator changed during isolation')
 
-def setup(root,source,output,environment,command,software_graphics=False):
+def setup(root,source,output,environment,command,software_graphics=False,private_pty=False):
     """Called only after unshare; no mount or network operation on the host."""
     graphics_policy(software_graphics)
+    if type(private_pty) is not bool:raise ValueError('private_pty must be a boolean')
     uid,gid=os.getuid(),os.getgid()
     if uid==0:raise ValueError('Browser fixture must retain a non-root identity')
     root,source,output=map(Path,(root,source,output))
@@ -71,6 +72,10 @@ def setup(root,source,output,environment,command,software_graphics=False):
     (root/'tmp').chmod(0o1777);(root/'home/fixture').chmod(0o700)
     for name in ('null','zero','random','urandom'):bind('/dev/'+name,root/'dev'/name)
     if software_graphics:bind_software_device(root/'dev/udmabuf')
+    if private_pty:
+        (root/'dev/pts').mkdir()
+        mount('devpts',root/'dev/pts','devpts',MS_NOSUID|MS_NOEXEC,'newinstance,ptmxmode=0666,mode=0620,max=64,gid='+str(gid))
+        (root/'dev/ptmx').symlink_to('pts/ptmx')
     for name,target in [('fd','/proc/self/fd'),('stdin','/proc/self/fd/0'),('stdout','/proc/self/fd/1'),('stderr','/proc/self/fd/2')]: (root/'dev'/name).symlink_to(target)
     (root/'dev/shm').mkdir();mount('tmpfs',root/'dev/shm','tmpfs',MS_NOSUID|MS_NODEV,'mode=1777,size=256M')
     mount('proc',root/'proc','proc',MS_NOSUID|MS_NODEV|MS_NOEXEC)
@@ -89,14 +94,15 @@ def setup(root,source,output,environment,command,software_graphics=False):
     os.rmdir('/.old-root');os.chdir('/source');drop_capabilities()
     os.execve(command[0],command,env)
 
-def run(source,output,command,environment=None,software_graphics=False):
+def run(source,output,command,environment=None,software_graphics=False,private_pty=False):
     graphics_policy(software_graphics)
+    if type(private_pty) is not bool:raise ValueError('private_pty must be a boolean')
     source,output=Path(source).resolve(),Path(output).resolve()
     if not source.is_dir() or not output.is_dir():raise ValueError('Existing source and fresh artifact directories are required')
     info=output.stat()
     if info.st_uid!=os.getuid() or stat.S_IMODE(info.st_mode)&0o022 or any(output.iterdir()):raise ValueError('Artifact directory must be empty, owned and writable only by this user')
     with tempfile.TemporaryDirectory(prefix='lumen-browser-root-') as private:
-        descriptor=Path(private)/'launch.json';descriptor.write_text(json.dumps(dict(root=str(Path(private)/'root'),source=str(source),output=str(output),environment=runtime_environment(os.environ if environment is None else environment),command=command,software_graphics=software_graphics)));(Path(private)/'root').mkdir()
+        descriptor=Path(private)/'launch.json';descriptor.write_text(json.dumps(dict(root=str(Path(private)/'root'),source=str(source),output=str(output),environment=runtime_environment(os.environ if environment is None else environment),command=command,software_graphics=software_graphics,private_pty=private_pty)));(Path(private)/'root').mkdir()
         return subprocess.call(['unshare','--user','--map-current-user','--keep-caps','--mount','--pid','--net','--ipc','--uts','--fork','--kill-child','--mount-proc',sys.executable,str(Path(__file__).resolve()),str(descriptor)])
 
 if __name__=='__main__':setup(**json.loads(Path(sys.argv[1]).read_text()))
