@@ -32,35 +32,37 @@ FloatingWindow {
         MouseArea {visible:!Theme.nativeWindowFrame;anchors.top:parent.top;width:parent.width;height:45;onPressed:if(content.Window.window)content.Window.window.startSystemMove()}
         WindowControls {windowName:"Text Tools";canFullscreen:false;windowActive:content.Window.window?content.Window.window.active:false;onTriggered:index=>{if(index===0)root.visible=false;else if(content.Window.window && index===1)content.Window.window.showMinimized();}}
         PanelLabel {x:100;y:14;visible:!Theme.nativeWindowFrame;text:"Text Tools";font.weight:Font.DemiBold}
-        Column {x:12;y:Theme.nativeWindowFrame?14:58;width:132;spacing:3
+        FocusFlickable {x:12;y:Theme.nativeWindowFrame?14:58;width:142;height:parent.height-y-12;contentWidth:width;contentHeight:pagesColumn.height;clip:true;ScrollBar.vertical:DesktopScrollBar {}
+        Column {id:pagesColumn;width:132;spacing:3
             Repeater {model:root.pages
-                AbstractButton {required property string modelData;width:132;height:34;Accessible.name:modelData;onClicked:root.page=modelData
-                    contentItem:PanelLabel {text:parent.modelData;verticalAlignment:Text.AlignVCenter;leftPadding:10;color:root.page===parent.modelData?Theme.colors.selectedText:Theme.colors.text}
+                AbstractButton {required property string modelData;width:132;height:Math.max(34,caption.implicitHeight+12);Accessible.name:modelData;onClicked:root.page=modelData
+                    contentItem:PanelLabel {id:caption;text:parent.modelData;wrapMode:Text.Wrap;verticalAlignment:Text.AlignVCenter;leftPadding:10;color:root.page===parent.modelData?Theme.colors.selectedText:Theme.colors.text}
                     background:Rectangle {radius:7;color:root.page===parent.modelData?Theme.colors.accent:parent.activeFocus || parent.hovered?Theme.colors.hover:"transparent"}
                 }
             }
         }
-        Flickable {x:160;y:Theme.nativeWindowFrame?14:58;width:parent.width-178;height:parent.height-y-18;clip:true;contentWidth:width;contentHeight:body.height
+        }
+        FocusFlickable {objectName:"text-tools-content";x:160;y:Theme.nativeWindowFrame?14:58;width:parent.width-178;height:parent.height-y-18;clip:true;contentWidth:width;contentHeight:body.height
             ScrollBar.vertical:DesktopScrollBar {}
         Column {id:body;width:parent.width;spacing:10
-            PanelLabel {text:root.page;font.pixelSize:18;font.weight:Font.DemiBold}
+            PanelLabel {text:root.page;font.pixelSize:Theme.textRole("heading");font.weight:Font.DemiBold}
             DesktopComboBox {visible:["Spelling","Speech"].includes(root.page);width:parent.width;model:["English (United Kingdom)","English (United States)"];currentIndex:root.language==="en_US"?1:0;Accessible.name:"Text language";enabled:!worker.running;onActivated:index=>root.send({action:"language",value:index===1?"en_US":"en_GB"})}
-            PanelLabel {visible:!["Fonts","Colours"].includes(root.page);width:parent.width;wrapMode:Text.WordWrap;maximumLineCount:3;font.pixelSize:12;color:Theme.colors.muted;text:root.page==="Dictation"?"Record speech locally, review the transcript, then insert it into the original window.":root.page==="Spelling"?"Check spelling in your chosen English variant and keep a personal dictionary. Corrections are applied only when chosen.":root.page==="Services"?"Copy, share or find actions in your text. Links open only when you choose them.":root.page==="Shortcuts"?"Bind an exported menu command to Super+Alt+F1–F12. Commands run only in the matching focused app.":root.page==="Replacements"?"Expand abbreviations after a space in supported native Wayland text fields. Password fields are excluded. Use Insert in other apps.":root.page==="Dictionary"?"Look up an English word using the local WordNet dictionary.":"Read text locally using your chosen English voice. No text is sent to a server."}
+            PanelLabel {visible:!["Fonts","Colours"].includes(root.page);width:parent.width;wrapMode:Text.WordWrap;font.pixelSize:Theme.textRole("label");color:Theme.colors.muted;text:root.page==="Dictation"?"Record speech locally, review the transcript, then insert it into the original window.":root.page==="Spelling"?"Check spelling in your chosen English variant and keep a personal dictionary. Corrections are applied only when chosen.":root.page==="Services"?"Copy, share or find actions in your text. Links open only when you choose them.":root.page==="Shortcuts"?"Bind an exported menu command to Super+Alt+F1–F12. Commands run only in the matching focused app.":root.page==="Replacements"?"Expand abbreviations after a space in supported native Wayland text fields. Password fields are excluded. Use Insert in other apps.":root.page==="Dictionary"?"Look up an English word using the local WordNet dictionary.":"Read text locally using your chosen English voice. No text is sent to a server."}
             CreativeTools {visible:["Fonts","Colours"].includes(root.page);width:parent.width;page:root.page;onCopyRequested:value=>root.send({action:"copy",text:value})}
             ControlRow {visible:!["Shortcuts","Fonts","Colours"].includes(root.page);width:parent.width;text:"Use Selected Text";enabled:!worker.running;onClicked:root.send({action:"selection"})}
             ScrollView {visible:!["Shortcuts","Fonts","Colours"].includes(root.page);width:parent.width;height:root.page==="Replacements"?110:80
-                TextArea {id:input;color:Theme.colors.text;font.family:Theme.font;font.pixelSize:13;wrapMode:TextEdit.Wrap;selectByMouse:true;placeholderText:"Type or paste text";placeholderTextColor:Theme.colors.muted;Accessible.name:"Text to process";background:Rectangle {radius:7;color:Theme.colors.field;border.color:input.activeFocus?Theme.colors.accent:Theme.hairline}}
+                TextArea {id:input;color:Theme.colors.text;font.family:Theme.font;font.pixelSize:Theme.textRole("body");wrapMode:TextEdit.Wrap;selectByMouse:true;placeholderText:"Type or paste text";placeholderTextColor:Theme.colors.muted;Accessible.name:"Text to process";background:Rectangle {radius:7;color:Theme.colors.field;border.color:input.activeFocus?Theme.colors.accent:Theme.hairline}}
             }
-            Row {width:parent.width;spacing:8;visible:["Dictionary","Speech"].includes(root.page)
+            Flow {width:parent.width;spacing:8;visible:["Dictionary","Speech"].includes(root.page)
                 DialogButton {width:160;text:root.page==="Dictionary"?"Look Up":"Read Aloud";primary:true;enabled:!worker.running && input.text.trim().length>0;onClicked:root.send({action:root.page==="Dictionary"?"lookup":"speak",text:input.text})}
                 DialogButton {width:120;visible:root.page==="Speech";text:"Stop Reading";onClicked:root.send({action:"stop"})}
             }
-            Row {visible:root.page==="Dictation";spacing:8
+            Flow {width:parent.width;visible:root.page==="Dictation";spacing:8
                 DialogButton {width:145;text:root.recording?"Stop & Transcribe":"Start Dictation";primary:true;enabled:!worker.running;onClicked:root.send({action:root.recording?"dictation-finish":"dictation-start"})}
                 DialogButton {width:80;text:"Cancel";enabled:root.recording && !worker.running;onClicked:root.send({action:"dictation-cancel"})}
                 DialogButton {width:130;text:"Insert Transcript";enabled:!root.recording && !worker.running && !!input.text;onClicked:{root.visible=false;insertion.text=input.text;insertion.restart();}}
             }
-            Row {visible:["Spelling","Services"].includes(root.page);spacing:8
+            Flow {width:parent.width;visible:["Spelling","Services"].includes(root.page);spacing:8
                 DialogButton {width:140;text:root.page==="Spelling"?"Check Spelling":"Find Actions";enabled:!worker.running && !!input.text;onClicked:root.send({action:root.page==="Spelling"?"spelling":"detect",text:input.text})}
                 DialogButton {width:80;text:"Copy";enabled:!!input.text;onClicked:root.send({action:"copy",text:input.text})}
                 DialogButton {width:120;visible:root.page==="Services";text:"Share by Email";enabled:!!input.text;onClicked:AppLaunch.run(["xdg-email","--body",input.text])}
@@ -81,7 +83,7 @@ FloatingWindow {
                 }
             }
             Row {visible:root.page==="Replacements";width:parent.width;spacing:8
-                TextField {id:name;width:parent.width-108;height:30;color:Theme.colors.text;font.family:Theme.font;placeholderText:"Abbreviation or name";placeholderTextColor:Theme.colors.muted;Accessible.name:"Replacement name";background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline}}
+                TextField {id:name;width:parent.width-108;height:Math.max(30,Theme.textRole("body")+16);color:Theme.colors.text;font.family:Theme.font;font.pixelSize:Theme.textRole("body");placeholderText:"Abbreviation or name";placeholderTextColor:Theme.colors.muted;Accessible.name:"Replacement name";background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline}}
                 DialogButton {width:100;text:"Save";enabled:!!name.text && !!input.text && !worker.running;onClicked:root.send({action:"save",name:name.text,text:input.text})}
             }
             SettingsToggle {visible:root.page==="Replacements";width:parent.width;text:"Automatic replacements in supported fields";checked:root.automaticReplacements;onToggled:root.send({action:"automatic-replacements",enabled:checked})}
@@ -93,17 +95,17 @@ FloatingWindow {
                 }
             }
             ScrollView {visible:root.page==="Dictionary";width:parent.width;height:Math.max(60,root.height-355)
-                TextArea {readOnly:true;text:root.definition;color:Theme.colors.text;font.family:Theme.font;font.pixelSize:13;wrapMode:TextEdit.Wrap;selectByMouse:true;Accessible.name:"Dictionary definition";background:Rectangle {color:"transparent"}}
+                TextArea {readOnly:true;text:root.definition;color:Theme.colors.text;font.family:Theme.font;font.pixelSize:Theme.textRole("body");wrapMode:TextEdit.Wrap;selectByMouse:true;Accessible.name:"Dictionary definition";background:Rectangle {color:"transparent"}}
             }
             Column {visible:root.page==="Shortcuts";width:parent.width;spacing:10
                 PanelLabel {width:parent.width;text:"Application: "+root.targetApp;wrapMode:Text.WordWrap}
                 DesktopComboBox {id:slot;width:parent.width;model:Array.from({length:12},(_,i)=>"⌘⌥F"+(i+1));Accessible.name:"Menu shortcut slot"}
-                TextField {width:parent.width;height:32;readOnly:true;placeholderText:"Click here, then press ⌘⌥F1–F12";placeholderTextColor:Theme.colors.muted;Accessible.name:"Capture application shortcut";color:Theme.colors.text;font.family:Theme.font;background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline}
+                TextField {width:parent.width;height:Math.max(32,Theme.textRole("body")+16);readOnly:true;placeholderText:"Click here, then press ⌘⌥F1–F12";placeholderTextColor:Theme.colors.muted;Accessible.name:"Capture application shortcut";color:Theme.colors.text;font.family:Theme.font;font.pixelSize:Theme.textRole("body");background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline}
                     Keys.onPressed:event=>{if((event.modifiers & Qt.MetaModifier) && (event.modifiers & Qt.AltModifier) && event.key>=Qt.Key_F1 && event.key<=Qt.Key_F12){slot.currentIndex=event.key-Qt.Key_F1;text="⌘⌥F"+(slot.currentIndex+1);event.accepted=true;}}
                 }
                 DesktopComboBox {width:parent.width;model:["Choose an application command…"].concat(root.menuCommands);enabled:root.menuCommands.length>0;Accessible.name:"Application command";onActivated:index=>{if(index>0)menuPath.text=root.menuCommands[index-1];}}
-                PanelLabel {width:parent.width;text:root.menuCommands.length?"Choose a command above or enter its menu path below.":"This app does not export menu commands. Shortcuts need an app with an exported menu.";wrapMode:Text.WordWrap;font.pixelSize:11;color:Theme.colors.muted}
-                TextField {id:menuPath;width:parent.width;height:32;color:Theme.colors.text;font.family:Theme.font;placeholderText:"Exact menu path, e.g. File/Save";placeholderTextColor:Theme.colors.muted;Accessible.name:"Menu command path";background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline}}
+                PanelLabel {width:parent.width;text:root.menuCommands.length?"Choose a command above or enter its menu path below.":"This app does not export menu commands. Shortcuts need an app with an exported menu.";wrapMode:Text.WordWrap;font.pixelSize:Theme.textRole("metadata");color:Theme.colors.muted}
+                TextField {id:menuPath;width:parent.width;height:Math.max(32,Theme.textRole("body")+16);color:Theme.colors.text;font.family:Theme.font;font.pixelSize:Theme.textRole("body");placeholderText:"Exact menu path, e.g. File/Save";placeholderTextColor:Theme.colors.muted;Accessible.name:"Menu command path";background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline}}
                 DialogButton {width:parent.width;text:"Save Application Shortcut";enabled:!!menuPath.text;onClicked:root.send({action:"save-shortcut",slot:slot.currentIndex+1,app:root.targetApp,path:menuPath.text})}
             }
             StatusMessage {width:parent.width;text:root.error;severity:root.severity}

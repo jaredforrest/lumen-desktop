@@ -36,6 +36,7 @@ jobs:
           nix build .#test-owned-font-config --out-link artifacts/owned-typography-fonts --option abort-on-warn true
           bash tests/ci/run-native.sh owned_typography_qml nix develop --command desktop-test-python tests/desktop/owned_typography_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/owned-typography-fonts" --output artifacts/owned-typography-qml
           bash tests/ci/run-native.sh owned_focus_qml nix develop --command desktop-test-python tests/desktop/owned_focus_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/owned-typography-fonts" --output artifacts/owned-focus-qml
+          bash tests/ci/run-native.sh owned_utility_typography_qml nix develop --command desktop-test-python tests/desktop/owned_utility_typography_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/owned-typography-fonts" --output artifacts/owned-utility-typography
           bash tests/ci/run-native.sh files_share_menu_qml nix develop --command desktop-test-python tests/desktop/files_share_menu_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --fontconfig "$PWD/artifacts/offscreen-font-config" --output artifacts/files-share-menu
           bash tests/ci/run-native.sh calendar_toggle_contrast nix develop --command desktop-test-python tests/desktop/calendar_toggle_contrast.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/offscreen-font-config" --output artifacts/calendar-toggle-contrast
           LUMEN_TEST_SHELL_LAUNCHER="$PWD/artifacts/shell-package/bin/lumen-desktop-shell" bash tests/ci/run-native.sh run_backend_tests nix develop --command desktop-test-python tests/desktop/run_backend_tests.py --output artifacts/backends
@@ -89,6 +90,7 @@ jobs:
             if [[ "$compositor" == compositor-effects ]]; then compositor_flags=(--effects); fi
             bash tests/ci/run-native.sh owned_typography_input nix develop --command desktop-test-python tests/desktop/owned_typography_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --font-config "$PWD/artifacts/owned-typography-fonts" --software-driver "$PWD/artifacts/owned-typography-driver" --output "artifacts/owned-typography-native-$compositor"
             bash tests/ci/run-native.sh reduced_motion_native nix develop --command desktop-test-python tests/desktop/reduced_motion_native.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --font-config "$PWD/artifacts/owned-typography-fonts" --software-driver "$PWD/artifacts/owned-typography-driver" --output "artifacts/reduced-motion-$compositor"
+            bash tests/ci/run-native.sh owned_utility_typography_native nix develop --command desktop-test-python tests/desktop/owned_utility_typography_native.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --font-config "$PWD/artifacts/owned-typography-fonts" --software-driver "$PWD/artifacts/owned-typography-driver" --output "artifacts/owned-utility-native-$compositor"
             for frame in native unified; do
               bash tests/ci/run-native.sh owned_inactive_native nix develop --command desktop-test-python tests/desktop/owned_inactive_native.py "${compositor_flags[@]}" --frame "$frame" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --font-config "$PWD/artifacts/owned-typography-fonts" --software-driver "$PWD/artifacts/owned-typography-driver" --output "artifacts/owned-inactive-native-$frame-$compositor"
             done
@@ -216,6 +218,8 @@ jobs:
             artifacts/owned-focus-qml
             artifacts/owned-inactive-native-*
             artifacts/reduced-motion-*
+            artifacts/owned-utility-typography
+            artifacts/owned-utility-native-*
             artifacts/owned-typography-native-*
             artifacts/files-share-menu
             artifacts/biometric-provider

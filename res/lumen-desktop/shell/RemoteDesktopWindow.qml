@@ -28,18 +28,18 @@ FloatingWindow {
         WindowControls {windowName:"Remote Desktop";canFullscreen:false;windowActive:body.Window.window?body.Window.window.active:false;onTriggered:index=>{if(index===0)root.visible=false;else if(index===1)body.Window.window.showMinimized();}}
         PanelLabel {x:168;y:15;visible:!Theme.nativeWindowFrame;text:"Remote Desktop";font.weight:Font.DemiBold}
         Column {x:12;y:Theme.nativeWindowFrame?18:62;width:126;spacing:5
-            PanelLabel {x:8;text:"Connections";font.pixelSize:11;font.weight:Font.DemiBold;color:Theme.colors.muted;height:24}
+            PanelLabel {x:8;text:"Connections";font.pixelSize:Theme.textRole("metadata");font.weight:Font.DemiBold;color:Theme.colors.muted;height:Math.max(24,implicitHeight+6)}
             Repeater {model:["All","RDP","VNC","SSH"]
-                AbstractButton {required property string modelData;width:126;height:34;Accessible.name:modelData==="All"?"All Computers":modelData;onClicked:root.filter=modelData
+                AbstractButton {required property string modelData;width:126;height:Math.max(34,filterCaption.implicitHeight+12);Accessible.name:modelData==="All"?"All Computers":modelData;onClicked:root.filter=modelData
                     background:Rectangle {radius:7;color:root.filter===parent.modelData?Theme.colors.accent:parent.hovered || parent.activeFocus?Theme.colors.hover:"transparent"}
-                    contentItem:PanelLabel {text:parent.modelData==="All"?"All Computers":parent.modelData;leftPadding:10;verticalAlignment:Text.AlignVCenter;color:root.filter===parent.modelData?Theme.colors.selectedText:Theme.colors.text}
+                    contentItem:PanelLabel {id:filterCaption;wrapMode:Text.Wrap;text:parent.modelData==="All"?"All Computers":parent.modelData;leftPadding:10;verticalAlignment:Text.AlignVCenter;color:root.filter===parent.modelData?Theme.colors.selectedText:Theme.colors.text}
                 }
             }
             ControlRow {width:126;text:"Advanced…";onClicked:root.send({action:"advanced"})}
         }
-        TextField {id:search;x:168;y:Theme.nativeWindowFrame?14:58;width:parent.width-186;height:32;placeholderText:"Search computers";placeholderTextColor:Theme.colors.muted;Accessible.name:"Search computers";onTextChanged:root.query=text;color:Theme.colors.text;font.family:Theme.font;background:Rectangle {radius:7;color:Theme.colors.field;border.color:search.activeFocus?Theme.colors.accent:Theme.hairline}}
-        GridView {id:grid;x:168;y:Theme.nativeWindowFrame?60:104;width:parent.width-186;height:Math.max(50,parent.height-y-140);cellWidth:Math.max(140,Math.floor(width/Math.max(1,Math.floor(width/180))));cellHeight:144;model:root.matches;clip:true;ScrollBar.vertical:DesktopScrollBar {}
-            delegate:AbstractButton {required property var modelData;required property int index;width:grid.cellWidth-10;height:132;Accessible.name:modelData.name+", "+modelData.protocol
+        TextField {id:search;x:168;y:Theme.nativeWindowFrame?14:58;width:parent.width-186;height:Math.max(32,Theme.textRole("body")+16);placeholderText:"Search computers";placeholderTextColor:Theme.colors.muted;Accessible.name:"Search computers";onTextChanged:root.query=text;color:Theme.colors.text;font.family:Theme.font;font.pixelSize:Theme.textRole("body");background:Rectangle {radius:7;color:Theme.colors.field;border.color:search.activeFocus?Theme.colors.accent:Theme.hairline}}
+        GridView {id:grid;x:168;y:Theme.nativeWindowFrame?60:104;width:parent.width-186;height:Math.max(50,parent.height-y-112);cellWidth:Math.max(140,Math.floor(width/Math.max(1,Math.floor(width/180))));cellHeight:root.height<420?104:144+(Theme.textRole("label")-12)*4;model:root.matches;clip:true;ScrollBar.vertical:DesktopScrollBar {}
+            delegate:AbstractButton {required property var modelData;required property int index;width:grid.cellWidth-10;height:grid.cellHeight-12;Accessible.name:modelData.name+", "+modelData.protocol
                 onClicked:root.choose(index)
                 onDoubleClicked:{root.selectedId=modelData.id;root.connect();}
                 Keys.onRightPressed:root.choose(Math.min(root.matches.length-1,index+1))
@@ -49,9 +49,9 @@ FloatingWindow {
                 Keys.onReturnPressed:{root.selectedId=modelData.id;root.connect();}
                 background:Rectangle {radius:12;color:Theme.colors.surface;border.width:root.selectedId===modelData.id || parent.activeFocus?2:1;border.color:root.selectedId===modelData.id || parent.activeFocus?Theme.colors.accent:Theme.hairline}
                 contentItem:Item {
-                    SystemGlyph {anchors.horizontalCenter:parent.horizontalCenter;y:16;width:48;height:42;name:"screen";ink:Theme.colors.accent}
-                    PanelLabel {x:10;y:68;width:parent.width-20;text:modelData.name;textFormat:Text.PlainText;horizontalAlignment:Text.AlignHCenter;font.weight:Font.DemiBold;font.pixelSize:12}
-                    PanelLabel {x:10;y:91;width:parent.width-20;text:modelData.protocol+(modelData.printer?" · Printing enabled":"");horizontalAlignment:Text.AlignHCenter;font.pixelSize:10;color:Theme.colors.muted}
+                    SystemGlyph {visible:root.height>=420;anchors.horizontalCenter:parent.horizontalCenter;y:16;width:48;height:42;name:"screen";ink:Theme.colors.accent}
+                    PanelLabel {x:10;y:root.height<420?8:68;width:parent.width-20;text:modelData.name;textFormat:Text.PlainText;wrapMode:Text.Wrap;horizontalAlignment:Text.AlignHCenter;font.weight:Font.DemiBold;font.pixelSize:Theme.textRole("label")}
+                    PanelLabel {x:10;y:(root.height<420?8:68)+Theme.textRole("label")*2+8;width:parent.width-20;wrapMode:Text.Wrap;text:modelData.protocol+(modelData.printer?" · Printing enabled":"");horizontalAlignment:Text.AlignHCenter;font.pixelSize:Theme.textRole("caption");color:Theme.colors.muted}
                 }
             }
             PanelLabel {visible:root.matches.length===0;anchors.centerIn:parent;width:parent.width;text:worker.running?"Loading computers…":root.query?"No matching computers":"No saved computers. Add a connection below.";wrapMode:Text.WordWrap;horizontalAlignment:Text.AlignHCenter;color:Theme.colors.muted}
@@ -64,7 +64,7 @@ FloatingWindow {
         }
         Row {x:168;y:parent.height-62;width:parent.width-186;spacing:8
             DesktopComboBox {id:protocol;width:80;model:["RDP","VNC"];Accessible.name:"Connection protocol"}
-            TextField {id:address;width:Math.max(100,parent.width-176);height:30;placeholderText:"Hostname or IP address";placeholderTextColor:Theme.colors.muted;Accessible.name:"Remote computer address";color:Theme.colors.text;font.family:Theme.font;onAccepted:if(text.trim())root.send({action:"quick",address:text.trim(),protocol:protocol.currentText});background:Rectangle {radius:6;color:Theme.colors.field;border.color:address.activeFocus?Theme.colors.accent:Theme.hairline}}
+            TextField {id:address;width:Math.max(100,parent.width-176);height:30;placeholderText:"Hostname or IP address";placeholderTextColor:Theme.colors.muted;Accessible.name:"Remote computer address";color:Theme.colors.text;font.family:Theme.font;font.pixelSize:Theme.textRole("body");onAccepted:if(text.trim())root.send({action:"quick",address:text.trim(),protocol:protocol.currentText});background:Rectangle {radius:6;color:Theme.colors.field;border.color:address.activeFocus?Theme.colors.accent:Theme.hairline}}
             DialogButton {width:80;text:"Open";enabled:!!address.text.trim() && !worker.running;onClicked:root.send({action:"quick",address:address.text.trim(),protocol:protocol.currentText})}
         }
         Shortcut {sequence:"Escape";onActivated:root.visible=false}
