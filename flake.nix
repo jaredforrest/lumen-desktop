@@ -62,6 +62,7 @@
         test-office-tools = pkgs.poppler-utils;
         test-application-software-driver = pkgs.mesa;
         shell-runtime = quickshell;
+        test-physical-keyboard = import ./tests/desktop/physical_keyboard_driver.nix { inherit pkgs; };
         test-pointer = import ./tests/desktop/pointer_driver.nix { inherit pkgs; };
         inherit (office) wordcraft gridcraft deckcraft;
         profile-bridge = profileBridge;
