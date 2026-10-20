@@ -31,7 +31,7 @@ Item {
                     AbstractButton {
                         width:parent.width;height:31;Accessible.name:section.modelData.title;Accessible.description:section.expanded?"Expanded":"Collapsed"
                         onClicked:section.expanded=!section.expanded
-                        background:Rectangle {radius:4;color:parent.activeFocus?Theme.selection:"transparent"}
+                        background:Rectangle {radius:4;color:parent.activeFocus?Theme.selection:"transparent";FocusOutline {focused:parent.parent.activeFocus;radius:4}}
                         contentItem:Row {spacing:6;PanelLabel {text:section.expanded?"▾":"▸";width:12;height:31;verticalAlignment:Text.AlignVCenter;font.pixelSize:11}PanelLabel {text:section.modelData.title;height:31;verticalAlignment:Text.AlignVCenter;font.pixelSize:12;font.weight:Font.DemiBold}}
                     }
                     Column {

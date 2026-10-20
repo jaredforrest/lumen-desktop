@@ -158,3 +158,4 @@ SpaceSettingsPane 1.0 SpaceSettingsPane.qml
 ImageMarkupDialog 1.0 ImageMarkupDialog.qml
 
 MinimizedWindowState 1.0 MinimizedWindowState.qml
+FocusOutline 1.0 FocusOutline.qml

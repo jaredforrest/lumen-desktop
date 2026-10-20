@@ -35,6 +35,7 @@ jobs:
           nix build .#test-offscreen-font-config --out-link artifacts/offscreen-font-config --option abort-on-warn true
           nix build .#test-owned-font-config --out-link artifacts/owned-typography-fonts --option abort-on-warn true
           bash tests/ci/run-native.sh owned_typography_qml nix develop --command desktop-test-python tests/desktop/owned_typography_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/owned-typography-fonts" --output artifacts/owned-typography-qml
+          bash tests/ci/run-native.sh owned_focus_qml nix develop --command desktop-test-python tests/desktop/owned_focus_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/owned-typography-fonts" --output artifacts/owned-focus-qml
           bash tests/ci/run-native.sh files_share_menu_qml nix develop --command desktop-test-python tests/desktop/files_share_menu_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --fontconfig "$PWD/artifacts/offscreen-font-config" --output artifacts/files-share-menu
           bash tests/ci/run-native.sh calendar_toggle_contrast nix develop --command desktop-test-python tests/desktop/calendar_toggle_contrast.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/offscreen-font-config" --output artifacts/calendar-toggle-contrast
           LUMEN_TEST_SHELL_LAUNCHER="$PWD/artifacts/shell-package/bin/lumen-desktop-shell" bash tests/ci/run-native.sh run_backend_tests nix develop --command desktop-test-python tests/desktop/run_backend_tests.py --output artifacts/backends
@@ -87,6 +88,9 @@ jobs:
             compositor_flags=()
             if [[ "$compositor" == compositor-effects ]]; then compositor_flags=(--effects); fi
             bash tests/ci/run-native.sh owned_typography_input nix develop --command desktop-test-python tests/desktop/owned_typography_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --font-config "$PWD/artifacts/owned-typography-fonts" --software-driver "$PWD/artifacts/owned-typography-driver" --output "artifacts/owned-typography-native-$compositor"
+            for frame in native unified; do
+              bash tests/ci/run-native.sh owned_inactive_native nix develop --command desktop-test-python tests/desktop/owned_inactive_native.py "${compositor_flags[@]}" --frame "$frame" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --font-config "$PWD/artifacts/owned-typography-fonts" --software-driver "$PWD/artifacts/owned-typography-driver" --output "artifacts/owned-inactive-native-$frame-$compositor"
+            done
             bash tests/ci/run-native.sh owned_preview_input nix develop --command desktop-test-python tests/desktop/owned_native_fixture.py owned_preview_input "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --output "artifacts/owned-preview-$compositor"
             bash tests/ci/run-native.sh qt_pointer_retirement_input nix develop --command desktop-test-python tests/desktop/owned_native_fixture.py qt_pointer_retirement_input "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/qt-pointer-retirement-$compositor"
             bash tests/ci/run-native.sh image_markup_input nix develop --command desktop-test-python tests/desktop/owned_native_fixture.py image_markup_input "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --output "artifacts/image-markup-$compositor"
@@ -204,6 +208,8 @@ jobs:
             artifacts/backends
             artifacts/calendar-toggle-contrast
             artifacts/owned-typography-qml
+            artifacts/owned-focus-qml
+            artifacts/owned-inactive-native-*
             artifacts/owned-typography-native-*
             artifacts/files-share-menu
             artifacts/biometric-provider

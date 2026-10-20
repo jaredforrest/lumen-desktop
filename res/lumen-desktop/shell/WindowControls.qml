@@ -30,6 +30,7 @@ Row {
                 color: button.enabled && (root.windowActive || root.controlsHovered) ? button.modelData : Theme.dark ? "#555559" : "#ceced2"
                 border.width: 1
                 border.color: button.activeFocus ? Theme.colors.accent : Qt.darker(color, 1.12)
+                FocusOutline {focused:button.activeFocus;inset:-3;radius:9}
             }
             contentItem: Item {
                 SystemGlyph {
