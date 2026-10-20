@@ -56,6 +56,9 @@ class Index:
         self.dirty = set()
         self.dirty_timer = None
         self.watched = set()
+        self.watch_generation = 0
+        self.watch_requested = set()
+        self.watch_pending = set()
         self.watcher = Watcher(self.changed)
 
         with self.connect() as db:
@@ -75,11 +78,34 @@ class Index:
 
     def changed(self, directory):
         with self.lock:
+            if self.closed.is_set():return
             self.dirty.add(directory)
             if self.dirty_timer is None:
                 self.dirty_timer = threading.Timer(.35, self.refresh_dirty)
                 self.dirty_timer.daemon = True
                 self.dirty_timer.start()
+
+    def update_watches(self, paths):
+        with self.lock:
+            if self.closed.is_set():return
+            self.watched=set(paths)
+            self.watch_pending=(self.watch_pending | (self.watched-self.watch_requested)) & self.watched
+            self.watch_requested=set(self.watched)
+            self.watch_generation+=1
+            generation=self.watch_generation
+            def armed(registered,failed):
+                with self.lock:
+                    if self.closed.is_set() or generation!=self.watch_generation:return
+                    # New watches did not observe the preceding enumeration.
+                    # Reconcile after registration, including new descendants.
+                    self.dirty.update(self.watch_pending & registered)
+                    self.watch_pending-=registered
+                    if self.dirty and self.dirty_timer is None:
+                        self.dirty_timer=threading.Timer(.35,self.refresh_dirty)
+                        self.dirty_timer.daemon=True;self.dirty_timer.start()
+                    if failed:self.limited=True;self.unreadable+=len(failed)
+                if failed:self.emit(self.status())
+            self.watcher.set_paths(self.watched,armed)
 
     def refresh_dirty(self):
         with self.lock:
@@ -119,7 +145,7 @@ class Index:
                         self.watched={p for p in self.watched if p!=removed and not p.startswith(nested)}
                 self.count=db.execute('SELECT count(*) FROM files').fetchone()[0]
                 if stack:self.limited=True
-            self.watcher.set_paths(self.watched)
+            self.update_watches(self.watched)
         except (OSError,sqlite3.Error):
             self.unreadable+=1
         finally:
@@ -139,7 +165,7 @@ class Index:
 
     def refresh(self, force=False):
         with self.lock:
-            if self.scanning or (not force and time.monotonic()-self.last_scan < 60):
+            if self.closed.is_set() or self.scanning or (not force and time.monotonic()-self.last_scan < 60):
                 return
             self.scanning = True
         self.emit(self.status())
@@ -199,10 +225,10 @@ class Index:
             unreadable += 1
         finally:
             self.count, self.unreadable, self.limited = count, unreadable, limited
-            self.scanning = False
-            self.last_scan = time.monotonic()
-            self.watched=watched
-            self.watcher.set_paths(watched)
+            self.update_watches(watched)
+            with self.lock:
+                self.scanning = False
+                self.last_scan = time.monotonic()
             self.emit(self.status())
 
     def allowed(self, path):
