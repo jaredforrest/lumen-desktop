@@ -125,6 +125,10 @@ def preferred_plan(row, width, height):
 
 def execute(app,title,container,budget_width,budget_height,min_width,min_height,margin_width=None,margin_height=None,preferred_width=None,preferred_height=None):
     owner=os.getppid();start=process_start(owner);session=socket_identity(os.environ['SWAYSOCK'])
+    preferred_supported = False
+    if preferred_width is not None:
+        version = json.loads(subprocess.check_output(['swaymsg','-r','-t','get_version'],timeout=4))
+        preferred_supported = isinstance(version,dict) and version.get('native_preferred_zoom') is True
     first=mapped_window(app,title,owner,container)
     node=first[0];captured=(node['id'],node['pid'],node['app_id'],node['name'])
     # A replacement with the same title is never resolved as a new target.
@@ -136,8 +140,7 @@ def execute(app,title,container,budget_width,budget_height,min_width,min_height,
     result.update(container=captured[0],pid=owner,processStart=start,app=app,title=title)
     if preferred_width is not None:
         registration = preferred_plan(second, preferred_width, preferred_height)
-        version = json.loads(subprocess.check_output(['swaymsg','-r','-t','get_version'],timeout=4))
-        result['preferredSizeSupported'] = isinstance(version,dict) and version.get('native_preferred_zoom') is True
+        result['preferredSizeSupported'] = preferred_supported
         if result['preferredSizeSupported']:
             command = registration + ('; ' + command if command else '')
             result['preferredSize'] = dict(width=preferred_width,height=preferred_height)
