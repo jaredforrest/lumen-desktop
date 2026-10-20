@@ -24,3 +24,5 @@ Interface text sizing: [scope, layout contract and tests](docs/text-sizing.md).
 
 Per-device input preferences: [supported capabilities, identity scope and tests](docs/input-preferences.md).
 Window Groups provides optional native presentation groups; see [the workflow and current boundaries](docs/window-groups.md).
+
+[Application desktop assignment](docs/application-desktops.md) documents supported membership and native acceptance.

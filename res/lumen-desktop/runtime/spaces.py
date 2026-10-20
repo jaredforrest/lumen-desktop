@@ -190,9 +190,7 @@ class SpacePolicy:
     def assign(self, application, kind, target_id=None):
         if not isinstance(application, str) or not application.startswith(("wayland:", "x11:")) or not application.partition(":")[2]:
             raise ValueError("An exact typed application identity is required")
-        if kind == "all":
-            raise ValueError("All-desktop placement is unavailable: compositor lacks all-window membership")
-        if kind not in ("none", "desktop", "display") or (kind == "none") != (target_id is None):
+        if kind not in ("none", "all", "desktop", "display") or (kind in ("none", "all")) != (target_id is None):
             raise ValueError("Invalid application assignment")
         if target_id is not None and (not isinstance(target_id, str) or not target_id):
             raise ValueError("Invalid assignment target")
@@ -204,6 +202,8 @@ class SpacePolicy:
         kind, target = assignment["kind"], assignment["target_id"]
         if kind == "none":
             return {"status": "unassigned"}
+        if kind == "all":
+            return {"status": "membership", "scope": "current-display", "assignment": assignment}
         if kind == "desktop":
             item = self.state["desktops"].get(target)
             if item and target in self.current.values():
@@ -243,9 +243,15 @@ def place(policy, node):
     return result
 
 
+def checked_membership(command):
+    reply = sway(command)
+    if not reply or not all(item.get('success') for item in reply):
+        raise RuntimeError('Compositor rejected desktop membership')
+
+
 def main():
     import argparse
-    import subprocess
+    from application_desktops import reconcile as reconcile_membership
     parser = argparse.ArgumentParser()
     parser.add_argument('--state', default=str(Path(os.environ.get('XDG_STATE_HOME', Path.home() / '.local/state')) / 'lumen-desktop/spaces.json'))
     sub = parser.add_subparsers(dest='action', required=True)
@@ -262,16 +268,32 @@ def main():
     args = parser.parse_args()
     policy = SpacePolicy(args.state)
     if args.action == 'watch':
-        stream = subprocess.Popen(['swaymsg', '-r', '-m', '-t', 'subscribe', '["window","workspace","output"]'], stdout=subprocess.PIPE, text=True)
+        import socket
+        import select
+        from application_lifecycle import send, receive
         pending = set()
-        try:
-            for line in stream.stdout:
-                event = json.loads(line)
-                if event.get("success") is True:
-                    with policy.transaction():refresh(policy)
-                    print(json.dumps({"ready": True}), flush=True)
-                    continue
+        # Subscribe and acknowledge before the initial snapshot. swaymsg's monitor
+        # output does not publish its subscription acknowledgement to a pipe.
+        with socket.socket(socket.AF_UNIX) as stream:
+            stream.settimeout(5)
+            stream.connect(os.environ['SWAYSOCK'])
+            send(stream, 2, '["window","workspace","output"]')
+            _, ack = receive(stream)
+            if not isinstance(ack, dict) or ack.get('success') is not True:
+                raise RuntimeError('Compositor subscription failed')
+            with policy.transaction():
+                refresh(policy)
+                reconcile_membership(policy, sway('-t', 'get_tree'), checked_membership)
+            print(json.dumps({"ready": True}), flush=True)
+            stream.settimeout(None)
+            while True:
+                # Ownership/role changes need not emit a window event. Recheck
+                # pending membership without inventing a client role from its title.
+                ready, _, _ = select.select([stream], [], [], 1)
+                event = receive(stream)[1] if ready else {}
                 with policy.transaction():
+                    if not ready and not policy.state.get("managed_sticky") and not any(item.get("kind") == "all" for item in policy.state["assignments"].values()):
+                        continue
                     refresh(policy)
                     if event.get('change') == 'focus' and event.get('current', {}).get('type') == 'workspace':
                         policy.focus(event['current']['id'])
@@ -283,14 +305,17 @@ def main():
                         pending.remove(node['id'])
                     if event.get('change') == 'close':
                         pending.discard(node.get('id'))
-        finally:
-            stream.terminate()
-            stream.wait(timeout=5)
+                    reconcile_membership(policy, sway('-t', 'get_tree'), checked_membership)
         return
     with policy.transaction():
         refresh(policy)
         if args.action == 'assign':
+            tree = sway('-t', 'get_tree')
+            from application_desktops import windows
+            if args.kind == 'all' and any(window.get('_grouped') and policy.application(window) == args.application for window in windows(tree)):
+                raise ValueError('Turn off window groups before assigning all desktops')
             policy.assign(args.application, args.kind, args.target)
+            reconcile_membership(policy, tree, checked_membership)
         elif args.action == 'ordering':
             policy.configure(auto_reorder=args.enabled == 'true')
         elif args.action == 'switch':
@@ -301,7 +326,7 @@ def main():
                 if 0 <= index < len(order):
                     sway('workspace ' + json.dumps(policy.state['desktops'][order[index]]['name']))
         else:
-            print(json.dumps(dict(desktops=policy.state['desktops'], order=policy.order(), assignments=policy.state['assignments'], auto_reorder=policy.state['auto_reorder'], capabilities={'all_desktops': False}, outputs=policy.outputs)))
+            print(json.dumps(dict(desktops=policy.state['desktops'], order=policy.order(), assignments=policy.state['assignments'], auto_reorder=policy.state['auto_reorder'], capabilities={'all_desktops': {'supported': True, 'scope': 'current-display', 'window_kind': 'independent-floating'}}, outputs=policy.outputs)))
 
 
 if __name__ == '__main__':

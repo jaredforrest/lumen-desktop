@@ -38,7 +38,7 @@ FloatingWindow {
 
     property var assignments:({})
     readonly property var assignmentChoices:{
-        const choices=[{label:"No assignment",kind:"none",target:null}].concat(workspaces.map(w=>({label:"Always on "+(w.label || "Desktop "+w.name),kind:"desktop",target:w.logicalId})),outputs.map(o=>({label:"Always on "+o.label,kind:"display",target:o.logicalId})));
+        const choices=[{label:"No assignment",kind:"none",target:null},{label:"All desktops on current display",kind:"all",target:null}].concat(workspaces.map(w=>({label:"Always on "+(w.label || "Desktop "+w.name),kind:"desktop",target:w.logicalId})),outputs.map(o=>({label:"Always on "+o.label,kind:"display",target:o.logicalId})));
         const saved=current?assignments[current.application]:null;
         if(saved && !choices.some(item=>item.kind===saved.kind && item.target===saved.target_id))choices.push({label:"Saved assignment · target unavailable",kind:saved.kind,target:saved.target_id});
         return choices;
@@ -154,10 +154,10 @@ FloatingWindow {
         }
         Row {visible:!(root.shell.groupMembershipDrag && root.shell.groupMembershipDrag.active);x:20;y:parent.height-88;spacing:8;width:parent.width-40
             DesktopComboBox {id:assignment;width:parent.width-168;model:root.assignmentChoices;textRole:"label";Accessible.name:"Persistent application desktop assignment"}
-            DialogButton {width:160;text:"Assign Application";enabled:!!root.current && !!root.current.application && !root.busy;onClicked:{const choice=root.assignmentChoices[assignment.currentIndex];root.send({action:"assign",id:root.current.id,pid:root.current.pid,kind:choice.kind,target:choice.target});}}
+            DialogButton {width:160;text:"Assign Application";enabled:!!root.current && !!root.current.application && !root.busy;onClicked:{const choice=root.assignmentChoices[assignment.currentIndex];root.send({action:"assign",id:root.current.id,pid:root.current.pid,kind:choice.kind,target:choice.target,sessionEpoch:root.sessionEpoch});}}
         }
         SettingsToggle {x:parent.width-270;y:parent.height-48;width:250;height:36;text:"Recent desktop order";enabled:!root.busy;Accessible.name:"Order desktops by recent use";checked:root.autoReorder;onToggled:root.send({action:"ordering",enabled:checked})}
-        PanelLabel {x:20;y:parent.height-44;width:parent.width-310;font.pixelSize:11;color:Theme.colors.muted;text:root.error || (root.draggedId>0?"Choose a desktop, then Move Window · Escape to cancel":"Arrow keys to select · Return to open · Escape to close");wrapMode:Text.WordWrap}
+        PanelLabel {x:20;y:parent.height-44;width:parent.width-310;font.pixelSize:11;color:Theme.colors.muted;text:root.error || (root.current && root.current.allDesktopMembership && root.current.allDesktopMembership.reason ? root.current.allDesktopMembership.reason : "") || (root.draggedId>0?"Choose a desktop, then Move Window · Escape to cancel":"Arrow keys to select · Return to open · Escape to close");wrapMode:Text.WordWrap}
     }
     Timer {interval:2000;running:root.visible && !desktopStrip.editing && !removeDialog.opened && !groupsDialog.opened && !(root.shell.groupMembershipDrag && root.shell.groupMembershipDrag.active);repeat:true;onTriggered:root.send({action:"status"})}
     Process {id:worker;stdinEnabled:true

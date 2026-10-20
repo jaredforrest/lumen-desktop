@@ -8,6 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "runtime"))
 from spaces import SpacePolicy
 from state import runtime_epoch
 from window_groups import Groups
+from application_desktops import windows as membership_windows, membership, reconcile as reconcile_membership
 
 def policy():
     return SpacePolicy(Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state")) / "lumen-desktop/spaces.json")
@@ -30,6 +31,12 @@ def snapshot(*, include_overview=False):
                 windows.append(dict(groupSource=bool(node.get('app_id') and not node.get('sticky') and (node.get('lumen_relationships') or {}).get('parent_supported') is True and (node.get('lumen_relationships') or {}).get('parent') is None and workspace!='__i3_scratch'),id=node['id'],pid=node['pid'],app=app,application=SpacePolicy.application(node),group=group,title=title,workspace=workspace,output=output,focused=node.get('focused',False),fullscreen=node.get('fullscreen_mode',0),paired=bool((node.get('lumen_pair') or {}).get('id') or (node.get('lumen_pair') or {}).get('survivor')),pairRestore=(node.get('lumen_pair') or {}).get('restore_workspace'),restores=(node.get('lumen_state') or {}).get('restore_workspaces',[(node.get('lumen_state') or {}).get('restore_workspace')])))
         for child in node.get('nodes',[])+node.get('floating_nodes',[]):walk(child,workspace,output)
     tree=run('-t','get_tree');walk(tree)
+    epoch=endpoint();model=policy()
+    native_windows={node['id']:node for node in membership_windows(tree)}
+    for window in windows:
+        node=native_windows[window['id']]
+        window['allDesktopMembership']=membership(model,node,epoch)
+        window['assignmentGrouped']=node['_grouped']
     return dict(windowGroups=tree.get('window_groups'),windows=windows,workspaces=run('-t','get_workspaces'),outputs=[dict(name=o['name'],label=(o['model'] if o.get('model') not in (None,'','Unknown') else 'Display '+str(i+1))) for i,o in enumerate(run('-t','get_outputs')) if o.get('active')])
 
 
@@ -129,7 +136,7 @@ def handle(data):
             output['logicalId']=next((key for key,name in model.outputs.items() if name==output['name']),None)
         state.update(autoReorder=model.state['auto_reorder'],auto_reorder=model.state['auto_reorder'],
             assignments=model.state['assignments'],revision=model.state['revision'],sessionEpoch=epoch,
-            capabilities=dict(desktop_lifecycle=True,desktop_removal=run('-t','get_version').get('desktop_rehome') is True,all_desktops=False))
+            capabilities=dict(desktop_lifecycle=True,desktop_removal=run('-t','get_version').get('desktop_rehome') is True,all_desktops=dict(supported=True,scope='current-display',window_kind='independent-floating')))
         if action=='status':return state
         if action in ('desktop-create','desktop-reorder','desktop-remove'):
             model.require_revision(data.get('revision'));check_epoch(data,epoch)
@@ -142,7 +149,12 @@ def handle(data):
         if action=='assign':
             window=next((w for w in state['windows'] if w['id']==data.get('id') and w['pid']==data.get('pid')),None)
             if not window:raise ValueError('This window is no longer available')
-            model.assign(window['application'],data['kind'],data.get('target'));return dict(ok=True)
+            check_epoch(data,epoch)
+            if data['kind']=='all' and any(item['application']==window['application'] and item['assignmentGrouped'] for item in state['windows']):
+                raise ValueError('Turn off window groups before assigning all desktops')
+            model.assign(window['application'],data['kind'],data.get('target'))
+            reconcile_membership(model,run('-t','get_tree'),checked,epoch=epoch)
+            return dict(ok=True)
         if action=='workspace':
             if data.get('logicalId'):
                 check_epoch(data,epoch);desktop=model.desktop(data['logicalId'])

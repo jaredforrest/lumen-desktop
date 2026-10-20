@@ -113,6 +113,8 @@ jobs:
           bash tests/ci/run-native.sh accessibility_protocol nix develop --command desktop-test-python tests/desktop/accessibility_protocol.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/accessibility --full-shell
           PYTHONWARNINGS=error bash tests/ci/run-native.sh force_quit_surface nix develop --command desktop-test-python tests/desktop/force_quit_surface.py --sway "$PWD/artifacts/compositor/bin/sway" --wtype wtype --output artifacts/force-quit
           bash tests/ci/run-native.sh spaces_placement nix develop --command desktop-test-python tests/desktop/spaces_placement.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/spaces
+          bash tests/ci/run-native.sh application_desktops_native nix develop --command desktop-test-python tests/desktop/application_desktops_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --client "$PWD/artifacts/window-relationships-client/bin/lumen-test-window-relationships" --output artifacts/application-desktops-basic
+          bash tests/ci/run-native.sh application_desktops_native nix develop --command desktop-test-python tests/desktop/application_desktops_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --client "$PWD/artifacts/window-relationships-client/bin/lumen-test-window-relationships" --effects --output artifacts/application-desktops-effects
           bash tests/ci/run-native.sh application_lifecycle_input nix develop --command desktop-test-python tests/desktop/application_lifecycle_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/application-lifecycle
           bash tests/ci/run-native.sh session_end_input nix develop --command desktop-test-python tests/desktop/session_end_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/session-end
           bash tests/ci/run-native.sh session_end_input nix develop --command desktop-test-python tests/desktop/session_end_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --effects --output artifacts/session-end-effects
@@ -163,6 +165,7 @@ jobs:
             artifacts/typography
             artifacts/live-appearance
             artifacts/spaces
+            artifacts/application-desktops-*
             artifacts/power-provider
             artifacts/overview-lifecycle
             artifacts/window-relationships-*

@@ -77,8 +77,11 @@ class PolicyTests(unittest.TestCase):
     def test_unavailable_desktop_and_native_capability(self):
         self.policy.assign('wayland:editor', 'desktop', 'missing')
         self.assertEqual(self.policy.destination(dict(app_id='editor'))['status'], 'unavailable')
-        with self.assertRaisesRegex(ValueError, 'all-window membership'):
-            self.policy.assign('wayland:editor', 'all')
+        self.policy.assign('wayland:editor', 'all')
+        self.assertEqual(self.policy.destination(dict(app_id='editor'))['scope'], 'current-display')
+        other = spaces.SpacePolicy(self.path)
+        self.assertEqual(other.state['assignments']['wayland:editor'], dict(kind='all', target_id=None))
+        with self.assertRaises(ValueError):self.policy.assign('wayland:editor', 'all', 'target')
 
 
 if __name__ == '__main__':
