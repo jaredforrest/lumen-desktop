@@ -33,7 +33,7 @@ ShellRoot {
  D.FilesState {id:service;persistViewPreferences:false;preferencesLoaded:true;path:'''+json.dumps(str(docs))+''';viewMode:"list";onBatchRenameReady:reply=>{if(reply.action!=="rename-cancel")fixture.latest=reply}}
  D.FilesWindow {id:files;shell:stub;service:service;visible:true}
  Component.onCompleted:service.navigate(service.path)
- function tree(){return files.contentItem.Window.window.contentItem;}
+ function tree(){const window=files.contentItem.Window.window;return window?window.contentItem:files.contentItem;}
  function find(name,item){if(item.objectName===name)return item;for(const child of item.children || []){const found=find(name,child);if(found)return found;}return null;}
  IpcHandler {target:"batchAudit"
   function state():string {const confirm=fixture.find("batch-rename-confirm",fixture.tree()),first=fixture.find("batch-rename-first",fixture.tree());return JSON.stringify({ready:service.ready && !service.busy && service.rows.length>0,rows:service.rows,selection:files.selectedPaths,reply:fixture.latest,open:!!first && first.visible,canConfirm:!!confirm && confirm.enabled,error:service.error});}
