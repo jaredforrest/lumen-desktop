@@ -1,5 +1,7 @@
 """Native client fitting is idempotent, bounded and tied to one captured owner."""
 import copy
+import io
+import json
 import importlib.util
 from pathlib import Path
 import re
@@ -107,6 +109,37 @@ class WindowGeometry(unittest.TestCase):
                 with patch.dict(g.os.environ,SWAYSOCK=address),patch.object(g,'read_tree',side_effect=[{}, {},tree()]):
                     self.assertEqual(g.mapped_window('org.quickshell','Settings',42,0)[0]['id'],5)
                 thread.join(timeout=2);self.assertFalse(thread.is_alive());self.assertEqual(errors,[])
+
+    def test_native_margin_budget_does_not_use_stale_output_dimensions(self):
+        row=self.row(tree(1060,720));row[1]['rect'].update(width=800,height=560)
+        result,command=g.fit_plan(row,1888,1340,480,320,32,100)
+        self.assertEqual((result['outerWidth'],result['outerHeight']),(768,460))
+        self.assertEqual((result['clientWidth'],result['clientHeight']),(766,427))
+
+    def test_observer_ack_resample_and_captured_workspace_changes(self):
+        first=tree();first['nodes'][0]['id']=10
+        moved=copy.deepcopy(first);moved['nodes'][0].update(id=11,rect=dict(x=960,y=0,width=800,height=560))
+        replaced=copy.deepcopy(moved);replaced['nodes'][0]['floating_nodes'][0]['id']=6
+        errors=[];output=io.StringIO()
+        with tempfile.TemporaryDirectory() as private:
+            address=str(Path(private)/'bus')
+            with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as server:
+                server.bind(address);server.listen(1)
+                def publish():
+                    try:
+                        with server.accept()[0] as client:
+                            self.assertEqual(g.receive(client),(2,['window','output']))
+                            g.send(client,2,'{"success":true}')
+                            for unused in range(3):g.send(client,0x80000003,'{"change":"move"}')
+                    except BaseException as error:errors.append(error)
+                thread=threading.Thread(target=publish);thread.start()
+                with patch.dict(g.os.environ,SWAYSOCK=address),patch.object(g.os,'getppid',return_value=42),patch.object(g,'process_start',return_value=99),patch.object(g,'read_tree',side_effect=[first,moved,moved,replaced]),patch.object(g.sys,'stdout',output):
+                    with self.assertRaises(EOFError):g.watch('org.quickshell','Settings',0)
+                thread.join(timeout=2);self.assertFalse(thread.is_alive());self.assertEqual(errors,[])
+        messages=[json.loads(line) for line in output.getvalue().splitlines()]
+        self.assertEqual(messages[0],dict(ready=True))
+        self.assertEqual([message['workspace'] for message in messages[1:]],[10,11])
+        self.assertTrue(all(message['container']==5 and message['pid']==42 for message in messages[1:]))
 
     def test_retired_explicit_container_does_not_wait_for_replacement(self):
         with patch.object(g,'read_tree',return_value={}),patch.object(g.socket,'socket') as subscription:

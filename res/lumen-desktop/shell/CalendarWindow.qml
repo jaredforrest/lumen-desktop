@@ -46,7 +46,7 @@ FloatingWindow {
     WindowGeometry {id:windowGeometry;ownerWindow:root}
     function fitScreen() {
         if(!visible || !screen || !Quickshell.env("SWAYSOCK"))return;
-        windowGeometry.fit(Math.max(1,screen.width-32),Math.max(1,screen.height-100));
+        windowGeometry.fitWorkspace(32,100);
     }
 
     onScreenChanged:Qt.callLater(root.fitScreen)

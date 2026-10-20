@@ -47,7 +47,7 @@ def criterion(value):
     return '"'+r'\A'+''.join(r'\x{%x}'%ord(char) for char in value)+r'\z'+'"'
 
 
-def fit_plan(row,budget_width,budget_height,min_width,min_height):
+def fit_plan(row,budget_width,budget_height,min_width,min_height,margin_width=None,margin_height=None):
     node,workspace,floating=row
     for value,name in [(budget_width,'outer width'),(budget_height,'outer height'),(min_width,'minimum width'),(min_height,'minimum height')]:integer(value,name,1)
     state=node.get('lumen_state') or {};pair=node.get('lumen_pair') or {};relation=node.get('lumen_relationships') or {}
@@ -58,6 +58,9 @@ def fit_plan(row,budget_width,budget_height,min_width,min_height):
     deco=node.get('deco_rect') or {};deco_height=integer(deco.get('height',0),'decoration height')
     pad_width=box['width']-client['width'];pad_height=box['height']+deco_height-client['height']
     if pad_width<0 or pad_height<0:raise ValueError('Inconsistent native window padding')
+    if margin_width is not None:
+        budget_width=max(1,area['width']-integer(margin_width,'width margin'))
+        budget_height=max(1,area['height']-integer(margin_height,'height margin'))
     available_width=min(budget_width,area['width']);available_height=min(budget_height,area['height'])
     if min_width+pad_width>area['width'] or min_height+pad_height>area['height']:
         return dict(changed=False,supported=False,reason='Minimum client size exceeds usable workspace'),None
@@ -111,7 +114,7 @@ def mapped_window(app,title,pid,container):
             if kind!=0x80000003 or not isinstance(event,dict):raise ValueError('Invalid native window event')
 
 
-def execute(app,title,container,budget_width,budget_height,min_width,min_height):
+def execute(app,title,container,budget_width,budget_height,min_width,min_height,margin_width=None,margin_height=None):
     owner=os.getppid();start=process_start(owner);session=socket_identity(os.environ['SWAYSOCK'])
     first=mapped_window(app,title,owner,container)
     node=first[0];captured=(node['id'],node['pid'],node['app_id'],node['name'])
@@ -120,7 +123,7 @@ def execute(app,title,container,budget_width,budget_height,min_width,min_height)
     actual=second[0]
     if captured!=(actual['id'],actual['pid'],actual['app_id'],actual['name']) or process_start(owner)!=start or socket_identity(os.environ['SWAYSOCK'])!=session:
         raise ValueError('Owned window identity changed before fitting')
-    result,command=fit_plan(second,budget_width,budget_height,min_width,min_height)
+    result,command=fit_plan(second,budget_width,budget_height,min_width,min_height,margin_width,margin_height)
     result.update(container=captured[0],pid=owner,processStart=start,app=app,title=title)
     if command:
         replies=json.loads(subprocess.check_output(['swaymsg','-r',command],timeout=4))
@@ -128,16 +131,43 @@ def execute(app,title,container,budget_width,budget_height,min_width,min_height)
     return result
 
 
+def watch(app,title,container):
+    owner=os.getppid();start=process_start(owner);session=socket_identity(os.environ['SWAYSOCK'])
+    captured=container or None;previous=None
+    with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as events:
+        events.connect(os.environ['SWAYSOCK']);send(events,2,'["window","output"]');kind,reply=receive(events)
+        if kind!=2 or not isinstance(reply,dict) or reply.get('success') is not True:raise ValueError('Native geometry subscription rejected')
+        print(json.dumps(dict(ready=True)),flush=True)
+        while True:
+            if process_start(owner)!=start or socket_identity(os.environ['SWAYSOCK'])!=session:raise ValueError('Owned geometry session changed')
+            rows=matching_windows(read_tree(),app,title,owner,captured or 0)
+            if len(rows)==1:
+                node,workspace,_=rows[0]
+                if captured is None:captured=node['id']
+                if workspace:
+                    area=rectangle(workspace.get('rect'),'workspace rectangle')
+                    fingerprint=(workspace['id'],tuple(area.items()))
+                    if fingerprint!=previous:
+                        previous=fingerprint
+                        print(json.dumps(dict(changed=True,container=captured,pid=owner,app=app,title=title,workspace=workspace['id'],area=area)),flush=True)
+            kind,event=receive(events)
+            if kind not in (0x80000003,0x80000001) or not isinstance(event,dict):raise ValueError('Invalid native geometry event')
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--app',required=True);parser.add_argument('--title',required=True)
     parser.add_argument('--container',type=int,default=0)
-    parser.add_argument('--outer-width',type=int,required=True);parser.add_argument('--outer-height',type=int,required=True)
-    parser.add_argument('--minimum-width',type=int,required=True);parser.add_argument('--minimum-height',type=int,required=True)
+    parser.add_argument('--watch',action='store_true')
+    parser.add_argument('--margin-width',type=int);parser.add_argument('--margin-height',type=int)
+    parser.add_argument('--outer-width',type=int,default=1);parser.add_argument('--outer-height',type=int,default=1)
+    parser.add_argument('--minimum-width',type=int,default=1);parser.add_argument('--minimum-height',type=int,default=1)
     args=parser.parse_args()
     try:
         if args.container<0:raise ValueError('Invalid captured container')
-        result=execute(args.app,args.title,args.container,args.outer_width,args.outer_height,args.minimum_width,args.minimum_height)
+        if (args.margin_width is None)!=(args.margin_height is None):raise ValueError('Both native workspace margins are required')
+        if args.watch:watch(args.app,args.title,args.container);return 0
+        result=execute(args.app,args.title,args.container,args.outer_width,args.outer_height,args.minimum_width,args.minimum_height,args.margin_width,args.margin_height)
         print(json.dumps(result));return 0
     except (OSError,EOFError,KeyError,IndexError,ValueError,subprocess.SubprocessError) as error:
         print(json.dumps(dict(error=str(error))));return 1
