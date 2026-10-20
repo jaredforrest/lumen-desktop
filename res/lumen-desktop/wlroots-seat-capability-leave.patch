@@ -1,0 +1,20 @@
+--- a/types/seat/wlr_seat.c
++++ b/types/seat/wlr_seat.c
+@@ -406,7 +406,7 @@
+ 			struct wlr_surface *focused_surface =
+ 				wlr_seat->pointer_state.focused_surface;
+ 
+-			if (focused_client != NULL && focused_surface != NULL) {
++			if (client == focused_client && focused_surface != NULL) {
+ 				seat_client_send_pointer_leave_raw(focused_client, focused_surface);
+ 			}
+ 
+@@ -424,7 +424,7 @@
+ 			struct wlr_surface *focused_surface =
+ 				wlr_seat->keyboard_state.focused_surface;
+ 
+-			if (focused_client != NULL && focused_surface != NULL) {
++			if (client == focused_client && focused_surface != NULL) {
+ 				seat_client_send_keyboard_leave_raw(focused_client,
+ 						focused_surface);
+ 			}
