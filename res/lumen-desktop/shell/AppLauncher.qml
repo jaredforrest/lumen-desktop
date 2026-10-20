@@ -21,6 +21,7 @@ PanelSurface {
     property int selectedIndex: 0
     readonly property string queryText:search.text
     property string selectedKey:""
+    property string selectionQuery:""
     function focusSearch(){if(visible && root.Window.window && root.Window.window.visible)search.forceActiveFocus();}
     function activateResult(key){if(visible && root.Window.window && root.Window.window.visible && showingResults)launchKey(key,false);}
     function resultDescription(item){const text=item.subtitle || "";return item.kind==="file"?text.replace(Quickshell.env("HOME"),"~"):text;}
@@ -73,24 +74,26 @@ PanelSurface {
     onVisibleChanged: if(!visible){if(provider!=="Clipboard" && search.text.trim())queryHistory.request("record",search.text);}else {
         provider="All";historyIndex=-1;historyDraft="";search.text="";selectedIndex=0;gridMode=false;previewOpen=false;service.search("");search.forceActiveFocus();
     }
-    onCurrentChanged: if(visible && previewOpen)service.requestPreview(current && current.kind==="file"?current.path:"")
-    onPreviewOpenChanged:if(visible)service.requestPreview(previewOpen && current && current.kind==="file"?current.path:"")
+    onCurrentChanged: if(visible && previewOpen)service.requestPreview(current && current.kind==="file"?current.path:"",current?current.token:"")
+    onPreviewOpenChanged:if(visible)service.requestPreview(previewOpen && current && current.kind==="file"?current.path:"",current?current.token:"")
     onResultsChanged: {
-        const previous=selectedKey;
+        const changedQuery=selectionQuery!==queryText;
+        selectionQuery=queryText;
+        const previous=changedQuery?"":selectedKey;
         const index=results.findIndex(item=>resultKey(item)===previous);
-        selectedIndex=index>=0?index:Math.max(0,Math.min(selectedIndex,results.length-1));
+        selectedIndex=index>=0?index:previous?-1:changedQuery?0:selectedIndex<0?-1:0;
         selectedKey=resultKey(results[selectedIndex]);
     }
-    Connections {target:root.service;function onOpened(){if(root.visible)root.closeRequested();}}
+    Connections {target:root.service;function onOpened(){if(root.visible)root.closeRequested();}function onBrowseRequested(path){if(root.visible){root.closeRequested();root.shell.openFiles(path);}}}
     function status() {return {provider:provider,count:results.length,selected:selectedIndex,kind:current?current.kind:"",preview:previewOpen,previewType:service.preview.type || "",grid:gridMode};}
-    function setProvider(name) {if(!providerChoices.includes(name))return;provider=name;gridMode=false;selectedIndex=0;search.forceActiveFocus();if(name==="Clipboard"){previewOpen=false;clipboard.search(search.text);}else if(providerEnabled("Files") && (name==="Files" || name==="All"))service.search(search.text);}
+    function setProvider(name) {if(!providerChoices.includes(name))return;provider=name;gridMode=false;selectedKey="";selectedIndex=0;search.forceActiveFocus();if(name==="Clipboard"){previewOpen=false;clipboard.search(search.text);}else if(providerEnabled("Files") && (name==="Files" || name==="All"))service.search(search.text);}
     function cycleProvider() {const choices=providerChoices;setProvider(choices[(choices.indexOf(provider)+1)%choices.length]);}
     function launchKey(key,parent){const index=results.findIndex(item=>resultKey(item)===key);if(index>=0)launch(index,parent);}
     function launch(index, parent) {
         if(index<0 || index>=results.length || service.opening)return;
         const item=results[index];
         if(item.kind==="clipboard"){if(!clipboard.busy)clipboard.copy(item.id);return;}
-        if(item.kind==="file"){if(parent || item.folder){closeRequested();root.shell.openFiles(parent?item.path.substring(0,item.path.lastIndexOf("/")) || "/":item.path);}else service.open(item.path,false);return;}
+        if(item.kind==="file"){service.open(item.path,!!parent,item.token,!!(parent || item.folder));return;}
         if(item.kind==="menu-command"){
             closeRequested();root.shell.exportedMenu.activateCaptured(item.token,item.id);return;
         }
@@ -270,7 +273,7 @@ PanelSurface {
                     Repeater {model:root.current && root.current.kind==="file"?["Open","Show Folder"]:["Open"]
                         Rectangle {required property string modelData;width:label.implicitWidth+20;height:26;radius:6;color:Theme.colors.field
                             PanelLabel {id:label;anchors.centerIn:parent;text:parent.modelData;font.pixelSize:11}
-                            MouseArea {anchors.fill:parent;onClicked:root.launch(root.selectedIndex,parent.modelData==="Show Folder")}
+                            MouseArea {anchors.fill:parent;property string pressedKey:"";onPressed:pressedKey=root.resultKey(root.current);onCanceled:pressedKey="";onClicked:{root.launchKey(pressedKey,parent.modelData==="Show Folder");pressedKey="";}}
                         }
                     }
                 }

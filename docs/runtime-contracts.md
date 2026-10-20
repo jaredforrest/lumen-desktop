@@ -400,3 +400,48 @@ membership in the same desktop/output before reporting `placement: paired` and
 its title-free `pair` object. A full-screen survivor is reported independently.
 Absent compositor facts remain unknown. These fields do not create a command
 broker or promote advertised application IDs into verified application identity.
+
+### Search result and provider lifetime
+
+File search rows carry a process-scoped token bound to the canonical path and
+observed device, inode, change time, modification time and size. Preview, external
+open and folder/parent routing validate that token again. Replacement, removal
+or provider restart retires the selection; a removed selection does not silently
+become its neighbouring row. This is a validation at dispatch, not an open-file
+capability: an external URI handler can reopen the path after validation.
+
+The shell accepts only its current query/preview request ID. Category changes
+hide other providers, and a disconnected provider clears cached file actions.
+Startup and pending requests have a ten-second deadline. Expiry retires the
+shell's exact owned provider process and exposes an unavailable state; read-only
+queries may reconnect. Open actions are never retried. Dismissing the surface or
+changing its query retires pending action acknowledgements so they cannot close
+a later invocation. It cannot undo an external open that was already dispatched.
+
+`search_native_input.py` uses the installed shell/index with an explicitly
+recorded response-delivery gate, disposable files and a URI launch sink. Native
+input proves delayed query/preview ordering, category transitions, replacement
+and removal rejection, provider death/restart/hang and retired acknowledgement
+handling. The fixture does not open user applications or touch the host clipboard.
+
+Owned search regular-file previews use `PreviewSnapshots`: no-follow descriptor reads,
+source checks before/after copying and after preview extraction, at most 64 MiB
+per snapshot and 128 MiB per provider. Published immutable files remain leased
+for the provider lifetime so an asynchronous image loader cannot load a later
+replacement. Folder previews enumerate a validated retained directory descriptor. Budget exhaustion is unavailable, without evicting a live resource. Dismissing
+Search first clears its bound preview/results, then terminates its exact owned
+provider. Reopening starts a new provider and preview budget while retaining the
+SQLite index cache. This trades a short startup delay for bounded resource
+lifetimes; indexing does not continue while the surface is closed. Independently
+launched applications are not signalled.
+Copies live only in a private runtime directory; normal exit removes them and a
+later provider cleans PID/start-identity retired-owner leftovers after forced retirement. Media in
+Search remains metadata-only and does not publish a playback URI. This does not
+establish resource retention for other preview consumers.
+
+Shared preview helper commands use an independent eight-second `timeout`
+supervisor, preserving their existing resource limits even if a caller is
+retired. Python allows one second solely for supervisor reaping. Native tests
+kill a private caller and prove its blocked helper expires while an unrelated
+child survives. OS tasks stuck in uninterruptible kernel I/O can defer signal
+delivery; the wall deadline is not a guarantee against that kernel condition.

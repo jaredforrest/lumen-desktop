@@ -1,5 +1,6 @@
 import os,sys,tempfile,time,unittest,zipfile
 from pathlib import Path
+from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'res/lumen-desktop/shell'))
 from search import Index
 from file_preview import preview
@@ -20,7 +21,7 @@ class SearchTests(unittest.TestCase):
     with self.assertRaises(ValueError):index.search('since:2026-02-31')
    finally:index.closed.set();index.watcher.close()
  def test_events_scope_filters_and_previews(self):
-  with tempfile.TemporaryDirectory() as t:
+  with tempfile.TemporaryDirectory() as t,patch.dict(os.environ,{'XDG_RUNTIME_DIR':t}):
    root=Path(t)/'files';root.mkdir();index=Index([root],Path(t)/'index.sqlite')
    try:
     (root/'example.txt').write_text('Plain text\n<b>literal</b>');(root/'Folder').mkdir()

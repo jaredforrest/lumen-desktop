@@ -15,9 +15,12 @@ import time
 import unicodedata
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from file_preview import preview as shared_preview
+from preview_snapshots import PreviewSnapshots
 from file_watch import Watcher
 import file_tags
 import shlex
+import secrets
+import hashlib
 
 SKIP = {'node_modules', 'vendor', 'target', 'build', 'dist', '__pycache__', 'venv', 'Cache', 'Code Cache', 'GPUCache', 'component_crx_cache', 'blob_storage'}
 LIMIT = 150000
@@ -39,6 +42,8 @@ def configured_roots():
 class Index:
     def __init__(self, roots, database, emit=lambda message: None):
         self.roots, self.database, self.emit = roots, Path(database), emit
+        self.source_generation = secrets.token_hex(16)
+        self.snapshots = PreviewSnapshots(self.token,self.selected)
         self.database.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.database.parent.chmod(0o700)
         self.lock = threading.Lock()
@@ -211,6 +216,19 @@ class Index:
             raise ValueError('Hidden files are excluded from search')
         return resolved
 
+    def token(self, path, info=None):
+        info = info or path.stat(follow_symlinks=False)
+        facts = (str(path), info.st_dev, info.st_ino, info.st_ctime_ns, info.st_mtime_ns, info.st_size)
+        return self.source_generation + ':' + hashlib.sha256(json.dumps(facts).encode()).hexdigest()
+
+    # This is an observed-object dispatch guard, not a capability held by an
+    # external URI handler. That handler may reopen the path after dispatch.
+    def selected(self, path, token):
+        selected = self.allowed(path)
+        if not isinstance(token, str) or not token or self.token(selected) != token:
+            raise ValueError('The selected file changed. Search again before opening it.')
+        return selected
+
     def search(self, query):
         terms=shlex.split(query[:256])
         kind=next((t[5:].lower() for t in terms if t.startswith('kind:')), '')
@@ -251,15 +269,35 @@ class Index:
             rows = db.execute(sql, (*patterns, q, len(q), q)).fetchall()
         results = []
         for path, name, folder, size, mtime in rows:
-            if not Path(path).exists():
-                continue
-            results.append({'kind': 'file', 'id': path, 'path': path, 'title': name,
+            try: token = self.token(self.allowed(path))
+            except (OSError,ValueError): continue
+            results.append({'kind': 'file', 'id': path, 'path': path, 'token': token, 'title': name,
                             'subtitle': str(Path(path).parent), 'folder': bool(folder), 'size': size,
                             'mtime': mtime, 'mime': 'inode/directory' if folder else mimetypes.guess_type(name)[0] or 'application/octet-stream'})
         return {'results': results[:80], 'more': len(results)>80}
 
-    def preview(self, path):
-        return shared_preview(self.allowed(path))
+    def preview(self, path, token=None):
+        selected=self.allowed(path);token=token or self.token(selected)
+        self.selected(str(selected),token)
+        info=selected.stat(follow_symlinks=False)
+        mime=mimetypes.guess_type(selected.name)[0] or ''
+        if stat.S_ISDIR(info.st_mode):
+            fd=os.open(selected,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+            try:
+                if self.token(selected,os.fstat(fd))!=token:raise ValueError('The selected folder changed')
+                children=[]
+                with os.scandir(fd) as entries:
+                    for entry in entries:
+                        if not entry.name.startswith('.'):
+                            children.append(entry.name+('/' if entry.is_dir(follow_symlinks=False) else ''))
+                        if len(children)>=21:break
+                result=dict(type='folder',text='\n'.join(sorted(children[:20],key=str.casefold)) or 'Empty folder',truncated=len(children)>20)
+            finally:os.close(fd)
+        else:
+            result=shared_preview(self.snapshots.capture(selected,token))
+        if mime.startswith(('audio/','video/')):result.pop('uri',None)
+        self.selected(str(selected),token)
+        return dict(result,path=str(selected),name=selected.name,title=selected.name,size=info.st_size,mtime=info.st_mtime)
 
     def open(self, path, parent=False):
         path = self.allowed(path)
@@ -285,8 +323,14 @@ def main():
             action=request.get('action')
             if action=='search':
                 index.refresh();result=index.search(str(request.get('query','')))
-            elif action=='preview':result=index.preview(request['path'])
-            elif action in ('open','parent'):result=index.open(request['path'],action=='parent')
+            elif action in ('preview','open','parent','browse'):
+                selected=index.selected(request['path'],request.get('token'))
+                if action=='preview':result=index.preview(str(selected),request.get('token'))
+                elif action=='browse':
+                    target=selected.parent if request.get('parent') else selected
+                    if not target.is_dir():raise ValueError('The selected folder is unavailable')
+                    result={'browse':str(target)}
+                else:result=index.open(str(selected),action=='parent')
             elif action=='refresh':index.refresh(force=True);result={}
             else:raise ValueError('Unknown search command')
             emit({'id':request.get('id'),'action':action,**result})

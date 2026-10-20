@@ -14,8 +14,10 @@ import zipfile
 
 
 def limited_command(args):
-    return subprocess.run(['prlimit', '--as=805306368', '--cpu=6', '--fsize=16777216', '--', *args],
-                          capture_output=True, check=True, timeout=8).stdout
+    # The independent timeout remains alive if its caller is retired mid-preview.
+    # It owns only this command's process group; no ambient group is signalled.
+    return subprocess.run(['timeout', '--signal=KILL', '8s', 'prlimit', '--as=805306368', '--cpu=6', '--fsize=16777216', '--', *args],
+                          capture_output=True, check=True, timeout=9).stdout
 
 
 def preview(value, page=1, resolution=1400):
