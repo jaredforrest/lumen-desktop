@@ -34,7 +34,7 @@ PanelWindow {
     property string displayName: ownedFilesContext ? "Files" : usesBridge ? shell.nameForAppId(exported.state.contextAppName || exported.state.appName,exported.state.title) : shell.activeName
     property bool filesFocused:ownedFilesContext || (usesBridge ? exported.state.appName==="org.quickshell" && exported.state.title.startsWith("Files") : !!shell.active && shell.active.title.startsWith("Files"))
     property bool desktopFocused: usesBridge ? exported.state.windowId === 0 : !shell.active
-    property bool special: ["Wi-Fi","Bluetooth","VPN","Sound","Controls","Focus","Date","Calendar","Now Playing","Files","Settings","Launcher"].includes(menu)
+    property bool special: ["Wi-Fi","Bluetooth","VPN","Sound","Controls","Focus","Date","Calendar","Now Playing","Files","Settings","Launcher","Capture"].includes(menu)
     FontMetrics {id:headingMetrics;font.family:Theme.font;font.pixelSize:13}
     readonly property var menuHeadings: {
         if(exported.state.supported && exported.state.menu)return exported.state.menu.children.filter(n=>n.visible).map(n=>({label:exported.label(n.label),exportId:n.id,enabled:n.enabled}));
@@ -42,10 +42,10 @@ PanelWindow {
     }
     readonly property var hiddenStatus:statusIcons.layout.overflow.map(id=>({label:statusIcons.labels[id],action:id==="search"?"apps":"status:"+(id==="sound"?"Sound":"Controls")}))
     SettingsState {id:barSettings}
-    readonly property real menuBudget:Math.max(0,statusIcons.x-28)
+    readonly property real menuBudget:Math.max(0,(captureIndicator.visible?captureIndicator.x:statusIcons.x)-28)
     readonly property int visibleHeadingCount:MenuLayout.fit(menuHeadings.map(n=>headingMetrics.advanceWidth(n.label)+20),menuBudget-brandButton.width-applicationButton.width,38,hiddenStatus.length>0)
     readonly property var overflowItems:menuHeadings.slice(visibleHeadingCount).map(n=>({label:n.label,exportId:n.exportId,action:n.enabled?(n.heading?"heading:"+n.heading:"export-menu"):undefined})).concat(hiddenStatus)
-    function menuLayoutStatus(){return {width:width,menuEnd:headings.x+headings.width,statusStart:statusIcons.x,clockWidth:clockButton.width,visible:visibleHeadingCount,headings:menuHeadings.length,overflow:overflowItems.length,overflowLabels:overflowItems.map(n=>n.label)};}
+    function menuLayoutStatus(){return {width:width,menuEnd:headings.x+headings.width,statusStart:captureIndicator.visible?captureIndicator.x:statusIcons.x,clockWidth:clockButton.width,visible:visibleHeadingCount,headings:menuHeadings.length,overflow:overflowItems.length,overflowLabels:overflowItems.map(n=>n.label)};}
     property int builtinIndex:-1
     property var builtinSelection:null
     property bool builtinResetting:false
@@ -187,11 +187,24 @@ PanelWindow {
         }
         MenuButton {id:overflowButton;visible:bar.overflowItems.length>0;text:"»";selected:bar.menu==="Overflow";Accessible.name:"More menus and status controls";onClicked:{bar.selectedWindow=shell.active;bar.toggle("Overflow",mapToItem(bar.contentItem,0,0).x);}}
     }
+    MenuButton {
+        id:captureIndicator
+        visible:!!bar.shell.capture && (bar.shell.capture.audio || bar.shell.capture.video)
+        anchors.right:statusIcons.left;anchors.verticalCenter:parent.verticalCenter
+        width:28;text:"";selected:bar.menu==="Capture"
+        Row {anchors.centerIn:parent;spacing:3
+            Rectangle {visible:!!bar.shell.capture && bar.shell.capture.audio;width:6;height:6;radius:3;color:Theme.warningText}
+            Rectangle {visible:!!bar.shell.capture && bar.shell.capture.video;width:6;height:6;radius:3;color:Theme.successText}
+        }
+        textSize:12
+        Accessible.name:(bar.shell.capture && bar.shell.capture.audio?"Audio ":"")+(bar.shell.capture && bar.shell.capture.video?"video ":"")+"capture observed. Open capture observations"
+        onClicked:bar.toggle("Capture",bar.width-370)
+    }
     StatusStrip {
         id:statusIcons
         anchors.right:parent.right;anchors.rightMargin:clockButton.width+12;anchors.verticalCenter:parent.verticalCenter
         order:Theme.menuBarPreferences.order
-        budget:Math.max(38,Math.min(222,bar.width-clockButton.width-220))
+        budget:Math.max(38,Math.min(222,bar.width-clockButton.width-220-(captureIndicator.visible?28:0)))
         power:shell.systemState && shell.systemState.power ? shell.systemState.power : null
         soundIcon:shell.volume.includes("MUTED")?"muted":"sound"
         available:({battery:!!(shell.systemState && shell.systemState.power && shell.systemState.power.available && shell.systemState.power.present),sound:true,focus:!!shell.notifications.dnd,search:true,controls:true})
@@ -232,7 +245,7 @@ PanelWindow {
             Keys.onPressed:event=>{if(!bar.special && (event.key===Qt.Key_Home || event.key===Qt.Key_End)){bar.edgeBuiltin(event.key===Qt.Key_End);event.accepted=true;}else event.accepted=false;}
         FocusFlickable {
             id:systemViewport
-            visible:["Wi-Fi","Bluetooth","VPN","Sound","Controls","Focus","Date","Calendar","Now Playing"].includes(bar.systemMenu)
+            visible:["Wi-Fi","Bluetooth","VPN","Sound","Controls","Focus","Date","Calendar","Now Playing","Capture"].includes(bar.systemMenu)
             width:systemPanel.width;height:Math.min(systemPanel.height,Math.max(1,parent.height-Theme.barHeight-24))
             x:Math.max(8,parent.width-width-12);y:Theme.barHeight+10
             contentWidth:width;contentHeight:systemPanel.height;clip:true;boundsBehavior:Flickable.StopAtBounds

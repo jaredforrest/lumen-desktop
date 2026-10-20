@@ -147,3 +147,6 @@ TrashConfirmation 1.0 TrashConfirmation.qml
 TrashResults 1.0 TrashResults.qml
 
 FilesBandSelection 1.0 FilesBandSelection.qml
+
+CaptureState 1.0 CaptureState.qml
+CaptureReport 1.0 CaptureReport.qml
