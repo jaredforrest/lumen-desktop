@@ -1,0 +1,7 @@
+# Dock motion and reorder acceptance
+
+The private native fixture sends continuous pointer movement across the production Dock at three step rates, observes every neighbour tooltip and settled magnification, then leaves the shelf and checks that tooltip/hover/scale all clear. It performs successful forward and reverse app reorder beside the recent/document separators and refuses a document-section destination without activating or removing anything.
+
+The production Dock, SettingsState and DockModel are unchanged. Read-only geometry/tooltip aliases are applied to a copied source file with original/modified hashes and exact round-trip proof. An explicit synthetic settings transport records the actual captured pin-order write and reconstructs that order after a private shell restart. This establishes the owned UI/transport contract; it does not claim production configuration or system rebuild persistence. Existing production appearance preference tests cover the separate typed schema boundary; production configuration writes remain outside this fixture.
+
+Every run uses a private user/mount/network namespace, activation-free session bus, disposable home and a clean immutable source/dependency guard. Effects mode requests the accepted software graphics capability explicitly; the default fixture exposes no host graphics/audio/input devices. No reference-platform timing or pixel equivalence is inferred from this functional acceptance.
