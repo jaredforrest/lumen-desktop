@@ -8,6 +8,7 @@ import re
 import shutil
 import stat
 import subprocess
+import tempfile
 
 PARAMETERS = ('kernel/apparmor_restrict_unprivileged_userns', 'kernel/apparmor_restrict_unprivileged_unconfined', 'kernel/unprivileged_userns_clone', 'user/max_user_namespaces')
 
@@ -43,6 +44,15 @@ def cleanup_policy(parser,name,text,attempted,present=profile_loaded,apply=execu
     if present(name):apply(parser,'--remove',text)
     if present(name):raise ValueError('Test profile remains loaded after cleanup')
 
+def save_record(out,record):
+    temporary=None
+    try:
+        with tempfile.NamedTemporaryFile(mode='w',dir=out,prefix='record-',delete=False) as stream:
+            temporary=Path(stream.name);json.dump(record,stream,indent=2);stream.write('\n');stream.flush();os.fsync(stream.fileno())
+        os.replace(temporary,out/'result.json')
+    finally:
+        if temporary is not None:temporary.unlink(missing_ok=True)
+
 def main():
     p=argparse.ArgumentParser();p.add_argument('operation',choices=('prepare','cleanup'));p.add_argument('--output',type=Path,required=True);a=p.parse_args()
     release=dict(line.split('=',1) for line in Path('/etc/os-release').read_text().splitlines() if '=' in line)
@@ -56,12 +66,12 @@ def main():
         if not executable.is_file() or not os.access(executable,os.X_OK):raise ValueError('Nix unshare missing')
         name,text=profile_for(executable);out.mkdir(mode=0o700,parents=True,exist_ok=False);profile=out/'profile';profile.write_text(text)
         record=dict(profile=name,executable=str(executable),executableSha256=hashlib.sha256(executable.read_bytes()).hexdigest(),profileSha256=hashlib.sha256(text.encode()).hexdigest(),parametersBefore=parameters(),loaded=False,attempted=False)
-        (out/'result.json').write_text(json.dumps(record,indent=2)+'\n')
+        save_record(out,record)
         if profile_loaded(name):raise ValueError('Refusing to replace a preexisting test profile')
-        record['attempted']=True;(out/'result.json').write_text(json.dumps(record,indent=2)+'\n')
-        execute(parser,'--add',text);record['loaded']=profile_loaded(name);(out/'result.json').write_text(json.dumps(record,indent=2)+'\n')
+        record['attempted']=True;save_record(out,record)
+        execute(parser,'--add',text);record['loaded']=profile_loaded(name);save_record(out,record)
         if not record['loaded']:raise ValueError('Namespace profile was not loaded')
-        record['parametersAfter']=parameters();(out/'result.json').write_text(json.dumps(record,indent=2)+'\n')
+        record['parametersAfter']=parameters();save_record(out,record)
         if record['parametersAfter']!=record['parametersBefore']:raise ValueError('Global namespace controls changed unexpectedly')
         print('Prepared exact immutable test executable policy; global controls unchanged')
     elif out.exists():
@@ -69,7 +79,7 @@ def main():
         record=json.loads((out/'result.json').read_text());profile=out/'profile';name,text=profile_for(record['executable'])
         if name!=record['profile'] or profile.is_symlink() or profile.read_text()!=text:raise ValueError('Refusing changed policy cleanup')
         cleanup_policy(parser,name,text,record['attempted']);record['loaded']=False
-        record['cleaned']=True;record['parametersAfterCleanup']=parameters();(out/'result.json').write_text(json.dumps(record,indent=2)+'\n')
+        record['cleaned']=True;record['parametersAfterCleanup']=parameters();save_record(out,record)
         if record['parametersAfterCleanup']!=record['parametersBefore']:raise ValueError('Global namespace controls changed during job')
         print('Removed only the test executable policy; global controls unchanged')
 

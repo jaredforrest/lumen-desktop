@@ -2,6 +2,7 @@ import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
+import json
 from unittest.mock import patch
 spec=importlib.util.spec_from_file_location('policy',Path(__file__).with_name('native_namespace_policy.py'));policy=importlib.util.module_from_spec(spec);spec.loader.exec_module(policy)
 
@@ -32,5 +33,11 @@ class Policy(unittest.TestCase):
         calls=[];policy.cleanup_policy('parser','name','fixed profile',True,present=lambda name:False,apply=lambda *args:calls.append(args));self.assertEqual(calls,[])
         policy.cleanup_policy('parser','name','fixed profile',False,present=lambda name:self.fail('Untouched foreign profile queried'),apply=lambda *args:self.fail('Untouched foreign profile changed'))
         with self.assertRaises(ValueError):policy.cleanup_policy('parser','name','fixed profile',True,present=lambda name:True,apply=lambda *args:None)
+    def test_interrupted_record_publication_preserves_attempted_load_for_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);record={'attempted':True,'loaded':False};policy.save_record(root,record)
+            with patch.object(policy.os,'replace',side_effect=OSError('Synthetic interrupted publication')):
+                with self.assertRaises(OSError):policy.save_record(root,dict(record,loaded=True))
+            self.assertEqual(json.loads((root/'result.json').read_text()),record);self.assertEqual([p.name for p in root.iterdir()],['result.json'])
 
 if __name__=='__main__':unittest.main()
