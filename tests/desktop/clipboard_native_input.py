@@ -160,7 +160,7 @@ ShellRoot {
   pointer('Enable Clipboard History');wait(lambda:state()['enabled'] and not state()['busy']);time.sleep(.15)
   producer('Synthetic before stop failure');wait(lambda:any(e['text']=='Synthetic before stop failure' for e in history()['entries']));refresh()
   watcher_pid=int((a.output/'watcher.pid').read_text());children=Path('/proc/'+str(watcher_pid)+'/task/'+str(watcher_pid)+'/children').read_text().split();assert len(children)==1,children
-  observer_pid=int(children[0]);assert os.readlink('/proc/'+str(observer_pid)+'/exe')==a.observer
+  observer_pid=int(children[0]);assert os.path.samefile('/proc/'+str(observer_pid)+'/exe',a.observer)
   failure=a.output/'control-failure';failure.write_text('stop');pointer('Clear History');wait(lambda:not state()['busy'] and not state()['enabled']);wait(lambda:not Path('/proc/'+str(observer_pid)).exists());assert history()['entries']==[];assert call('wl-paste','--no-newline')=='Synthetic before stop failure';failure.unlink()
   pointer('Enable Clipboard History');wait(lambda:state()['enabled'] and not state()['busy']);time.sleep(.15)
   producer('Synthetic before start failure');wait(lambda:any(e['text']=='Synthetic before start failure' for e in history()['entries']));refresh()
