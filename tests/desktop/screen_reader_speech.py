@@ -2,6 +2,7 @@
 from pathlib import Path
 import re
 import json
+import hashlib
 
 
 def execution_shell_proof(dispatcher):
@@ -10,7 +11,7 @@ def execution_shell_proof(dispatcher):
     shell=Path(proof['shell'])
     if not str(shell).startswith('/nix/store/') or shell.name!='bash' or not shell.is_file():raise ValueError('Pinned pipeline-capable fixture shell required')
     if str(shell).encode() not in (dispatcher/'libexec/speech-dispatcher-modules/sd_generic').read_bytes():raise ValueError('Generic fixture does not contain its declared shell')
-    return proof
+    return {**proof,"genericBinarySha256":hashlib.sha256((dispatcher/"libexec/speech-dispatcher-modules/sd_generic").read_bytes()).hexdigest()}
 
 
 def retire(root):
@@ -24,7 +25,8 @@ def retire(root):
 def configure(root,dispatcher,true_command):
     root=Path(root).resolve();dispatcher=Path(dispatcher).resolve();true_command=Path(true_command).absolute()
     if not true_command.is_absolute() or true_command.name!='true' or not true_command.is_file():raise ValueError('A fixed true executable is required')
-    execution_shell_proof(dispatcher)
+    shell_proof=execution_shell_proof(dispatcher)
+    (root/"execution-shell-proof.json").write_text(json.dumps(shell_proof,indent=2)+"\n")
     config=root/'speech-config';config.mkdir();(config/'modules').mkdir();logs=root/'speech-logs';logs.mkdir()
     module_dir=root/'speech-modules';module_dir.mkdir();(module_dir/'sd_generic').symlink_to(dispatcher/'libexec/speech-dispatcher-modules/sd_generic')
     socket=root/'speech.sock';protocol=root/'speech-protocol.log'
@@ -35,6 +37,7 @@ GenericExecuteSynth "{true_command} '$DATA'"
 AddVoice "en" "MALE1" "observer"
 DefaultVoice "observer"
 GenericDefaultCharset "UTF-8"
+GenericLanguage "en" "en" "UTF-8"
 ''')
     (config/'speechd.conf').write_text('CommunicationMethod "unix_socket"\nSocketPath "'+str(socket)+'"\nLogLevel 5\nLogDir "'+str(logs)+'"\nCustomLogFile "protocol" "'+str(protocol)+'"\nAddModule "observer" "sd_generic" "observer.conf"\nDefaultModule "observer"\nDefaultLanguage "en"\nDisableAutoSpawn\n')
     command=[str(dispatcher/'bin/speech-dispatcher'),'--run-single','--config-dir='+str(config),'--module-dir='+str(module_dir),'--socket-path='+str(socket),'--pid-file='+str(root/'speech.pid'),'--timeout=0']
