@@ -71,7 +71,7 @@ Popup {
             DialogButton {text:"Draw";width:65;enabled:root.imageReady && root.current && !root.saving;onClicked:root.tool="pen";Accessible.description:"Draw freehand on the image"}
             DialogButton {text:"Rectangle";width:95;enabled:root.imageReady && root.current && !root.saving;onClicked:root.tool="rectangle"}
             DialogButton {objectName:"markup-add-rectangle";text:"Add Rectangle";width:115;enabled:root.imageReady && root.current && !root.saving;onClicked:root.addRectangle();Accessible.description:"Add a centred rectangle without pointer drawing"}
-            ComboBox {width:85;model:["Red","Blue","Black"];enabled:!root.saving;Accessible.name:"Annotation colour";onActivated:index=>root.ink=["#ff3b30","#007aff","#000000"][index]}
+            DesktopComboBox {width:85;model:["Red","Blue","Black"];enabled:!root.saving;Accessible.name:"Annotation colour";onActivated:index=>root.ink=["#ff3b30","#007aff","#000000"][index]}
             DialogButton {objectName:"markup-undo";text:"Undo";width:60;enabled:root.strokes.length>0 && !root.saving;onClicked:{root.strokes=root.strokes.slice(0,-1);drawingCanvas.requestPaint();}}
         }
         Rectangle {
