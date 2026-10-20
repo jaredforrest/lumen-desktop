@@ -9,6 +9,12 @@ import unittest
 RUNNER=Path(__file__).with_name('run-native.sh')
 
 class NativeExitPolicy(unittest.TestCase):
+    def test_every_declared_native_invocation_uses_diagnostic_guard(self):
+        workflow=RUNNER.parents[2]/'.github/workflows/check.yml'
+        commands=[line for line in workflow.read_text().splitlines() if 'nix develop --command desktop-test-python ' in line]
+        self.assertGreater(len(commands),20)
+        for command in commands:
+            self.assertIn('bash tests/ci/run-native.sh ',command)
     def run_child(self,source):
         with tempfile.TemporaryDirectory() as root:
             result=subprocess.run(['bash',str(RUNNER),'synthetic',sys.executable,'-c',source],cwd=root,env=dict(os.environ,PYTHONWARNINGS='error'),capture_output=True,text=True)
