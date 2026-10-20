@@ -4,7 +4,7 @@ from pathlib import Path
 from application_fixture.isolation import run as isolate
 from application_fixture.keyboard import PhysicalKeyboard
 from fixture_resources import close_reaped_pipes
-from office_fixture import corpus,formats
+from office_fixture import corpus,formats,live
 from office_fixture.control import Control
 p=argparse.ArgumentParser();p.add_argument('--writer',required=True);p.add_argument('--sheet',required=True);p.add_argument('--slides',required=True);p.add_argument('--software-driver',required=True);p.add_argument('--sway',required=True);p.add_argument('--keyboard-tool',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--writer-close-outcome',choices=['cancel','discard','save'],default='cancel');p.add_argument('--app',choices=['writer','sheet','slides'],default='writer');p.add_argument('--output',type=Path,required=True);p.add_argument('--inside',action='store_true');p.add_argument('--profiles-json',default='');p.add_argument('--source-sha',default='');a=p.parse_args()
 if not a.inside:
@@ -67,6 +67,22 @@ def key(*args):
   for char in args[-1]:keyboard.type(char);time.sleep(.04)
   time.sleep(.1)
  else:keyboard.key(*args)
+def reopen_saved():
+ saved_hash=formats.digest(source);parse={'writer':formats.writer,'sheet':formats.spreadsheet,'slides':formats.presentation}[a.app];saved_facts=parse(source)
+ before_live=live.snapshot(control,a.app);facts['beforeReopen']=before_live
+ control.tool({'writer':'new_document','sheet':'new_workbook','slides':'new_presentation'}[a.app])
+ cleared=control.command(a.app,'file.info' if a.app=='writer' else 'document.inspect')
+ assert cleared.get('path')!=str(source),'New document did not detach the saved document'
+ control.tool({'writer':'open_document','sheet':'open_workbook','slides':'open_presentation'}[a.app],dict(path=str(source)))
+ wait(lambda:(value if (value:=control.command(a.app,'file.info' if a.app=='writer' else 'document.inspect')).get('path')==str(source) and not value.get('dirty') else None),'GUI reopens exact saved path cleanly',provider)
+ after_live=live.snapshot(control,a.app);facts['afterReopen']=after_live
+ diff=formats.differences(before_live,after_live);facts['nativeReopenDifferences']=diff
+ if diff:(out/'reopen-differences.json').write_text(json.dumps(dict(before=before_live,after=after_live,differences=diff),indent=2))
+ assert not diff,'Native reopened document differs from saved live content; inspect retained differences'
+ assert formats.digest(source)==saved_hash and parse(source)==saved_facts,'Reopen modified saved file'
+ command(['grim',str(out/'reopened.png')])
+ checks.append('Native app clears then reopens exact saved file; full text/structured provider projection and independent file facts agree')
+
 try:
  data=fixture[{'writer':'writer','sheet':'grid','slides':'deck'}[a.app]];args=['run',*[value for id,params in data for value in ('--cmd',id+'='+json.dumps(params,separators=(',',':')))],'--out' if a.app=='sheet' else '--save',str(source)]
  with (out/'create.log').open('w') as log:subprocess.run([cli,*args],env=env,stdout=log,stderr=subprocess.STDOUT,check=True,timeout=60)
@@ -96,6 +112,7 @@ try:
   saved=formats.writer(source);assert marker.strip() in json.dumps(saved),'Saved DOCX lacks physical keyboard edit'
   facts['savedSha256']=formats.digest(source);facts['savedDocument']=saved
   checks.append('Physical keyboard edit stays dirty until explicit Save and appears in independently parsed DOCX')
+  reopen_saved()
   facts['uiBeforeClose']=control.tool('ui_inspect')
   key('-d','25','--',' Unsaved close fixture')
   wait(lambda:'Unsaved close fixture' in json.dumps(control.tool('get_text')),'second edit acknowledged',provider)
@@ -146,6 +163,7 @@ try:
   saved=formats.spreadsheet(source);assert marker in json.dumps(saved)
   facts['savedSha256']=formats.digest(source);facts['savedDocument']=saved
   checks.append('Physical cell entry stays unsaved until explicit Save and appears in independently parsed workbook')
+  reopen_saved()
  if a.app=='slides':
   marker=' Native slide edit'
   facts['slideBeforeEdit']=control.tool('inspect_slide',dict(index=0))
@@ -161,6 +179,7 @@ try:
   saved=formats.presentation(source);assert marker.strip() in json.dumps(saved)
   facts['savedSha256']=formats.digest(source);facts['savedDocument']=saved
   checks.append('Physical presentation text edit is acknowledged live and independently parsed after explicit Save')
+  reopen_saved()
  command(['grim',str(out/'opened.png')]);(out/'tree-opened.json').write_text(json.dumps(tree(),indent=2));(out/'result.json').write_text(json.dumps(dict(passed=True,phase='native_partial' if len(checks)>1 else 'startup_only',app=a.app,workflowComplete=False,checks=checks,facts=facts,source=a.source_sha),indent=2))
 finally:
  if keyboard is not None:keyboard.close()
