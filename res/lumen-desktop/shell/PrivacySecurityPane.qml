@@ -40,7 +40,7 @@ Column {
     }
     PortalPermissionsPane {width:parent.width;active:root.active}
     Repeater {
-        model: [{key:"encryption", name:"Disk encryption"}, {key:"secureBoot", name:"Secure Boot"}]
+        model: [{key:"encryption", name:"Disk encryption"}, {key:"secureBoot", name:"Secure Boot"}, {key:"biometrics", name:"Fingerprint reader"}]
         Rectangle {
             required property var modelData
             readonly property var fact: root.facts[modelData.key] || ({value:worker.running?"Checking…":"Unavailable",detail:""})

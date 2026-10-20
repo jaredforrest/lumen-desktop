@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import subprocess
+import sys
 
 EFI_GUID = "8be4df61-93ca-11d2-aa0d-00e098032b8c"
 
@@ -48,8 +49,23 @@ def secure_boot_status(directory=Path("/sys/firmware/efi/efivars")):
         return {"state": "unknown", "value": "Unavailable", "detail": "Firmware status could not be read. A configured bootloader alone does not confirm Secure Boot is enabled."}
 
 
+def biometric_status(run=subprocess.run):
+    try:
+        result = run([sys.executable, str(Path(__file__).with_name('biometric_status.py'))],
+                     capture_output=True, text=True, timeout=2.5, check=True)
+        if len(result.stdout) > 4096:
+            raise ValueError('Oversized result')
+        value = json.loads(result.stdout)
+        if (set(value) != {'state', 'value', 'detail'} or value['state'] not in ('unknown', 'reported', 'unavailable')
+                or any(not isinstance(value[k], str) or len(value[k]) > 1024 for k in value)):
+            raise ValueError('Invalid result')
+        return value
+    except (OSError, ValueError, TypeError, subprocess.SubprocessError):
+        return {'state':'unknown', 'value':'Unavailable', 'detail':'Fingerprint reader status could not be established. Authentication remains managed by the host.'}
+
+
 def snapshot():
-    return {"encryption": encryption_status(), "secureBoot": secure_boot_status()}
+    return {"encryption": encryption_status(), "secureBoot": secure_boot_status(), "biometrics": biometric_status()}
 
 
 if __name__ == "__main__":

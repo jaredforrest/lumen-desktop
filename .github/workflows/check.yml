@@ -31,6 +31,7 @@ jobs:
           mkdir -p artifacts
           nix build .#shell --out-link artifacts/shell-package --option abort-on-warn true
           LUMEN_TEST_SHELL_LAUNCHER="$PWD/artifacts/shell-package/bin/lumen-desktop-shell" bash tests/ci/run-native.sh run_backend_tests nix develop --command desktop-test-python tests/desktop/run_backend_tests.py --output artifacts/backends
+          bash tests/ci/run-native.sh biometric_provider nix develop --command desktop-test-python tests/desktop/biometric_provider.py --output artifacts/biometric-provider
       - run: |
           mkdir -p artifacts
           nix build .#compositor --out-link artifacts/compositor-effects --option abort-on-warn true
@@ -165,6 +166,7 @@ jobs:
           path: |
             artifacts/native-command-logs
             artifacts/backends
+            artifacts/biometric-provider
             artifacts/clipboard-native-*
             artifacts/search-native-*
             artifacts/search-history-*
