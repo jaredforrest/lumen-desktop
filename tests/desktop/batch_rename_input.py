@@ -18,7 +18,7 @@ docs=Path(env['HOME'])/'Documents';docs.mkdir();(docs/'lower-one.txt').write_tex
 palettes=json.loads((repo/'res/lumen-desktop/appearance/palette.json').read_text());appearance=out/'appearance.json';appearance.write_text(json.dumps(dict(font=palettes['font'],palette=palettes['dark'],preferences={})));env['LUMEN_APPEARANCE_STATE']=str(appearance)
 assets=out/'assets';shutil.copytree(Path(env['LUMEN_NOTIFICATION_HELPER']).parent.parent,assets)
 backend=assets/'shell/files.py';original=backend.read_text();needle="    if action=='volumes':\n";assert original.count(needle)==1
-backend.write_text(original.replace(needle,"    if action=='volumes':return dict(volumes=[])\n"+needle))
+backend.chmod(0o600);backend.write_text(original.replace(needle,"    if action=='volumes':return dict(volumes=[])\n"+needle))
 (out/'isolation.json').write_text(json.dumps(dict(originalSha256=hashlib.sha256(original.encode()).hexdigest(),modifiedSha256=hashlib.sha256(backend.read_bytes()).hexdigest(),seam=needle,reason='Disable live mount discovery only; all rename paths and assertions preserved'),indent=2))
 qml=out/'shell.qml';qml.write_text('''import QtQuick
 import QtQuick.Window
