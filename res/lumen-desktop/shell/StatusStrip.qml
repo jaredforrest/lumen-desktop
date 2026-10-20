@@ -1,5 +1,6 @@
 import QtQuick
 import "StatusStripModel.js" as StatusModel
+import "NetworkState.js" as NetworkState
 Row {
     id:root
     property var order:StatusModel.ids
@@ -7,6 +8,7 @@ Row {
     property real budget:222
     property var power:null
     property var internet:({status:"unknown",message:"Checking internet connection…"})
+    readonly property var internetState:NetworkState.internet(internet)
     property string soundIcon:"sound"
     readonly property var layout:StatusModel.layout(order,available,budget)
     readonly property var labels:({battery:"Battery",sound:"Sound",focus:"Focus",search:"Search",controls:"Controls"})
@@ -22,12 +24,12 @@ Row {
             width:StatusModel.itemWidth(modelData);height:24
             activeFocusOnTab:true
             Accessible.role:Accessible.Button
-            Accessible.name:root.labels[modelData]+(modelData==="battery" && root.power?": "+Math.round(root.power.percentage || 0)+" percent":modelData==="controls"?": "+root.internet.message:"")
+            Accessible.name:root.labels[modelData]+(modelData==="battery" && root.power?": "+Math.round(root.power.percentage || 0)+" percent":modelData==="controls"?": "+root.internetState.message:"")
             Accessible.description:"Hold Super and drag to reorder. Control Shift Left or Right moves this item."
             Accessible.onPressAction:root.activated(modelData)
             Rectangle {anchors.fill:parent;radius:5;color:cell.activeFocus?Theme.colors.hover:"transparent";border.width:cell.activeFocus?1:0;border.color:Theme.colors.accent}
             MenuButton {anchors.fill:parent;enabled:false;Accessible.ignored:true;text:"";iconName:cell.modelData==="sound"?root.soundIcon:cell.modelData==="focus"?"moon":cell.modelData==="battery"?"":cell.modelData;selected:drag.pressed && drag.reordering}
-            Rectangle {visible:cell.modelData==="controls" && root.internet.status!=="online" && root.internet.reason!=="starting";width:7;height:7;radius:4;color:root.internet.status==="offline"?Theme.errorText:Theme.warningText;anchors.right:parent.right;anchors.top:parent.top}
+            Rectangle {visible:cell.modelData==="controls" && ["offline","degraded","portal"].includes(root.internetState.status);width:7;height:7;radius:4;color:root.internetState.status==="offline"?Theme.errorText:Theme.warningText;anchors.right:parent.right;anchors.top:parent.top}
             Row {anchors.centerIn:parent;spacing:4;visible:cell.modelData==="battery";BatteryGlyph {anchors.verticalCenter:parent.verticalCenter;percentage:root.power && root.power.percentage || 0;charging:!!root.power && root.power.state==="charging"} PanelLabel {text:Math.round(root.power && root.power.percentage || 0)+"%";font.pixelSize:12}}
             Keys.onEscapePressed:{drag.cancelled=true;drag.reordering=false;}
             Keys.onPressed:event=>{

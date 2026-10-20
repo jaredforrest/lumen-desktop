@@ -13,6 +13,7 @@ Column {
     property bool editing:false
     readonly property bool singleColumn:Theme.textSize(12)>12 || width<260
     readonly property var power:root.shell.systemState && root.shell.systemState.power?root.shell.systemState.power:null
+    readonly property var internet:NetworkState.internet(root.shell.systemState && root.shell.systemState.internet)
     property var preferences:Theme.controlCentrePreferences
     property var pending:({})
     property string error:""
@@ -45,7 +46,7 @@ Column {
         }
     }
     ControlRow {visible:!root.editing;width:parent.width;text:"Internet";
-        detail:root.shell.systemState.internet.message || "Checking internet connection…";
+        detail:root.internet.message;
         onClicked:root.panelRequested("Internet")}
     ControlRow {visible:!root.editing;width:parent.width;text:"VPN";detail:root.shell.vpn.mullvad.state==="connected"?"Mullvad connected"+(root.shell.vpn.tailscale.online?" · Tailscale connected":""):root.shell.vpn.tailscale.online?"Tailscale connected":"Disconnected";onClicked:root.panelRequested("VPN")}
     ControlRow {visible:!root.editing;width:parent.width;text:"Capture observations…";detail:"PipeWire-visible activity";onClicked:root.panelRequested("Capture")}

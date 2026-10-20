@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import Quickshell
 import Quickshell.Bluetooth
+import "NetworkState.js" as NetworkState
 Item {
     id: root
     required property string kind
@@ -9,6 +10,7 @@ Item {
     required property date today
     property real notificationHeight:420
     property string editingFocus: ""
+    readonly property var internet:NetworkState.internet(root.shell.systemState && root.shell.systemState.internet)
     readonly property var focusState:root.shell.notifications.focusState || ({profiles:[],active:"",name:"",until:0,scheduled:false})
     function dateStatus(){return datePanel.status();}
     signal settingsRequested()
@@ -26,16 +28,16 @@ Item {
         ControlRow {width:parent.width;text:"‹  Control Centre";onClicked:root.panelRequested("Controls")}
         PanelLabel {text:"Internet";font.weight:Font.DemiBold;font.pixelSize:15}
         PanelLabel {width:parent.width;wrapMode:Text.WordWrap;elide:Text.ElideNone;
-          color:root.shell.systemState.internet.status==="online"?Theme.colors.text:root.shell.systemState.internet.status==="offline"?Theme.errorText:Theme.warningText;
-          text:root.shell.systemState.internet.message || "Checking internet connection…"}
+          color:root.internet.status==="online"?Theme.colors.text:root.internet.status==="offline"?Theme.errorText:Theme.warningText;
+          text:root.internet.message || "Checking internet connection…"}
         PanelLabel {width:parent.width;wrapMode:Text.WordWrap;elide:Text.ElideNone;color:Theme.colors.muted;
-          text:{const s=root.shell.systemState.internet,r=s.routes || ({}),v4=r["4"] || ({}),v6=r["6"] || ({});
+          text:{const s=root.internet,r=s.routes || ({}),v4=r["4"] || ({}),v6=r["6"] || ({});
             return "IPv4: "+(v4.available?(v4.interface || "route found"):"no route")+" · IPv6: "+(v6.available?(v6.interface || "route found"):"no route");}}
         PanelLabel {width:parent.width;wrapMode:Text.WordWrap;elide:Text.ElideNone;color:Theme.colors.muted;
-          text:{const s=root.shell.systemState.internet,d=s.dns || ({}),v=s.vpn || ({});
+          text:{const s=root.internet,d=s.dns || ({}),v=s.vpn || ({});
             return "DNS: "+(d.status || "not checked")+" · Mullvad: "+(v.state || "unavailable")+(v.selected_route?" (selected route)":"")+(v.locked_down?" (lockdown on)":"");}}
         PanelLabel {width:parent.width;wrapMode:Text.WordWrap;elide:Text.ElideNone;color:Theme.colors.muted;
-          text:{const s=root.shell.systemState.internet,c=s.checks || [],ok=c.filter(x=>x.ok).length;
+          text:{const s=root.internet,c=s.checks || [],ok=c.filter(x=>x.ok).length;
             return c.length?"Secure reachability: "+ok+" of "+c.length+" checks passed":"Secure reachability: no route to test";}}
         ControlRow {width:parent.width;text:"Check again";onClicked:root.shell.systemState.refreshInternet(true)}
         ControlRow {width:parent.width;text:"Network settings…";onClicked:root.shell.openSettings("Network")}

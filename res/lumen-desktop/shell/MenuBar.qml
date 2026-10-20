@@ -198,7 +198,7 @@ PanelWindow {
         id:statusIcons
         anchors.right:parent.right;anchors.rightMargin:clockButton.width+12;anchors.verticalCenter:parent.verticalCenter
         order:Theme.menuBarPreferences.order
-        internet:shell.systemState.internet
+        internet:shell.systemState?shell.systemState.internet:null
         budget:Math.max(38,Math.min(222,bar.width-clockButton.width-220-(captureIndicator.visible?28:0)))
         power:shell.systemState && shell.systemState.power ? shell.systemState.power : null
         soundIcon:shell.volume.includes("MUTED")?"muted":"sound"
