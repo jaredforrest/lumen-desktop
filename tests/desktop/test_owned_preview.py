@@ -43,4 +43,24 @@ class OwnedPreviewTests(unittest.TestCase):
         try:
             second=other.request(str(p));self.assertNotEqual(first['resourcePath'],second['resourcePath']);self.session.close();self.assertTrue(Path(second['resourcePath']).exists())
         finally:other.close()
+    def test_explicit_page_lease_retains_source_but_retires_previous_raster(self):
+        source=self.root/'document.pdf';source.write_bytes(b'unchanged immutable input')
+        rendered=self.root/'page.png';rendered.write_bytes(b'first raster')
+        self.session.requests.register(1)
+        with self.session.requests.work(1) as lease,patch('owned_preview.preview',return_value=dict(type='image',uri=rendered.as_uri(),page=1,pages=2)):
+            first=self.session.request(str(source),request_id=1,lease=lease)
+        source_resource=Path(first['resourcePath']);first_raster=Path(first['uri'].removeprefix('file://'))
+        self.session.requests.retire([1],first['sourceToken']);self.assertTrue(source_resource.exists());self.assertFalse(first_raster.exists())
+        rendered.write_bytes(b'second raster');self.session.requests.register(2,first['sourceToken'])
+        with self.session.requests.work(2) as lease,patch('owned_preview.preview',return_value=dict(type='image',uri=rendered.as_uri(),page=2,pages=2)):
+            second=self.session.request(str(source),page=2,token=first['sourceToken'],request_id=2,lease=lease)
+        self.assertEqual(second['resourcePath'],str(source_resource));self.assertNotEqual(second['uri'],first['uri'])
+        self.assertEqual(Path(second['uri'].removeprefix('file://')).read_bytes(),b'second raster')
+        self.session.requests.retire([2]);self.assertEqual(self.session.resources.preview_bytes,0)
+    def test_failed_renderer_releases_request_and_source_after_worker_unwinds(self):
+        source=self.root/'bad.pdf';source.write_bytes(b'synthetic failure');self.session.requests.register(1)
+        with self.assertRaises(ValueError):
+            with self.session.requests.work(1) as lease,patch('owned_preview.preview',side_effect=ValueError('fixture renderer failure')):
+                self.session.request(str(source),request_id=1,lease=lease)
+        self.session.requests.retire([1]);self.assertEqual(self.session.resources.preview_bytes,0);self.assertFalse(self.session.requests.sources)
 if __name__=='__main__':unittest.main()

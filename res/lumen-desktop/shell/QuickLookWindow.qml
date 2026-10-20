@@ -74,7 +74,7 @@ FloatingWindow {
                 }
             }
         }
-        FilePreview {id:previewContent;x:20;y:62;width:parent.width-40;height:parent.height-78;result:root.result;active:root.visible;loading:previewState.busy;onPageRequested:number=>{root.page=number;root.refresh();}}
+        FilePreview {id:previewContent;resourceRetirement:previewState.resourceRetirement;x:20;y:62;width:parent.width-40;height:parent.height-78;result:root.result;active:root.visible;loading:previewState.busy;onPageRequested:number=>{root.page=number;root.refresh();}}
 
     }
     FileDialog {id:subjectSave;title:"Save Extracted Subject";fileMode:FileDialog.SaveFile;nameFilters:["PNG image (*.png)"];defaultSuffix:"png"

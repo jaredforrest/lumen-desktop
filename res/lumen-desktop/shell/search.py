@@ -15,7 +15,8 @@ import time
 import unicodedata
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from file_preview import preview as shared_preview
-from preview_snapshots import PreviewSnapshots
+from preview_snapshots import PreviewSnapshots,PreviewRequests
+from urllib.parse import unquote,urlparse
 from file_watch import Watcher
 import file_tags
 import shlex
@@ -43,7 +44,8 @@ class Index:
     def __init__(self, roots, database, emit=lambda message: None):
         self.roots, self.database, self.emit = roots, Path(database), emit
         self.source_generation = secrets.token_hex(16)
-        self.snapshots = PreviewSnapshots(self.token,self.selected)
+        self.snapshots = PreviewSnapshots(self.token,self.validate_snapshot)
+        self.preview_requests = PreviewRequests(self.snapshots)
         self.database.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.database.parent.chmod(0o700)
         self.lock = threading.Lock()
@@ -255,6 +257,11 @@ class Index:
             raise ValueError('The selected file changed. Search again before opening it.')
         return selected
 
+    def validate_snapshot(self,path,token):
+        # Request authorization remains selected(); internal renderer outputs
+        # share this budget but live outside the configured search roots.
+        if self.token(Path(path))!=token:raise ValueError('The preview resource changed')
+
     def search(self, query):
         terms=shlex.split(query[:256])
         kind=next((t[5:].lower() for t in terms if t.startswith('kind:')), '')
@@ -302,7 +309,7 @@ class Index:
                             'mtime': mtime, 'mime': 'inode/directory' if folder else mimetypes.guess_type(name)[0] or 'application/octet-stream'})
         return {'results': results[:80], 'more': len(results)>80}
 
-    def preview(self, path, token=None):
+    def preview(self, path, token=None,request_id=None,lease=None):
         selected=self.allowed(path);token=token or self.token(selected)
         self.selected(str(selected),token)
         info=selected.stat(follow_symlinks=False)
@@ -320,9 +327,20 @@ class Index:
                 result=dict(type='folder',text='\n'.join(sorted(children[:20],key=str.casefold)) or 'Empty folder',truncated=len(children)>20)
             finally:os.close(fd)
         else:
-            result=shared_preview(self.snapshots.capture(selected,token))
+            resource=self.snapshots.capture(selected,token,lease)
+            if request_id is not None:self.preview_requests.retain_source(request_id,token)
+            result=shared_preview(resource)
+            uri=result.get('uri')
+            if uri and uri!=resource.as_uri():
+                parsed=urlparse(uri)
+                if parsed.scheme!='file' or parsed.netloc:raise ValueError('Unsupported preview resource')
+                rendered=Path(unquote(parsed.path));retained=self.snapshots.capture(rendered,self.token(rendered),lease)
+                result['uri']=retained.as_uri()
         if mime.startswith(('audio/','video/')):result.pop('uri',None)
         self.selected(str(selected),token)
+        if request_id is not None:
+            published=result.get('uri')
+            self.preview_requests.finish(request_id,[Path(unquote(urlparse(published).path))] if published else [])
         return dict(result,path=str(selected),name=selected.name,title=selected.name,size=info.st_size,mtime=info.st_mtime)
 
     def open(self, path, parent=False):
@@ -341,7 +359,7 @@ def main():
             print(json.dumps(message, ensure_ascii=False), flush=True)
     cache = Path(os.environ.get('XDG_CACHE_HOME', Path.home()/'.cache'))/'lumen-desktop/search/index.sqlite'
     index = Index(configured_roots(), cache, emit)
-    emit({'event': 'ready', **{k:v for k,v in index.status().items() if k!='event'}})
+    emit({'event': 'ready', 'previewGeneration':index.preview_requests.generation, **{k:v for k,v in index.status().items() if k!='event'}})
     index.refresh(force=True)
     from concurrent.futures import ThreadPoolExecutor
     def dispatch(request):
@@ -351,28 +369,43 @@ def main():
                 index.refresh();result=index.search(str(request.get('query','')))
             elif action in ('preview','open','parent','browse'):
                 selected=index.selected(request['path'],request.get('token'))
-                if action=='preview':result=index.preview(str(selected),request.get('token'))
+                if action=='preview':
+                    with index.preview_requests.work(request['id']) as lease:
+                        result=index.preview(str(selected),request.get('token'),request_id=request['id'],lease=lease)
                 elif action=='browse':
                     target=selected.parent if request.get('parent') else selected
                     if not target.is_dir():raise ValueError('The selected folder is unavailable')
                     result={'browse':str(target)}
                 else:result=index.open(str(selected),action=='parent')
+            elif action=='retire-preview':
+                index.preview_requests.retire(request['requests'],request.get('keepSourceToken'))
+                result=dict(retired=True,previewGeneration=index.preview_requests.generation)
             elif action=='refresh':index.refresh(force=True);result={}
             else:raise ValueError('Unknown search command')
             emit({'id':request.get('id'),'action':action,**result})
         except (ValueError,KeyError,OSError,sqlite3.Error,subprocess.SubprocessError):
-            emit({'id':request.get('id'),'action':request.get('action'),'error':'The file is unavailable, the query is incomplete, or its application could not be opened'})
+            if request.get('action')=='preview':index.preview_requests.retire([request.get('id')])
+            emit({'id':request.get('id'),'action':request.get('action'),'previewGeneration':index.preview_requests.generation,'error':'The file is unavailable, the query is incomplete, or its application could not be opened'})
     try:
-        with ThreadPoolExecutor(max_workers=3) as pool:
+        with ThreadPoolExecutor(max_workers=3) as pool,ThreadPoolExecutor(max_workers=1) as previews:
             for line in sys.stdin:
                 try:
                     request=json.loads(line)
                     if not isinstance(request,dict):raise ValueError('Invalid request')
-                    pool.submit(dispatch,request)
+                    if request.get('action') in ('preview','retire-preview'):
+                        if request.get('previewGeneration')!=index.preview_requests.generation:raise ValueError('Invalid preview provider identity')
+                        if request['action']=='preview':index.preview_requests.register(request.get('id'),request.get('token'))
+                        else:
+                            ids=request.get('requests')
+                            if not isinstance(ids,list) or len(ids)>64:raise ValueError('Invalid preview release')
+                            index.preview_requests.retire(ids,request.get('keepSourceToken'),wait=False)
+                        previews.submit(dispatch,request)
+                    else:pool.submit(dispatch,request)
                 except ValueError:emit({'error':'Invalid search request'})
     finally:
         index.closed.set()
         index.watcher.close()
+        index.preview_requests.close()
 
 if __name__ == '__main__':
     main()

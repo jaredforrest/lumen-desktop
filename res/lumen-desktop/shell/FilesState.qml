@@ -54,6 +54,7 @@ Item {
     property int historyIndex:-1
     property var preview:ownedPreview.result
     readonly property bool previewBusy:ownedPreview.busy
+    readonly property var previewResourceRetirement:ownedPreview.resourceRetirement
     OwnedPreviewState {id:ownedPreview;active:root.active && root.ready}
     property int sequence:0
     readonly property string requestSession: Date.now().toString(36)+"-"+Math.random().toString(36).slice(2)

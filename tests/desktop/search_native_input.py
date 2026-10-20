@@ -144,11 +144,15 @@ ShellRoot {
   ipc('reopen');wait(lambda:state()['available'],'fresh quota provider');pointer('Files')
   for index in range(1,4):
    with (docs/('quota'+str(index)+'.bin')).open('wb') as stream:stream.truncate(64*1024*1024)
-  for index in (1,2):
+  retiredResources=[];workingSets=[]
+  for index in (1,2,3):
    query('quota'+str(index));settled('quota'+str(index))
    if not state()['previewOpen']:keys('-M','ctrl','-k','space','-m','ctrl')
-   wait(lambda:state()['preview'].get('text')=='No preview available','accepted bounded snapshot '+str(index))
-  query('quota3');settled('quota3');wait(lambda:'unavailable' in state()['preview'].get('text',''),'quota exhausted');assert state()['visible'];checks.append('real 128 MiB snapshot quota refuses new copy without evicting published resources')
+   wait(lambda:state()['preview'].get('text')=='No preview available','accepted bounded working set '+str(index))
+   pid=int((out/'provider.pid').read_text());base=home/('lumen-preview-snapshots-'+str(os.getuid()));live=[path for directory in base.glob(str(pid)+'-*') for path in directory.iterdir() if path.is_file()]
+   assert len(live)==1 and sum(path.stat().st_size for path in live)==64*1024*1024
+   assert not any(path.exists() for path in retiredResources);retiredResources.extend(live);workingSets.append(dict(selection=index,bytes=sum(path.stat().st_size for path in live),paths=[str(path) for path in live]))
+  (out/'working-set.json').write_text(json.dumps(workingSets,indent=2));assert state()['visible'];checks.append('192 MiB of successive real input copies reuse a bounded64 MiB working set after exact retirement')
   previous=int((out/'provider.pid').read_text());keys('-k','Escape');wait(lambda:not state()['visible'],'quota dismissal');ipc('reopen');wait(lambda:state()['available'] and int((out/'provider.pid').read_text())!=previous,'new quota provider');pointer('Files');query('quota3');settled('quota3');keys('-M','ctrl','-k','space','-m','ctrl');wait(lambda:state()['preview'].get('text')=='No preview available','quota reset after cached reopen');assert len(opened())==4;checks.append('actual dismissal reopens cached index with fresh snapshot quota and no action replay')
   result=dict(passed=True,checks=checks,launcher=str(a.launcher),sway=a.sway,effects=a.effects,hostClipboardUntouched=True,externalOpenBoundary='Validated selected identity at dispatch; external handler may reopen the path later.')
   (out/'result.json').write_text(json.dumps(result,indent=2));print(json.dumps(result))

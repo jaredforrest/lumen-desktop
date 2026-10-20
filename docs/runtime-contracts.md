@@ -426,8 +426,8 @@ handling. The fixture does not open user applications or touch the host clipboar
 
 Owned search regular-file previews use `PreviewSnapshots`: no-follow descriptor reads,
 source checks before/after copying and after preview extraction, at most 64 MiB
-per snapshot and 128 MiB per provider. Published immutable files remain leased
-for the provider lifetime so an asynchronous image loader cannot load a later
+per snapshot and 128 MiB per provider. Published immutable files remain leased until every cooperating UI source is
+retired and worker pins drain, so an asynchronous image loader cannot load a later
 replacement. Folder previews enumerate a validated retained directory descriptor. Budget exhaustion is unavailable, without evicting a live resource. Dismissing
 Search first clears its bound preview/results, then terminates its exact owned
 provider. Reopening starts a new provider and preview budget while retaining the

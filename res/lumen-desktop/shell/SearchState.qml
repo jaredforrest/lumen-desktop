@@ -24,6 +24,13 @@ Item {
     property int openId: -1
     property bool timedOut: false
     property bool retiring: false
+    property string previewGeneration:""
+    property var previewRequests:[]
+    property var previewReleases:[]
+    property int previewReleaseId:-1
+    property bool stopAfterRetirement:false
+    property bool killAfterRetirement:false
+    property alias resourceRetirement:previewRetirement
     signal opened()
     signal browseRequested(string path)
     readonly property string python: Quickshell.env("GLOBAL_MENU_PYTHON") || "python3"
@@ -41,9 +48,27 @@ Item {
         requestPreview("");
         if(searching)debounce.restart();else debounce.stop();
     }
+    function retirePreview(){
+        if(previewRequests.length)previewRetirement.retire(previewRequests,preview.uri || "");
+        previewRequests=[];preview={};previewId=-1;
+    }
     function requestPreview(path, token) {
-        previewToken=token || "";previewPath=path;preview={};previewId=-1;
+        retirePreview();previewToken=token || "";previewPath=path;
         if(active && path)previewDelay.restart();else previewDelay.stop();
+    }
+    function dispatchPreviewReleases(){
+        if(previewRetirement.busy || previewReleaseId>0)return;
+        if(stopAfterRetirement){tryStopTransport();return;}
+        if(!transport.running){previewReleases=[];return;}
+        if(!available || !previewGeneration)return;
+        if(previewReleases.length){
+            previewReleaseId=send("retire-preview",{previewGeneration:previewGeneration,requests:previewReleases,keepSourceToken:active?previewToken:null});previewReleases=[];
+        }else if(active && previewPath)previewDelay.restart();
+    }
+    function tryStopTransport(){
+        if(!stopAfterRetirement || previewRetirement.busy)return;
+        previewReleases=[];previewReleaseId=-1;
+        if(transport.running){retiring=true;if(killAfterRetirement)transport.signal(9);else transport.running=false;}
     }
     function open(path, parent, token, browse) {
         if(opening || !active || !available || !token)return;
@@ -54,13 +79,14 @@ Item {
         if(active && !retiring && !transport.running)transport.running=true;
         if(active && !available)responseDeadline.restart();
         if(active && available && query.trim()) {searching=true;debounce.restart();}
-        if(!active){responseDeadline.stop();debounce.stop();indexRefresh.stop();previewDelay.stop();reconnect.stop();searchId=-1;previewId=-1;openId=-1;opening=false;previewPath="";previewToken="";preview={};files=[];more=false;searching=false;available=false;retiring=transport.running;if(retiring)transport.running=false;}
+        if(!active){responseDeadline.stop();debounce.stop();indexRefresh.stop();previewDelay.stop();reconnect.stop();searchId=-1;openId=-1;opening=false;retirePreview();previewPath="";previewToken="";files=[];more=false;searching=false;available=false;stopAfterRetirement=true;killAfterRetirement=false;retiring=transport.running;Qt.callLater(root.tryStopTransport);}
     }
+    PreviewResourceRetirement {id:previewRetirement;onRetired:ids=>{root.previewReleases=[...new Set(root.previewReleases.concat(ids))];root.dispatchPreviewReleases();}}
     Timer {id:debounce;interval:140;onTriggered: {
         if(root.available && root.active && root.query.trim())root.searchId=root.send("search",{query:root.query});
     }}
     Timer {id:previewDelay;interval:160;onTriggered: {
-        if(root.available && root.active && root.previewPath)root.previewId=root.send("preview",{path:root.previewPath,token:root.previewToken});
+        if(root.available && root.active && root.previewPath && root.previewGeneration && !previewRetirement.busy && root.previewReleaseId<0 && !root.previewReleases.length){root.previewId=root.send("preview",{path:root.previewPath,token:root.previewToken,previewGeneration:root.previewGeneration});root.previewRequests=root.previewRequests.concat([root.previewId]);}
     }}
     Timer {id:indexRefresh;interval:400;onTriggered: {
         if(root.available && root.active && root.query.trim())root.searchId=root.send("search",{query:root.query});
@@ -70,9 +96,13 @@ Item {
             try {
                 const data=typeof line === "string" ? JSON.parse(line) : line;
                 if(data.event==="ready" || data.event==="index") {
-                    if(data.event==="ready"){root.available=true;root.timedOut=false;root.error="";debounce.restart();}
+                    if(data.event==="ready"){root.available=true;root.previewGeneration=typeof data.previewGeneration==="string" && /^[a-f0-9]{48}$/.test(data.previewGeneration)?data.previewGeneration:"";root.timedOut=false;root.error="";debounce.restart();}
                     root.scanning=data.scanning;root.indexed=data.count;root.limited=data.limited;root.unreadable=data.unreadable;
                     if(root.active && root.query.trim())indexRefresh.restart();
+                } else if(data.action==="retire-preview" && data.id===root.previewReleaseId && data.previewGeneration===root.previewGeneration){
+                    root.previewReleaseId=-1;
+                    if(data.error || data.retired!==true){root.error="Preview resources could not be retired";root.stopAfterRetirement=true;root.killAfterRetirement=true;root.tryStopTransport();}
+                    else root.dispatchPreviewReleases();
                 } else if(root.active && root.searchId>0 && data.id===root.searchId) {
                     root.searchId=-1;root.searching=false;root.error=data.error || "";root.files=data.results || [];root.more=data.more || false;
                 } else if(root.active && root.previewId>0 && data.id===root.previewId) {
@@ -80,7 +110,7 @@ Item {
                 } else if(root.active && root.openId>0 && data.id===root.openId) {
                     root.openId=-1;root.opening=false;root.error=data.error || "";if(data.opened)root.opened();else if(data.browse)root.browseRequested(data.browse);
                 }
-                if(root.available && root.searchId<0 && root.previewId<0 && root.openId<0)responseDeadline.stop();
+                if(root.available && root.searchId<0 && root.previewId<0 && root.openId<0 && root.previewReleaseId<0)responseDeadline.stop();
             } catch(e){root.error="Unable to read file search results";}
     }
     Process {
@@ -91,17 +121,17 @@ Item {
             root.receive(line);
         }}
         onExited:(code,status)=>{
-            responseDeadline.stop();root.retiring=false;root.available=false;root.searchId=-1;root.previewId=-1;root.openId=-1;root.searching=false;root.opening=false;root.preview={};root.previewPath="";root.previewToken="";root.files=[];root.more=false;
+            responseDeadline.stop();root.retirePreview();root.retiring=false;root.available=false;root.previewGeneration="";root.previewReleaseId=-1;root.previewReleases=[];root.stopAfterRetirement=false;root.killAfterRetirement=false;root.searchId=-1;root.openId=-1;root.searching=false;root.opening=false;root.previewPath="";root.previewToken="";root.files=[];root.more=false;
             if(root.active){root.error=root.timedOut?"File search timed out. Reconnecting…":"File search disconnected. Reconnecting…";reconnect.restart();}
         }
     }
     // A bounded request/startup deadline retires only this owned subprocess.
     // Read-only queries may reconnect; an open action is never retried.
     Timer {id:responseDeadline;interval:10000;onTriggered:{
-        root.timedOut=true;root.available=false;root.searchId=-1;root.previewId=-1;root.openId=-1;
-        root.searching=false;root.opening=false;root.files=[];root.more=false;root.preview={};
+        root.timedOut=true;root.available=false;root.searchId=-1;root.openId=-1;
+        root.searching=false;root.opening=false;root.files=[];root.more=false;root.retirePreview();
         root.previewPath="";root.previewToken="";root.error="File search is unavailable";
-        transport.signal(9);
+        root.stopAfterRetirement=true;root.killAfterRetirement=true;root.tryStopTransport();
     }}
-    Timer {id:reconnect;interval:2000;onTriggered:if(root.active){responseDeadline.restart();transport.running=true}}
+    Timer {id:reconnect;interval:2000;onTriggered:if(root.active){if(previewRetirement.busy)restart();else {responseDeadline.restart();transport.running=true;}}}
 }

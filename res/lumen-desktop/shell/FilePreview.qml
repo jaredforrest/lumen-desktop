@@ -8,6 +8,7 @@ Item {
     property bool active: visible
     property real zoom: 1
     property bool loading: false
+    property var resourceRetirement:null
     readonly property bool playing: player.playing
     readonly property int position: player.position
     readonly property string playbackError: player.errorString
@@ -28,6 +29,7 @@ Item {
         ScrollBar.vertical: DesktopScrollBar {}
         ScrollBar.horizontal: DesktopScrollBar {}
         Image {
+            id:previewImage
             width: picture.contentWidth; height: picture.contentHeight
             source: root.active && picture.visible ? root.result.uri || "" : ""
             sourceSize: Qt.size(2400,2400); fillMode: Image.PreserveAspectFit; asynchronous: true
@@ -40,6 +42,12 @@ Item {
         source: root.active && root.media ? root.result.uri || "" : ""
         audioOutput: AudioOutput { volume: 1 }
         videoOutput: video
+    }
+    PreviewResourceConsumer {
+        manager:root.resourceRetirement
+        sources:[previewImage.source.toString(),player.source.toString()]
+        mediaSources:[player.source.toString()]
+        mediaStopped:player.playbackState===MediaPlayer.StoppedState
     }
     VideoOutput {
         id: video; visible: root.media && player.hasVideo

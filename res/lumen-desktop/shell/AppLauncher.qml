@@ -260,7 +260,8 @@ PanelSurface {
             Column {x:18;y:8;width:parent.width-36;spacing:8
                 PanelLabel {width:parent.width;text:root.current?root.current.title:"Select a result";textFormat:Text.PlainText;font.pixelSize:15;font.weight:Font.DemiBold}
                 PanelLabel {width:parent.width;text:root.current && root.current.kind==="file"?root.metadata(root.current):root.current?root.current.subtitle:"";textFormat:Text.PlainText;font.pixelSize:10;color:Theme.colors.muted}
-                Image {visible:root.current && root.current.kind==="file" && root.service.preview.type==="image";width:parent.width;height:visible?Math.max(60,previewPane.height-120):0;source:visible?root.service.preview.uri || "":"";fillMode:Image.PreserveAspectFit;sourceSize.width:640;sourceSize.height:640;asynchronous:true;PanelLabel {anchors.centerIn:parent;visible:parent.status===Image.Error;text:"Image preview unavailable";font.pixelSize:11;color:Theme.colors.muted}}
+                PreviewResourceConsumer {manager:root.service.resourceRetirement;sources:[launcherPreviewImage.source.toString()]}
+                Image {id:launcherPreviewImage;visible:root.current && root.current.kind==="file" && root.service.preview.type==="image";width:parent.width;height:visible?Math.max(60,previewPane.height-120):0;source:visible?root.service.preview.uri || "":"";fillMode:Image.PreserveAspectFit;sourceSize.width:640;sourceSize.height:640;asynchronous:true;PanelLabel {anchors.centerIn:parent;visible:parent.status===Image.Error;text:"Image preview unavailable";font.pixelSize:11;color:Theme.colors.muted}}
                 Flickable {
                     visible:!root.current || root.current.kind!=="file" || root.service.preview.type!=="image"
                     width:parent.width;height:Math.max(40,previewPane.height-120);clip:true;contentHeight:previewText.height
