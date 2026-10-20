@@ -1,0 +1,40 @@
+name: Material hierarchy (manual)
+on: workflow_dispatch
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  material-hierarchy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: cachix/install-nix-action@v31
+      - run: bash tests/ci/run-native.sh material_namespace_prepare nix develop --command desktop-test-python tests/ci/native_namespace_policy.py prepare --output artifacts/material-namespace-policy
+      - run: |
+          nix build .#shell --out-link artifacts/material-shell --option abort-on-warn true
+          nix build .#compositor-basic --out-link artifacts/material-basic --option abort-on-warn true
+          nix build .#compositor --out-link artifacts/material-effects --option abort-on-warn true
+          nix build .#test-application-font --out-link artifacts/material-font --option abort-on-warn true
+          nix build .#test-application-software-driver --out-link artifacts/material-driver --option abort-on-warn true
+          bash tests/ci/prepare-software-effects.sh artifacts/material-software-effects
+          for variant in basic effects; do
+            extra=()
+            if [[ "$variant" == effects ]]; then extra=(--effects); fi
+            bash tests/ci/run-native.sh material_hierarchy_native nix develop --command desktop-test-python tests/desktop/material_hierarchy_native.py --launcher "$PWD/artifacts/material-shell/bin/lumen-desktop-shell" --sway "$PWD/artifacts/material-$variant/bin/sway" --font-directory "$PWD/artifacts/material-font/share/fonts/truetype" --software-driver "$PWD/artifacts/material-driver" "${extra[@]}" --output "artifacts/material-hierarchy-$variant"
+          done
+      - if: always()
+        run: bash tests/ci/run-native.sh material_namespace_cleanup nix develop --command desktop-test-python tests/ci/native_namespace_policy.py cleanup --output artifacts/material-namespace-policy
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: material-hierarchy
+          path: |
+            artifacts/material-hierarchy-*
+            artifacts/material-namespace-policy
+            artifacts/material-software-effects
+            artifacts/native-command-logs

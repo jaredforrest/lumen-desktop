@@ -7,7 +7,10 @@ import unittest
 
 class ArtifactCoverage(unittest.TestCase):
     def test_declared_outputs_are_retained_once(self):
-        workflow=(Path(__file__).resolve().parents[2]/'.github/workflows/check.yml').read_text()
+        for path in sorted((Path(__file__).resolve().parents[2]/'.github/workflows').glob('*.yml')):
+            with self.subTest(workflow=path.name):self.check_workflow(path.read_text())
+
+    def check_workflow(self,workflow):
         retained=[line.strip() for line in workflow.splitlines() if line.startswith('            artifacts/')]
         self.assertEqual(len(retained),len(set(retained)), 'Duplicate artifact retention entry')
         outputs=[]
