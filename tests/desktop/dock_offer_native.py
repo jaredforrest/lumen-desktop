@@ -5,7 +5,7 @@ from application_fixture.isolation import run as isolated_run
 from application_fixture.provenance import FrozenSource,generated
 from private_native_bus import start_private_bus
 from fixture_resources import close_reaped_pipes
-p=argparse.ArgumentParser();p.add_argument('--launcher',type=Path,required=True);p.add_argument('--sway',type=Path,required=True);p.add_argument('--output',type=Path);p.add_argument('--effects',action='store_true');p.add_argument('--inside',action='store_true');p.add_argument('--python-runtime',default=shutil.which('desktop-test-python'));p.add_argument('--egl-vendor',type=Path,default=os.environ.get('__EGL_VENDOR_LIBRARY_FILENAMES'));p.add_argument('--pointer',type=Path,required=True);p.add_argument('--font-config',type=Path,required=True);p.add_argument('--source-revision');p.add_argument('--parent-net');a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--busy-case',action='store_true');p.add_argument('--launcher',type=Path,required=True);p.add_argument('--sway',type=Path,required=True);p.add_argument('--output',type=Path);p.add_argument('--effects',action='store_true');p.add_argument('--inside',action='store_true');p.add_argument('--python-runtime',default=shutil.which('desktop-test-python'));p.add_argument('--egl-vendor',type=Path,default=os.environ.get('__EGL_VENDOR_LIBRARY_FILENAMES'));p.add_argument('--pointer',type=Path,required=True);p.add_argument('--font-config',type=Path,required=True);p.add_argument('--source-revision');p.add_argument('--parent-net');a=p.parse_args()
 if not a.inside:
  if not a.output or not a.python_runtime:p.error('Fresh artifacts and pinned test runtime required')
  a.output=a.output.resolve();a.output.mkdir(mode=0o700,parents=True,exist_ok=False)
@@ -13,6 +13,7 @@ if not a.inside:
  if not all(str(path).startswith('/nix/store/') for path in (a.launcher,a.sway,a.pointer,a.font_config,runtime)):raise ValueError('Pinned native tools required')
  frozen=FrozenSource(Path(__file__).resolve().parents[2],__file__,[a.launcher,a.sway,a.pointer,a.font_config,runtime]+([a.egl_vendor] if a.effects else []));revision=frozen.revision
  args=[str(runtime),'/source/tests/desktop/dock_offer_native.py','--inside','--launcher',str(a.launcher),'--sway',str(a.sway),'--pointer',str(a.pointer),'--font-config',str(a.font_config),'--source-revision',revision,'--parent-net',os.readlink('/proc/self/ns/net')]
+ if a.busy_case:args+=['--busy-case']
  if a.effects:
   if not a.egl_vendor or not str(a.egl_vendor.resolve()).startswith('/nix/store/'):raise ValueError('Pinned Mesa vendor required')
   args+=['--effects','--egl-vendor',str(a.egl_vendor.resolve())]
@@ -74,10 +75,12 @@ with tempfile.TemporaryDirectory(prefix='lumen-dock-offer-') as temporary:
  def native(cid):return next((node for node in nodes(tree()) if node.get('id')==cid),None)
  def target(key):
   state=ui();index=state['keys'].index(key);return ((1280-state['width'])/2+12+(index+.5)*state['slot'],900-7-state['shelf']/2)
- def start_offer(uris,key):
+ def start_offer(uris,key,accepted=True):
   assert len(uris)==2;ack=peer_ipc('configureUris',*uris);assert ack=='true',(ack,peer_state(),uris);wait(lambda:peer_state()['uris']==uris and peer_state()['mimeBytes']==sum(len(uri)+2 for uri in uris));node=native(cid);checked('[con_id=%d] focus'%cid);wait(lambda:native(cid).get('focused'))
   state=peer_state();node=native(cid);assert node['window_rect']['width']==state['width'] and node['window_rect']['height']==state['height'],(node,state)
-  x=node['rect']['x']+node['window_rect']['x']+state['x'];y=node['rect']['y']+node['window_rect']['y']+state['y'];move(x,y);wait(lambda:peer_state()['hovered']);button('p');wait(lambda:peer_state()['pressed']);move(x+16,y);move(x+32,y);wait(lambda:peer_state()['active']);move(*target(key));wait(lambda:any(row['key']==key and row['contains'] for row in ui()['drops']))
+  x=node['rect']['x']+node['window_rect']['x']+state['x'];y=node['rect']['y']+node['window_rect']['y']+state['y'];move(x,y);wait(lambda:peer_state()['hovered']);button('p');wait(lambda:peer_state()['pressed']);move(x+16,y);move(x+32,y);wait(lambda:peer_state()['active']);move(*target(key));
+  if accepted:wait(lambda:any(row['key']==key and row['contains'] for row in ui()['drops']))
+  else:wait(lambda:any(seat.get('lumen_drag',{}).get('active') for seat in sway('-t','get_seats')))
  checks=[]
  try:
   start_private_bus(env,a.output,processes)
@@ -101,6 +104,12 @@ for uri in sys.argv[2:]:
  assert path.is_absolute();rows.append(dict(argument=uri,uri=path.as_uri(),path=str(path),sha256=hashlib.sha256(path.read_bytes()).hexdigest()))
 with Path(sys.argv[1]).open('a') as out:out.write(json.dumps(rows)+chr(10))
 ''')
+  gate=private/'release-helper';gate_record=a.output/'busy-child.json'
+  if a.busy_case:
+   real_helper=Path(shutil.which('lumen-dock-drop',path=env['PATH'])).resolve();assert str(real_helper).startswith('/nix/store/')
+   bindir=private/'bin';bindir.mkdir();wrapper=bindir/'lumen-dock-drop'
+   wrapper.write_text('#!'+sys.executable+'\n'+"import json,os,sys,time\nfrom pathlib import Path\n"+f"gate=Path({str(gate)!r});record=Path({str(gate_record)!r})\n"+"temporary=record.with_suffix('.tmp');temporary.write_text(json.dumps(dict(pid=os.getpid(),argv=sys.argv[1:])));temporary.replace(record)\ndeadline=time.clock_gettime(time.CLOCK_BOOTTIME)+12\nwhile not gate.exists():\n if time.clock_gettime(time.CLOCK_BOOTTIME)>=deadline:\n  print(json.dumps(dict(error='Private helper gate expired')));sys.exit(1)\n time.sleep(.01)\n"+f"os.execv({str(real_helper)!r},[{str(real_helper)!r},*sys.argv[1:]])\n")
+   wrapper.chmod(0o700);env['PATH']=str(bindir)+os.pathsep+env['PATH'];(a.output/'busy-helper.json').write_text(json.dumps(dict(helper=str(real_helper),sha256=hashlib.sha256(real_helper.read_bytes()).hexdigest(),scope='Fixed private gate forwards unchanged argv to captured installed helper only after explicit release.'),indent=2))
   apps=Path(env['XDG_DATA_HOME'])/'applications';apps.mkdir();(apps/'fixture-accept.desktop').write_text('[Desktop Entry]\nType=Application\nName=Offer Observer\nExec='+sys.executable+' '+str(observer)+' '+str(opened)+' %U\nMimeType=text/plain;\nTerminal=false\n');(apps/'fixture-refuse.desktop').write_text('[Desktop Entry]\nType=Application\nName=Unsupported Observer\nExec='+sys.executable+' '+str(observer)+' '+str(opened)+' %U\nMimeType=image/png;\nTerminal=false\n')
   assets=private/'assets';shutil.copytree(repo/'res/lumen-desktop',assets);targetfile=assets/'shell/Dock.qml';original=targetfile.read_text();needle='    id: dock';assert original.count(needle)==1
   addition='''
@@ -158,12 +167,24 @@ ShellRoot {id:root
  }
 }''')
   launch(['quickshell','-p',str(qml)],'shell.log');wait(lambda:len(ui()['drops'])==2);peer=launch(['quickshell','-p',str(peerqml)],'peer.log');node=wait(lambda:next((n for n in nodes(tree()) if n.get('name')=='Private URI offer peer' and n.get('pid')==peer.pid and n.get('window_rect',{}).get('width',0)>0),None));cid=node['id'];wait(lambda:peer_state()['width']>0)
-  uris=[alpha.as_uri(),beta.as_uri()];start_offer(uris,'accept');button('r');wait(lambda:peer_state()['finished']==1 and not ui()['busy'] and (len(records())==1 or ui()['error']));assert not ui()['error'] and len(records())==1,ui();rows=records()[0];assert [row['uri'] for row in rows]==uris and {row['path']:row['sha256'] for row in rows}=={str(path):originals[str(path)] for path in (alpha,beta)};assert peer_state()['action']==1;checks.append('Actual separate Wayland multi-file URI offer reaches production Dock/helper and one private registered application with exact original bytes')
-  start_offer([alpha.as_uri(),image.as_uri()],'accept');button('r');wait(lambda:peer_state()['finished']==2 and ui()['error'] and not ui()['busy']);assert len(records())==1 and 'every dropped file type' in ui()['error'];checks.append('Mixed compatible/unsupported MIME offer is rejected as a whole without partial application launch')
-  start_offer(uris,'refuse');button('r');wait(lambda:peer_state()['finished']==3 and ui()['error'] and not ui()['busy']);assert len(records())==1;checks.append('Actual offer over a different incompatible app cannot fall back to another receiver')
-  unavailable=docs/'Unavailable.txt';assert not unavailable.exists();start_offer([alpha.as_uri(),unavailable.as_uri()],'accept');button('r');wait(lambda:peer_state()['finished']==4 and ui()['error'] and not ui()['busy']);assert len(records())==1 and 'unavailable or unreadable' in ui()['error'];checks.append('An actual offer containing an inaccessible local path is refused before any partial app launch')
-  beforeCommand=ui()['command'];beforeDrops=sum(event['kind']=='drop' for event in ui()['events']);start_offer(uris,'accept');call('wtype','-k','Escape');wait(lambda:peer_state()['finished']==5 and not any(row['contains'] for row in ui()['drops']));button('r');assert len(records())==1 and not ui()['busy'] and ui()['command']==beforeCommand and sum(event['kind']=='drop' for event in ui()['events'])==beforeDrops;checks.append('Physical Escape cancels the actual native offer without another helper dispatch')
-  assert all(hashlib.sha256(Path(path).read_bytes()).hexdigest()==digest for path,digest in originals.items());checks.append('Accepted, refused and canceled offers leave all source files unchanged')
+  uris=[alpha.as_uri(),beta.as_uri()]
+  if a.busy_case:
+   start_offer(uris,'accept');button('r');wait(lambda:peer_state()['finished']==1 and ui()['busy'] and gate_record.exists());first=ui()['command'];assert peer_state()['action']==1 and not records()
+   later=docs/'Later.txt';later.write_text('later unaccepted offer');second=[beta.as_uri(),later.as_uri()]
+   # The baseline has no busy message; wait only actual native source completion.
+   start_offer(second,'accept',accepted=False);button('r');wait(lambda:peer_state()['finished']==2)
+   observed=dict(peer=peer_state(),ui=ui(),firstCommand=first,gate=json.loads(gate_record.read_text()),launches=records());(a.output/'busy-observed.json').write_text(json.dumps(observed,indent=2))
+   assert peer_state()['action']==0,observed
+   assert ui()['error'] and ui()['command']==first and not records();call('grim',a.output/'busy-refused.png');checks.append('Busy native drop reports IgnoreAction with visible refusal and no queued or replacement helper')
+   gate.touch();wait(lambda:not ui()['busy'] and len(records())==1);assert [row['uri'] for row in records()[0]]==uris;checks.append('Releasing the first owned helper dispatches only its original captured URI batch exactly once')
+   assert all(hashlib.sha256(Path(path).read_bytes()).hexdigest()==digest for path,digest in originals.items());checks.append('Busy refusal preserves all original source bytes')
+  else:
+   uris=[alpha.as_uri(),beta.as_uri()];start_offer(uris,'accept');button('r');wait(lambda:peer_state()['finished']==1 and not ui()['busy'] and (len(records())==1 or ui()['error']));assert not ui()['error'] and len(records())==1,ui();rows=records()[0];assert [row['uri'] for row in rows]==uris and {row['path']:row['sha256'] for row in rows}=={str(path):originals[str(path)] for path in (alpha,beta)};assert peer_state()['action']==1;checks.append('Actual separate Wayland multi-file URI offer reaches production Dock/helper and one private registered application with exact original bytes')
+   start_offer([alpha.as_uri(),image.as_uri()],'accept');button('r');wait(lambda:peer_state()['finished']==2 and ui()['error'] and not ui()['busy']);assert len(records())==1 and 'every dropped file type' in ui()['error'];checks.append('Mixed compatible/unsupported MIME offer is rejected as a whole without partial application launch')
+   start_offer(uris,'refuse');button('r');wait(lambda:peer_state()['finished']==3 and ui()['error'] and not ui()['busy']);assert len(records())==1;checks.append('Actual offer over a different incompatible app cannot fall back to another receiver')
+   unavailable=docs/'Unavailable.txt';assert not unavailable.exists();start_offer([alpha.as_uri(),unavailable.as_uri()],'accept');button('r');wait(lambda:peer_state()['finished']==4 and ui()['error'] and not ui()['busy']);assert len(records())==1 and 'unavailable or unreadable' in ui()['error'];checks.append('An actual offer containing an inaccessible local path is refused before any partial app launch')
+   beforeCommand=ui()['command'];beforeDrops=sum(event['kind']=='drop' for event in ui()['events']);start_offer(uris,'accept');call('wtype','-k','Escape');wait(lambda:peer_state()['finished']==5 and not any(row['contains'] for row in ui()['drops']));button('r');assert len(records())==1 and not ui()['busy'] and ui()['command']==beforeCommand and sum(event['kind']=='drop' for event in ui()['events'])==beforeDrops;checks.append('Physical Escape cancels the actual native offer without another helper dispatch')
+   assert all(hashlib.sha256(Path(path).read_bytes()).hexdigest()==digest for path,digest in originals.items());checks.append('Accepted, refused and canceled offers leave all source files unchanged')
   call('grim',a.output/'accepted.png');logs=''.join(path.read_text() for path in a.output.glob('*.log'));assert not any(word in logs for word in ('ReferenceError','TypeError','Binding loop','Failed to load')),logs
   (a.output/'result.json').write_text(json.dumps(dict(passed=True,checks=checks,source=a.source_revision,compositor=str(a.sway),launches=records(),final=ui(),peer=peer_state(),scope='Actual disposable local URI offers and registered subprocess observer; no authenticated app identity or immutable external handler reopen guarantee.',liveSocketUnchanged=os.environ.get('SWAYSOCK')==original_socket),indent=2));print(json.dumps(dict(passed=True,checks=len(checks))))
  finally:

@@ -39,11 +39,12 @@ PanelWindow {
     property bool dragging:false
     property bool dragCompleted:false
     property string dropError:""
+    function refuseBusyDrop(){dropError="Wait for the current file drop to finish";dropErrorTimer.restart();}
     function dropFiles(entry,urls){
-        if(dropWorker.running)return;
+        if(dropWorker.running){refuseBusyDrop();return false;}
         const list=Array.from(urls).map(url=>url.toString()),payload=JSON.stringify(list);
-        if(list.length>100 || payload.length>65536){dropError="Drop at most 100 files with shorter paths";dropErrorTimer.restart();return;}
-        dropError="";dropWorker.command=["lumen-dock-drop",entry.id,payload];dropWorker.running=true;
+        if(list.length>100 || payload.length>65536){dropError="Drop at most 100 files with shorter paths";dropErrorTimer.restart();return false;}
+        dropError="";dropWorker.command=["lumen-dock-drop",entry.id,payload];dropWorker.running=true;return true;
     }
     Process {id:dropWorker;stdout:StdioCollector {onStreamFinished:{try{const result=JSON.parse(text);dock.dropError=result.error || "";}catch(e){dock.dropError="The application could not open this drop";}dropErrorTimer.restart();}}}
     Timer {id:dropErrorTimer;interval:6000;onTriggered:dock.dropError=""}
@@ -210,8 +211,8 @@ PanelWindow {
                 Rectangle { anchors.horizontalCenter:parent.horizontalCenter; y:dock.shelfThickness-8; width:4; height:4; radius:2; color:Theme.colors.text; visible:tile.modelData.action!=="minimized-window" && Theme.preferences.dockIndicators!==false && (tile.appWindows.length>0 || (!!tile.modelData.entry && dock.applicationRunning(tile.modelData.entry))) }
                 DropArea {anchors.fill:parent;keys:["text/uri-list"]
                     enabled:tile.modelData.action!=="minimized-window" && !!tile.modelData.entry && !dock.dragging
-                    onEntered:drag=>{if(!drag.hasUrls || !(drag.supportedActions & Qt.CopyAction))drag.accepted=false;}
-                    onDropped:drop=>{if(drop.hasUrls && tile.modelData.entry){dock.dropFiles(tile.modelData.entry,drop.urls);drop.accept(Qt.CopyAction);}}
+                    onEntered:drag=>{if(dropWorker.running){dock.refuseBusyDrop();drag.accepted=false;}else if(!drag.hasUrls || !(drag.supportedActions & Qt.CopyAction))drag.accepted=false;}
+                    onDropped:drop=>{if(drop.hasUrls && tile.modelData.entry && dock.dropFiles(tile.modelData.entry,drop.urls))drop.accept(Qt.CopyAction);else drop.accepted=false;}
                 }
                 Accessible.role:Accessible.Button; Accessible.name:shell.dockLabel(modelData)
                 Accessible.onPressAction:shell.activateDock(modelData,false,dock.outputName)
