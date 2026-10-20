@@ -35,6 +35,7 @@ class Groups:
     enabled: bool
     locked: bool
     groups: tuple[Group, ...]
+    separate_displays: bool = True
 
     @classmethod
     def read(cls, data):
@@ -43,8 +44,6 @@ class Groups:
         for key in ('enabled', 'locked', 'separate_displays'):
             if type(data.get(key)) is not bool:
                 raise ValueError('Invalid native group capability')
-        if not data['separate_displays']:
-            raise ValueError('Window groups require independent desktops on each display')
         rows=data.get('groups')
         if not isinstance(rows,list) or len(rows)>256:
             raise ValueError('Invalid native group list')
@@ -68,7 +67,7 @@ class Groups:
                 if cid in members or type(item.get('group_hidden')) is not bool:raise ValueError('Invalid group membership')
                 members.add(cid);items.append(Member(cid,pid,item['group_hidden']))
             groups.append(Group(gid,workspace,row['selected'],integer(row.get('recent'),zero=True),row['suspended'],tuple(items)))
-        return cls(integer(data.get('revision'),zero=True),data['enabled'],data['locked'],tuple(groups))
+        return cls(integer(data.get('revision'),zero=True),data['enabled'],data['locked'],tuple(groups),data['separate_displays'])
 
     def command(self, data):
         if type(data.get('groupRevision')) is not int or data['groupRevision'] != self.revision:
@@ -76,6 +75,7 @@ class Groups:
         if self.locked:raise ValueError('Window groups are unavailable while locked')
         action=data.get('groupAction')
         prefix=f'lumen_window groups {self.revision} '
+        if not self.separate_displays and action != 'off':raise ValueError('Window groups require separate display spaces')
         if action in ('on','off'):return prefix+action
         if not self.enabled:raise ValueError('Enable window groups first')
         gid=integer(data.get('groupId'));group=next((item for item in self.groups if item.id==gid),None)

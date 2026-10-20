@@ -6,6 +6,7 @@ from pathlib import Path
 import os
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "runtime"))
 from spaces import SpacePolicy
+from display_space_runtime import activation, synchronize
 from state import runtime_epoch
 from window_groups import Groups
 from application_desktops import windows as membership_windows, membership, reconcile as reconcile_membership
@@ -59,6 +60,10 @@ def check_epoch(data, epoch):
 
 def activate_desktop(model, desktop):
     # Names and connector identities come from the captured logical target.
+    command = activation(model,desktop,run)
+    if command:
+        checked(command)
+        return
     checked('focus output '+json.dumps(desktop['output'])+'; workspace '+json.dumps(desktop['name'])+'; move workspace to output '+json.dumps(desktop['output']))
 
 
@@ -129,6 +134,7 @@ def handle(data):
     model=policy()
     with model.transaction():
         model.reconcile(state['workspaces'],run('-t','get_outputs'))
+        state['displaySpaces']=synchronize(model,run)
         native=state['workspaces'];state['workspaces']=model.catalog()
         labels={item['name']:item['label'] for item in state['workspaces']}
         for window in state['windows']:window['workspaceLabel']=labels.get(window['workspace'],window['workspace'])

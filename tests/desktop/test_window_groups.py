@@ -15,8 +15,14 @@ class GroupTests(unittest.TestCase):
  def test_exact_command_has_only_validated_numeric_arguments(self):
   self.assertEqual(Groups.read(self.state).command(self.request),'lumen_window groups 7 add 1 102 502')
  def test_unknown_old_compositor_fails_closed(self):
-  for value in (None,{},dict(self.state,version=True),dict(self.state,separate_displays=False)):
+  for value in (None,{},dict(self.state,version=True)):
    with self.assertRaises(ValueError):Groups.read(value)
+ def test_coupled_groups_retained_but_actions_suspended(self):
+  groups=Groups.read(dict(self.state,separate_displays=False))
+  self.assertEqual(len(groups.groups),2)
+  for action in ('on','select','add','remove'):
+   with self.assertRaises(ValueError):groups.command(dict(self.request,groupAction=action))
+  self.assertEqual(groups.command(dict(self.request,groupAction='off')),'lumen_window groups 7 off')
  def test_bool_ids_and_injection_rejected(self):
   for value in (True,0,-1,'1; kill',2**64):
    with self.assertRaises(ValueError):Groups.read(self.state).command(dict(self.request,id=value))

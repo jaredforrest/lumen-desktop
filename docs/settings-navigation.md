@@ -4,7 +4,7 @@ Search returns authored control labels and categories. Exact visible labels rank
 
 Control records declare an identifier, owning page, visible label and authored visual anchor in `SettingsSearch.js`. Navigation validates the page/control pair, reveals and focuses the actual control without changing its value, and outlines the selection. Disabled controls remain disabled. Back/Forward retain the page and control together. Closing and reopening the same settings window retains this navigation context; it is not a promise of persistent search text or history after shell replacement.
 
-The catalogue covers 49 authored controls, including appearance choices, window and Dock preferences, accessibility, notification/search controls and existing saver/wallpaper/input/menu anchors. Provider-generated devices, accounts, application policies and per-device capabilities remain within their page. They do not receive fabricated static identities or availability claims. An unavailable provider cannot be made available by searching for its page.
+The catalogue covers 51 authored controls, including appearance choices, window and Dock preferences, accessibility, notification/search controls and existing saver/wallpaper/input/menu anchors. Provider-generated devices, accounts, application policies and per-device capabilities remain within their page. They do not receive fabricated static identities or availability claims. An unavailable provider cannot be made available by searching for its page.
 
 Configured Shortcuts is read-only and shows the effective validated model supplied by system configuration. It lists action, chord and scope, including application scope when present. No shortcut editing or command execution is introduced here.
 

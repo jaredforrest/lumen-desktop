@@ -19,6 +19,8 @@ ShellRoot {
     MenuVisibilityState {id:menuVisibilityState}
     property alias menuVisibility:menuVisibilityState
     ShortcutState {id:shortcutState}
+    DisplaySpacesState {id:displaySpaceState}
+    property alias displaySpaces:displaySpaceState
     property alias shortcuts:shortcutState
     property var bars: ({})
     property string popupOwner: ""
@@ -341,7 +343,7 @@ ShellRoot {
         function textTools():void {root.openTextTools();}
         function recognizeImage(path:string):void {root.claimPopup("");quickLook.show(path,null);quickLook.recognizeOnLoad=true;root.focusOwnedWindow("Quick Look");}
         function folderStackStatus():string {return JSON.stringify({visible:downloadsStack.visible,count:downloadsStack.rows.length,error:downloadsStack.error});}
-        function focusDock():void {root.requestDockFocus(root.preferredOutput());}
+        function focusDock():void {root.requestDockFocus(root.displaySpaces.dockOutput(root.preferredOutput()));}
         function cycleWindow(direction:string):void {if(["next","previous"].includes(direction))root.cycleAppWindow(direction);}
         function appSwitcher(action:string):string {root.appSwitcherCommand(action);return applicationSwitcher.status();}
         function windowGroups():void {root.openGroupSelector();}

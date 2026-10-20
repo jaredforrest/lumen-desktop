@@ -4,10 +4,14 @@ Compositor IDs are session-local. Logical IDs survive restarts; order is separat
 from identity. Application identities are advertised, never authentication.
 """
 import json
+import subprocess
 import os
 from pathlib import Path
 import tempfile
 import uuid
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from display_space_policy import display_identity
 from contextlib import contextmanager
 import fcntl
 
@@ -64,10 +68,7 @@ class SpacePolicy:
 
     @staticmethod
     def display(output):
-        identity = [output.get(k, "") for k in ("make", "model", "serial")]
-        if all(identity) and identity[2] not in ("Unknown", "0"):
-            return "display:" + json.dumps(identity, separators=(",", ":"))
-        return "connector:" + output["name"]
+        return display_identity(output)
 
     def reconcile(self, workspaces, outputs):
         before = json.dumps(self.state, sort_keys=True)
@@ -112,6 +113,12 @@ class SpacePolicy:
         keys = [key for key, item in self.state["desktops"].items()
                 if (key in self.current.values() or item.get("persistent"))
                 and (output is None or item["output"] == output)]
+        if self.state.get("display_separate") is False and self.state.get("display_cohorts"):
+            cohorts = self.state["display_cohorts"]
+            if self.state["auto_reorder"]:
+                cohorts = sorted(cohorts, key=lambda cohort: -max((self.state["desktops"].get(key, {}).get("recent", 0) for key in cohort["members"].values()), default=0))
+            grouped = [key for cohort in cohorts for key in cohort["members"].values() if key in keys]
+            return grouped + [key for key in keys if key not in grouped]
         field = "recent" if self.state["auto_reorder"] else "ordinal"
         return sorted(keys, key=lambda key: ((-1 if field == "recent" else 1) * self.state["desktops"][key][field], self.state["desktops"][key]["ordinal"]))
 
@@ -161,6 +168,16 @@ class SpacePolicy:
         if (not isinstance(order, list) or any(not isinstance(key, str) for key in order)
                 or len(order) != len(set(order)) or set(order) != set(current)):
             raise ValueError("Manual order must contain every desktop on this display exactly once")
+        if self.state.get("display_separate") is False:
+            cohorts = self.state.get("display_cohorts", [])
+            mapped = [next((row for row in cohorts if row["members"].get(output_id) == key), None) for key in order]
+            if any(row is None for row in mapped):
+                raise ValueError("Display contexts changed; refresh before reordering")
+            ids = [row["id"] for row in mapped]
+            self.state["display_cohorts"] = mapped + [row for row in cohorts if row["id"] not in ids]
+            self.state["auto_reorder"] = False
+            self.save()
+            return
         slots = sorted(self.state["desktops"][key]["ordinal"] for key in current)
         for key, ordinal in zip(order, slots):
             self.state["desktops"][key]["ordinal"] = ordinal
@@ -225,6 +242,12 @@ def sway(*arguments):
 
 def refresh(policy):
     policy.reconcile(sway('-t', 'get_workspaces'), sway('-t', 'get_outputs'))
+    from display_space_runtime import synchronize
+    try:
+        policy.display_status = synchronize(policy, sway)
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+        policy.display_status = dict(available=False, applied=False, error=str(error))
+
 
 
 def place(policy, node):
@@ -277,7 +300,7 @@ def main():
         with socket.socket(socket.AF_UNIX) as stream:
             stream.settimeout(5)
             stream.connect(os.environ['SWAYSOCK'])
-            send(stream, 2, '["window","workspace","output"]')
+            send(stream, 2, '["window","workspace","output","tick"]')
             _, ack = receive(stream)
             if not isinstance(ack, dict) or ack.get('success') is not True:
                 raise RuntimeError('Compositor subscription failed')
@@ -293,7 +316,12 @@ def main():
                 event = receive(stream)[1] if ready else {}
                 with policy.transaction():
                     if not ready and not policy.state.get("managed_sticky") and not any(item.get("kind") == "all" for item in policy.state["assignments"].values()):
-                        continue
+                        from display_space_runtime import configured
+                        try: signature = json.dumps(configured(), sort_keys=True)
+                        except (OSError, ValueError): signature = None
+                        if signature == getattr(policy, '_display_settings_signature', None):
+                            continue
+                        policy._display_settings_signature = signature
                     refresh(policy)
                     if event.get('change') == 'focus' and event.get('current', {}).get('type') == 'workspace':
                         policy.focus(event['current']['id'])
@@ -324,9 +352,14 @@ def main():
                 order = policy.order(focused['output'])
                 index = order.index(policy.current[focused['id']]) + (-1 if args.direction == 'previous' else 1)
                 if 0 <= index < len(order):
-                    sway('workspace ' + json.dumps(policy.state['desktops'][order[index]]['name']))
+                    from display_space_runtime import activation
+                    desktop = policy.desktop(order[index])
+                    command = activation(policy, desktop, sway) or ('workspace ' + json.dumps(desktop['name']))
+                    result = sway(command)
+                    if not result or not all(row.get('success') is True for row in result):
+                        raise ValueError('The captured desktop switch was rejected')
         else:
-            print(json.dumps(dict(desktops=policy.state['desktops'], order=policy.order(), assignments=policy.state['assignments'], auto_reorder=policy.state['auto_reorder'], capabilities={'all_desktops': {'supported': True, 'scope': 'current-display', 'window_kind': 'independent-floating'}}, outputs=policy.outputs)))
+            print(json.dumps(dict(desktops=policy.state['desktops'], order=policy.order(), assignments=policy.state['assignments'], auto_reorder=policy.state['auto_reorder'], displaySpaces=getattr(policy,'display_status',None), capabilities={'all_desktops': {'supported': True, 'scope': 'current-display', 'window_kind': 'independent-floating'}}, outputs=policy.outputs)))
 
 
 if __name__ == '__main__':

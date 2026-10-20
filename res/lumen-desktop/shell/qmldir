@@ -153,3 +153,5 @@ CaptureReport 1.0 CaptureReport.qml
 CaptureIndicator 1.0 CaptureIndicator.qml
 singleton NearbySharingState 1.0 NearbySharingState.qml
 ShortcutState 1.0 ShortcutState.qml
+DisplaySpacesState 1.0 DisplaySpacesState.qml
+SpaceSettingsPane 1.0 SpaceSettingsPane.qml

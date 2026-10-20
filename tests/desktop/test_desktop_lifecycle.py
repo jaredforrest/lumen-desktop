@@ -79,6 +79,7 @@ class EvacuationTests(unittest.TestCase):
     def fake_run(self,*args):
         if args==('-t','get_outputs'):return self.outputs
         if args==('-t','get_version'):return dict(desktop_rehome=True)
+        if args==('-t','get_tree'):return {}
         command=args[0];self.commands.append(command)
         if command.startswith('[con_id='):
             identifier=int(command.split(']')[0].split('=')[1]);window=next(window for window in self.windows if window['id']==identifier)

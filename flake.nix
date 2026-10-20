@@ -43,6 +43,7 @@
         authorization-agent = import ./packages/lumen-authorization-agent.nix { inherit pkgs; };
         compositor = import ./packages/sway-window-controls.nix { pkgs = compositorPkgs; effects = true; };
         compositor-basic = import ./packages/sway-window-controls.nix { pkgs = compositorPkgs; effects = false; };
+        test-display-spaces-legacy-compositor = import ./packages/sway-window-controls.nix { pkgs = compositorPkgs; displaySpaces = false; };
         utilities = import ./packages/utilities.nix { inherit pkgs; };
         character-viewer = import ./res/character-viewer { inherit pkgs; };
         test-runtime = runtime;

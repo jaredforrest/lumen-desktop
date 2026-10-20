@@ -1,0 +1,456 @@
+diff --git a/include/sway/tree/lumen_display_spaces.h b/include/sway/tree/lumen_display_spaces.h
+new file mode 100644
+index 0000000..9b2a8e8
+--- /dev/null
++++ b/include/sway/tree/lumen_display_spaces.h
+@@ -0,0 +1,15 @@
++#ifndef SWAY_LUMEN_DISPLAY_SPACES_H
++#define SWAY_LUMEN_DISPLAY_SPACES_H
++#include <stdbool.h>
++#include <json-c/json.h>
++struct sway_container;
++struct sway_workspace;
++struct sway_seat;
++struct cmd_results;
++bool lumen_display_spaces_separate(void);
++bool lumen_display_spaces_pair_allowed(struct sway_container *con);
++void lumen_display_spaces_focus(struct sway_seat *seat, struct sway_workspace *workspace);
++void lumen_display_spaces_workspace_destroy(struct sway_workspace *workspace);
++json_object *lumen_display_spaces_json(void);
++struct cmd_results *lumen_display_spaces_command(int argc, char **argv);
++#endif
+diff --git a/sway/commands/scratchpad.c b/sway/commands/scratchpad.c
+index 00729af..3e15fa4 100644
+--- a/sway/commands/scratchpad.c
++++ b/sway/commands/scratchpad.c
+@@ -1,3 +1,4 @@
++#include "sway/tree/lumen_display_spaces.h"
+ #include "sway/tree/lumen_groups.h"
+ #include "log.h"
+ #include "sway/commands.h"
+@@ -137,6 +138,7 @@ struct cmd_results *cmd_scratchpad(int argc, char **argv) {
+ }
+ 
+ struct cmd_results *cmd_lumen_window(int argc, char **argv) {
++ if(argc>0 && !strcmp(argv[0],"display-spaces"))return lumen_display_spaces_command(argc-1,argv+1);
+  if (argc == 3 && strcmp(argv[0], "preferred-size") == 0) {
+   char *endw, *endh;
+   errno = 0;
+diff --git a/sway/input/seat.c b/sway/input/seat.c
+index b9de5c4..9199456 100644
+--- a/sway/input/seat.c
++++ b/sway/input/seat.c
+@@ -1,3 +1,4 @@
++#include "sway/tree/lumen_display_spaces.h"
+ #include "sway/tree/lumen_groups.h"
+ #include <assert.h>
+ #include <json-c/json.h>
+@@ -1221,6 +1222,8 @@ static void seat_set_workspace_focus(struct sway_seat *seat, struct sway_node *n
+ 		node_set_dirty(&new_output->node);
+ 	}
+ 
++	lumen_display_spaces_focus(seat, new_workspace);
++
+ 	// Unfocus the previous focus
+ 	if (last_focus) {
+ 		seat_send_unfocus(last_focus, seat);
+diff --git a/sway/ipc-json.c b/sway/ipc-json.c
+index 4adcb77..bdc93f0 100644
+--- a/sway/ipc-json.c
++++ b/sway/ipc-json.c
+@@ -1,3 +1,4 @@
++#include "sway/tree/lumen_display_spaces.h"
+ #include "sway/tree/lumen_groups.h"
+ #include "sway/tree/lumen_pair.h"
+ #include <ctype.h>
+@@ -889,6 +890,7 @@ json_object *ipc_json_describe_node(struct sway_node *node) {
+ 	switch (node->type) {
+ 	case N_ROOT:
+   json_object_object_add(object, "window_groups", lumen_groups_json());
++  json_object_object_add(object, "display_spaces", lumen_display_spaces_json());
+ 		break;
+ 	case N_OUTPUT:
+ 		ipc_json_describe_enabled_output(node->sway_output, object);
+diff --git a/sway/meson.build b/sway/meson.build
+index 3a640fc..1979e62 100644
+--- a/sway/meson.build
++++ b/sway/meson.build
+@@ -215,6 +215,7 @@ sway_sources = files(
+ 	'tree/root.c',
+  'tree/lumen_pair.c',
+  'tree/lumen_groups.c',
++ 'tree/lumen_display_spaces.c',
+ 	'tree/view.c',
+ 	'tree/workspace.c',
+ 	'tree/output.c',
+diff --git a/sway/tree/lumen_display_spaces.c b/sway/tree/lumen_display_spaces.c
+new file mode 100644
+index 0000000..66d0854
+--- /dev/null
++++ b/sway/tree/lumen_display_spaces.c
+@@ -0,0 +1,293 @@
++/* Session-local visibility cohorts. Logical identities are owned by the client
++ * policy; output/native workspace bindings are validated before every switch. */
++#include <errno.h>
++#include <inttypes.h>
++#include <stdlib.h>
++#include <stdio.h>
++#include <wlr/types/wlr_output.h>
++#include <string.h>
++#include <sys/random.h>
++#include <wlr/types/wlr_ext_workspace_v1.h>
++#include "sway/commands.h"
++#include "sway/desktop/transaction.h"
++#include "sway/input/seat.h"
++#include "sway/ipc-server.h"
++#include "sway/output.h"
++#include "sway/server.h"
++#include "sway/tree/arrange.h"
++#include "sway/tree/container.h"
++#include "sway/tree/lumen_display_spaces.h"
++#include "sway/tree/lumen_groups.h"
++#include "sway/tree/root.h"
++#include "sway/tree/workspace.h"
++
++#define SPACE_LIMIT 64
++#define TEXT_LIMIT 512
++struct display_binding {uint64_t id; char name[TEXT_LIMIT+1]; int x,y,w,h;};
++struct member {size_t output; uint64_t id; char name[TEXT_LIMIT+1];};
++struct cohort {char id[TEXT_LIMIT+1]; size_t count; struct member members[SPACE_LIMIT];};
++struct policy {
++ bool separate, invalid;
++ size_t output_count, cohort_count, primary;
++ struct display_binding outputs[SPACE_LIMIT];
++ struct cohort cohorts[SPACE_LIMIT];
++};
++static struct policy *current;
++static char session[33];
++static bool changing;
++static uint64_t generation;
++
++static bool session_ready(void) {
++ if(session[0])return true;
++ unsigned char bytes[16];
++ if(getrandom(bytes,sizeof(bytes),0)!=(ssize_t)sizeof(bytes))return false;
++ for(size_t i=0;i<sizeof(bytes);i++)snprintf(session+i*2,3,"%02x",bytes[i]);
++ return true;
++}
++static bool string(json_object *value,char *target) {
++ if(!value || json_object_get_type(value)!=json_type_string)return false;
++ const char *text=json_object_get_string(value);size_t length=json_object_get_string_len(value);
++ if(!length || length>TEXT_LIMIT || strlen(text)!=length)return false;
++ for(size_t i=0;i<length;i++)if((unsigned char)text[i]<32 || (unsigned char)text[i]==127)return false;
++ memcpy(target,text,length+1);return true;
++}
++static bool number(json_object *value,uint64_t *target) {
++ char text[TEXT_LIMIT+1],*end;
++ if(!string(value,text) || text[0]<'1' || text[0]>'9')return false;
++ for(char *at=text;*at;at++)if(*at<'0' || *at>'9')return false;
++ errno=0;unsigned long long result=strtoull(text,&end,10);
++ if(errno || *end || !result)return false;
++ *target=result;return true;
++}
++static json_object *field(json_object *value,const char *name) {
++ json_object *result=NULL;
++ return value && json_object_object_get_ex(value,name,&result)?result:NULL;
++}
++static struct sway_output *output(const struct display_binding *binding) {
++ for(int i=0;i<root->outputs->length;i++){
++  struct sway_output *candidate=root->outputs->items[i];
++  if(candidate->node.id==binding->id && candidate->enabled && candidate->wlr_output &&
++    !strcmp(candidate->wlr_output->name,binding->name) && candidate->lx==binding->x &&
++    candidate->ly==binding->y && candidate->width==binding->w && candidate->height==binding->h)return candidate;
++ }
++ return NULL;
++}
++static bool valid(struct policy *policy) {
++ if(!policy || policy->invalid || policy->output_count!=(size_t)root->outputs->length)return false;
++ for(size_t i=0;i<policy->output_count;i++)if(!output(&policy->outputs[i]))return false;
++ return true;
++}
++bool lumen_display_spaces_separate(void) {return !current || current->separate;}
++bool lumen_display_spaces_pair_allowed(struct sway_container *con) {
++ if(lumen_display_spaces_separate() || (con && (con->lumen_pair || con->lumen_pair_restore)))return true;
++ return valid(current) && con && con->pending.workspace &&
++  con->pending.workspace->output==output(&current->outputs[current->primary]);
++}
++static bool workspace_matches(struct member *member,struct sway_workspace *workspace) {
++ return workspace && !workspace->node.destroying && !strcmp(member->name,workspace->name) &&
++  workspace->output==output(&current->outputs[member->output]) && (!member->id || member->id==workspace->node.id);
++}
++void lumen_display_spaces_workspace_destroy(struct sway_workspace *workspace) {
++ if(!current || !workspace)return;
++ for(size_t i=0;i<current->cohort_count;i++)for(size_t j=0;j<current->cohorts[i].count;j++){
++  struct member *member=&current->cohorts[i].members[j];
++  if(member->id==workspace->node.id && !strcmp(member->name,workspace->name))member->id=0;
++ }
++}
++static struct cohort *find_cohort(struct sway_workspace *workspace) {
++ for(size_t i=0;i<current->cohort_count;i++)for(size_t j=0;j<current->cohorts[i].count;j++){
++  struct member *member=&current->cohorts[i].members[j];
++  if(workspace_matches(member,workspace))return &current->cohorts[i];
++ }
++ return NULL;
++}
++static bool resolve_cohort(struct cohort *cohort,struct sway_workspace **resolved) {
++ bool created[SPACE_LIMIT]={0};
++ for(size_t i=0;i<cohort->count;i++){
++  struct member *member=&cohort->members[i];
++  resolved[i]=workspace_by_name(member->name);
++  if(resolved[i] && !workspace_matches(member,resolved[i])){current->invalid=true;return false;}
++ }
++ /* Only owned empty contexts may be created. No visibility changes happen
++  * until every binding has been validated and every empty member exists. */
++ for(size_t i=0;i<cohort->count;i++)if(!resolved[i]){
++  struct member *member=&cohort->members[i];
++  resolved[i]=workspace_create(output(&current->outputs[member->output]),member->name);created[i]=true;
++  if(!resolved[i]){
++   for(size_t j=0;j<i;j++)if(created[j])workspace_consider_destroy(resolved[j]);
++   current->invalid=true;return false;
++  }
++  member->id=resolved[i]->node.id;
++ }
++ return true;
++}
++void lumen_display_spaces_focus(struct sway_seat *seat,struct sway_workspace *target) {
++ if(changing || lumen_display_spaces_separate() || !target || !valid(current))return;
++ struct cohort *cohort=find_cohort(target);
++ if(!cohort){current->invalid=true;return;}
++ struct sway_workspace *resolved[SPACE_LIMIT]={0};
++ if(!resolve_cohort(cohort,resolved))return;
++ changing=true;
++ for(size_t i=0;i<cohort->count;i++){
++  struct sway_workspace *next=resolved[i];
++  if(next==target)continue;
++  struct sway_workspace *old=output_get_active_workspace(next->output);
++  if(old==next)continue;
++  if(old)for(int j=0;j<old->floating->length;j++){
++   struct sway_container *con=old->floating->items[j];
++   if(container_is_sticky(con)){container_detach(con);workspace_add_floating(next,con);j--;}
++  }
++  /* The caller has already captured the true keyboard focus and will restore
++   * its own destination stack next. Peers never receive keyboard-focus events. */
++  seat_set_raw_focus(seat,&next->node);
++  node_set_dirty(&next->output->node);
++  if(old){wlr_ext_workspace_handle_v1_set_active(old->ext_workspace,false);node_set_dirty(&old->node);}
++  wlr_ext_workspace_handle_v1_set_active(next->ext_workspace,true);node_set_dirty(&next->node);
++ }
++ arrange_root();
++ changing=false;
++}
++static bool read_integer(json_object *value,int *target) {
++ if(!value || json_object_get_type(value)!=json_type_int)return false;
++ int64_t number=json_object_get_int64(value);
++ if(number<INT32_MIN || number>INT32_MAX)return false;
++ *target=(int)number;return true;
++}
++static bool parse(struct policy *candidate,json_object *data) {
++ json_object *separate=field(data,"separateDisplays"),*rows=field(data,"outputs"),*cohorts=field(data,"cohorts");
++ char epoch[TEXT_LIMIT+1],primary[TEXT_LIMIT+1],expected[TEXT_LIMIT+1],actual[32];
++ snprintf(actual,sizeof(actual),"%" PRIu64,generation);
++ if(!string(field(data,"expectedGeneration"),expected) || strcmp(expected,actual))return false;
++ json_object *version=field(data,"version");
++ if(!version || json_object_get_type(version)!=json_type_int || json_object_get_int(version)!=1)return false;
++ if(!session_ready() || !string(field(data,"session"),epoch) || strcmp(epoch,session) ||
++   !separate || json_object_get_type(separate)!=json_type_boolean ||
++   !string(field(data,"primary"),primary) || !rows || json_object_get_type(rows)!=json_type_array ||
++   !cohorts || json_object_get_type(cohorts)!=json_type_array)return false;
++ candidate->separate=json_object_get_boolean(separate);candidate->output_count=json_object_array_length(rows);
++ candidate->cohort_count=json_object_array_length(cohorts);candidate->primary=SPACE_LIMIT;
++ if(!candidate->output_count || candidate->output_count>SPACE_LIMIT || candidate->cohort_count>SPACE_LIMIT)return false;
++ for(size_t i=0;i<candidate->output_count;i++){
++  json_object *row=json_object_array_get_idx(rows,i);struct display_binding *binding=&candidate->outputs[i];
++  if(!number(field(row,"id"),&binding->id) || !string(field(row,"name"),binding->name) ||
++    !read_integer(field(row,"x"),&binding->x) || !read_integer(field(row,"y"),&binding->y) ||
++    !read_integer(field(row,"width"),&binding->w) || !read_integer(field(row,"height"),&binding->h) || binding->w<=0 || binding->h<=0)return false;
++  for(size_t j=0;j<i;j++)if(binding->id==candidate->outputs[j].id || !strcmp(binding->name,candidate->outputs[j].name))return false;
++  if(!strcmp(primary,binding->name))candidate->primary=i;
++ }
++ if(candidate->primary==SPACE_LIMIT || !valid(candidate))return false;
++ size_t total=0;
++ for(size_t i=0;i<candidate->cohort_count;i++){
++  json_object *row=json_object_array_get_idx(cohorts,i),*members=field(row,"members");struct cohort *cohort=&candidate->cohorts[i];
++  if(!string(field(row,"id"),cohort->id) || !members || json_object_get_type(members)!=json_type_array)return false;
++  for(size_t j=0;j<i;j++)if(!strcmp(cohort->id,candidate->cohorts[j].id))return false;
++  cohort->count=json_object_array_length(members);total+=cohort->count;
++  if(cohort->count!=candidate->output_count || total>SPACE_LIMIT)return false;
++  bool seen[SPACE_LIMIT]={0};
++  for(size_t j=0;j<cohort->count;j++){
++   json_object *entry=json_object_array_get_idx(members,j);struct member *member=&cohort->members[j];char name[TEXT_LIMIT+1];
++   if(!string(field(entry,"output"),name) || !string(field(entry,"name"),member->name))return false;
++   member->output=SPACE_LIMIT;
++   for(size_t k=0;k<candidate->output_count;k++)if(!strcmp(name,candidate->outputs[k].name))member->output=k;
++   if(member->output==SPACE_LIMIT || seen[member->output])return false;
++   seen[member->output]=true;
++   json_object *id=field(entry,"id");if(id && json_object_get_type(id)!=json_type_null && !number(id,&member->id))return false;
++   struct sway_workspace *workspace=workspace_by_name(member->name);
++   if(workspace && (workspace->output!=output(&candidate->outputs[member->output]) || (member->id && member->id!=workspace->node.id)))return false;
++   if(!workspace && member->id)return false;
++   for(size_t k=0;k<=i;k++)for(size_t l=0;l<candidate->cohorts[k].count;l++){
++    if(k==i && l>=j)break;
++    if(!strcmp(member->name,candidate->cohorts[k].members[l].name))return false;
++   }
++  }
++ }
++ if(!candidate->separate){
++  bool composition=false;
++  for(size_t i=0;i<candidate->cohort_count;i++){
++   bool visible=true;
++   for(size_t j=0;j<candidate->cohorts[i].count;j++){
++    struct member *member=&candidate->cohorts[i].members[j];
++    struct sway_workspace *workspace=output_get_active_workspace(output(&candidate->outputs[member->output]));
++    if(!workspace || strcmp(workspace->name,member->name))visible=false;
++   }
++   if(visible)composition=true;
++  }
++  if(!composition)return false;
++ }
++ return true;
++}
++json_object *lumen_display_spaces_json(void) {
++ json_object *state=json_object_new_object();bool available=valid(current);
++ json_object_object_add(state,"version",json_object_new_int(1));
++ json_object_object_add(state,"session",session_ready()?json_object_new_string(session):NULL);
++ char revision[32];snprintf(revision,sizeof(revision),"%" PRIu64,generation);
++ json_object_object_add(state,"generation",json_object_new_string(revision));
++ json_object_object_add(state,"separateDisplays",json_object_new_boolean(lumen_display_spaces_separate()));
++ json_object_object_add(state,"available",json_object_new_boolean(available));
++ json_object_object_add(state,"primary",available?json_object_new_string(current->outputs[current->primary].name):NULL);
++ json_object_object_add(state,"coupled",json_object_new_boolean(available && !current->separate));
++ return state;
++}
++static json_object *decode(const char *wire) {
++ size_t size=strlen(wire);
++ if(!size || size>131072 || size%2)return NULL;
++ char *text=calloc(1,size/2+1);if(!text)return NULL;
++ for(size_t i=0;i<size;i+=2){
++  unsigned char byte=0;
++  for(size_t j=0;j<2;j++){
++   char digit=wire[i+j];unsigned int value;
++   if(digit>='0' && digit<='9')value=digit-'0';
++   else if(digit>='a' && digit<='f')value=digit-'a'+10;
++   else {free(text);return NULL;}
++   byte=byte*16+value;
++  }
++  if(!byte){free(text);return NULL;}text[i/2]=byte;
++ }
++ struct json_tokener *parser=json_tokener_new();
++ if(!parser){free(text);return NULL;}
++ json_object *data=json_tokener_parse_ex(parser,text,size/2);
++ bool complete=json_tokener_get_error(parser)==json_tokener_success && json_tokener_get_parse_end(parser)==size/2;
++ json_tokener_free(parser);free(text);
++ if(!complete){if(data)json_object_put(data);return NULL;}
++ return data;
++}
++struct cmd_results *lumen_display_spaces_command(int argc,char **argv) {
++ if(argc!=2 || server.session_lock.lock)return cmd_results_new(CMD_INVALID,"Expected unlocked display-spaces action");
++ json_object *data=decode(argv[1]);
++ if(!data)return cmd_results_new(CMD_INVALID,"Invalid bounded display policy encoding");
++ if(!strcmp(argv[0],"activate")){
++  char revision[32],epoch[TEXT_LIMIT+1],expected[TEXT_LIMIT+1],cohort_id[TEXT_LIMIT+1],output_name[TEXT_LIMIT+1],workspace_name[TEXT_LIMIT+1];
++  uint64_t workspace_id=0;json_object *captured_id=NULL;
++  bool has_id=json_object_object_get_ex(data,"workspaceId",&captured_id);
++  snprintf(revision,sizeof(revision),"%" PRIu64,generation);
++  bool captured=string(field(data,"session"),epoch) && string(field(data,"expectedGeneration"),expected) &&
++   string(field(data,"cohort"),cohort_id) && string(field(data,"output"),output_name) &&
++   string(field(data,"workspace"),workspace_name) && has_id && (!captured_id || number(captured_id,&workspace_id));
++  json_object_put(data);
++  if(!captured || !session_ready() || strcmp(epoch,session) || strcmp(expected,revision) ||
++    root->fullscreen_global)return cmd_results_new(CMD_INVALID,"Display selection retired");
++  if(!valid(current) || current->separate)return cmd_results_new(CMD_INVALID,"Display contexts are independent");
++  struct cohort *cohort=NULL;size_t target=SPACE_LIMIT;
++  for(size_t i=0;i<current->cohort_count;i++)if(!strcmp(cohort_id,current->cohorts[i].id))cohort=&current->cohorts[i];
++  if(cohort)for(size_t i=0;i<cohort->count;i++)if(!strcmp(output_name,current->outputs[cohort->members[i].output].name))target=i;
++  if(!cohort || target==SPACE_LIMIT)return cmd_results_new(CMD_INVALID,"Display selection retired");
++  struct member *member=&cohort->members[target];
++  if(strcmp(member->name,workspace_name) || (workspace_id?member->id!=workspace_id:workspace_by_name(member->name)!=NULL))
++   return cmd_results_new(CMD_INVALID,"Captured desktop member retired");
++  struct sway_workspace *resolved[SPACE_LIMIT]={0};
++  if(!resolve_cohort(cohort,resolved))return cmd_results_new(CMD_INVALID,"Display bindings changed");
++  workspace_switch(resolved[target]);transaction_commit_dirty();
++  return cmd_results_new(CMD_SUCCESS,NULL);
++ }
++ if(strcmp(argv[0],"configure")){json_object_put(data);return cmd_results_new(CMD_INVALID,"Unknown display-spaces action");}
++ struct policy *candidate=calloc(1,sizeof(*candidate));
++ if(!candidate){json_object_put(data);return cmd_results_new(CMD_FAILURE,"Could not allocate display policy");}
++ bool accepted=parse(candidate,data);json_object_put(data);
++ if(!accepted){free(candidate);return cmd_results_new(CMD_INVALID,"Display policy or native bindings changed; refresh before applying");}
++ if(current && !memcmp(current,candidate,sizeof(*candidate))){free(candidate);return cmd_results_new(CMD_SUCCESS,NULL);}
++ if(generation==UINT64_MAX){free(candidate);return cmd_results_new(CMD_FAILURE,"Display policy generation exhausted");}
++ free(current);current=candidate;generation++;
++ lumen_groups_reconcile();arrange_root();transaction_commit_dirty();
++ ipc_event_tick("display-spaces");
++ return cmd_results_new(CMD_SUCCESS,NULL);
++}
+diff --git a/sway/tree/lumen_groups.c b/sway/tree/lumen_groups.c
+index ffc751d..f24f460 100644
+--- a/sway/tree/lumen_groups.c
++++ b/sway/tree/lumen_groups.c
+@@ -1,3 +1,4 @@
++#include "sway/tree/lumen_display_spaces.h"
+ /* Independent scene visibility; never changes document placement or hide reasons. */
+ #include <errno.h>
+ #include <inttypes.h>
+@@ -61,6 +62,7 @@ static void suspension_check(struct sway_container *con, void *data) {
+  if (con->lumen_desktop_hidden && !strcmp(con->lumen_desktop_hidden->workspace, s->ws->name)) s->suspended = true;
+ }
+ static bool suspended(uint64_t id) {
++ if(!lumen_display_spaces_separate())return true;
+  struct suspension s = {.ws = workspace(id)};
+  if (!s.ws || !s.ws->output || root->fullscreen_global) return true;
+  root_for_each_container(suspension_check, &s);
+@@ -178,6 +180,7 @@ struct cmd_results *lumen_groups_command(int argc, char **argv) {
+  const char *action = argv[1];
+  if (argc == 2 && (!strcmp(action, "on") || !strcmp(action, "off"))) {
+   bool value = !strcmp(action, "on");
++  if (value && !lumen_display_spaces_separate()) return cmd_results_new(CMD_INVALID, "Window groups require separate display spaces");
+   if (enabled != value) {
+    enabled = value; revision++;
+    if (!value) {memset(groups, 0, sizeof(groups)); root_for_each_container(clear_member, NULL);}
+@@ -249,7 +252,7 @@ json_object *lumen_groups_json(void) {
+  json_object_object_add(state, "version", json_object_new_int(1));
+  json_object_object_add(state, "enabled", json_object_new_boolean(enabled));
+  json_object_object_add(state, "revision", json_object_new_int64(revision));
+- json_object_object_add(state, "separate_displays", json_object_new_boolean(true));
++ json_object_object_add(state, "separate_displays", json_object_new_boolean(lumen_display_spaces_separate()));
+  json_object_object_add(state, "locked", json_object_new_boolean(server.session_lock.lock != NULL));
+  json_object_object_add(state, "groups", items);
+  for (size_t i = 0; i < GROUP_LIMIT; i++) if (groups[i].id) {
+diff --git a/sway/tree/lumen_pair.c b/sway/tree/lumen_pair.c
+index 78b1204..3860f29 100644
+--- a/sway/tree/lumen_pair.c
++++ b/sway/tree/lumen_pair.c
+@@ -1,3 +1,4 @@
++#include "sway/tree/lumen_display_spaces.h"
+ /* Paired full-output placement. Client identity and restore state stay native. */
+ #include <errno.h>
+ #include <float.h>
+@@ -92,7 +93,7 @@ static bool primary_candidate(struct sway_container *con) {
+  return !top->parent && !(dialog && dialog->modal);
+ }
+ static bool eligible(struct sway_container *con) {
+- return con && con->view && primary_candidate(con) && !con->node.destroying && con->pending.workspace &&
++ return con && lumen_display_spaces_pair_allowed(con) && con->view && primary_candidate(con) && !con->node.destroying && con->pending.workspace &&
+   !con->scratchpad && !con->lumen_app_hidden && !con->lumen_minimized &&
+   !con->lumen_desktop_hidden && !owns_untagged_dialog(con) && container_lumen_action_enabled(con,2);
+ }
+diff --git a/sway/tree/workspace.c b/sway/tree/workspace.c
+index 9d78d70..499abfe 100644
+--- a/sway/tree/workspace.c
++++ b/sway/tree/workspace.c
+@@ -20,6 +20,7 @@
+ #include "sway/tree/node.h"
+ #include "sway/tree/view.h"
+ #include "sway/tree/workspace.h"
++#include "sway/tree/lumen_display_spaces.h"
+ #include "list.h"
+ #include "util.h"
+ 
+@@ -297,6 +298,7 @@ void workspace_destroy(struct sway_workspace *workspace) {
+ }
+ 
+ void workspace_begin_destroy(struct sway_workspace *workspace) {
++	lumen_display_spaces_workspace_destroy(workspace);
+ 	sway_log(SWAY_DEBUG, "Destroying workspace '%s'", workspace->name);
+ 	ipc_event_workspace(NULL, workspace, "empty"); // intentional
+ 	wl_signal_emit_mutable(&workspace->node.events.destroy, &workspace->node);

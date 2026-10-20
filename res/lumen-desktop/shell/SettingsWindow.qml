@@ -305,6 +305,7 @@ FloatingWindow {
                     ClockSettings {width:parent.width;service:root.service}
                     HotCornerSettings {width:parent.width}
                     PanelLabel {text:"Desktop files";font.weight:Font.DemiBold}
+                    SpaceSettingsPane {width:parent.width;policy:root.shell.displaySpaces || null}
                     SettingsToggle {objectName:"settings-control-show-files-on-the-desktop";width:parent.width;text:"Show files on the desktop";detail:"Display the configured Desktop folder on the primary display";checked:root.service.desktopPreferences.showFiles===true;enabled:root.service.available && !root.service.busy;onClicked:root.service.setDesktopPreference("showFiles",checked)}
                     DesktopComboBox {objectName:"settings-control-sort-desktop-files";width:parent.width;model:["Name","Modified","Size","Kind"];currentIndex:["name","modified","size","kind"].indexOf(root.service.desktopPreferences.fileSort || "name");enabled:root.service.available && !root.service.busy;Accessible.name:"Sort desktop files";onActivated:index=>root.service.setDesktopPreference("fileSort",["name","modified","size","kind"][index])}
                     SettingsToggle {objectName:"settings-control-descending-desktop-order";width:parent.width;text:"Descending desktop order";checked:root.service.desktopPreferences.fileDescending===true;enabled:root.service.available && !root.service.busy;onClicked:root.service.setDesktopPreference("fileDescending",checked)}

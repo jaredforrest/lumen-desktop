@@ -17,6 +17,18 @@ let
     else values // { menuBar = builtins.removeAttrs values.menuBar [ "fullscreenVisibility" ] // {
       visibility = if values.menuBar.fullscreenVisibility == "always" then "always" else "desktop";
     }; } else values;
+  displayText = types.addCheck (types.strMatching "[^[:cntrl:]]+") (value: lib.stringLength value <= 512);
+  validPrimaryDisplay = value: builtins.isAttrs value && (if (value.kind or "") == "connector" then
+    (value.name or null) != null && (value.make or null) == null && (value.model or null) == null && (value.serial or null) == null
+    else (value.kind or "") == "display" && (value.name or null) == null && (value.make or null) != null && (value.model or null) != null && (value.serial or null) != null
+      && !(builtins.elem (value.serial or null) [ "Unknown" "0" ]));
+  primaryDisplayType = types.addCheck (types.submodule { options = {
+    kind = mkOption { type = types.enum [ "connector" "display" ]; };
+    name = mkOption { type = types.nullOr displayText; default = null; };
+    make = mkOption { type = types.nullOr displayText; default = null; };
+    model = mkOption { type = types.nullOr displayText; default = null; };
+    serial = mkOption { type = types.nullOr displayText; default = null; };
+  }; }) validPrimaryDisplay;
   schema = {
     options = {
       applicationPreferences = mkOption { type = valueType defaults; default = defaults; };
@@ -55,6 +67,14 @@ let
             reduceMotion = mkOption { type = types.bool; default = false; };
           };
         };
+        default = {};
+      };
+      spaces = mkOption {
+        type = types.submodule { options = {
+          separateDisplays = mkOption { type = types.bool; default = true; };
+          primaryDisplay = mkOption { type = types.nullOr primaryDisplayType; default = null;
+            description = "Main display identity; null retains the automatically selected stable identity."; };
+        }; };
         default = {};
       };
       desktop = mkOption {
@@ -217,7 +237,8 @@ in let
   ) (builtins.attrNames result.inputs);
   validWallpapers = lib.all (key: key == builtins.hashString "sha256" result.wallpaper.displays.${key}.identity)
     (builtins.attrNames result.wallpaper.displays);
-in if !validWallpapers then throw "Wallpaper display keys must match their identities"
+in if result.spaces.primaryDisplay != null && !validPrimaryDisplay result.spaces.primaryDisplay then throw "Primary display fields must match their identity kind"
+  else if !validWallpapers then throw "Wallpaper display keys must match their identities"
   else if !distinctFolders then throw "Dock folder paths must be distinct"
   else if !validInputs then throw "Input profile keys, device option scope and previous values must match their identities"
   else result

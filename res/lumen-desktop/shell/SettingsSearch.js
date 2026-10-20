@@ -1,6 +1,8 @@
 // Authored controls have stable identifiers; provider-owned dynamic rows remain
 // discoverable within their page rather than receiving fabricated static IDs.
 const controls = [
+    {"id":"separate-display-spaces","page":"Desktop & Dock","label":"Separate display spaces","target":"settings-control-separate-display-spaces"},
+    {"id":"main-display","page":"Desktop & Dock","label":"Main display","target":"settings-control-main-display"},
     {
         "id": "show-files-on-the-desktop",
         "page": "Desktop & Dock",

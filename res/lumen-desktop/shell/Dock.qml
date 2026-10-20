@@ -19,11 +19,14 @@ PanelWindow {
     property string outputName:""
     Component.onCompleted:{outputName=screen.name;if(autoHide)hideTimer.restart();}
     required property var shell
+    readonly property bool displayAllowed:!shell.displaySpaces || shell.displaySpaces.dockVisible(outputName)
+    visible:displayAllowed
+    onDisplayAllowedChanged:if(!displayAllowed){cancelDrag();leaveKeyboard();contextEntry=null;contextAlias=null;hovered=-1;}
     property int hovered: -1
     property bool keyboardMode:false
     property int keyboardIndex:0
     function leaveKeyboard(){keyboardMode=false;hovered=-1;if(shell.popupOwner==="dock:"+outputName)shell.claimPopup("");}
-    Connections {target:shell;function onRequestDockFocus(name){if(name===dock.outputName){shell.claimPopup("dock:"+dock.outputName);dock.keyboardMode=true;dock.hovered=dock.keyboardIndex;keyboard.focus=true;}}}
+    Connections {target:shell;function onRequestDockFocus(name){if(dock.displayAllowed && (shell.displaySpaces?shell.displaySpaces.dockOutput(name):name)===dock.outputName){shell.claimPopup("dock:"+dock.outputName);dock.keyboardMode=true;dock.hovered=dock.keyboardIndex;keyboard.focus=true;}}}
     property real pointerSlot: -1
     property string pressedKey: ""
     property real pressX:0
@@ -266,7 +269,7 @@ PanelWindow {
 
     }
     PanelWindow {
-        screen:dock.screen;visible:dock.hovered>=0 && (!dock.autoHide || dock.revealed) && !dock.dragging && !dock.contextEntry && !dock.contextAlias
+        screen:dock.screen;visible:dock.displayAllowed && dock.hovered>=0 && (!dock.autoHide || dock.revealed) && !dock.dragging && !dock.contextEntry && !dock.contextAlias
         anchors {top:true;bottom:true;left:true;right:true}
         exclusionMode:ExclusionMode.Ignore;color:"transparent";mask:Region {}
         WlrLayershell.layer:WlrLayer.Overlay;WlrLayershell.namespace:"lumen-dock-tooltip"
@@ -279,7 +282,7 @@ PanelWindow {
         }
     }
     PanelWindow {
-        screen:dock.screen; visible:dock.contextEntry!==null || dock.contextAlias!==null
+        screen:dock.screen; visible:dock.displayAllowed && (dock.contextEntry!==null || dock.contextAlias!==null)
         anchors {top:true;bottom:true;left:true;right:true}
         exclusionMode:ExclusionMode.Ignore; color:"transparent"
         WlrLayershell.layer:WlrLayer.Overlay; WlrLayershell.namespace:"lumen-dock-popup"

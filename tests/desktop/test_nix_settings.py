@@ -27,6 +27,16 @@ class NixSettingsTest(unittest.TestCase):
         os.environ.clear(); os.environ.update(self.environment)
         self.directory.cleanup()
 
+    def test_display_space_separation_and_primary_identity(self):
+        self.assertEqual(settings.transaction()['spaces'],dict(separateDisplays=True,primaryDisplay=None))
+        value=settings.transaction('spaces',dict(separateDisplays=False,primaryDisplay=dict(kind='connector',name='SECONDARY')),merge=True)['spaces']
+        self.assertFalse(value['separateDisplays']);self.assertEqual(value['primaryDisplay']['name'],'SECONDARY')
+        self.assertIsNone(value['primaryDisplay']['serial'])
+        before=self.source.read_bytes()
+        for invalid in (dict(separateDisplays=1),dict(primaryDisplay='SECONDARY'),dict(primaryDisplay=dict(kind='connector',name='line\nbreak')),dict(primaryDisplay=dict(kind='display',make='A',model='B',serial='Unknown'))):
+            with self.assertRaises(ValueError):settings.transaction('spaces',invalid,merge=True)
+            self.assertEqual(self.source.read_bytes(),before)
+
     def test_menu_bar_typed_presentation(self):
         values=settings.transaction('menuBar', {'hourCycle':'24','locale':'fr_FR','showSeconds':True,'fullscreenVisibility':'always'},merge=True)
         self.assertEqual(values['menuBar']['hourCycle'],'24')
