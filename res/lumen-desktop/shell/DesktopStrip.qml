@@ -7,6 +7,8 @@ Item {
     required property var desktops
     required property int revision
     required property string sessionEpoch
+    FontMetrics {id:labelMetrics;font.family:Theme.font;font.pixelSize:Theme.textRole("body")}
+    implicitHeight:Math.max(30,labelMetrics.height+12)+4
     property bool busy:false
     property string outputId:""
     property string selectedId:""
@@ -34,7 +36,10 @@ Item {
         delegate:DialogButton {
             id:button;required property var modelData
             objectName:"desktop-"+modelData.logicalId
-            width:Math.max(100,Math.min(180,text.length*7+24));height:30;text:modelData.label || "Desktop "+modelData.name
+            readonly property real baseWidth:Math.max(100,Math.min(180,text.length*7+24))
+            width:Math.max(baseWidth,Math.ceil((baseWidth-28)*Math.max(Theme.textScale,defaultText.implicitWidth>0?scaledText.implicitWidth/defaultText.implicitWidth:1))+28);height:root.implicitHeight-4;
+            Text {id:defaultText;visible:false;text:button.text;font.family:Theme.font;font.pixelSize:13}
+            Text {id:scaledText;visible:false;text:button.text;font.family:Theme.font;font.pixelSize:Theme.textRole("body")}text:modelData.label || "Desktop "+modelData.name
             primary:modelData.focused;defaultAction:false;enabled:!root.busy
             Accessible.name:"Workspace "+modelData.name+" on "+modelData.output
             Accessible.description:"Drag to reorder. Control plus Left or Right to preview order; Return to save; Escape to cancel."

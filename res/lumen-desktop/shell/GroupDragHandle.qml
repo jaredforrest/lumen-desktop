@@ -11,12 +11,12 @@ AbstractButton {
     property real startX:0
     property real startY:0
     text:"Group…";Accessible.name:"Move "+sourceLabel+" to group";Accessible.role:Accessible.Button
-    implicitWidth:76;implicitHeight:22;focusPolicy:Qt.StrongFocus
+    implicitWidth:Math.max(76,caption.implicitWidth+20);implicitHeight:Math.max(22,caption.implicitHeight+8);focusPolicy:Qt.StrongFocus
     function capture(){return typeof sourceFactory==="function"?sourceFactory():null;}
     onPressed:captured=capture()
     onCanceled:captured=null
     onClicked:{const value=captured || capture();captured=null;if(value)controller.begin(value,true);}
-    contentItem:PanelLabel {text:root.text;horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter;font.pixelSize:10}
+    contentItem:PanelLabel {id:caption;text:root.text;horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter;font.pixelSize:Theme.textRole("caption")}
     background:Rectangle {radius:6;color:Theme.colors.field;border.color:root.activeFocus?Theme.colors.accent:Theme.hairline}
     Item {id:proxy;width:1;height:1
         Drag.active:root.nativeDragging
