@@ -1,10 +1,15 @@
 """Private supported Speech Dispatcher transport with no audible output."""
 from pathlib import Path
 import re
+import json
 
 
 def configure(root,dispatcher,true_command):
     root=Path(root).resolve();dispatcher=Path(dispatcher).resolve();true_command=Path(true_command).absolute()
+    proof=json.loads((dispatcher/'share/lumen-fixtures/speech-shell.json').read_text())
+    shell=Path(proof['shell'])
+    if not str(shell).startswith('/nix/store/') or shell.name!='bash' or not shell.is_file():raise ValueError('Pinned pipeline-capable fixture shell required')
+    if str(shell).encode() not in (dispatcher/'libexec/speech-dispatcher-modules/sd_generic').read_bytes():raise ValueError('Generic fixture does not contain its declared shell')
     if not true_command.is_absolute() or true_command.name!='true' or not true_command.is_file():raise ValueError('A fixed true executable is required')
     config=root/'speech-config';config.mkdir();(config/'modules').mkdir();logs=root/'speech-logs';logs.mkdir()
     module_dir=root/'speech-modules';module_dir.mkdir();(module_dir/'sd_generic').symlink_to(dispatcher/'libexec/speech-dispatcher-modules/sd_generic')

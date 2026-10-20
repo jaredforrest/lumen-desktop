@@ -52,7 +52,7 @@
         test-screen-reader = import ./tests/desktop/screen_reader_package.nix { inherit pkgs; };
         test-screen-reader-tools = pkgs.symlinkJoin { name = "screen-reader-test-tools"; paths = [ pkgs.glib.dev pkgs.util-linux ]; };
         test-speech-source = pkgs.speechd.src;
-        test-speech-dispatcher = pkgs.speechd.override { withLibao = false; withFlite = false; withEspeak = false; withPico = false; };
+        test-speech-dispatcher = import ./tests/desktop/speech_dispatcher_package.nix { inherit pkgs; };
         test-session-lock = import ./tests/desktop/session_lock_driver.nix { inherit pkgs; };
         clipboard-observer = import ./packages/clipboard-observer.nix { inherit pkgs; };
         test-clipboard-producer = import ./tests/desktop/clipboard_producer.nix { inherit pkgs; };
