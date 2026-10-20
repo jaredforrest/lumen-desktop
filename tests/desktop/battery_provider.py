@@ -3,7 +3,8 @@ import argparse
 from contextlib import ExitStack
 import json
 import os
-import select
+import tempfile
+from private_native_bus import start_private_bus
 from pathlib import Path
 import subprocess as sp
 import sys
@@ -59,15 +60,18 @@ def reap():
 
 with ExitStack() as stack:
     stack.callback(reap)
-    daemon=sp.Popen(['dbus-daemon','--session','--nofork','--nopidfile','--print-address=1'],stdout=sp.PIPE,stderr=stack.enter_context((args.output/'bus.log').open('w')),text=True)
-    processes.append(daemon)
-    assert select.select([daemon.stdout],[],[],5)[0],'Private D-Bus startup timed out'
-    address=daemon.stdout.readline().strip()
-    assert address.startswith('unix:'),'Private D-Bus did not start'
-    environment=dict(os.environ,DBUS_SYSTEM_BUS_ADDRESS=address)
-    environment.pop('DBUS_SESSION_BUS_ADDRESS',None)
+    private=stack.enter_context(tempfile.TemporaryDirectory(prefix='lumen-power-bus-'))
+    environment=dict(os.environ,HOME=private,XDG_RUNTIME_DIR=private,
+                     DBUS_SESSION_BUS_ADDRESS='unix:path='+private+'/absent-session',
+                     DBUS_SYSTEM_BUS_ADDRESS='unix:path='+private+'/absent-system')
+    for key in ('CONFIG','STATE','CACHE','DATA'):environment['XDG_'+key+'_HOME']=str(Path(private)/key.lower())
+    daemon=start_private_bus(environment,args.output,processes)
+    address=environment.pop('DBUS_SESSION_BUS_ADDRESS')
+    environment['DBUS_SYSTEM_BUS_ADDRESS']=address
     import dbus
     bus=dbus.bus.BusConnection(address)
+    activatable=bus.call_blocking('org.freedesktop.DBus','/org/freedesktop/DBus','org.freedesktop.DBus','ListActivatableNames','',())
+    assert set(map(str,activatable))=={'org.freedesktop.DBus'},'Private power bus must not activate host services'
     def wait(predicate):
         deadline=time.monotonic()+5
         while time.monotonic()<deadline:
@@ -106,7 +110,7 @@ with ExitStack() as stack:
         results.append(dict(case='provider-absent',status=value))
         replacement=launch(2);select('charging');value=snapshot();assert value['state']=='charging' and value['percentage']==42
         results.append(dict(case='provider-replaced',status=value))
-        (args.output/'result.json').write_text(json.dumps(dict(passed=True,privateSystemBus=True,scope='Real D-Bus facts and service lifecycle; no physical battery acceptance',checks=results),indent=2)+'\n')
+        (args.output/'result.json').write_text(json.dumps(dict(passed=True,privateSystemBus=True,activationFree=True,explicitBusConfiguration=True,scope='Real D-Bus facts and service lifecycle; no physical battery acceptance',checks=results),indent=2)+'\n')
         print('PASS private power provider transitions, owner loss and replacement')
     finally:
         reap()
