@@ -1,5 +1,5 @@
 """Real Qt provider contention in a detached private software namespace."""
-import argparse,json,shutil,subprocess as sp,sys
+import argparse,json,re,shutil,subprocess as sp,sys
 from pathlib import Path
 from application_fixture import offscreen
 from private_native_bus import start_private_bus
@@ -49,6 +49,7 @@ finally:
  for process in reversed(processes):process.terminate();process.wait(timeout=5)
  close_reaped_pipes(processes)
 assert result.returncode==0 and 'QUEUE_PASS' in result.stdout,result.stdout
+assert not re.search(r'(ERROR|WARN|Fontconfig error|ReferenceError|TypeError)',result.stdout),result.stdout
 requests=[json.loads(line) for line in (out/'requests.jsonl').read_text().splitlines()]
 assert requests==[dict(action='status'),dict(action='set',key='enabled',value=False),dict(action='set',key='idleSeconds',value=90),dict(action='set',key='motion',value=False)],requests
 (out/'result.json').write_text(json.dumps(dict(passed=True,requests=requests,scope='Actual Qt state component; controlled provider contention, not native idle/lock behavior'),indent=2)+'\n')
