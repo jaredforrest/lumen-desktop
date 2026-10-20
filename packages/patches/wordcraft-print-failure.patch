@@ -1,0 +1,43 @@
+--- a/crates/ui-egui/src/backstage.rs
++++ b/crates/ui-egui/src/backstage.rs
+@@ -335,7 +335,9 @@
+         ui.label(tl!("Send the document straight to the system print dialog, or save a copy in another format below."));
+         ui.add_space(12.0);
+         if ui.add(egui::Button::new(egui::RichText::new(tl!("Print")).font(medium(13.5))).min_size(vec2(320.0, 34.0))).clicked() {
+-            let _ = app.run("ui.print", json!({}));
++            if app.run("ui.print", json!({})).is_err() {
++                app.ui.backstage = false;
++            }
+         }
+         ui.add_space(12.0);
+         ui.separator();
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -1671,6 +1671,27 @@
+         }
+     }
+ 
++    #[test]
++    fn print_failure_exposes_the_existing_document_status() {
++        use egui_kittest::kittest::Queryable;
++        let mut a = typed();
++        a.services.print = Some(Box::new(|_| Err("Fixture viewer unavailable".into())));
++        a.run("file.print", json!({})).unwrap();
++        let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1440.0, 900.0)).build_ui_state(
++            |ui, app: &mut WordApp| {
++                let ctx = ui.ctx().clone();
++                app.logic(&ctx);
++                app.ui(ui);
++            }, a,
++        );
++        for _ in 0..4 { h.step(); }
++        h.get_by_role_and_label(egui::accesskit::Role::Button, "Print").click();
++        h.step(); h.step();
++        assert!(!h.state().ui.backstage, "the failed handoff must reveal the status bar");
++        assert!(h.state().status_msg.as_ref().is_some_and(|(text, _)| text.contains("Fixture viewer unavailable")));
++        assert!(h.state().session.dirty, "a failed print does not save the draft");
++    }
++
+     /// A prompt about document A outlived an agent replacing A with B, and Don't Save then ran
+     /// the pending New against B, throwing away B's edits under a question naming A.
+     #[test]

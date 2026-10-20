@@ -6,7 +6,7 @@ from application_fixture.keyboard import PhysicalKeyboard
 from fixture_resources import close_reaped_pipes
 from office_fixture import corpus,formats,live
 from office_fixture.control import Control,ControlError
-p=argparse.ArgumentParser();p.add_argument('--writer',required=True);p.add_argument('--sheet',required=True);p.add_argument('--slides',required=True);p.add_argument('--software-driver',required=True);p.add_argument('--sway',required=True);p.add_argument('--keyboard-tool',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--close-probe',action='store_true');p.add_argument('--dialog-tools',default='');p.add_argument('--new-saveas',action='store_true');p.add_argument('--sheet-close-outcome',choices=['cancel','discard','save','error'],default='');p.add_argument('--slides-close-outcome',choices=['cancel','discard','save'],default='');p.add_argument('--effects',action='store_true');p.add_argument('--writer-close-outcome',choices=['cancel','discard','save'],default='cancel');p.add_argument('--app',choices=['writer','sheet','slides'],default='writer');p.add_argument('--output',type=Path,required=True);p.add_argument('--inside',action='store_true');p.add_argument('--profiles-json',default='');p.add_argument('--source-sha',default='');a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--writer',required=True);p.add_argument('--sheet',required=True);p.add_argument('--slides',required=True);p.add_argument('--software-driver',required=True);p.add_argument('--sway',required=True);p.add_argument('--keyboard-tool',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--close-probe',action='store_true');p.add_argument('--document-probe',action='store_true');p.add_argument('--pdf-tools',default='');p.add_argument('--pdf-viewer',default='');p.add_argument('--xdg-tools',default='');p.add_argument('--mime-data',default='');p.add_argument('--at-spi-prefix',default=os.environ.get('LUMEN_TEST_AT_SPI',''));p.add_argument('--dialog-tools',default='');p.add_argument('--new-saveas',action='store_true');p.add_argument('--sheet-close-outcome',choices=['cancel','discard','save','error'],default='');p.add_argument('--slides-close-outcome',choices=['cancel','discard','save'],default='');p.add_argument('--effects',action='store_true');p.add_argument('--writer-close-outcome',choices=['cancel','discard','save'],default='cancel');p.add_argument('--app',choices=['writer','sheet','slides'],default='writer');p.add_argument('--output',type=Path,required=True);p.add_argument('--inside',action='store_true');p.add_argument('--profiles-json',default='');p.add_argument('--source-sha',default='');a=p.parse_args()
 if a.new_saveas and (not a.dialog_tools or a.close_probe or a.sheet_close_outcome or a.slides_close_outcome or a.writer_close_outcome!='cancel'):p.error('New SaveAs requires private dialog tools and a separate lifecycle scenario')
 if a.sheet_close_outcome and a.app!='sheet':p.error('Spreadsheet close outcome requires the spreadsheet provider')
 if a.slides_close_outcome and a.app!='slides':p.error('Presentation close outcome requires the presentation provider')
@@ -19,6 +19,9 @@ if not a.inside:
  args=[sys.executable,'/source/tests/desktop/office_native_workflows.py','--inside','--writer',a.writer,'--sheet',a.sheet,'--slides',a.slides,'--software-driver',a.software_driver,'--sway',a.sway,'--keyboard-tool',a.keyboard_tool,'--pointer-tool',a.pointer_tool,'--writer-close-outcome',a.writer_close_outcome,'--app',a.app,'--profiles-json',policies,'--source-sha',sha,'--output','/artifacts']
  if a.effects:args.append('--effects')
  if a.close_probe:args.append('--close-probe')
+ if a.document_probe:args.append('--document-probe')
+ if a.pdf_tools:args.extend(['--pdf-tools',a.pdf_tools])
+ if a.pdf_viewer:args.extend(['--pdf-viewer',a.pdf_viewer,'--xdg-tools',a.xdg_tools,'--mime-data',a.mime_data,'--at-spi-prefix',a.at_spi_prefix])
  if a.dialog_tools:args.extend(['--dialog-tools',a.dialog_tools])
  if a.new_saveas:args.append('--new-saveas')
  if a.sheet_close_outcome:args.extend(['--sheet-close-outcome',a.sheet_close_outcome])
@@ -26,7 +29,7 @@ if not a.inside:
  raise SystemExit(isolate(source,out,args,software_graphics=a.effects))
 assert os.getpid()==1 and os.getuid()!=0 and os.uname().nodename=='fixture' and Path.home()==Path('/home/fixture')
 assert not any((Path('/dev')/name).exists() for name in ('dri','snd','video0')) and Path('/dev/udmabuf').exists()==a.effects
-out=Path('/artifacts');processes=[];control=None;keyboard=None;checks=[];facts={};env=dict(os.environ)
+out=Path('/artifacts');processes=[];control=None;keyboard=None;accessibility=None;checks=[];facts={};env=dict(os.environ)
 facts['testSources']={str(path.relative_to('/source')):hashlib.sha256(path.read_bytes()).hexdigest() for path in [Path('/source/tests/desktop/office_native_workflows.py'),*sorted(Path('/source/tests/desktop/office_fixture').glob('*.py')),*sorted(Path('/source/tests/desktop/application_fixture').glob('*'))] if path.is_file()}
 facts['installedBinaries']={binary:hashlib.sha256(Path(binary).read_bytes()).hexdigest() for binary in [a.writer,a.sheet,a.slides,a.sway,a.pointer_tool,a.keyboard_tool]}
 settings=Path('/etc/nix');settings.mkdir();(settings/'desktop-settings.json').write_text(json.dumps(dict(applicationPreferences=json.loads(a.profiles_json))))
@@ -264,6 +267,11 @@ try:
   facts['privateChooser']=dialogs.start(env,a.dialog_tools,launch,wait)
  with (out/'keyboard.log').open('w') as log:keyboard=PhysicalKeyboard(a.keyboard_tool,env,log)
  processes.append(keyboard.process)
+ if a.pdf_viewer:
+  from office_fixture.pdf_viewer import configure
+  facts['pdfViewer']=configure(env,a.pdf_viewer,a.xdg_tools,a.mime_data)
+  from application_fixture.accessibility import start as start_accessibility
+  accessibility=start_accessibility(Path(a.at_spi_prefix),env,launch,wait)
  provider=launch([app,str(source)],name);window=wait(native,'exact profile child maps a native window',provider);pid=live_pid();assert pid==window['pid']
  facts['native']=dict(conId=window['id'],pid=pid,processStart=Path('/proc/'+str(pid)+'/stat').read_text().rsplit(') ',1)[1].split()[19],executable=os.readlink('/proc/'+str(pid)+'/exe'),profileWrapperPid=provider.pid)
  command(['swaymsg','[con_id='+str(window['id'])+'] focus']);wait(lambda:any(node.get('id')==window['id'] and node.get('focused') for node in walk(tree())),'captured native focus',provider);wait(listener,'private live provider listener',provider)
@@ -272,95 +280,101 @@ try:
  elif a.app=='sheet':assert 'Summary' in json.dumps(initial),'Live controller returned a default headless model'
  else:assert 'Synthetic title' in json.dumps(initial),'Live controller returned a default headless model'
  checks.append('Installed profile wrapper, exact native PID/conId and private live document agree')
- if a.app=='writer':
-  marker=' Native keyboard fixture edit'
-  key('-M','ctrl','-k','End','-m','ctrl');key('-d','25','--',marker)
-  facts['typedLiveText']=wait(lambda: (value if marker.strip() in json.dumps(value:=control.tool('get_text')) else None),'complete physical text is acknowledged in live document',provider)
-  changed=wait(lambda: (value if (value:=control.command('writer','file.info')).get('dirty') else None),'physical typing marks live document dirty',provider)
-  assert formats.digest(source)==before,'Typing changed saved source before explicit Save'
-  facts['dirtyLiveDocument']=changed;facts['typedText']=marker
-  key('-M','ctrl','-k','s','-m','ctrl')
-  wait(lambda:formats.digest(source)!=before,'physical Save changes owned source',provider)
-  saved=formats.writer(source);assert marker.strip() in json.dumps(saved),'Saved DOCX lacks physical keyboard edit'
-  facts['savedSha256']=formats.digest(source);facts['savedDocument']=saved
-  checks.append('Physical keyboard edit stays dirty until explicit Save and appears in independently parsed DOCX')
-  reopen_saved()
-  if not a.new_saveas:
-   facts['uiBeforeClose']=control.tool('ui_inspect')
-   key('-d','25','--',' Unsaved close fixture')
-   wait(lambda:'Unsaved close fixture' in json.dumps(control.tool('get_text')),'second edit acknowledged',provider)
-   saved_hash=formats.digest(source)
-   command(['swaymsg','[con_id='+str(window['id'])+'] kill'])
-   dialog=wait(lambda:(value if (value:=control.tool('ui_inspect')).get('dialog') else None),'native close presents dirty-document decision',provider)
-   facts['dirtyCloseDialog']=dialog
-   assert formats.digest(source)==saved_hash,'Close prompt silently overwrote source'
-   command(['grim',str(out/'dirty-close.png')])
-   assert dialog['dialog'].get('dialog')=='saveChanges'
-   key('-k','Escape')
-   wait(lambda:not control.tool('ui_inspect').get('dialog'),'full-US Escape cancels dirty close',provider)
-   assert native() and formats.digest(source)==saved_hash
-   checks.append('Physical full-US Escape cancels dirty close without changing source')
-   command(['swaymsg','[con_id='+str(window['id'])+'] kill'])
-   wait(lambda:control.tool('ui_inspect').get('dialog'),'second captured native close prompts',provider)
+ if a.document_probe:
+  from office_fixture.document_actions import inspect_print
+  facts.update(documentProbeCli=cli,documentProbePort=port,documentPdfTools=a.pdf_tools)
+  pointer=launch([a.pointer_tool,'pointer','move','0','0'],'pointer',stdin=subprocess.PIPE,text=True)
+  inspect_print(a.app,control,key,command,wait,provider,source,out,facts,checks,pointer_events,tree,walk,accessibility)
+ else:
+  if a.app=='writer':
+   marker=' Native keyboard fixture edit'
+   key('-M','ctrl','-k','End','-m','ctrl');key('-d','25','--',marker)
+   facts['typedLiveText']=wait(lambda: (value if marker.strip() in json.dumps(value:=control.tool('get_text')) else None),'complete physical text is acknowledged in live document',provider)
+   changed=wait(lambda: (value if (value:=control.command('writer','file.info')).get('dirty') else None),'physical typing marks live document dirty',provider)
+   assert formats.digest(source)==before,'Typing changed saved source before explicit Save'
+   facts['dirtyLiveDocument']=changed;facts['typedText']=marker
+   key('-M','ctrl','-k','s','-m','ctrl')
+   wait(lambda:formats.digest(source)!=before,'physical Save changes owned source',provider)
+   saved=formats.writer(source);assert marker.strip() in json.dumps(saved),'Saved DOCX lacks physical keyboard edit'
+   facts['savedSha256']=formats.digest(source);facts['savedDocument']=saved
+   checks.append('Physical keyboard edit stays dirty until explicit Save and appears in independently parsed DOCX')
+   reopen_saved()
+   if not a.new_saveas:
+    facts['uiBeforeClose']=control.tool('ui_inspect')
+    key('-d','25','--',' Unsaved close fixture')
+    wait(lambda:'Unsaved close fixture' in json.dumps(control.tool('get_text')),'second edit acknowledged',provider)
+    saved_hash=formats.digest(source)
+    command(['swaymsg','[con_id='+str(window['id'])+'] kill'])
+    dialog=wait(lambda:(value if (value:=control.tool('ui_inspect')).get('dialog') else None),'native close presents dirty-document decision',provider)
+    facts['dirtyCloseDialog']=dialog
+    assert formats.digest(source)==saved_hash,'Close prompt silently overwrote source'
+    command(['grim',str(out/'dirty-close.png')])
+    assert dialog['dialog'].get('dialog')=='saveChanges'
+    key('-k','Escape')
+    wait(lambda:not control.tool('ui_inspect').get('dialog'),'full-US Escape cancels dirty close',provider)
+    assert native() and formats.digest(source)==saved_hash
+    checks.append('Physical full-US Escape cancels dirty close without changing source')
+    command(['swaymsg','[con_id='+str(window['id'])+'] kill'])
+    wait(lambda:control.tool('ui_inspect').get('dialog'),'second captured native close prompts',provider)
+    pointer=launch([a.pointer_tool,'pointer','move','0','0'],'pointer',stdin=subprocess.PIPE,text=True)
+    command(['swaymsg','seat','seat0','cursor','set',str({'cancel':861,'discard':787,'save':719}[a.writer_close_outcome]),'511'])
+    for event in ['m 0.5 0.5','p','r']:
+     pointer.stdin.write(event+'\n');pointer.stdin.flush();time.sleep(.15)
+    if a.writer_close_outcome=='cancel':
+     wait(lambda:not control.tool('ui_inspect').get('dialog'),'physical Cancel button cancels dirty close',provider)
+     assert native() and 'Unsaved close fixture' in json.dumps(control.tool('get_text')) and formats.digest(source)==saved_hash
+     checks.append('Dirty native close presents Save/Discard/Cancel and physical Cancel preserves document and saved source')
+    else:
+     def released_document():
+      if provider.poll() is not None or not any(node.get('id')==window['id'] for node in walk(tree())):return True
+      info=control.command('writer','file.info')
+      return info.get('path')!=str(source)
+     wait(released_document,'captured native close releases its document')
+     persisted=formats.writer(source)
+     if a.writer_close_outcome=='discard':assert formats.digest(source)==saved_hash and 'Unsaved close fixture' not in json.dumps(persisted)
+     else:assert formats.digest(source)!=saved_hash and 'Unsaved close fixture' in json.dumps(persisted)
+     facts['closeOutcome']=dict(choice=a.writer_close_outcome,savedSha256=formats.digest(source),tree=tree())
+     checks.append('Physical '+a.writer_close_outcome+' close releases document with independently validated saved-file outcome')
+  if a.app=='sheet':
+   marker='Native sheet edit'
    pointer=launch([a.pointer_tool,'pointer','move','0','0'],'pointer',stdin=subprocess.PIPE,text=True)
-   command(['swaymsg','seat','seat0','cursor','set',str({'cancel':861,'discard':787,'save':719}[a.writer_close_outcome]),'511'])
+   command(['swaymsg','seat','seat0','cursor','set','156','273'])
    for event in ['m 0.5 0.5','p','r']:
     pointer.stdin.write(event+'\n');pointer.stdin.flush();time.sleep(.15)
-   if a.writer_close_outcome=='cancel':
-    wait(lambda:not control.tool('ui_inspect').get('dialog'),'physical Cancel button cancels dirty close',provider)
-    assert native() and 'Unsaved close fixture' in json.dumps(control.tool('get_text')) and formats.digest(source)==saved_hash
-    checks.append('Dirty native close presents Save/Discard/Cancel and physical Cancel preserves document and saved source')
-   else:
-    def released_document():
-     if provider.poll() is not None or not any(node.get('id')==window['id'] for node in walk(tree())):return True
-     info=control.command('writer','file.info')
-     return info.get('path')!=str(source)
-    wait(released_document,'captured native close releases its document')
-    persisted=formats.writer(source)
-    if a.writer_close_outcome=='discard':assert formats.digest(source)==saved_hash and 'Unsaved close fixture' not in json.dumps(persisted)
-    else:assert formats.digest(source)!=saved_hash and 'Unsaved close fixture' in json.dumps(persisted)
-    facts['closeOutcome']=dict(choice=a.writer_close_outcome,savedSha256=formats.digest(source),tree=tree())
-    checks.append('Physical '+a.writer_close_outcome+' close releases document with independently validated saved-file outcome')
- if a.app=='sheet':
-  marker='Native sheet edit'
-  pointer=launch([a.pointer_tool,'pointer','move','0','0'],'pointer',stdin=subprocess.PIPE,text=True)
-  command(['swaymsg','seat','seat0','cursor','set','156','273'])
-  for event in ['m 0.5 0.5','p','r']:
-   pointer.stdin.write(event+'\n');pointer.stdin.flush();time.sleep(.15)
-  facts['cellBeforeEdit']=wait(lambda:(value if (value:=control.command('sheet','document.inspect'))['activeCell']=='C1' else None),'physical pointer acknowledges exact C1 cell',provider)
-  key('-d','25','--',marker);key('-k','Return')
-  facts['typedCell']=wait(lambda:(value if marker in json.dumps(value:=control.tool('get_cell',dict(cell='Summary!C1'))) else None),'physical spreadsheet cell entry acknowledged',provider)
-  assert formats.digest(source)==before
-  key('-M','ctrl','-k','s','-m','ctrl')
-  wait(lambda:formats.digest(source)!=before,'physical spreadsheet Save changes source',provider)
-  saved=formats.spreadsheet(source);assert marker in json.dumps(saved)
-  facts['savedSha256']=formats.digest(source);facts['savedDocument']=saved
-  checks.append('Physical cell entry stays unsaved until explicit Save and appears in independently parsed workbook')
-  reopen_saved()
- if a.app=='slides':
-  marker=' Native slide edit'
-  facts['slideBeforeEdit']=control.tool('inspect_slide',dict(index=0))
-  pointer=launch([a.pointer_tool,'pointer','move','0','0'],'pointer',stdin=subprocess.PIPE,text=True)
-  command(['swaymsg','seat','seat0','cursor','set','520','320'])
-  for event in ['m 0.5 0.5','p','r','p','r']:
-   pointer.stdin.write(event+'\n');pointer.stdin.flush();time.sleep(.12)
-  key('-k','End');key('--',marker)
-  facts['typedSlide']=wait(lambda:(value if marker.strip() in json.dumps(value:=control.tool('inspect_slide',dict(index=0))) else None),'physical presentation text acknowledged',provider)
-  assert formats.digest(source)==before
-  key('-M','ctrl','-k','s','-m','ctrl')
-  wait(lambda:formats.digest(source)!=before,'physical presentation Save changes source',provider)
-  saved=formats.presentation(source);assert marker.strip() in json.dumps(saved)
-  facts['savedSha256']=formats.digest(source);facts['savedDocument']=saved
-  checks.append('Physical presentation text edit is acknowledged live and independently parsed after explicit Save')
-  reopen_saved()
- if a.new_saveas:finish_new_saveas()
- if (a.close_probe or a.slides_close_outcome or a.sheet_close_outcome) and a.app in ('sheet','slides'):inspect_dirty_close()
- if a.sheet_close_outcome:
-  assert a.app=='sheet'
-  finish_sheet_close()
- if a.slides_close_outcome:
-  assert a.app=='slides'
-  finish_slides_close()
+   facts['cellBeforeEdit']=wait(lambda:(value if (value:=control.command('sheet','document.inspect'))['activeCell']=='C1' else None),'physical pointer acknowledges exact C1 cell',provider)
+   key('-d','25','--',marker);key('-k','Return')
+   facts['typedCell']=wait(lambda:(value if marker in json.dumps(value:=control.tool('get_cell',dict(cell='Summary!C1'))) else None),'physical spreadsheet cell entry acknowledged',provider)
+   assert formats.digest(source)==before
+   key('-M','ctrl','-k','s','-m','ctrl')
+   wait(lambda:formats.digest(source)!=before,'physical spreadsheet Save changes source',provider)
+   saved=formats.spreadsheet(source);assert marker in json.dumps(saved)
+   facts['savedSha256']=formats.digest(source);facts['savedDocument']=saved
+   checks.append('Physical cell entry stays unsaved until explicit Save and appears in independently parsed workbook')
+   reopen_saved()
+  if a.app=='slides':
+   marker=' Native slide edit'
+   facts['slideBeforeEdit']=control.tool('inspect_slide',dict(index=0))
+   pointer=launch([a.pointer_tool,'pointer','move','0','0'],'pointer',stdin=subprocess.PIPE,text=True)
+   command(['swaymsg','seat','seat0','cursor','set','520','320'])
+   for event in ['m 0.5 0.5','p','r','p','r']:
+    pointer.stdin.write(event+'\n');pointer.stdin.flush();time.sleep(.12)
+   key('-k','End');key('--',marker)
+   facts['typedSlide']=wait(lambda:(value if marker.strip() in json.dumps(value:=control.tool('inspect_slide',dict(index=0))) else None),'physical presentation text acknowledged',provider)
+   assert formats.digest(source)==before
+   key('-M','ctrl','-k','s','-m','ctrl')
+   wait(lambda:formats.digest(source)!=before,'physical presentation Save changes source',provider)
+   saved=formats.presentation(source);assert marker.strip() in json.dumps(saved)
+   facts['savedSha256']=formats.digest(source);facts['savedDocument']=saved
+   checks.append('Physical presentation text edit is acknowledged live and independently parsed after explicit Save')
+   reopen_saved()
+  if a.new_saveas:finish_new_saveas()
+  if (a.close_probe or a.slides_close_outcome or a.sheet_close_outcome) and a.app in ('sheet','slides'):inspect_dirty_close()
+  if a.sheet_close_outcome:
+   assert a.app=='sheet'
+   finish_sheet_close()
+  if a.slides_close_outcome:
+   assert a.app=='slides'
+   finish_slides_close()
  if a.effects:
   renderer_log=(out/'sway.log').read_text()
   required=('Creating scenefx FX renderer','Using OpenGL ES','GL renderer: llvmpipe','FX RENDERER: Shaders Initialized Successfully','Trying udmabuf allocator','Created GL FBO for buffer')
@@ -379,6 +393,7 @@ except BaseException:
  except (OSError,ValueError,subprocess.SubprocessError):pass
  raise
 finally:
+ if accessibility is not None:accessibility.close()
  if keyboard is not None:keyboard.close()
  if control is not None:control.close()
  for process in reversed(processes):

@@ -36,7 +36,12 @@ let
     };
   };
 in {
-  wordcraft = makeCraft "wordcraft" "sha256-mUuzdkee9tdnNc9AKeXvPC1SqFpMms3is3wzsZxXAgM=";
+  wordcraft = (makeCraft "wordcraft" "sha256-mUuzdkee9tdnNc9AKeXvPC1SqFpMms3is3wzsZxXAgM=").overrideAttrs (old: {
+    postInstall = (old.postInstall or "") + ''
+      cp ${import ./wordcraft-source.nix { inherit pkgs; }}/bin/wordcraft $out/bin/wordcraft
+      cp ${import ./wordcraft-source.nix { inherit pkgs; }}/bin/wordcraft-cli $out/bin/wordcraft-cli
+    '';
+  });
   gridcraft = (makeCraft "gridcraft" "sha256-5lBcL5KfmFTDUKDfJhicTlbIrfh8xhYl+A1qjuwrYo0=").overrideAttrs (old: {
     postInstall = (old.postInstall or "") + ''
       cp ${import ./gridcraft-source.nix { inherit pkgs; }}/bin/gridcraft $out/bin/gridcraft
