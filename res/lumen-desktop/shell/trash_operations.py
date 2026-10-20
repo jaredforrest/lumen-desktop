@@ -215,7 +215,8 @@ class TrashOperations:
     def confirm(self,token):
         token_value(token)
         with self.lock:
-            if token in self.history:return self.status()
+            if token in self.history:
+                result=self.status();result['operations']=[json.loads(json.dumps(self.history[token]))];return result
             if self.active is not None:raise ValueError('Wait for the current deletion or stop it first')
             plan=self.pending.pop(token,None)
             if plan is None or plan['expires']<=time.monotonic():raise ValueError('This confirmation expired; review the Trash again')

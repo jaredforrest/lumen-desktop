@@ -60,6 +60,11 @@ class TrashOperations(unittest.TestCase):
   self.engine.persist();self.engine.journal.write_bytes(b' ' * 128)
   with patch.object(trash,'MAX_JOURNAL_BYTES',64):
    with self.assertRaises(ValueError):trash.TrashOperations(self.root)
+ def test_duplicate_confirmation_reports_its_exact_retained_operation(self):
+  self.item();first=self.engine.prepare('empty');self.engine.confirm(first['token']);self.wait()
+  later=self.item('two');second=self.engine.prepare('empty');self.engine.confirm(second['token']);self.wait()
+  replacement=self.item('one');result=self.engine.confirm(first['token'])
+  self.assertEqual(result['operations'][0]['id'],first['token']);self.assertEqual(result['operations'][0]['items'][0]['storedName'],'one');self.assertTrue(replacement.exists());self.assertFalse(later.exists())
  def test_actual_listing_emits_lossless_selected_identity(self):
   from file_jobs import trash_items
   from types import SimpleNamespace
