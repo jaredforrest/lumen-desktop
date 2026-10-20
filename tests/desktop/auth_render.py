@@ -31,7 +31,8 @@ if a.font_config:env['FONTCONFIG_FILE']=str(a.font_config)
 for k in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK'):env.pop(k,None)
 procs=[];checks=[];requests=[]
 def launch(cmd,name):
-    proc=sp.Popen(cmd,env=env,stdout=(out/(name+'.log')).open('w'),stderr=sp.STDOUT,start_new_session=True);procs.append(proc);return proc
+    with (out/(name+'.log')).open('w') as _fixture_log0:
+        proc=sp.Popen(cmd,env=env,stdout=_fixture_log0,stderr=sp.STDOUT,start_new_session=True);procs.append(proc);return proc
 def call(*cmd):return sp.check_output(cmd,env=env,text=True,timeout=12).strip()
 def wait(fn):
     end=time.monotonic()+20

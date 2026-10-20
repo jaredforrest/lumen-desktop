@@ -1,4 +1,5 @@
 """Real empty/live-dialog compositor shutdown and restart in a private session."""
+from fixture_resources import close_reaped_pipes
 import argparse,json,os,resource,select,signal,subprocess as sp,tempfile,time
 from pathlib import Path
 p=argparse.ArgumentParser();p.add_argument('--sway',required=True);p.add_argument('--keyboard',required=True);p.add_argument('--locker',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--client',required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--effects',action='store_true');a=p.parse_args();a.output.mkdir(parents=True,exist_ok=False)
@@ -159,4 +160,7 @@ with tempfile.TemporaryDirectory(prefix='lumen-window-groups-') as temporary:
    except sp.TimeoutExpired:os.killpg(proc.pid,signal.SIGKILL);proc.wait(timeout=3)
    if proc.stdin and not proc.stdin.closed:proc.stdin.close()
   if bus.stdout:bus.stdout.close()
+  for _fixture_process in processes:
+      if _fixture_process.poll() is None:_fixture_process.wait(timeout=5)
+  close_reaped_pipes(processes)
 print('PASS native window groups')

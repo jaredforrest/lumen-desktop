@@ -1,4 +1,5 @@
 """Native paired-full-output identity, divider and restore lifecycle in isolation."""
+from fixture_resources import close_reaped_pipes
 import argparse,json,os,signal,subprocess as sp,tempfile,time,sys
 from pathlib import Path
 from private_native_bus import start_private_bus
@@ -15,7 +16,8 @@ with tempfile.TemporaryDirectory(prefix='lumen-pair-') as private:
  for key in ('SWAYSOCK','WAYLAND_DISPLAY','DISPLAY','DBUS_SESSION_BUS_ADDRESS','AT_SPI_BUS_ADDRESS'):env.pop(key,None)
  for kind in ('CONFIG','STATE','CACHE','DATA'):env['XDG_'+kind+'_HOME']=str(Path(private)/kind.lower())
  def launch(args,name,**kwargs):
-  proc=sp.Popen(args,env=env,stdout=(a.output/name).open('w'),stderr=sp.STDOUT,start_new_session=True,**kwargs);processes.append(proc);return proc
+  with (a.output/name).open('w') as _fixture_log0:
+      proc=sp.Popen(args,env=env,stdout=_fixture_log0,stderr=sp.STDOUT,start_new_session=True,**kwargs);processes.append(proc);return proc
  def call(*args):return sp.check_output(args,env=env,text=True,timeout=5)
  def query(kind):return json.loads(call('swaymsg','-r','-t',kind))
  def ipc(command,success=True):
@@ -161,3 +163,6 @@ with tempfile.TemporaryDirectory(prefix='lumen-pair-') as private:
     try:os.killpg(proc.pid,signal.SIGKILL)
     except ProcessLookupError:pass
     proc.wait()
+  for _fixture_process in processes:
+      if _fixture_process.poll() is None:_fixture_process.wait(timeout=5)
+  close_reaped_pipes(processes)

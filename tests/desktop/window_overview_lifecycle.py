@@ -1,4 +1,5 @@
 """Real overview UI/backend target authority with a delayed disposable snapshot."""
+from fixture_resources import close_reaped_pipes
 import argparse,json,os,re,select,shutil,signal,subprocess as sp,tempfile,time
 from pathlib import Path
 p=argparse.ArgumentParser();p.add_argument('--launcher',required=True);p.add_argument('--sway',required=True);p.add_argument('--output',type=Path,required=True);a=p.parse_args();a.output.mkdir(parents=True,exist_ok=False)
@@ -18,7 +19,8 @@ with tempfile.TemporaryDirectory(prefix='lumen-overview-') as temporary:
  for key in ('SWAYSOCK','WAYLAND_DISPLAY','DISPLAY','DBUS_SESSION_BUS_ADDRESS','AT_SPI_BUS_ADDRESS'):env.pop(key,None)
  env.update(WLR_BACKENDS='headless',WLR_HEADLESS_OUTPUTS='1',WLR_RENDERER='pixman',WLR_LIBINPUT_NO_DEVICES='1',QT_QPA_PLATFORM='wayland',QT_QUICK_BACKEND='software',QT_QPA_PLATFORMTHEME='generic',QT_NO_XDG_DESKTOP_PORTAL='1',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none')
  def launch(args,name,**kwargs):
-  proc=sp.Popen(args,env=env,stdout=(a.output/name).open('w'),stderr=sp.STDOUT,start_new_session=True,**kwargs);processes.append(proc);return proc
+  with (a.output/name).open('w') as _fixture_log0:
+      proc=sp.Popen(args,env=env,stdout=_fixture_log0,stderr=sp.STDOUT,start_new_session=True,**kwargs);processes.append(proc);return proc
  def call(*args):return sp.check_output(args,env=env,text=True,timeout=5)
  def sway(command):
   response=json.loads(call('swaymsg','-r',command));assert all(x.get('success') for x in response),response
@@ -36,7 +38,8 @@ with tempfile.TemporaryDirectory(prefix='lumen-overview-') as temporary:
   return walk(json.loads(call('swaymsg','-r','-t','get_tree')))
  try:
   bus_config=private/'bus.conf';bus_config.write_text('<busconfig><type>session</type><listen>unix:tmpdir='+env['XDG_RUNTIME_DIR']+'</listen><policy context="default"><allow own="*"/><allow send_destination="*"/><allow receive_sender="*"/></policy></busconfig>')
-  bus=sp.Popen(['dbus-daemon','--nofork','--print-address=1','--config-file='+str(bus_config)],env=env,stdout=sp.PIPE,stderr=(a.output/'bus.log').open('w'),text=True,start_new_session=True);processes.append(bus)
+  with (a.output/'bus.log').open('w') as _fixture_log0:
+      bus=sp.Popen(['dbus-daemon','--nofork','--print-address=1','--config-file='+str(bus_config)],env=env,stdout=sp.PIPE,stderr=_fixture_log0,text=True,start_new_session=True);processes.append(bus)
   assert select.select([bus.stdout],[],[],5)[0],'Private bus did not start';env['DBUS_SESSION_BUS_ADDRESS']=bus.stdout.readline().strip();assert env['DBUS_SESSION_BUS_ADDRESS'].startswith('unix:')
   config=private/'sway.conf';config.write_text('output * resolution 1200x800\nseat seat0 fallback true\n')
   launch([a.sway,'--unsupported-gpu','-c',str(config)],'sway.log');env['SWAYSOCK']=str(wait(lambda:next(Path(env['XDG_RUNTIME_DIR']).glob('sway-ipc*.sock'),None)));env['WAYLAND_DISPLAY']=wait(lambda:next((p.name for p in Path(env['XDG_RUNTIME_DIR']).glob('wayland-*') if not p.name.endswith('.lock')),None))
@@ -103,3 +106,6 @@ ShellRoot {
     try:os.killpg(proc.pid,signal.SIGKILL)
     except ProcessLookupError:pass
     proc.wait()
+  for _fixture_process in processes:
+      if _fixture_process.poll() is None:_fixture_process.wait(timeout=5)
+  close_reaped_pipes(processes)

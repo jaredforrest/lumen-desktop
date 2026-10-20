@@ -63,7 +63,8 @@ ShellRoot {
 }''')
 processes=[]
 def launch(command,name):
-    process=sp.Popen(command,env=env,stdout=(out/name).open('w'),stderr=sp.STDOUT,start_new_session=True);processes.append(process);return process
+    with (out/name).open('w') as _fixture_log0:
+        process=sp.Popen(command,env=env,stdout=_fixture_log0,stderr=sp.STDOUT,start_new_session=True);processes.append(process);return process
 
 def call(*command):return sp.check_output(command,env=env,text=True,timeout=10).strip()
 def wait(fn):

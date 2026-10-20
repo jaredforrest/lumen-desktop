@@ -1,4 +1,5 @@
 """Physical drag previews and placement on a private two-output compositor."""
+from fixture_resources import close_reaped_pipes
 import argparse,json,os,select,signal,socket,struct,subprocess as sp,tempfile,time
 from pathlib import Path
 from private_native_bus import start_private_bus
@@ -15,7 +16,8 @@ with tempfile.TemporaryDirectory(prefix='lumen-edge-') as private:
  for key in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK','AT_SPI_BUS_ADDRESS','DBUS_SESSION_BUS_ADDRESS'):env.pop(key,None)
  for key in ('CONFIG','STATE','DATA','CACHE'):env['XDG_'+key+'_HOME']=str(Path(private)/key.lower())
  def launch(args,name,**kwargs):
-  proc=sp.Popen(args,env=env,stdout=(a.output/name).open('w'),stderr=sp.STDOUT,start_new_session=True,**kwargs);processes.append(proc);return proc
+  with (a.output/name).open('w') as _fixture_log0:
+      proc=sp.Popen(args,env=env,stdout=_fixture_log0,stderr=sp.STDOUT,start_new_session=True,**kwargs);processes.append(proc);return proc
  def sway(*args):return json.loads(sp.check_output(['swaymsg','-r',*args],env=env,text=True))
  def ipc(command):
   result=sway(command);assert all(x.get('success') for x in result),result;return result
@@ -153,6 +155,7 @@ with tempfile.TemporaryDirectory(prefix='lumen-edge-') as private:
     constraints_checked.append(kind);client.stdin.write('q\n');client.stdin.flush();client.wait(timeout=3);wait(lambda:window() is None)
   (a.output/'result.json').write_text(json.dumps({'passed':True,'fullDragSuite':not a.constraints_only,'constraints':constraints_checked,'events':events,'capturedID':cid,'preview':preview,'secondOutput':preview2},indent=2));print('PASS native fixed/bounded sizes, pointer lock/confinement and released-constraint drag' if a.constraints_only else 'PASS native drag preview/leave/cancel/commit/restore/modifiers/top arbitration/lock'+(' and client constraints' if a.constraint_client else ''))
  finally:
+  if 'subscriber' in locals():subscriber.close()
   for proc in reversed(processes):
    try:os.killpg(proc.pid,signal.SIGTERM)
    except ProcessLookupError:pass
@@ -162,3 +165,6 @@ with tempfile.TemporaryDirectory(prefix='lumen-edge-') as private:
     try:os.killpg(proc.pid,signal.SIGKILL)
     except ProcessLookupError:pass
     proc.wait()
+  for _fixture_process in processes:
+      if _fixture_process.poll() is None:_fixture_process.wait(timeout=5)
+  close_reaped_pipes(processes)

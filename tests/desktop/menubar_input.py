@@ -1,4 +1,5 @@
 """Native built-in menu capture, keyboard, pointer and AT-SPI regression."""
+from fixture_resources import close_reaped_pipes
 import argparse,json,os,re,shutil,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
 p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--launcher',required=True);p.add_argument('--sway',default='sway');p.add_argument('--at-spi-prefix',type=Path,default=os.environ.get('LUMEN_TEST_AT_SPI'));p.add_argument('--effects',action='store_true');p.add_argument('--pointer-tool',required=True);p.add_argument('--inside',action='store_true');a=p.parse_args()
@@ -244,3 +245,6 @@ finally:
         try:proc.wait(timeout=3)
         except sp.TimeoutExpired:os.killpg(proc.pid,signal.SIGKILL);proc.wait(timeout=3)
     if 'pointer' in globals() and pointer.stdin:pointer.stdin.close()
+    for _fixture_process in processes:
+        if _fixture_process.poll() is None:_fixture_process.wait(timeout=5)
+    close_reaped_pipes(processes)

@@ -1,4 +1,5 @@
 """Actual launcher input with private real index, delayed transport and launch sink."""
+from fixture_resources import close_reaped_pipes
 import argparse,hashlib,json,os,re,shutil,signal,struct,subprocess as sp,sys,tempfile,time,zlib
 from pathlib import Path
 from private_native_bus import start_private_bus
@@ -172,3 +173,6 @@ ShellRoot {
     os.killpg(proc.pid,signal.SIGKILL);proc.wait(timeout=3)
    for stream in (proc.stdin,proc.stdout,proc.stderr):
     if stream:stream.close()
+  for _fixture_process in processes:
+      if _fixture_process.poll() is None:_fixture_process.wait(timeout=5)
+  close_reaped_pipes(processes)

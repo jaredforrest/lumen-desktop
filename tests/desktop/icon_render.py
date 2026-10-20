@@ -31,7 +31,8 @@ for key in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK'):env.pop(key,None)
 procs=[]
 def call(*args):return sp.check_output(args,env=env,text=True,timeout=12)
 def launch(args,name):
-    process=sp.Popen(args,env=env,stdout=(run/(name+'.log')).open('w'),stderr=sp.STDOUT,start_new_session=True);procs.append(process)
+    with (run/(name+'.log')).open('w') as _fixture_log0:
+        process=sp.Popen(args,env=env,stdout=_fixture_log0,stderr=sp.STDOUT,start_new_session=True);procs.append(process)
 def wait(fn):
     end=time.monotonic()+25
     while time.monotonic()<end:

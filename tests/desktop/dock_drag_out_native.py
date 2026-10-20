@@ -1,4 +1,5 @@
 """Native captured Dock removal with private persisted settings transport."""
+from fixture_resources import close_reaped_pipes
 import argparse,hashlib,json,os,re,shutil,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
 p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--source',type=Path,default=Path(__file__).resolve().parents[2]);p.add_argument('--pointer-tool',default='wlrctl');p.add_argument('--launcher',required=True);p.add_argument('--sway',default='sway');p.add_argument('--effects',action='store_true');p.add_argument('--inside',action='store_true');a=p.parse_args()
@@ -143,3 +144,6 @@ finally:
   if x.poll() is None:os.killpg(x.pid,signal.SIGTERM)
   x.wait(timeout=10)
  if 'pointer' in globals() and pointer.stdin:pointer.stdin.close()
+ for _fixture_process in procs:
+     if _fixture_process.poll() is None:_fixture_process.wait(timeout=5)
+ close_reaped_pipes(procs)

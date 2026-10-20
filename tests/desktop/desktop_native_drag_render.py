@@ -1,4 +1,5 @@
 """Production desktop native offers, confirmed incoming copy, and cancellation."""
+from fixture_resources import close_reaped_pipes
 import argparse,json,os,re,shutil,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
 parser=argparse.ArgumentParser();parser.add_argument('--output',type=Path,required=True);parser.add_argument('--sway',default='sway');parser.add_argument('--pointer-tool',required=True);parser.add_argument('--skip-native-escape',action='store_true');parser.add_argument('--inside',action='store_true');args=parser.parse_args()
@@ -60,7 +61,8 @@ ShellRoot {
 ''')
 processes=[]
 def launch(command,name):
-    process=sp.Popen(command,env=env,stdout=(run/(name+'.log')).open('w'),stderr=sp.STDOUT,start_new_session=True);processes.append(process);return process
+    with (run/(name+'.log')).open('w') as _fixture_log0:
+        process=sp.Popen(command,env=env,stdout=_fixture_log0,stderr=sp.STDOUT,start_new_session=True);processes.append(process);return process
 def call(*command):return sp.check_output(command,env=env,text=True,timeout=10)
 def ipc(path,method):return call('quickshell','-p',str(path),'ipc','call','dragTest',method)
 def state(path):return json.loads(ipc(path,'status'))
@@ -116,3 +118,6 @@ finally:
             os.killpg(process.pid,signal.SIGTERM)
             try:process.wait(timeout=3)
             except sp.TimeoutExpired:os.killpg(process.pid,signal.SIGKILL);process.wait()
+    for _fixture_process in processes:
+        if _fixture_process.poll() is None:_fixture_process.wait(timeout=5)
+    close_reaped_pipes(processes)

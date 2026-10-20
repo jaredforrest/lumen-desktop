@@ -116,7 +116,8 @@ env.update(QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDG
 env.pop('AT_SPI_BUS_ADDRESS',None)
 procs=[]
 def launch(cmd,name):
- pr=sp.Popen(cmd,env=env,stdout=(run/(name+'.log')).open('w'),stderr=sp.STDOUT,start_new_session=True);procs.append(pr);return pr
+ with (run/(name+'.log')).open('w') as _fixture_log0:
+     pr=sp.Popen(cmd,env=env,stdout=_fixture_log0,stderr=sp.STDOUT,start_new_session=True);procs.append(pr);return pr
 def call(*cmd):return sp.check_output(cmd,env=env,text=True,timeout=15)
 def wait(fn):
  end=time.monotonic()+20

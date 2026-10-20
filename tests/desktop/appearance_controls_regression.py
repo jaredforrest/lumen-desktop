@@ -97,7 +97,8 @@ ShellRoot {
 }''')
 procs=[]
 def launch(cmd,name):
- f=(run/(name+'.log')).open('w');proc=sp.Popen(cmd,env=env,stdout=f,stderr=sp.STDOUT,start_new_session=True);procs.append(proc);return proc
+ with (run/(name+'.log')).open('w') as stream:
+  proc=sp.Popen(cmd,env=env,stdout=stream,stderr=sp.STDOUT,start_new_session=True);procs.append(proc);return proc
 def call(*cmd):return sp.check_output(cmd,env=env,text=True,timeout=15).strip()
 def wait(fn):
  end=time.monotonic()+12

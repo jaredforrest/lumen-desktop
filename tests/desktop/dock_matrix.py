@@ -49,7 +49,8 @@ ShellRoot {id:mock
 config=root/'sway.conf';config.write_text('output HEADLESS-1 resolution 1000x700\nseat seat0 fallback true\n')
 processes=[]
 def launch(command,name):
-    process=subprocess.Popen(command,env=env,stdout=(root/name).open('w'),stderr=subprocess.STDOUT,start_new_session=True);processes.append(process);return process
+    with (root/name).open('w') as _fixture_log0:
+        process=subprocess.Popen(command,env=env,stdout=_fixture_log0,stderr=subprocess.STDOUT,start_new_session=True);processes.append(process);return process
 
 def wait(callback):
     for _ in range(120):

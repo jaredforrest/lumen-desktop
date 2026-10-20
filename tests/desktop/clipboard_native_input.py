@@ -1,4 +1,5 @@
 """Private real Wayland clipboard, actual launcher controls and document paste observer."""
+from fixture_resources import close_reaped_pipes
 import argparse,json,os,re,shutil,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
 from private_native_bus import start_private_bus
@@ -198,3 +199,6 @@ ShellRoot {
     except sp.TimeoutExpired:os.killpg(proc.pid,signal.SIGKILL);proc.wait(timeout=5)
    if proc.stdout is not None:proc.stdout.close()
    if proc.stdin is not None:proc.stdin.close()
+  for _fixture_process in processes:
+      if _fixture_process.poll() is None:_fixture_process.wait(timeout=5)
+  close_reaped_pipes(processes)

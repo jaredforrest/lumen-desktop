@@ -1,4 +1,5 @@
 """Real pointer, keyboard and session-lock protocol on a disposable compositor."""
+from fixture_resources import close_reaped_pipes
 import argparse,json,os,select,socket,struct,subprocess as sp,tempfile,time
 from pathlib import Path
 p=argparse.ArgumentParser();p.add_argument('--sway',required=True);p.add_argument('--pointer',required=True);p.add_argument('--keyboard',required=True);p.add_argument('--lock',required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--effects',action='store_true');a=p.parse_args()
@@ -15,12 +16,13 @@ with tempfile.TemporaryDirectory(prefix='lumen-corners-') as private:
  for key in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK','AT_SPI_BUS_ADDRESS','DBUS_SESSION_BUS_ADDRESS'):env.pop(key,None)
  for key in ('CONFIG','STATE','DATA','CACHE'):env['XDG_'+key+'_HOME']=str(Path(private)/key.lower())
  def launch(args,name,**kwargs):
-  proc=sp.Popen(args,env=env,stdout=(a.output/name).open('w'),stderr=sp.STDOUT,start_new_session=True,**kwargs);processes.append(proc);return proc
+  with (a.output/name).open('w') as _fixture_log0:
+      proc=sp.Popen(args,env=env,stdout=_fixture_log0,stderr=sp.STDOUT,start_new_session=True,**kwargs);processes.append(proc);return proc
  def ipc(command):return json.loads(sp.check_output(['swaymsg','-r',command],env=env,text=True))
  bus_config=a.output/'bus.conf'
  bus_config.write_text('<busconfig><type>session</type><listen>unix:tmpdir='+private+'</listen><policy context="default"><allow own="*"/><allow send_destination="*"/><allow receive_sender="*"/></policy></busconfig>')
- bus_log=(a.output/'bus.log').open('w')
- bus=sp.Popen(['dbus-daemon','--nofork','--print-address=1','--config-file='+str(bus_config)],env=env,stdout=sp.PIPE,stderr=bus_log,text=True,start_new_session=True)
+ with (a.output/'bus.log').open('w') as bus_log:
+  bus=sp.Popen(['dbus-daemon','--nofork','--print-address=1','--config-file='+str(bus_config)],env=env,stdout=sp.PIPE,stderr=bus_log,text=True,start_new_session=True)
  processes.append(bus)
  assert select.select([bus.stdout],[],[],5)[0], 'Private bus failed to start'
  env['DBUS_SESSION_BUS_ADDRESS']=bus.stdout.readline().strip()
@@ -92,8 +94,12 @@ with tempfile.TemporaryDirectory(prefix='lumen-corners-') as private:
    assert event['version']==1 and event['output'] and all(type(event[k]) is bool for k in ('locked','fullscreen','adjacent'))
   (a.output/'result.json').write_text(json.dumps({'passed':True,'events':events,'version':version},indent=2));print('PASS native corner pointer/modifier/drag/fullscreen/adjacency/lock lifecycle')
  finally:
+  if 'subscriber' in locals():subscriber.close()
   for proc in reversed(processes):
    if proc.poll() is None:proc.terminate()
   for proc in reversed(processes):
    try:proc.wait(timeout=3)
    except sp.TimeoutExpired:proc.kill();proc.wait()
+  for _fixture_process in processes:
+      if _fixture_process.poll() is None:_fixture_process.wait(timeout=5)
+  close_reaped_pipes(processes)

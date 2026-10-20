@@ -1,4 +1,5 @@
 """Actual enlarged Settings navigation, focus reveal and pointer activation."""
+from fixture_resources import close_reaped_pipes
 import argparse,json,os,re,shutil,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
 p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--launcher',type=Path,required=True);p.add_argument('--sway',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--inside',action='store_true');a=p.parse_args()
@@ -152,4 +153,7 @@ finally:
         try:process.wait(timeout=4)
         except sp.TimeoutExpired:os.killpg(process.pid,signal.SIGKILL);process.wait(timeout=4)
     if 'pointer' in globals() and pointer.stdin:pointer.stdin.close()
+    for _fixture_process in processes:
+        if _fixture_process.poll() is None:_fixture_process.wait(timeout=5)
+    close_reaped_pipes(processes)
 print('PASS native enlarged Settings focus, scroll and pointer reachability')

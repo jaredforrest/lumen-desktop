@@ -39,7 +39,8 @@ spaces = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(spaces)
 
 def launch(cmd, name):
-    proc = sp.Popen(cmd, env=env, stdout=(out / name).open('w'), stderr=sp.STDOUT, start_new_session=True)
+    with (out / name).open('w') as _fixture_log0:
+        proc = sp.Popen(cmd, env=env, stdout=_fixture_log0, stderr=sp.STDOUT, start_new_session=True)
     processes.append(proc)
     return proc
 

@@ -47,7 +47,8 @@ PanelWindow {
 ui=run/'fixture.qml';ui.write_text(qml);procs=[]
 def call(*cmd):return sp.check_output(cmd,env=env,text=True,timeout=12)
 def launch(cmd,name):
-    process=sp.Popen(cmd,env=env,stdout=(run/(name+'.log')).open('w'),stderr=sp.STDOUT,start_new_session=True);procs.append(process)
+    with (run/(name+'.log')).open('w') as _fixture_log0:
+        process=sp.Popen(cmd,env=env,stdout=_fixture_log0,stderr=sp.STDOUT,start_new_session=True);procs.append(process)
 def wait(fn):
     end=time.monotonic()+25
     while time.monotonic()<end:

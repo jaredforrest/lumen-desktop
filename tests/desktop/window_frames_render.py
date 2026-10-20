@@ -1,4 +1,5 @@
 """Exercise the common compositor frame without touching the login session."""
+from fixture_resources import close_reaped_pipes
 import os,json,subprocess as sp,time,tempfile,signal,sys,argparse,re,shutil
 from pathlib import Path
 parser=argparse.ArgumentParser()
@@ -43,7 +44,8 @@ if a.effects:
 swaypath=a.sway
 procs=[]
 def launch(cmd,log):
- p=sp.Popen(cmd,env=env,stdout=(out/log).open('w'),stderr=sp.STDOUT,start_new_session=True);procs.append(p);return p
+ with (out/log).open('w') as _fixture_log0:
+     p=sp.Popen(cmd,env=env,stdout=_fixture_log0,stderr=sp.STDOUT,start_new_session=True);procs.append(p);return p
 def wait(fn):
  until=time.monotonic()+20
  while time.monotonic()<until:
@@ -305,3 +307,6 @@ finally:
    os.killpg(p.pid,signal.SIGTERM)
    try:p.wait(timeout=3)
    except sp.TimeoutExpired:os.killpg(p.pid,signal.SIGKILL)
+ for _fixture_process in procs:
+     if _fixture_process.poll() is None:_fixture_process.wait(timeout=5)
+ close_reaped_pipes(procs)

@@ -1,4 +1,5 @@
 """Disposable nested desktop files: real directory events and keyboard confirmation."""
+from fixture_resources import close_reaped_pipes
 import argparse,json,os,re,shutil,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
 parser=argparse.ArgumentParser();parser.add_argument('--output',type=Path,required=True);parser.add_argument('--sway',default='sway');parser.add_argument('--pointer-tool',required=True);parser.add_argument('--layer',choices=['bottom','top'],default='bottom');parser.add_argument('--layout',action='store_true');parser.add_argument('--multi-drag',action='store_true');parser.add_argument('--inside',action='store_true');args=parser.parse_args()
@@ -45,7 +46,8 @@ ShellRoot {
 ''')
 processes=[]
 def launch(command,name):
-    process=sp.Popen(command,env=env,stdout=(run/(name+'.log')).open('w'),stderr=sp.STDOUT,start_new_session=True);processes.append(process)
+    with (run/(name+'.log')).open('w') as _fixture_log0:
+        process=sp.Popen(command,env=env,stdout=_fixture_log0,stderr=sp.STDOUT,start_new_session=True);processes.append(process)
 def call(*command):return sp.check_output(command,env=env,text=True,timeout=10)
 def wait(predicate):
     deadline=time.monotonic()+20
@@ -131,3 +133,6 @@ finally:
             os.killpg(process.pid,signal.SIGTERM)
             try:process.wait(timeout=5)
             except sp.TimeoutExpired:os.killpg(process.pid,signal.SIGKILL);process.wait()
+    for _fixture_process in processes:
+        if _fixture_process.poll() is None:_fixture_process.wait(timeout=5)
+    close_reaped_pipes(processes)

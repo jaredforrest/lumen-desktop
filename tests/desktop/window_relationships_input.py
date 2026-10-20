@@ -1,4 +1,5 @@
 """Disposable native parent/modal focus and actual keyboard-recipient regression."""
+from fixture_resources import close_reaped_pipes
 import argparse,json,os,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
 from private_native_bus import start_private_bus
@@ -98,4 +99,7 @@ with tempfile.TemporaryDirectory(prefix='lumen-window-relations-') as private:
   for process in reversed(processes):
    try:process.wait(timeout=3)
    except sp.TimeoutExpired:os.killpg(process.pid,signal.SIGKILL);process.wait(timeout=3)
+  for _fixture_process in processes:
+      if _fixture_process.poll() is None:_fixture_process.wait(timeout=5)
+  close_reaped_pipes(processes)
 print('PASS native parent/modal/key-window regression')

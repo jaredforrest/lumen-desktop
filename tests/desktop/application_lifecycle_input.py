@@ -70,7 +70,8 @@ app.connect('startup',startup);app.connect('activate',activate);app.run([])
 ''')
 processes=[]
 def launch(command,name):
- stream=(out/name).open('w');proc=sp.Popen(command,env=env,stdout=stream,stderr=sp.STDOUT,start_new_session=True);stream.close();processes.append(proc);return proc
+ with (out/name).open('w') as stream:
+  proc=sp.Popen(command,env=env,stdout=stream,stderr=sp.STDOUT,start_new_session=True);processes.append(proc);return proc
 def call(*command):return sp.check_output(command,env=env,text=True,timeout=10).strip()
 def wait(predicate):
  deadline=time.monotonic()+20

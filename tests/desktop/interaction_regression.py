@@ -1,4 +1,5 @@
 """Real pointer sweeps and CSD file-chooser ownership in an isolated compositor."""
+from fixture_resources import close_reaped_pipes
 import argparse,json,os,re,shutil,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
 p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--source',type=Path,default=Path(__file__).resolve().parents[2]);p.add_argument('--pointer-tool',default='wlrctl');p.add_argument('--inside',action='store_true');a=p.parse_args()
@@ -21,7 +22,8 @@ for k in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK'):env.pop(k,None)
 portal=out/'config/xdg-desktop-portal';portal.mkdir(parents=True,exist_ok=True);(portal/'portals.conf').write_text('[preferred]\ndefault=none\n')
 procs=[]
 def launch(cmd,name):
- x=sp.Popen(cmd,env=env,stdout=(out/(name+'.log')).open('w'),stderr=sp.STDOUT,start_new_session=True);procs.append(x);return x
+ with (out/(name+'.log')).open('w') as _fixture_log0:
+     x=sp.Popen(cmd,env=env,stdout=_fixture_log0,stderr=sp.STDOUT,start_new_session=True);procs.append(x);return x
 def call(*cmd):return sp.check_output(cmd,env=env,text=True,timeout=15)
 def wait(fn):
  end=time.monotonic()+20
@@ -99,3 +101,6 @@ except BaseException:
 finally:
  for x in reversed(procs):
   if x.poll() is None:os.killpg(x.pid,signal.SIGTERM)
+ for _fixture_process in procs:
+     if _fixture_process.poll() is None:_fixture_process.wait(timeout=5)
+ close_reaped_pipes(procs)
