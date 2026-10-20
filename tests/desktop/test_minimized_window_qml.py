@@ -32,4 +32,5 @@ ShellRoot {id:fixture
  for key in ('WAYLAND_DISPLAY','DISPLAY','SWAYSOCK','AT_SPI_BUS_ADDRESS'):env.pop(key,None)
  run=subprocess.run(['quickshell','-p',str(root)],env=env,capture_output=True,text=True,timeout=12)
  assert run.returncode==0 and 'PASS retained minimized capabilities' in run.stdout+run.stderr,run.stdout+run.stderr
+ assert 'Fontconfig error:' not in run.stdout+run.stderr,run.stdout+run.stderr
  print(run.stdout+run.stderr)

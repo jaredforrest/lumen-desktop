@@ -134,6 +134,9 @@
           nativeBuildInputs = [ pkgs.nodejs privateBus python quickshell session.shellLauncher pkgs.dbus pkgs.git pkgs.glib pkgs.procps pkgs.coreutils pkgs.util-linux ];
         } ''
           export HOME=$TMPDIR/home
+          export FONTCONFIG_FILE=${(import ./packages/font-configuration.nix { inherit pkgs; }) {
+            fontDirectories = [ "${pkgs.dejavu_fonts}/share/fonts" ];
+          }}
           mkdir -p "$HOME"
           export GI_TYPELIB_PATH=${pkgs.lib.makeSearchPath "lib/girepository-1.0" [ pkgs.glib pkgs.gtk3 pkgs.libical pkgs.evolution-data-server pkgs.gnome-online-accounts ]}
           export PYTHONDONTWRITEBYTECODE=1
