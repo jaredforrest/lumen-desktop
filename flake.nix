@@ -60,6 +60,16 @@
         test-constraint-client = import ./tests/desktop/constraint_client.nix { inherit pkgs; };
         test-typography = import ./tests/desktop/typography_probe.nix { inherit pkgs; };
         test-office-tools = pkgs.poppler-utils;
+        test-office-dialog-tools = pkgs.writeText "lumen-office-dialog-tools.json" (builtins.toJSON {
+          portal = "${pkgs.xdg-desktop-portal}/libexec/xdg-desktop-portal";
+          backend = "${pkgs.xdg-desktop-portal-gtk}/libexec/xdg-desktop-portal-gtk";
+          backendData = "${pkgs.xdg-desktop-portal-gtk}/share";
+          iconData = [ "${pkgs.adwaita-icon-theme}/share" "${pkgs.hicolor-icon-theme}/share" ];
+          fontConfig = (import ./packages/font-configuration.nix { inherit pkgs; }) {
+            fontDirectories = [ "${pkgs.dejavu_fonts}/share/fonts" ];
+          };
+          bus = "${pkgs.dbus}/bin/dbus-daemon";
+        });
         test-application-software-driver = pkgs.mesa;
         shell-runtime = quickshell;
         test-physical-keyboard = import ./tests/desktop/physical_keyboard_driver.nix { inherit pkgs; };

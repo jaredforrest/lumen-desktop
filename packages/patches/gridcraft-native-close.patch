@@ -1,0 +1,249 @@
+diff --git a/crates/engine/src/cmd/file.rs b/crates/engine/src/cmd/file.rs
+index d52418b..4f96806 100644
+--- a/crates/engine/src/cmd/file.rs
++++ b/crates/engine/src/cmd/file.rs
+@@ -117,5 +117,5 @@ fn close(s: &mut Session, p: &Json) -> Result<Json> {
+     let d = s.doc()?;
+     if d.is_dirty() && !force {
+-        s.ui_requests.push(crate::UiRequest::Dialog("saveChanges".into(), json!({"title": d.display_title()})));
++        s.ui_requests.push(crate::UiRequest::Dialog("saveChanges".into(), json!({"title": d.display_title(), "uid": d.uid})));
+         return Ok(json!({"closed": false, "dirty": true}));
+     }
+diff --git a/crates/ui-egui/src/dialogs.rs b/crates/ui-egui/src/dialogs.rs
+index 7dd3acb..631193f 100644
+--- a/crates/ui-egui/src/dialogs.rs
++++ b/crates/ui-egui/src/dialogs.rs
+@@ -569,5 +569,5 @@ impl Dialog {
+             "pickList" => Dialog::custom("pickList", "Pick From List", json!({})),
+             "saveCopy" => Dialog::custom("saveCopy", "Save a Copy", json!({"format": p("format")})),
+-            "saveChanges" => Dialog::custom("saveChanges", "Save Changes?", json!({"title": p("title")})),
++            "saveChanges" => Dialog::custom("saveChanges", "Save Changes?", json!({"title": p("title"), "uid": p("uid").as_u64().or_else(|| app.session.active().map(|d| d.uid))})),
+             "start" => Dialog::custom("start", "GridCraft", json!({})),
+             "comments" => {
+@@ -802,4 +802,14 @@ pub fn show(app: &mut SheetApp, ctx: &egui::Context) {
+                 }
+                 "saveChanges" => {
++                    let target = d.values.get("uid").and_then(Json::as_u64);
++                    let index = target.and_then(|uid| app.session.documents().iter().position(|doc| doc.uid == uid));
++                    let Some(index) = index else {
++                        ui.label("The original workbook is no longer available.");
++                        if ui.button("Cancel").clicked() {
++                            open = false;
++                        }
++                        return;
++                    };
++                    app.session.set_active(index);
+                     ui.label(format!("Do you want to save the changes you made to {}?", d.values.get("title").and_then(Json::as_str).unwrap_or("this workbook")));
+                     ui.horizontal(|ui| {
+diff --git a/crates/ui-egui/src/grid.rs b/crates/ui-egui/src/grid.rs
+index 72d33e2..fc671a2 100644
+--- a/crates/ui-egui/src/grid.rs
++++ b/crates/ui-egui/src/grid.rs
+@@ -1050,5 +1050,5 @@ fn paint_headers(p: &Painter, geo: &Geo, sh: &Sheet, sel: &gridcraft_engine::Sel
+ fn interact(app: &mut SheetApp, ui: &mut egui::Ui, resp: &egui::Response, geo: &Geo, sh: &Sheet, wb: &Workbook) {
+     // Text selection and editing must not also move the object or edit worksheet cells.
+-    if app.text_box_editor.is_some() {
++    if app.text_box_editor.is_some() || !ui.is_enabled() {
+         return;
+     }
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index 1225eec..4790e67 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -16,4 +16,5 @@ pub mod editor;
+ pub mod formula_bar;
+ mod formula_locale;
++mod native_close;
+ pub mod grid;
+ pub mod i18n;
+@@ -163,4 +164,5 @@ pub struct SheetApp {
+     pub selected_chart: Option<u32>,
+     pub started: f64,
++    native_close_target: Option<u64>,
+ }
+ 
+@@ -195,4 +197,5 @@ impl SheetApp {
+             selected_chart: None,
+             started: now_ms(),
++            native_close_target: None,
+         }
+     }
+@@ -598,8 +601,12 @@ impl SheetApp {
+         let ctx = ui.ctx().clone();
+         if !self.fonts_ready {
++            self.protect_native_close(&ctx);
+             ctx.request_repaint();
+             return;
+         }
+         let t0 = now_ms();
++        if self.dialog.as_ref().is_some_and(|dialog| dialog.name() == "saveChanges") {
++            ui.disable();
++        }
+         text_box::before_ui(self, &ctx);
+         // The language the widgets translate with this frame (see `i18n::current`).
+@@ -658,4 +665,5 @@ impl SheetApp {
+             }
+         }
++        self.protect_native_close(&ctx);
+     }
+ 
+diff --git a/crates/ui-egui/src/native_close.rs b/crates/ui-egui/src/native_close.rs
+new file mode 100644
+index 0000000..59ef248
+--- /dev/null
++++ b/crates/ui-egui/src/native_close.rs
+@@ -0,0 +1,154 @@
++//! Route native close requests through the existing captured-document confirmation.
++use crate::SheetApp;
++use serde_json::json;
++
++impl SheetApp {
++    pub(crate) fn protect_native_close(&mut self, ctx: &egui::Context) {
++        let requested = ctx.input(|input| input.viewport().close_requested());
++        let advance = if let Some(uid) = self.native_close_target {
++            if requested {
++                ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
++            }
++            if self.session.documents().iter().any(|doc| doc.uid == uid) {
++                if self.dialog.as_ref().is_some_and(|dialog| dialog.name() == "saveChanges") {
++                    return;
++                }
++                // The captured document still exists: cancellation or a failed save.
++                self.native_close_target = None;
++                return;
++            }
++            self.native_close_target = None;
++            true
++        } else {
++            false
++        };
++        if !requested && !advance {
++            return;
++        }
++        if self.dialog.is_some() || self.message.is_some() {
++            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
++            return;
++        }
++        if !self.commit_edit(0, 0, false, false) {
++            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
++            return;
++        }
++        if let Err(error) = self.commit_text_box_edit() {
++            self.message = Some(("GridCraft".into(), crate::clean_error(&error)));
++            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
++            return;
++        }
++        let dirty = self.session.documents().iter().enumerate().find(|(_, doc)| doc.is_dirty()).map(|(index, doc)| (index, doc.uid));
++        if let Some((index, uid)) = dirty {
++            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
++            self.session.set_active(index);
++            self.run_or_alert("file.close", json!({}));
++            if self.dialog.as_ref().is_some_and(|dialog| dialog.name() == "saveChanges") {
++                self.native_close_target = Some(uid);
++            }
++            ctx.request_repaint();
++        } else if advance {
++            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
++        }
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use gridcraft_engine::Session;
++    type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
++
++    fn dirty() -> TestResult<SheetApp> {
++        let mut session = Session::new();
++        session.new_workbook();
++        session.run("cell.set", json!({"cell":"A1","input":"unsaved marker"}))?;
++        Ok(SheetApp::new(session, Default::default()))
++    }
++
++    fn frame(app: &mut SheetApp, close: bool) -> TestResult<egui::LogicOutput> {
++        let ctx = egui::Context::default();
++        let mut input = egui::RawInput::default();
++        if close {
++            input.viewports.get_mut(&egui::ViewportId::ROOT).ok_or("Missing root viewport")?.events.push(egui::ViewportEvent::Close);
++        }
++        Ok(ctx.run_logic(&input, |ctx| app.protect_native_close(ctx)))
++    }
++
++    fn closes(output: &egui::LogicOutput) -> bool {
++        output.viewport_commands.get(&egui::ViewportId::ROOT).is_some_and(|commands| commands.iter().any(|command| matches!(command, egui::ViewportCommand::Close)))
++    }
++
++    #[test]
++    fn native_close_captures_dirty_document_and_cancel_does_not_close_later() -> TestResult {
++        let mut app = dirty()?;
++        let uid = app.session.active().ok_or("Missing document")?.uid;
++        let output = frame(&mut app, true)?;
++        assert!(!closes(&output));
++        assert_eq!(app.native_close_target, Some(uid));
++        let dialog = app.dialog.as_ref().ok_or("Missing confirmation")?;
++        assert_eq!(dialog.name(), "saveChanges");
++        assert_eq!(dialog.values.get("uid"), Some(&json!(uid)));
++        app.dialog = None;
++        assert!(!closes(&frame(&mut app, false)?));
++        assert_eq!(app.native_close_target, None);
++        assert!(app.session.active().ok_or("Missing document")?.is_dirty());
++        assert!(!closes(&frame(&mut app, false)?));
++        Ok(())
++    }
++
++    #[test]
++    fn explicit_discard_advances_only_after_captured_document_is_removed() -> TestResult {
++        let mut app = dirty()?;
++        frame(&mut app, true)?;
++        app.run("file.close", json!({"force":true}))?;
++        app.dialog = None;
++        assert!(closes(&frame(&mut app, false)?));
++        Ok(())
++    }
++
++    #[test]
++    fn a_failed_save_keeps_the_dirty_document_and_cancels_pending_close() -> TestResult {
++        let mut app = dirty()?;
++        frame(&mut app, true)?;
++        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("lumen-missing-parent").join("book.xlsx");
++        assert!(!path.parent().ok_or("Missing test parent")?.exists());
++        app.run_or_alert("file.save", json!({"path":path}));
++        assert!(app.message.is_some());
++        app.dialog = None;
++        assert!(!closes(&frame(&mut app, false)?));
++        assert_eq!(app.native_close_target, None);
++        assert!(app.session.active().ok_or("Missing document")?.is_dirty());
++        Ok(())
++    }
++
++    #[test]
++    fn more_than_one_dirty_document_requires_separate_decisions() -> TestResult {
++        let mut app = dirty()?;
++        let first = app.session.active().ok_or("Missing first document")?.uid;
++        app.session.new_workbook();
++        app.run("cell.set", json!({"cell":"A1","input":"second marker"}))?;
++        let second = app.session.active().ok_or("Missing second document")?.uid;
++        frame(&mut app, true)?;
++        assert_eq!(app.native_close_target, Some(first));
++        app.run("file.close", json!({"force":true}))?;
++        app.dialog = None;
++        assert!(!closes(&frame(&mut app, false)?));
++        assert_eq!(app.native_close_target, Some(second));
++        assert!(app.session.active().ok_or("Missing remaining document")?.is_dirty());
++        Ok(())
++    }
++
++    #[test]
++    fn an_uncommitted_cell_draft_is_included_in_the_protected_document() -> TestResult {
++        let mut session = Session::new();
++        session.new_workbook();
++        let mut app = SheetApp::new(session, Default::default());
++        app.begin_edit(Some("draft marker".into()), false);
++        frame(&mut app, true)?;
++        assert!(app.editor.is_none());
++        assert!(app.session.active().ok_or("Missing draft document")?.is_dirty());
++        assert_eq!(app.dialog.as_ref().ok_or("Missing draft confirmation")?.name(), "saveChanges");
++        Ok(())
++    }
++}

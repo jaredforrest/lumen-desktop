@@ -21,7 +21,7 @@ let
       makeWrapper ${profileBridge}/bin/lumen-native-profile $out/bin/${pname} \
         --add-flags "${pname} $out/bin/.${pname}-native" \
         --prefix LD_LIBRARY_PATH : ${pkgs.lib.makeLibraryPath [
-          pkgs.libxkbcommon pkgs.wayland pkgs.libGL pkgs.vulkan-loader
+          pkgs.libxkbcommon pkgs.wayland pkgs.libGL pkgs.vulkan-loader pkgs.dbus
           pkgs.libx11 pkgs.libxcursor pkgs.libxi pkgs.libxrandr
         ]}
       substituteInPlace $out/share/applications/ai.storyteller.${pname}.desktop \
@@ -37,6 +37,11 @@ let
   };
 in {
   wordcraft = makeCraft "wordcraft" "sha256-mUuzdkee9tdnNc9AKeXvPC1SqFpMms3is3wzsZxXAgM=";
-  gridcraft = makeCraft "gridcraft" "sha256-5lBcL5KfmFTDUKDfJhicTlbIrfh8xhYl+A1qjuwrYo0=";
+  gridcraft = (makeCraft "gridcraft" "sha256-5lBcL5KfmFTDUKDfJhicTlbIrfh8xhYl+A1qjuwrYo0=").overrideAttrs (old: {
+    postInstall = (old.postInstall or "") + ''
+      cp ${import ./gridcraft-source.nix { inherit pkgs; }}/bin/gridcraft $out/bin/gridcraft
+      cp ${import ./gridcraft-source.nix { inherit pkgs; }}/bin/gridcraft-cli $out/bin/gridcraft-cli
+    '';
+  });
   deckcraft = makeCraft "deckcraft" "sha256-wmSMYHH2MezGY5zmt9YPaO7YPd6rprFVmwfFBGhjEXw=";
 }

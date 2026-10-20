@@ -54,3 +54,34 @@ The installed-window prototype uses the shared persistent full-US physical keybo
 Reopen acceptance creates a new empty document in the actual installed window, confirms the previous saved path is detached, then opens that exact saved file through the provider's native command dispatcher. It compares Writer full text and document-inspector blocks/runs/styles/tables/sections/parts; every bounded synthetic spreadsheet cell's native details plus computed/formula/formatted ranges and sheet metadata; and every slide inspector's text/geometry/style. Opaque `id` fields are not stable document identity. Writer selection and undo/redo availability are transient session state and are excluded; other document fields remain compared. Reopen must preserve the independently parsed file and its hash. Retained painted output supports inspection but does not establish reference geometry or full visual fidelity by itself.
 
 Use `--effects` only with the pinned effects compositor. It explicitly opts into the shared isolation helper's validated software allocator device; normal mode still exposes no graphics device. The compositor must report GLES, llvmpipe, initialized effects shaders, the software allocator and created framebuffers. Both modes require a nonblank captured application paint. The Mesa vendor/Vulkan files come from the explicit immutable software-driver argument, never from live desktop preferences. These checks verify the renderer actually exercised; they do not turn a software-rendered screenshot into reference fidelity evidence.
+
+The spreadsheet provider is built from its exact pinned 0.5.0 source and Cargo
+lock with a narrow native-close patch. Native close commits pending drafts,
+captures the original document identity, and uses the provider's existing
+Save/Discard/Cancel flow. It does not force termination. Multiple dirty documents
+require separate decisions; cancellation, failed saves and unrelated dialogs keep
+the application open. Five Rust library tests run with compiler warnings treated
+as errors. The release assets and installed profile wrapper remain in use.
+
+The common installed wrapper provides the DBus library required by the native
+chooser loader. To exercise new-file saving, pass `--new-saveas --dialog-tools
+STORE_FILE`, where `STORE_FILE` is the `.#test-office-dialog-tools` output. The
+fixture launches only its pinned standard portal and GTK chooser backend on an
+explicit activation-free private bus. It provides public fonts/icons, preserves
+an inert system bus, and never uses host portals, document mounts or services.
+The standard frontend can report unavailable unrelated document, realtime,
+location or camera services; retain these diagnostics rather than hiding them.
+The picker currently supplies no parent-window association, which is retained as
+a provider limitation, not inferred from its appearance.
+
+The new-document scenario uses actual physical input and the real chooser. It
+checks cancellation, an invalid destination under the read-only source mount,
+complete draft retention, a later exact successful destination, independent
+native-format parsing and a subsequent clean native close. Spreadsheet native
+Close-to-Save enters this real chooser. The separate `--sheet-close-outcome`
+scenarios cover Cancel, Discard, Save and a real existing-file save failure;
+`--slides-close-outcome` covers its three decisions. Saved-file hashes and full
+unsaved markers remain checked. A successful Quit uses the retained pre-close
+application paint; an empty desktop after a legitimate close is not an app paint
+failure. Recovery, additional provider save-error paths and the other outstanding
+workflow clauses remain separately unverified.
