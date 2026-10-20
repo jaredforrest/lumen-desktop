@@ -19,6 +19,7 @@ jobs:
       - run: nix flake check --print-build-logs --option abort-on-warn true
       - run: python3 tests/ci/test_prepare_software_effects.py
       - run: python3 tests/ci/test_run_native.py
+      - run: python3 tests/ci/test_native_namespace_policy.py
   integration:
     runs-on: ubuntu-24.04
     steps:
@@ -27,6 +28,7 @@ jobs:
           fetch-depth: 0
       - uses: cachix/install-nix-action@v31
       - run: nix develop --command gitleaks git . --redact=100
+      - run: nix develop --command desktop-test-python tests/ci/native_namespace_policy.py prepare --output artifacts/native-namespace-policy
       - run: |
           mkdir -p artifacts
           nix build .#shell --out-link artifacts/shell-package --option abort-on-warn true
@@ -162,6 +164,8 @@ jobs:
       - run: |
           nix build .#test-network-provider --out-link artifacts/network-provider --option abort-on-warn true
           bash tests/ci/run-native.sh network_locations_provider nix develop --command desktop-test-python tests/desktop/network_locations_provider.py --provider "$PWD/artifacts/network-provider" | tee artifacts/network-provider.log
+      - if: always()
+        run: nix develop --command desktop-test-python tests/ci/native_namespace_policy.py cleanup --output artifacts/native-namespace-policy
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -169,6 +173,7 @@ jobs:
           if-no-files-found: error
           path: |
             artifacts/native-command-logs
+            artifacts/native-namespace-policy
             artifacts/backends
             artifacts/biometric-provider
             artifacts/clipboard-native-*

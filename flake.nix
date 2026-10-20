@@ -117,7 +117,7 @@
         '';
       };
       devShells.${system}.default = pkgs.mkShell {
-        packages = [ pkgs.nodejs privateBus runtime settings pkgs.nix pkgs.git pkgs.dbus quickshell pkgs.sway pkgs.grim pkgs.wtype pkgs.foot pkgs.imagemagick pkgs.gitleaks ];
+        packages = [ pkgs.nodejs privateBus runtime settings pkgs.nix pkgs.git pkgs.dbus quickshell pkgs.sway pkgs.grim pkgs.wtype pkgs.foot pkgs.imagemagick pkgs.gitleaks pkgs.util-linux ];
         shellHook = ''
           export PYTHONDONTWRITEBYTECODE=1
           export __EGL_VENDOR_LIBRARY_FILENAMES=${pkgs.mesa}/share/glvnd/egl_vendor.d/50_mesa.json
