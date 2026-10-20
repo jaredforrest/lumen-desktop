@@ -32,3 +32,5 @@ Window Groups provides optional native presentation groups; see [the workflow an
 [Mixed output scaling](docs/mixed-output-scale-testing.md) describes native geometry, painted-frame and input acceptance.
 
 [Content clipping](docs/content-clipping-testing.md) covers declared masks, vivid edge pixels and preserved production input targets.
+
+File identity serialization and compatibility are documented in [file identity wire format](docs/file-identity-wire.md).

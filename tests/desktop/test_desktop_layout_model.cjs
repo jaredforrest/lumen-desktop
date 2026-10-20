@@ -15,3 +15,8 @@ console.log('DESKTOP_LAYOUT_MODEL_PASS');
 const anchored=context.build(rows,{grouping:'kind',positions:{},stacks:{'stack:kind:Documents':[.5,.4]}},['stack:kind:Documents'],1000,700,Date.now());
 const anchor=anchored.find(item=>item.stack&&item.label==='Documents'),anchoredChild=anchored.find(item=>item.parentStack===anchor.key);assert.equal(anchor.x,446);assert.equal(anchor.y,240);assert.equal(anchoredChild.x,anchor.x);assert.equal(anchoredChild.y,anchor.y+100);
 const resized=context.build(rows,{grouping:'kind',positions:{},stacks:{'stack:kind:Documents':[.5,.4]}},[],500,400,Date.now());assert.equal(resized.find(item=>item.stack&&item.label==='Documents').x,196);
+const highRows=[row('high-a','1152921504606846977'),row('high-b','1152921504606846978')];
+assert.deepEqual(Array.from(context.identities(highRows)),['1:1152921504606846977','1:1152921504606846978']);
+assert.deepEqual(Array.from(context.identities([{...highRows[0],name:'renamed'}])),['1:1152921504606846977']);
+const highLinks=context.identities([highRows[0],{...highRows[0],name:'link'}]);assert.notEqual(highLinks[0],highLinks[1]);
+console.log('PASS high native identity desktop keys and hardlink distinction');

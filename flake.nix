@@ -88,7 +88,7 @@
           touch $out
         '';
         backend-units = pkgs.runCommand "lumen-backend-units" {
-          nativeBuildInputs = [ privateBus python quickshell session.shellLauncher pkgs.dbus pkgs.git pkgs.glib pkgs.procps pkgs.coreutils pkgs.util-linux ];
+          nativeBuildInputs = [ pkgs.nodejs privateBus python quickshell session.shellLauncher pkgs.dbus pkgs.git pkgs.glib pkgs.procps pkgs.coreutils pkgs.util-linux ];
         } ''
           export HOME=$TMPDIR/home
           mkdir -p "$HOME"
@@ -106,7 +106,7 @@
         '';
       };
       devShells.${system}.default = pkgs.mkShell {
-        packages = [ privateBus runtime settings pkgs.nix pkgs.git pkgs.dbus quickshell pkgs.sway pkgs.grim pkgs.wtype pkgs.foot pkgs.imagemagick pkgs.gitleaks ];
+        packages = [ pkgs.nodejs privateBus runtime settings pkgs.nix pkgs.git pkgs.dbus quickshell pkgs.sway pkgs.grim pkgs.wtype pkgs.foot pkgs.imagemagick pkgs.gitleaks ];
         shellHook = ''
           export PYTHONDONTWRITEBYTECODE=1
           export __EGL_VENDOR_LIBRARY_FILENAMES=${pkgs.mesa}/share/glvnd/egl_vendor.d/50_mesa.json

@@ -6,6 +6,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from file_jobs import remote as job_request, trash_items
 import file_clipboard
 import file_tags
+import file_identity
 
 LIMIT = 5000
 
@@ -45,7 +46,7 @@ def listing(data):
                 directory = entry.is_dir()
                 tags=file_tags.read(entry.path)
                 if not all(tag in [t["id"] for t in tags["tags"]] for tag in tag_terms):continue
-                rows.append(dict(identity={"device":info.st_dev,"inode":info.st_ino},tags=tags["tags"],tagsSupported=tags["supported"],tagsError=tags["error"],name=entry.name, path=entry.path, uri=Path(entry.path).as_uri(), directory=directory,
+                rows.append(dict(identity=file_identity.wire(info),tags=tags["tags"],tagsSupported=tags["supported"],tagsError=tags["error"],name=entry.name, path=entry.path, uri=Path(entry.path).as_uri(), directory=directory,
                                  link=entry.is_symlink(), size=info.st_size, mtime=info.st_mtime,
                                  kind="Folder" if directory else mimetypes.guess_type(entry.name)[0] or "Document"))
             except OSError:

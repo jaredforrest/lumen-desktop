@@ -1,5 +1,8 @@
 const assert=require('node:assert/strict');
-const h=require('../../res/lumen-desktop/shell/FilesHistoryModel.js');
+const fs=require('fs'),vm=require('vm');
+const context={Identity:require('../../res/lumen-desktop/shell/FileIdentity.js'),module:{exports:{}}};
+vm.runInNewContext(fs.readFileSync('res/lumen-desktop/shell/FilesHistoryModel.js','utf8').replace(/^\.import.*$/m,''),context);
+const h={};for(const [name,fn] of Object.entries(context.module.exports))h[name]=(...args)=>JSON.parse(JSON.stringify(fn(...args)));
 const row=(path,inode)=>({path,identity:{device:1,inode}});
 let first=h.commit([],-1,'/first',-1,'one');
 const state={view:'list',query:'needle',selection:[row('/first/a',10)],current:row('/first/a',10),anchor:row('/first/a',10),scroll:{list:{offset:240,anchor:row('/first/a',10),delta:4}}};
@@ -16,3 +19,23 @@ assert.equal(bounded.view,'grid');assert.equal(bounded.query.length,4096);assert
 let many=[];for(let i=0;i<150;i++)many=h.commit(many,many.length-1,'/'+i,-1,String(i)).history;assert.equal(many.length,128);
 const tabs=require('../../res/lumen-desktop/shell/FilesTabModel.js');const saved=tabs.save([tabs.create('a','/first'),tabs.create('b','/second')],'a',{history,historyIndex:0});history[0].presentation.query='changed';assert.equal(saved[0].history[0].presentation.query,'needle');assert.deepEqual(saved[1].history,[]);
 console.log('PASS history transactions, identity reconciliation, independent immutable tabs and bounded presentation');
+const high={device:'1152921504606846977',inode:'1152921504606846979'};
+const large=JSON.parse(JSON.stringify({path:'/large/selected',identity:high}));
+assert.deepEqual(h.ref(large).identity,high);
+const largeState=h.presentation({selection:[large],current:large,anchor:large,scroll:{list:{anchor:large}}});
+assert.deepEqual(h.reconcile(largeState,[{path:'/large/renamed',identity:high}]).paths,['/large/renamed']);
+assert.deepEqual(h.reconcile(largeState,[{path:large.path,identity:{...high,inode:'1152921504606846980'}}]).paths,[]);
+assert.deepEqual(h.reconcile(largeState,[{path:'/large/a',identity:high},{path:'/large/b',identity:high}]).paths,[]);
+assert.deepEqual(h.reconcile(largeState,[large,{path:'/large/link',identity:high}]).paths,[large.path]);
+assert.deepEqual(h.ref(row('/safe',10)).identity,{device:'1',inode:'10'});
+const unsafe={path:'/unsafe',identity:{device:1,inode:2**60}};
+assert.deepEqual(h.reconcile(h.presentation({selection:[unsafe],current:unsafe}),[{path:'/unsafe'}]).paths,[],'unsafe identity must not degrade to path-only');
+console.log('PASS lossless high identities, rename/replacement/hardlinks, safe legacy and unsafe rejection');
+for(const malformed of [0,false,"",NaN,[],{}, {device:1,inode:2,extra:3}]){
+ const invalid={path:'/malformed',identity:malformed};
+ assert.deepEqual(h.reconcile(h.presentation({selection:[invalid],current:invalid}),[{path:invalid.path}]).paths,[],'present malformed identity cannot become path-only');
+ assert.equal(h.locate([{path:invalid.path}],invalid),-1);
+ assert.equal(h.locate([invalid],{path:invalid.path}),-1);
+}
+for(const absent of [undefined,null])assert.deepEqual(h.reconcile(h.presentation({selection:[{path:'/legacy',identity:absent}]}),[{path:'/legacy'}]).paths,['/legacy']);
+console.log('PASS falsy malformed identities never degrade to absent legacy identity');

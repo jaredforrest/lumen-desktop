@@ -5,6 +5,7 @@ followed; filesystems that cannot store user attributes report that limitation.
 """
 import errno,json,os,stat
 from pathlib import Path
+import file_identity
 ATTRIBUTE='user.lumen.tags.v1'
 TAGS=(
     {'id':'red','label':'Red','color':'#e54b4b'},
@@ -45,7 +46,7 @@ def write(path,ids,expected=None):
         info=os.fstat(descriptor)
         if not (stat.S_ISREG(info.st_mode) or stat.S_ISDIR(info.st_mode)):
             raise ValueError('Colour tags can be stored on regular files and folders, without following links')
-        if expected is not None and expected!={'device':info.st_dev,'inode':info.st_ino}:
+        if expected is not None and file_identity.parse(expected)!={'device':info.st_dev,'inode':info.st_ino}:
             raise ValueError('This item changed while its tags were being edited; reopen Colour Tags')
         try:
             if ids:os.setxattr(descriptor,ATTRIBUTE,json.dumps({'version':1,'tags':ids},separators=(',',':')).encode())

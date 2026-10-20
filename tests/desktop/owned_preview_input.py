@@ -117,7 +117,7 @@ try:
             if kind=='image':Image.new('RGB',(320,240),'red').save(target)
             else:
                 target.unlink();video(target.name,'red',2)
-            ipc('refreshRows');wait(lambda:state('files')['ready'] and any(r['path']==str(target) and r['identity']['inode']==target.stat().st_ino for r in state('files')['rows']),'current directory identity');time.sleep(.4)
+            ipc('refreshRows');wait(lambda:state('files')['ready'] and any(r['path']==str(target) and r['identity']['inode']==str(target.stat().st_ino) for r in state('files')['rows']),'current directory identity');time.sleep(.4)
             ipc('startPreview',surface,str(target));before=wait(lambda:(s if (s:=state(surface))['result'].get('type')==kind and s['held'] else None),surface+' '+kind+' original reply');assert before['source']=='',before
             oldIdentity=[target.stat().st_dev,target.stat().st_ino]
             paused=None

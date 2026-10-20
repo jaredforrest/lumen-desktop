@@ -11,6 +11,7 @@ import sys
 from urllib.parse import unquote, urlparse
 
 from file_preview import preview
+import file_identity
 from preview_snapshots import PreviewSnapshots,PreviewRequests
 
 
@@ -38,7 +39,7 @@ class PreviewSession:
         if type(page) is not int or not 1<=page<=100000:raise ValueError('Invalid preview page')
         path=Path(value);info=path.stat(follow_symlinks=False)
         if expected is not None:
-            if not isinstance(expected,dict) or set(expected)!={'device','inode'} or any(type(expected[k]) is not int or expected[k]<0 for k in expected) or (info.st_dev,info.st_ino)!=(expected['device'],expected['inode']):
+            if file_identity.parse(expected)!=dict(device=info.st_dev,inode=info.st_ino):
                 raise ValueError('The selected preview changed')
         observed=self.identity(path,info)
         if token is not None and (not isinstance(token,str) or token!=observed):raise ValueError('The selected preview changed')
@@ -56,14 +57,14 @@ class PreviewSession:
                 retained=self.resources.capture(rendered,self.identity(rendered),lease)
                 result['uri']=retained.as_uri()
             # Renderers and media decoders only receive the retained resource.
-            result.update(path=str(path),name=path.name,title=path.name,size=info.st_size,mtime=info.st_mtime,mime=mimetypes.guess_type(path.name)[0] or result.get("mime",""),sourceFacts=dict(device=info.st_dev,inode=info.st_ino,size=info.st_size,mode=info.st_mode,mtimeNs=info.st_mtime_ns,ctimeNs=info.st_ctime_ns),sourceToken=observed,sourceIdentity=dict(device=info.st_dev,inode=info.st_ino),resourcePath=str(resource),requestedPage=page)
+            result.update(path=str(path),name=path.name,title=path.name,size=info.st_size,mtime=info.st_mtime,mime=mimetypes.guess_type(path.name)[0] or result.get("mime",""),sourceFacts=dict(device=str(info.st_dev),inode=str(info.st_ino),size=info.st_size,mode=info.st_mode,mtimeNs=info.st_mtime_ns,ctimeNs=info.st_ctime_ns),sourceToken=observed,sourceIdentity=file_identity.wire(info),resourcePath=str(resource),requestedPage=page)
             if request_id is not None:
                 published=result.get('uri')
                 self.requests.finish(request_id,[Path(unquote(urlparse(published).path))] if published else [])
             return result
         if stat.S_ISDIR(info.st_mode):
             result=preview(path,page);self.validate(str(path),observed)
-            result.update(sourceToken=observed,sourceIdentity=dict(device=info.st_dev,inode=info.st_ino),requestedPage=page)
+            result.update(sourceToken=observed,sourceIdentity=file_identity.wire(info),requestedPage=page)
             return result
         raise ValueError('This file type cannot be previewed safely')
 

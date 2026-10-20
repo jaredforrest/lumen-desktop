@@ -1,11 +1,14 @@
+.import "FileIdentity.js" as Identity
 // Runtime-only presentation snapshots. No directory preferences are persisted.
 function path(entry){return typeof entry==="string"?entry:entry && entry.path || "";}
-function ref(row){if(!row || typeof row.path!=="string" || row.path.length>4096)return null;const i=row.identity;return {path:row.path,identity:i && Number.isSafeInteger(i.device) && i.device>=0 && Number.isSafeInteger(i.inode) && i.inode>=0?{device:i.device,inode:i.inode}:null};}
+function ref(row){if(!row || typeof row.path!=="string" || row.path.length>4096)return null;return {path:row.path,identity:row.identity!==undefined && row.identity!==null?(Identity.normalize(row.identity) || {invalid:true}):null};}
 function locate(rows,item){
     if(!item)return -1;
-    const exact=rows.findIndex(row=>row.path===item.path && (!item.identity?!row.identity:row.identity && row.identity.device===item.identity.device && row.identity.inode===item.identity.inode));
-    if(exact>=0 || !item.identity)return exact;
-    const candidates=rows.map((row,index)=>({row:row,index:index})).filter(v=>v.row.identity && v.row.identity.device===item.identity.device && v.row.identity.inode===item.identity.inode);
+    const known=Identity.normalize(item.identity);
+    if(item.identity!==undefined && item.identity!==null && !known)return -1;
+    const exact=rows.findIndex(row=>row.path===item.path && (!known?(row.identity===undefined || row.identity===null):Identity.equal(row.identity,known)));
+    if(exact>=0 || !known)return exact;
+    const candidates=rows.map((row,index)=>({row:row,index:index})).filter(value=>Identity.equal(value.row.identity,known));
     return candidates.length===1?candidates[0].index:-1;
 }
 function offset(value){return Number.isFinite(value)?Math.max(0,Math.min(10000000,value)):0;}
