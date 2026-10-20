@@ -130,6 +130,21 @@ try:
   saved=formats.spreadsheet(source);assert marker in json.dumps(saved)
   facts['savedSha256']=formats.digest(source);facts['savedDocument']=saved
   checks.append('Physical cell entry stays unsaved until explicit Save and appears in independently parsed workbook')
+ if a.app=='slides':
+  marker=' Native slide edit'
+  facts['slideBeforeEdit']=control.tool('inspect_slide',dict(index=0))
+  pointer=launch([a.pointer_tool,'pointer','move','0','0'],'pointer',stdin=subprocess.PIPE,text=True)
+  command(['swaymsg','seat','seat0','cursor','set','520','320'])
+  for event in ['m 0.5 0.5','p','r','p','r']:
+   pointer.stdin.write(event+'\n');pointer.stdin.flush();time.sleep(.12)
+  key('-k','End');key('--',marker)
+  facts['typedSlide']=wait(lambda:(value if marker.strip() in json.dumps(value:=control.tool('inspect_slide',dict(index=0))) else None),'physical presentation text acknowledged',provider)
+  assert formats.digest(source)==before
+  key('-M','ctrl','-k','s','-m','ctrl')
+  wait(lambda:formats.digest(source)!=before,'physical presentation Save changes source',provider)
+  saved=formats.presentation(source);assert marker.strip() in json.dumps(saved)
+  facts['savedSha256']=formats.digest(source);facts['savedDocument']=saved
+  checks.append('Physical presentation text edit is acknowledged live and independently parsed after explicit Save')
  command(['grim',str(out/'opened.png')]);(out/'tree-opened.json').write_text(json.dumps(tree(),indent=2));(out/'result.json').write_text(json.dumps(dict(passed=True,phase='startup_only',checks=checks,facts=facts,source=a.source_sha),indent=2))
 finally:
  if keyboard is not None:keyboard.close()
