@@ -128,6 +128,15 @@ class CapturedResourceActions:
         except subprocess.CalledProcessError as exc:raise ResourceUnavailable('dispatch_failed','The application launcher reported a failure') from exc
         return dict(ok=True,dispatched=True)
 
+    def annotation_info(self,key):
+        from image_markup import describe
+        return describe(self.selected(key),lambda:self.selected(key))
+
+    def annotate(self,key,parameters,cancel=None):
+        from image_markup import save_copy
+        entry=self.selected(key)
+        return save_copy(entry,parameters,lambda:self.selected(key),cancel)
+
     def content(self,key,action,parameters,runner=None,cancel=None):
         entry=self.selected(key);resource=entry['resource']
         if action not in ('ocr','cutout') or resource is None:raise ResourceUnavailable('unsupported','This preview does not support that content action')

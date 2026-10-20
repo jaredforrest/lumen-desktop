@@ -95,6 +95,8 @@ def main():
             with session.resources.pin(lease):
                 if operation=='applications':result=session.actions.applications(capability)
                 elif operation in ('open','open-with','set-default'):result=session.actions.dispatch(capability,operation,request.get('application'),choice=request.get('choice'))
+                elif operation=='image-markup-info':result=session.actions.annotation_info(capability)
+                elif operation=='image-markup':result=session.actions.annotate(capability,request.get('parameters') or {},cancel)
                 elif operation in ('ocr','cutout'):result=session.actions.content(capability,operation,request.get('parameters') or {},cancel=cancel)
                 else:raise ResourceUnavailable('invalid_request','Unsupported preview action')
             result.update(id=request['id'],action='resource-action',operation=operation,capability=capability,generation=session.requests.generation)

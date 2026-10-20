@@ -21,13 +21,14 @@ FloatingWindow {
     OwnedPreviewState {id:previewState;active:root.visible
         onReceived:value=>{if(!value.error && root.recognizeOnLoad){root.recognizeOnLoad=false;Qt.callLater(root.recognize);}}
         onActionReceived:value=>{
-            root.actionMessage=value.error || value.message || "";
+            root.actionMessage=value.error || value.warning || value.message || "";
             if(value.error)return;
             if(value.operation==="applications"){root.applications=value.applications || [];root.chooserIntent=Object.assign({},previewState.actionSelection,{choice:value.choice});openWith.open();}
             else if(value.operation==="ocr"){root.ocrText=value.text || value.message || "";recognized.open();}
             else if(value.operation==="cutout"){root.subjectMessage=value.message || "";if(value.subject){root.subjectPath=value.subject;root.subjectFacts=value.subjectFacts;root.subjectCapability=value.capability;subjectSave.currentFile="file://"+Quickshell.env("HOME")+"/Pictures/"+encodeURIComponent(root.path.split("/").pop().replace(/\.[^.]+$/,""))+"-subject.png";}subjectPopup.open();}
         }
     }
+    ImageMarkupDialog {id:markup;service:previewState;ownerWidth:root.width;ownerHeight:root.height}
     property string ocrText:""
     property bool recognizeOnLoad:false
     function recognize(captured){const parameters={page:root.page};if(root.result.type==="media")parameters.seconds=previewContent.position/1000;previewState.invoke(captured || previewState.actionSelection,"ocr",parameters);}
@@ -44,7 +45,7 @@ FloatingWindow {
     onKeyActiveChanged:observeOwnedFocus()
     onReturnToChanged:if(keyActive)observeOwnedFocus()
     Component.onDestruction:if(returnTo && returnTo.shell.ownedContext)returnTo.shell.ownedContext.close(root)
-    function show(value,owner){if(owner && owner.shell.claimPopup)owner.shell.claimPopup("");path=value;subjectPath="";subjectMessage="";actionMessage="";chooserIntent=null;menuIntent=null;subjectSave.close();subjectSaveIntent=null;openWith.close();recognized.close();subjectPopup.close();page=1;returnTo=owner;selectedIdentity=owner && owner.current && owner.current.path===value?owner.current.identity:null;visible=true;previewState.request(path,page,selectedIdentity,null);if(owner)owner.shell.focusOwnedWindow("Quick Look");Qt.callLater(()=>{content.forceActiveFocus();if(content.Window.window)content.Window.window.requestActivate();});}
+    function show(value,owner){if(owner && owner.shell.claimPopup)owner.shell.claimPopup("");markup.close();path=value;subjectPath="";subjectMessage="";actionMessage="";chooserIntent=null;menuIntent=null;subjectSave.close();subjectSaveIntent=null;openWith.close();recognized.close();subjectPopup.close();page=1;returnTo=owner;selectedIdentity=owner && owner.current && owner.current.path===value?owner.current.identity:null;visible=true;previewState.request(path,page,selectedIdentity,null);if(owner)owner.shell.focusOwnedWindow("Quick Look");Qt.callLater(()=>{content.forceActiveFocus();if(content.Window.window)content.Window.window.requestActivate();});}
     function saveSubject(captured){if(captured){subjectSaveIntent=JSON.parse(JSON.stringify(captured));subjectSave.open();}}
     function subjectAction(action,intent,destination){
         if(!intent || !previewState.actionSelection || intent.capability!==previewState.actionSelection.capability)return;
@@ -67,6 +68,7 @@ FloatingWindow {
         DialogButton {id:more;anchors.right:parent.right;anchors.rightMargin:14;y:12;width:32;text:"•••";Accessible.name:"Preview actions";onClicked:previewActions.popup()}
         Menu {id:previewActions
             onAboutToShow:root.menuIntent=previewState.actionSelection
+            MenuItem {text:"Annotate a Copy…";enabled:!!root.menuIntent && !previewState.actionBusy && root.result.type==="image" && ["image/png","image/jpeg","image/webp"].includes(root.result.mime);onTriggered:markup.begin(root.result,root.menuIntent)}
             MenuItem {text:"Open With…";enabled:!!root.menuIntent && !previewState.actionBusy;onTriggered:previewState.invoke(root.menuIntent,"applications",{})}
             MenuItem {text:previewState.actionOperation==="ocr"?"Cancel Text Recognition":"Copy Text…";enabled:previewState.actionOperation==="ocr" || (!!root.menuIntent && !previewState.actionBusy && ["image","media"].includes(root.result.type));onTriggered:{if(previewState.actionOperation==="ocr")previewState.cancelContent();else root.recognize(root.menuIntent);}}
             MenuItem {text:previewState.actionOperation==="cutout"?"Cancel Extraction":"Lift Subject…";enabled:previewState.actionOperation==="cutout" || (!!root.menuIntent && !previewState.actionBusy && (root.result.mime || "").startsWith("image/"));onTriggered:{if(previewState.actionOperation==="cutout")previewState.cancelContent();else root.extract(root.menuIntent);}}

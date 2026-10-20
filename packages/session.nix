@@ -172,7 +172,7 @@ let
         export GLOBAL_MENU_PYTHON=${menuRuntime}/bin/global-menu-python
         export GLOBAL_MENU_BRIDGE=${menuRuntime}/share/global-menu/bridge.py
         export QT_QPA_PLATFORMTHEME=gnome
-        export QT_PLUGIN_PATH=${qtTheme}/${pkgs.qt6.qtbase.qtPluginPrefix}:${qtTheme5}/${pkgs.qt5.qtbase.qtPluginPrefix}:${pkgs.qt6.qtmultimedia}/lib/qt-6/plugins:"''${QT_PLUGIN_PATH:-}"
+        export QT_PLUGIN_PATH=${qtTheme}/${pkgs.qt6.qtbase.qtPluginPrefix}:${qtTheme5}/${pkgs.qt5.qtbase.qtPluginPrefix}:${pkgs.qt6.qtmultimedia}/lib/qt-6/plugins:${pkgs.qt6.qtimageformats}/${pkgs.qt6.qtbase.qtPluginPrefix}:"''${QT_PLUGIN_PATH:-}"
         export QML_IMPORT_PATH=${pkgs.qt6.qtmultimedia}/lib/qt-6/qml:"''${QML_IMPORT_PATH:-}"
         unset NO_AT_BRIDGE GTK_A11Y
         export QT_LINUX_ACCESSIBILITY_ALWAYS_ON=1

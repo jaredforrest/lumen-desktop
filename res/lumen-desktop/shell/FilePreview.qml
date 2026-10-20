@@ -32,7 +32,7 @@ Item {
             id:previewImage
             width: picture.contentWidth; height: picture.contentHeight
             source: root.active && picture.visible ? root.result.uri || "" : ""
-            sourceSize: Qt.size(2400,2400); fillMode: Image.PreserveAspectFit; asynchronous: true
+            sourceSize: Qt.size(2400,2400); autoTransform: true; fillMode: Image.PreserveAspectFit; asynchronous: true
             Accessible.name: root.result.title || "File preview"
             PanelLabel { anchors.centerIn: parent; visible: parent.status === Image.Error; text: "Preview unavailable" }
         }
