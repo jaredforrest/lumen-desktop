@@ -2,6 +2,7 @@
 import argparse,hashlib,json,os,re,shutil,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
 from private_native_bus import start_private_bus
+from fixture_resources import close_reaped_pipes
 p=argparse.ArgumentParser();p.add_argument('--launcher',type=Path,required=True);p.add_argument('--sway',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--effects',action='store_true');p.add_argument('--surfaces',nargs='+',choices=['remote','help','session','panel','calendar','notification','dock'],default=['remote','help','session','panel','calendar','notification','dock']);a=p.parse_args();a.output.mkdir(parents=True,exist_ok=False)
 repo=Path(__file__).resolve().parents[2];processes=[];original_socket=os.environ.get('SWAYSOCK')
 with tempfile.TemporaryDirectory(prefix='lumen-materials-') as temporary:
@@ -211,3 +212,4 @@ ShellRoot {
    except sp.TimeoutExpired:os.killpg(proc.pid,signal.SIGKILL);proc.wait(timeout=4)
    for stream in (proc.stdin,proc.stdout,proc.stderr):
     if stream and not stream.closed:stream.close()
+  close_reaped_pipes(processes)
