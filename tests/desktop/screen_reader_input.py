@@ -1,10 +1,10 @@
 """Real Orca speech/events over production owned controls in a disposable session."""
-import argparse,hashlib,json,os,re,shutil,subprocess as sp,sys,tempfile,time
+import argparse,hashlib,json,shlex,os,re,shutil,subprocess as sp,sys,tempfile,time
 from pathlib import Path
 from screen_reader_speech import configure,utterances,source_proof,transport_messages,plain_text
 from private_native_bus import start_private_bus
 from fixture_resources import close_reaped_pipes
-p=argparse.ArgumentParser();p.add_argument('--launcher',type=Path,required=True);p.add_argument('--sway',required=True);p.add_argument('--orca',type=Path,required=True);p.add_argument('--dispatcher',type=Path,required=True);p.add_argument('--dispatcher-source',type=Path,required=True);p.add_argument('--at-spi-prefix',type=Path,default=os.environ.get('LUMEN_TEST_AT_SPI'));p.add_argument('--output',type=Path,required=True);p.add_argument('--schema-compiler',required=True);p.add_argument('--isolation-tool',required=True);p.add_argument('--inside',action='store_true');p.add_argument('--effects',action='store_true');a=p.parse_args();
+p=argparse.ArgumentParser();p.add_argument('--launcher',type=Path,required=True);p.add_argument('--sway',required=True);p.add_argument('--orca',type=Path,required=True);p.add_argument('--dispatcher',type=Path,required=True);p.add_argument('--dispatcher-source',type=Path,required=True);p.add_argument('--at-spi-prefix',type=Path,default=os.environ.get('LUMEN_TEST_AT_SPI'));p.add_argument('--output',type=Path,required=True);p.add_argument('--schema-compiler',required=True);p.add_argument('--isolation-tool',required=True);p.add_argument('--inside',action='store_true');p.add_argument('--reader-command',type=Path);p.add_argument('--lock-client',type=Path);p.add_argument('--effects',action='store_true');a=p.parse_args();
 if not a.inside:
  live=Path('/run/user/'+str(os.getuid())+'/at-spi/bus_0');before=live.stat().st_ino if live.exists() else None
  result=sp.run([a.isolation_tool,'--user','--map-current-user','--pid','--fork','--mount-proc','--kill-child','--net',sys.executable,str(Path(__file__).resolve()),*sys.argv[1:],'--inside'],timeout=180)
@@ -52,7 +52,7 @@ with tempfile.TemporaryDirectory(prefix='lumen-reader-') as private:
   for event in ('object:','window:','focus:'):registry.RegisterEvent(*([event]+[[] if kind=='as' else '' for kind in inputs[1:]]),signature=''.join(inputs),timeout=2)
   speech=configure(out,a.dispatcher,shutil.which('true'));env['SPEECHD_ADDRESS']=speech['address'];launch(speech['command'],'speech.log',dict(env,PATH=str(speech['emptyBin'])));wait(lambda:speech['socket'].exists(),'private speech socket')
   schemas=out/'schemas';schemas.mkdir();original=next((a.orca/'share/gsettings-schemas').glob('*/glib-2.0/schemas/*.xml'));shutil.copy(original,schemas/original.name);(schemas/'fixture.gschema.override').write_text("[org.gnome.Orca.Braille]\nenabled=false\n[org.gnome.Orca.Sound]\nenabled=false\n[org.gnome.Orca.Speech]\nsynthesizer='observer'\n");call(a.schema_compiler,str(schemas));env['GSETTINGS_SCHEMA_DIR']=str(schemas)
-  config=out/'sway.conf';config.write_text('output HEADLESS-1 resolution 1100x1000\nseat seat0 fallback true\n');launch([a.sway,'--unsupported-gpu','-c',str(config)],'sway.log');env['SWAYSOCK']=str(wait(lambda:next(runtime.glob('sway-ipc.*.sock'),None),'private compositor'));env['WAYLAND_DISPLAY']=wait(lambda:next((v.name for v in runtime.glob('wayland-*') if not v.name.endswith('.lock')),None),'private display');launch(['wtype','-s','30000'],'keyboard.log')
+  config=out/'sway.conf';config.write_text('output HEADLESS-1 resolution 1100x1000\nseat seat0 fallback true\n'+('bindsym Mod4+Control+F8 exec '+shlex.quote(str(a.reader_command))+' where-am-i > '+shlex.quote(str(out/'shortcut-result.json'))+'\n' if a.reader_command else ''));launch([a.sway,'--unsupported-gpu','-c',str(config)],'sway.log');env['SWAYSOCK']=str(wait(lambda:next(runtime.glob('sway-ipc.*.sock'),None),'private compositor'));env['WAYLAND_DISPLAY']=wait(lambda:next((v.name for v in runtime.glob('wayland-*') if not v.name.endswith('.lock')),None),'private display');launch(['wtype','-s','30000'],'keyboard.log')
   fixture=out/'shell.qml';fixture.write_text('''import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -78,7 +78,10 @@ ShellRoot {id:root;property var launched:[];property var finalActions:[]
   function restore():void{main.visible=true;launcher.visible=true;centre.visible=false;launcher.focusSearch();}
  }
 }''')
-  (out/'runtime-manifest.json').write_text(json.dumps(dict(launcher=str(a.launcher),launcherSha256=hashlib.sha256(a.launcher.read_bytes()).hexdigest(),fixtureSha256=hashlib.sha256(fixture.read_bytes()).hexdigest(),installedComponents={name:dict(path=str(source/name),sha256=hashlib.sha256((source/name).read_bytes()).hexdigest()) for name in ('AppLauncher.qml','NotificationCentre.qml','NotificationCard.qml','SessionOptions.qml','StatusMessage.qml','DialogButton.qml')},providers='Synthetic application/notification/lifecycle boundary only; production controls imported unchanged',reader=str(a.orca),atspi=str(a.at_spi_prefix),dispatcher=str(a.dispatcher),namespace='Private PID, mount/proc, user and network namespaces'),indent=2))
+  command_proof=None
+  if a.reader_command:
+   wrapper=a.reader_command.read_text();helper=Path(re.search(r'/nix/store/[^\s]+/runtime/reader_commands.py',wrapper).group(0));command_proof=dict(path=str(a.reader_command),wrapperSha256=hashlib.sha256(a.reader_command.read_bytes()).hexdigest(),helper=str(helper),helperSha256=hashlib.sha256(helper.read_bytes()).hexdigest())
+  (out/'runtime-manifest.json').write_text(json.dumps(dict(launcher=str(a.launcher),launcherSha256=hashlib.sha256(a.launcher.read_bytes()).hexdigest(),fixtureSha256=hashlib.sha256(fixture.read_bytes()).hexdigest(),installedComponents={name:dict(path=str(source/name),sha256=hashlib.sha256((source/name).read_bytes()).hexdigest()) for name in ('AppLauncher.qml','NotificationCentre.qml','NotificationCard.qml','SessionOptions.qml','StatusMessage.qml','DialogButton.qml')},providers='Synthetic application/notification/lifecycle boundary only; production controls imported unchanged',reader=str(a.orca),readerCommand=command_proof,lockClient=str(a.lock_client) if a.lock_client else None,atspi=str(a.at_spi_prefix),dispatcher=str(a.dispatcher),namespace='Private PID, mount/proc, user and network namespaces'),indent=2))
   reader=launch([str(a.orca/'bin/orca'),'--speech-system=speechdispatcherfactory','--debug-file='+str(out/'orca-debug.log')],'orca.log')
   def reader_ready():
    assert reader.poll() is None,'Actual Orca exited before readiness'
@@ -109,6 +112,9 @@ ShellRoot {id:root;property var launched:[];property var finalActions:[]
    (out/'last-tree.json').write_text(json.dumps(rows,indent=2));return rows
   def named(value):return next(((ref,row) for ref,row in tree() if row['name']==value),None)
   def messages():return [message for message in transport_messages(speech['protocol'].read_text()) if ':Orca:' in message['client']]
+  def reader_action(command,environment=None):
+   result=sp.run([str(a.reader_command),command],env=environment or env,text=True,capture_output=True,timeout=5)
+   return result.returncode,json.loads(result.stdout)
   def spoken(value,after=0):return any(value in plain_text(message['text']) for message in messages()[after:])
   def observe_idle(seconds):
    deadline=time.monotonic()+seconds
@@ -122,6 +128,16 @@ ShellRoot {id:root;property var launched:[];property var finalActions:[]
   checks.append('physical search focus speaks results in traversal order')
   query=wait(lambda:named('Search applications, files, actions and clipboard history'),'query accessible')[0]
   text=interface(query,'org.a11y.atspi.Text');caret=int(interface(query,'org.freedesktop.DBus.Properties').Get('org.a11y.atspi.Text','CaretOffset',timeout=2));selected=state()['selected']
+  if a.reader_command:
+   assert a.lock_client,'Reader command acceptance requires an actual private lock peer'
+   checkpoint=len(messages());call('wtype','-M','logo','-M','ctrl','-k','F8','-m','ctrl','-m','logo');wait(lambda:(out/'shortcut-result.json').exists() and (out/'shortcut-result.json').stat().st_size>0,'actual private consumer key dispatch');assert json.loads((out/'shortcut-result.json').read_text())['accepted'];wait(lambda:spoken('Sentinel Beta',checkpoint),'actual typed reader current-object command')
+   checkpoint=len(messages());assert interface(query,'org.a11y.atspi.Component').GrabFocus(timeout=2);wait(lambda:spoken('Search applications, files, actions and clipboard history',checkpoint),'reader focused owned text')
+   assert interface(query,'org.a11y.atspi.Text').SetCaretOffset(0,timeout=2)
+   checkpoint=len(messages());code,result=reader_action('read-all');assert code==0 and result['accepted'];wait(lambda:spoken('Sentinel',checkpoint),'actual typed reader read-all text')
+   cancel_offset=len(speech['protocol'].read_text());code,result=reader_action('stop');assert code==0 and result['accepted'];wait(lambda:'CANCEL' in speech['protocol'].read_text()[cancel_offset:],'actual typed reader speech cancel transport')
+   assert interface(query,'org.a11y.atspi.Text').SetCaretOffset(caret,timeout=2)
+   beta=wait(lambda:named('Sentinel Beta'),'captured result after reader command')[0];checkpoint=len(messages());assert interface(beta,'org.a11y.atspi.Component').GrabFocus(timeout=2);wait(lambda:spoken('Sentinel Beta',checkpoint),'restored production result focus')
+   checks.append('typed owned reader commands produce actual current-object/read-all speech and cancel transport')
   ipc('update');wait(lambda:'fixture.gamma' in state()['results'],'actual provider update')
   assert state()['query']=='Sentinel' and state()['selected']==selected,(selected,state())
   assert int(interface(query,'org.freedesktop.DBus.Properties').Get('org.a11y.atspi.Text','CaretOffset',timeout=2))==caret
@@ -166,6 +182,15 @@ ShellRoot {id:root;property var launched:[];property var finalActions:[]
   wait(lambda:spoken('Search applications, files, actions and clipboard history',return_checkpoint),'reader speaks restored opener')
   assert state()['launched']==[] and state()['finalActions']==[]
   checks.append('production modal context error and keyboard cancellation are spoken without final action')
+  if a.reader_command:
+   with (out/'command-lock-peer.log').open('w') as stream:lock_peer=sp.Popen([str(a.lock_client)],env=env,stdin=sp.PIPE,stdout=stream,stderr=sp.STDOUT,text=True)
+   processes.append(lock_peer);wait(lambda:json.loads(call('swaymsg','-r','-t','get_version'))['lumen_session_lock']['locked'],'actual native locked authority')
+   code,result=reader_action('read-all');assert code==1 and result['reason']=='session_unavailable'
+   code,result=reader_action('where-am-i');assert code==1 and result['reason']=='session_unavailable'
+   code,result=reader_action('stop');assert code==0 and result['accepted'];checks.append('actual locked compositor denies reader content commands while allowing safe stop')
+   lock_peer.stdin.write('u\n');lock_peer.stdin.flush();lock_peer.wait(timeout=5);wait(lambda:not json.loads(call('swaymsg','-r','-t','get_version'))['lumen_session_lock']['locked'],'actual native unlock')
+   missing=dict(env,SWAYSOCK=str(runtime/'missing-compositor.sock'));code,result=reader_action('where-am-i',missing);assert code==1 and result['reason']=='session_unavailable'
+   code,result=reader_action('stop',missing);assert code==0 and result['accepted'];checks.append('disconnected compositor fails closed for reading but preserves safe owned stop')
   reader.terminate();reader.wait(timeout=5)
   debug=(out/'orca-debug.log').read_text();(out/'initial-speech.json').write_text(json.dumps(dict(state=state(),utterances=utterances(debug),events=events),indent=2));assert any('Sentinel Alpha' in value for value in utterances(debug)) and any('Sentinel Beta' in value for value in utterances(debug)),'No owned result speech';checks.append('real Orca speech from production owned search')
   accepted=messages();ordered=['Sentinel Alpha','Sentinel Beta','Expand stack','Sentinel Orchard','Sentinel Harbour','Restart confirmation','Cancel','Continue','Application observation is unavailable'];positions=[next(index for index,message in enumerate(accepted) if value in plain_text(message['text'])) for value in ordered];assert positions==sorted(positions),(ordered,positions)

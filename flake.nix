@@ -36,6 +36,8 @@
         default = session.shellLauncher;
         shell = session.shellLauncher;
         desktop-action = session.desktopAction;
+        reader-command = session.readerCommand;
+        test-reader-command = import ./packages/reader-commands.nix { inherit pkgs; enabled = true; };
         app-launcher = session.appLauncher;
         settings-adapter = settings;
         authorization-agent = import ./packages/lumen-authorization-agent.nix { inherit pkgs; };
@@ -57,6 +59,7 @@
         test-window-relationships = import ./tests/desktop/window_relationship_client.nix { inherit pkgs; };
         test-constraint-client = import ./tests/desktop/constraint_client.nix { inherit pkgs; };
         test-typography = import ./tests/desktop/typography_probe.nix { inherit pkgs; };
+        test-office-tools = pkgs.poppler-utils;
         shell-runtime = quickshell;
         test-pointer = import ./tests/desktop/pointer_driver.nix { inherit pkgs; };
         inherit (office) wordcraft gridcraft deckcraft;

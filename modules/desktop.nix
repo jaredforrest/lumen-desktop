@@ -17,6 +17,11 @@ in {
     displayName = lib.mkOption { type = lib.types.str; default = cfg.user; description = "Name shown by the greeter and lock screen."; };
     settingsPackage = lib.mkOption { type = lib.types.package; description = "Host settings command implementing the settings JSON contract."; };
     shortcuts = {
+      readerBindings = lib.mkOption {
+        default = {};
+        type = lib.types.attrsOf (lib.types.enum [ "where-am-i" "read-all" "stop" ]);
+        description = "Explicit consumer key chords for the opt-in typed reader adapter. No keys are reserved by default.";
+      };
       applicationBindings = lib.mkOption {
         default = [];
         description = "Selected application adapter shortcuts used for overlap validation; does not rewrite application input.";
@@ -66,6 +71,7 @@ in {
       bluetooth.enable = lib.mkEnableOption "Bluetooth UI integration";
       networkLocations.enable = lib.mkEnableOption "network location providers supplied by the host GVfs service";
       accessibility.enable = lib.mkEnableOption "desktop accessibility bus";
+      readerCommands.enable = lib.mkEnableOption "typed commands to an already running session reader";
       replaceExistingShell = lib.mkEnableOption "replacement of existing bar and notification services";
     };
   };
@@ -93,6 +99,7 @@ in {
   let
     session = import ../packages/session.nix {
       inherit pkgs settingsPackage assets;
+      readerCommandsEnabled = cfg.integrations.readerCommands.enable;
       networkProviderPackage = if cfg.integrations.networkLocations.enable then hostGvfsPackage else null;
       emojiFamily = cfg.appearance.emojiFamily;
       clipboardRetentionSeconds = if cfg.integrations.clipboard.retentionSeconds == null then 3600 else cfg.integrations.clipboard.retentionSeconds;
@@ -104,8 +111,10 @@ in {
       swayPackage = hostSwayPackage;
       rofiPackage = config.programs.rofi.package;
     };
-    inherit (session) hotCorners spaces wallpaperPreferences inputPreferences networkLocations quickshell nixSettings appearance qtTheme qtTheme5 palette menuRuntime personalServices fileClipboard displayLayout fileOperations focusWindow desktopState clipboardHistory launchApp shellLauncher audioKey mediaKey notifications menuCommand desktopDoctor desktopAction appLauncher filesLauncher remoteDesktopLauncher calendarLauncher settingsLauncher;
-    desktopKeybindings = {
+    inherit (session) readerCommand hotCorners spaces wallpaperPreferences inputPreferences networkLocations quickshell nixSettings appearance qtTheme qtTheme5 palette menuRuntime personalServices fileClipboard displayLayout fileOperations focusWindow desktopState clipboardHistory launchApp shellLauncher audioKey mediaKey notifications menuCommand desktopDoctor desktopAction appLauncher filesLauncher remoteDesktopLauncher calendarLauncher settingsLauncher;
+    readerBindings = lib.optionalAttrs cfg.integrations.readerCommands.enable (lib.mapAttrs (_: command:
+      "exec ${readerCommand}/bin/lumen-reader-command ${command}") cfg.shortcuts.readerBindings);
+    baseDesktopKeybindings = {
       "Mod4+Tab" = "exec ${desktopAction}/bin/lumen-desktop-action app-switcher";
       "Mod4+Shift+Tab" = "exec ${desktopAction}/bin/lumen-desktop-action app-switcher-reverse";
       "--release Super_L" = "exec ${desktopAction}/bin/lumen-desktop-action app-switcher-commit";
@@ -134,12 +143,13 @@ in {
       "XF86AudioNext" = "exec ${mediaKey}/bin/lumen-media-key next";
       "XF86AudioPrev" = "exec ${mediaKey}/bin/lumen-media-key previous";
     } // builtins.listToAttrs (map (n: { name = "Mod4+Mod1+F${toString n}"; value = "exec ${menuCommand}/bin/lumen-menu-command slot ${toString n}"; }) (lib.range 1 12));
+    desktopKeybindings = baseDesktopKeybindings // readerBindings;
     shortcutDefaults = (builtins.fromJSON (builtins.readFile ../res/lumen-desktop/runtime/shortcut-defaults.json)).bindings;
     effectiveShortcutBindings = lib.mapAttrsToList (key: command:
       let known = lib.findFirst (item: item.chord == key) null shortcutDefaults;
           owned = builtins.hasAttr key desktopKeybindings && command == desktopKeybindings.${key};
       in { id = "sway:" + key; chord = key; scope = "global";
-        action = if owned && known != null then known.action else "consumer.binding";
+        action = if owned && builtins.hasAttr key readerBindings then "reader." + cfg.shortcuts.readerBindings.${key} else if owned && known != null then known.action else "consumer.binding";
         owner = if owned then "desktop" else "consumer";
         fallback = if owned && known != null then known.fallback else "Consumer-defined binding";
       }) (lib.filterAttrs (_: command: command != null) config.wayland.windowManager.sway.config.keybindings);
@@ -153,6 +163,10 @@ in {
       python3 ${../res/lumen-desktop/runtime/shortcuts.py} ${shortcutRegistryInput} --output "$out"
     '';
   in {
+    assertions = [{
+      assertion = builtins.intersectAttrs readerBindings baseDesktopKeybindings == {};
+      message = "Reader command bindings must not replace desktop shortcuts.";
+    }];
     # Session UI only: the consumer retains all authentication policy.
     wayland.windowManager.sway.config.startup = lib.optionals cfg.integrations.authorization.enable [
       { command = "${authorizationAgent}/libexec/polkit-gnome-authentication-agent-1"; }
@@ -248,7 +262,7 @@ in {
     qt.enable = true;
     home.sessionVariables.QT_QPA_PLATFORMTHEME = "gnome";
     systemd.user.sessionVariables.QT_QPA_PLATFORMTHEME = "gnome";
-    home.packages = [ networkLocations clipboardHistory desktopState remoteDesktopLauncher auth.lock calendarLauncher personalServices qtTheme qtTheme5 desktopDoctor menuCommand desktopAction launchApp notifications audioKey pkgs.trash-cli filesLauncher settingsLauncher pkgs.ddcutil pkgs.foot quickshell shellLauncher appearance nixSettings appLauncher ];
+    home.packages = [ readerCommand networkLocations clipboardHistory desktopState remoteDesktopLauncher auth.lock calendarLauncher personalServices qtTheme qtTheme5 desktopDoctor menuCommand desktopAction launchApp notifications audioKey pkgs.trash-cli filesLauncher settingsLauncher pkgs.ddcutil pkgs.foot quickshell shellLauncher appearance nixSettings appLauncher ];
     # Consumers explicitly opt in to replacing competing bar services.
     programs.waybar.systemd.enable = lib.mkIf cfg.integrations.replaceExistingShell (lib.mkForce false);
     wayland.windowManager.sway.config.output."*".bg = lib.mkDefault "${assets}/shell/wallpaper.png fill";

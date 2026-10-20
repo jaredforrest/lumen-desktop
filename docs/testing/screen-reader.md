@@ -37,7 +37,54 @@ proves canonical calls and distinct deprecated-alias behavior. Original/correcte
 GIR hashes are retained. No deprecation flags or Python warning filters are removed.
 
 This does not establish braille, audible pronunciation, other toolkit usability,
-or global reader modifier-key grabs. Orca's supported command bus can be used by a
-separate optional typed shortcut adapter, but that is not implemented here. Such
-an adapter needs a fixed command allowlist, exact reader owner/lifecycle checks,
-and fail-closed lock/unknown-session handling before it can be enabled.
+or global reader modifier-key grabs. The optional adapter below supplies separate
+compositor command routing with owner and lock gates; it does not implement the
+reader's own modifier-grab protocol.
+
+## Optional typed command adapter
+
+The `reader-command` package is disabled by default. It never starts, replaces,
+kills or configures a reader. Consumers can opt in and select their own chords:
+
+```nix
+services.lumen-desktop.integrations.readerCommands.enable = true;
+services.lumen-desktop.shortcuts.readerBindings = {
+  "Mod4+Control+F8" = "where-am-i";
+  "Mod4+Control+F9" = "read-all";
+  "--locked Mod4+Control+F10" = "stop";
+};
+```
+
+No chords are consumed when disabled, and none are selected by default. Reader
+bindings cannot replace the desktop's own bindings; the existing effective
+shortcut registry also checks physical aliases and consumer reservations. A
+compatible reader must already own `org.gnome.Orca.Service` on the existing Unix
+session bus. The adapter does not activate that name or change accessibility
+settings. The tested provider is Orca 50.2.
+
+`lumen-reader-command` accepts exactly one of `where-am-i`, `read-all`, or `stop`.
+Fixed server-side module/action pairs are checked against the provider's supported
+command list. The adapter captures its unique bus owner, same-user credentials,
+PID/start identity, and checks them before and after a single dispatch. Every
+D-Bus call has a remaining budget from a 2.5-second deadline; a separate pinned
+4-second process guard also bounds connection/authentication stalls.
+
+Reading commands require the native compositor's known-unlocked authority and
+unchanged socket/owner/revision at dispatch. Locked, unknown, disconnected or
+changed authority refuses them. Safe stop retains the reader identity checks but
+works even when lock authority is locked or unavailable. It cannot read context.
+
+JSON reports `accepted`, a fixed reason on failure, and whether command dispatch
+was attempted. A missing reply after dispatch is `dispatch_unknown`; there is no
+automatic retry. If the outer process guard terminates without JSON, the outcome
+is also uncertain. D-Bus and compositor lock changes are not one transaction:
+these are predispatch gates and post-acknowledgement checks, not revocation of an
+already issued command or a promise of silence after a later lock. A persistent
+lock-triggered reader cancellation mechanism remains a separate capability.
+
+Private acceptance covers actual supported reader commands and accepted speech,
+a physical consumer key route, actual native lock/unlock, and safe stop with a
+missing compositor. Synthetic private-bus tests separately cover owner retirement,
+lock changes during discovery, withheld replies, ambiguous acknowledgements and
+no replay. This does not claim the reader's own global modifier-grab protocol
+works; the adapter uses explicitly configured compositor bindings.
