@@ -114,6 +114,7 @@ jobs:
           done
           bash tests/ci/run-native.sh native_hot_corners nix develop --command desktop-test-python tests/desktop/native_hot_corners.py --sway "$PWD/artifacts/compositor/bin/sway" --pointer "$PWD/artifacts/pointer/bin/wlrctl" --keyboard wtype --lock "$PWD/artifacts/session-lock/bin/lumen-test-session-lock" --output artifacts/hot-corners
           bash tests/ci/run-native.sh window_frames_render nix develop --command desktop-test-python tests/desktop/window_frames_render.py --core-only --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/native-layouts
+          bash tests/ci/run-native.sh icon_render nix develop --command desktop-test-python tests/desktop/icon_render.py --assets "$PWD/res/lumen-desktop/shell" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/icon-grid
           bash tests/ci/run-native.sh mixed_output_scale_native nix develop --command desktop-test-python tests/desktop/mixed_output_scale_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/mixed-output-scale-basic
           bash tests/ci/run-native.sh mixed_output_scale_native nix develop --command desktop-test-python tests/desktop/mixed_output_scale_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --effects --output artifacts/mixed-output-scale-effects
           for variant in basic effects; do
@@ -173,6 +174,7 @@ jobs:
             artifacts/shell
             artifacts/interactions
             artifacts/native-layouts
+            artifacts/icon-grid
             artifacts/content-clipping-*
             artifacts/consumer-fit-*
             artifacts/mixed-output-scale-*
