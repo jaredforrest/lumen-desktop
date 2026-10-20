@@ -21,11 +21,15 @@ class Observer:
   values={key:bounded_call(properties.Get,'org.a11y.atspi.Accessible',key,deadline=deadline) for key in ('Name','Description')};words=[int(value) for value in bounded_call(accessible.GetState,deadline=deadline)]
   return dict(reference=list(map(str,reference)),pid=self.pid(reference[0],deadline),name=str(values.get('Name','')),description=str(values.get('Description','')),role=str(bounded_call(accessible.GetRoleName,deadline=deadline)),states={name:bool(words[index//32]&(1<<(index%32))) if index//32<len(words) else False for name,index in STATES.items()})
  def diagnostics(self):
-  rows=[]
-  for owner in self.bus.list_names():
+  deadline=time.monotonic()+5;rows=[]
+  names=bounded_call(self.interface(('org.freedesktop.DBus','/org/freedesktop/DBus'),'org.freedesktop.DBus').ListNames,deadline=deadline)
+  if len(names)>256:raise ValueError('Private accessibility owner list exceeds count budget')
+  for owner in names:
    if not str(owner).startswith(':'):continue
-   try:rows.append(dict(owner=str(owner),pid=self.pid(owner)))
+   try:rows.append(dict(owner=str(owner),pid=self.pid(owner,deadline)))
    except dbus.DBusException as error:rows.append(dict(owner=str(owner),unavailable=str(error)))
+   if time.monotonic()>deadline:raise ValueError('Private accessibility observation exceeded its budget')
+   if len(json.dumps(rows).encode())>1024**2:raise ValueError('Private accessibility owner records exceed byte budget')
   return rows
  def snapshot(self):
   pending=[(('org.a11y.atspi.Registry','/org/a11y/atspi/accessible/root'),[])];seen=set();rows=[];deadline=time.monotonic()+5

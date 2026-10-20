@@ -1,6 +1,7 @@
 """Absolute private observation budgets apply to every provider roundtrip."""
 import sys,unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock,patch
 sys.path.insert(0,str(Path(__file__).parent/'application_fixture'))
 from accessibility import bounded_call,Observer
@@ -23,6 +24,20 @@ class Budget(unittest.TestCase):
   observer=Observer.__new__(Observer);observer.describe=Mock(side_effect=dbus.DBusException('unavailable'))
   with patch('accessibility.time.monotonic',side_effect=[0,0,5.01]):
    with self.assertRaisesRegex(ValueError,'budget'):observer.snapshot()
+ def test_owner_list_roundtrip_is_bounded(self):
+  observer=Observer.__new__(Observer);method=Mock(return_value=[]);observer.interface=Mock(return_value=SimpleNamespace(ListNames=method))
+  with patch('accessibility.time.monotonic',side_effect=[0,0,.1]):self.assertEqual(observer.diagnostics(),[])
+  self.assertEqual(method.call_args.kwargs['timeout'],.5)
+ def test_oversized_owner_list_rejected_before_pid_probe(self):
+  observer=Observer.__new__(Observer);observer.interface=Mock(return_value=SimpleNamespace(ListNames=Mock(return_value=[':1.'+str(i) for i in range(257)])));observer.pid=Mock()
+  with patch('accessibility.time.monotonic',side_effect=[0,0,.1]):
+   with self.assertRaisesRegex(ValueError,'count budget'):observer.diagnostics()
+  observer.pid.assert_not_called()
+ def test_late_owner_error_does_not_escape_budget(self):
+  observer=Observer.__new__(Observer);observer.interface=Mock(return_value=SimpleNamespace(ListNames=Mock(return_value=[':1.2'])));observer.pid=Mock(side_effect=dbus.DBusException('late'))
+  with patch('accessibility.time.monotonic',side_effect=[0,0,.1,5.01]):
+   with self.assertRaisesRegex(ValueError,'budget'):observer.diagnostics()
+  self.assertEqual(observer.pid.call_args.args,(':1.2',5))
  def test_individual_cap_unchanged(self):
   method=Mock(return_value=True)
   with patch('accessibility.time.monotonic',side_effect=[1,1.2]):self.assertTrue(bounded_call(method,deadline=5))
