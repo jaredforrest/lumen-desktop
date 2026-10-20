@@ -26,7 +26,7 @@ ShellRoot {
  id:root
  property var cases:'''+json.dumps(cases)+'''
  property int index:0
- D.AppPreview {id:preview;kind:"Files";selectedFile:0;files:[{name:"Selected fixture",directory:false}]}
+ D.AppPreview {id:preview;kind:"Files";listMode:true;selectedFile:0;files:[{name:"Selected fixture",directory:false}]}
  function find(node,text) {
   if(node.text===text && node.color!==undefined)return node;
   const children=node.children || [];
@@ -39,6 +39,10 @@ ShellRoot {
   preview.files=[{name:"Selected fixture",directory:false}];preview.selectedFile=0;
   const targets=[[preview,"Selected fixture"],[preview,"Document"]];
   for(const target of targets){const item=root.find(target[0],target[1]);if(!item)throw Error("Missing actual control: "+target[1]);if(String(item.color)!==String(Qt.color(entry.colors.selectedText)))throw Error(entry.mode+"/"+entry.accent+" "+target[1]+" foreground "+item.color+" expected "+entry.colors.selectedText);}
+  const detail=root.find(preview,"Document"), glyph=Array.from(detail.parent.children).find(item=>item.ink!==undefined);
+  if(String(detail.parent.color)!==String(Qt.color(entry.colors.accent)) || !glyph || String(glyph.ink)!==String(Qt.color(entry.colors.selectedText)))throw Error("Selected row fill/icon bypass resolved palette");
+  preview.selectedFile=-1;
+  if(String(detail.color)!==String(Qt.color(entry.colors.muted)))throw Error("Unselected detail retains selected foreground");
   root.index++;
  }catch(error){console.error("SELECTED_CONTRAST_FAIL "+error);Qt.quit();}}}
 }''')
