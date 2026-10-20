@@ -2,7 +2,7 @@ const assert=require('node:assert/strict'),fs=require('fs'),vm=require('vm');
 const context={Identity:require('../../res/lumen-desktop/shell/FileIdentity.js'),module:{exports:{}}};
 vm.runInNewContext(fs.readFileSync('res/lumen-desktop/shell/FilesSelectionModel.js','utf8').replace(/^\.import.*$/m,''),context);
 const s={};for(const [name,fn] of Object.entries(context.module.exports))s[name]=(...args)=>JSON.parse(JSON.stringify(fn(...args)));
-const row=(path,inode)=>({path,identity:{device:'1152921504606846977',inode:String(inode)}});
+const row=(path,inode)=>({path,identity:{device:'1152921504606846977',inode:String(inode)},renameFollow:true});
 const rows=[row('/one','1152921504606846978'),row('/two','1152921504606846979'),row('/three','1152921504606846980')];
 const initial=s.capture(rows,['/one'],1,2);
 assert.deepEqual(s.reconcile(rows,initial),{paths:['/one'],current:1,anchor:2},'Unselected focused object stays focused');
@@ -27,3 +27,9 @@ assert.equal(s.rectangle({x:0,y:0},{x:NaN,y:1}),null);
 const renamed=[row('/renamed',rows[0].identity.inode),rows[1],rows[2]];assert.deepEqual(s.reconcile(renamed,initial).paths,['/renamed']);
 assert.deepEqual(s.reconcile([row('/a',rows[0].identity.inode),row('/b',rows[0].identity.inode)],initial).paths,[],'Ambiguous hard links are never guessed');
 console.log('PASS exact band selection policy, distinct focus/anchor, revision cancellation and geometry');
+
+const linked={...rows[0],renameFollow:false};
+assert.deepEqual(s.reconcile([row("/remaining",linked.identity.inode)],{selection:[linked]}).paths,[]);
+assert.deepEqual(s.reconcile([rows[0]],{selection:[{path:"/missing",identity:rows[0].identity}]}).paths,[]);
+assert.deepEqual(s.reconcile([linked],{selection:[linked]}).paths,[linked.path]);
+assert.deepEqual(s.combine(initial,[rows[0],rows[0]],"toggle").selection,[],"Duplicate hit boxes toggle once only");

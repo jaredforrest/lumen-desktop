@@ -1,5 +1,6 @@
 """Lossless local file identities across the JSON/JavaScript boundary."""
 import re
+import stat
 
 MAX_UINT64=(1<<64)-1
 MAX_SAFE_INTEGER=(1<<53)-1
@@ -21,3 +22,8 @@ def wire(info):
     values=dict(device=info.st_dev,inode=info.st_ino)
     if any(type(value) is not int or not 0<=value<=MAX_UINT64 for value in values.values()):raise ValueError('Unsupported native file identity')
     return {key:str(value) for key,value in values.items()}
+
+def rename_follow(info):
+    """Observed single-link non-directory entry; unknown facts never permit follow."""
+    count=getattr(info,'st_nlink',None)
+    return not stat.S_ISDIR(info.st_mode) and type(count) is int and count==1

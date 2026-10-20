@@ -26,6 +26,11 @@ workflow does not advertise edge autoscroll. All geometry comes from instantiate
 view delegates and is captured once; the pointer-move path does not repeatedly
 scan an entire directory. Unknown native file identities cannot start a band.
 Personal Trash rows publish the same exact decimal identity format as local rows.
+Path-changing recovery also requires native observed single-link provenance;
+unknown provenance, hard-link ambiguity and directory link counts never imply
+that another name is the same selected directory entry. Lost selection/focus has
+a visible notice. Ordinary single-link file rename and same-path sorting remain
+supported. No complete history of unobserved namespace events is claimed.
 
 `test_files_selection_model.cjs` covers modifier policy, exact references,
 independent focus/anchor, geometry and changed-revision refusal.

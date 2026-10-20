@@ -3,7 +3,7 @@ const fs=require('fs'),vm=require('vm');
 const context={Identity:require('../../res/lumen-desktop/shell/FileIdentity.js'),module:{exports:{}}};
 vm.runInNewContext(fs.readFileSync('res/lumen-desktop/shell/FilesHistoryModel.js','utf8').replace(/^\.import.*$/m,''),context);
 const h={};for(const [name,fn] of Object.entries(context.module.exports))h[name]=(...args)=>JSON.parse(JSON.stringify(fn(...args)));
-const row=(path,inode)=>({path,identity:{device:1,inode}});
+const row=(path,inode)=>({path,identity:{device:1,inode},renameFollow:true});
 let first=h.commit([],-1,'/first',-1,'one');
 const state={view:'list',query:'needle',selection:[row('/first/a',10)],current:row('/first/a',10),anchor:row('/first/a',10),scroll:{list:{offset:240,anchor:row('/first/a',10),delta:4}}};
 let history=h.save(first.history,0,state);state.selection.length=0;state.scroll.list.offset=999;
@@ -20,12 +20,12 @@ let many=[];for(let i=0;i<150;i++)many=h.commit(many,many.length-1,'/'+i,-1,Stri
 const tabs=require('../../res/lumen-desktop/shell/FilesTabModel.js');const saved=tabs.save([tabs.create('a','/first'),tabs.create('b','/second')],'a',{history,historyIndex:0});history[0].presentation.query='changed';assert.equal(saved[0].history[0].presentation.query,'needle');assert.deepEqual(saved[1].history,[]);
 console.log('PASS history transactions, identity reconciliation, independent immutable tabs and bounded presentation');
 const high={device:'1152921504606846977',inode:'1152921504606846979'};
-const large=JSON.parse(JSON.stringify({path:'/large/selected',identity:high}));
+const large=JSON.parse(JSON.stringify({path:'/large/selected',identity:high,renameFollow:true}));
 assert.deepEqual(h.ref(large).identity,high);
 const largeState=h.presentation({selection:[large],current:large,anchor:large,scroll:{list:{anchor:large}}});
-assert.deepEqual(h.reconcile(largeState,[{path:'/large/renamed',identity:high}]).paths,['/large/renamed']);
+assert.deepEqual(h.reconcile(largeState,[{path:'/large/renamed',identity:high,renameFollow:true}]).paths,['/large/renamed']);
 assert.deepEqual(h.reconcile(largeState,[{path:large.path,identity:{...high,inode:'1152921504606846980'}}]).paths,[]);
-assert.deepEqual(h.reconcile(largeState,[{path:'/large/a',identity:high},{path:'/large/b',identity:high}]).paths,[]);
+assert.deepEqual(h.reconcile(largeState,[{path:'/large/a',identity:high,renameFollow:true},{path:'/large/b',identity:high,renameFollow:true}]).paths,[]);
 assert.deepEqual(h.reconcile(largeState,[large,{path:'/large/link',identity:high}]).paths,[large.path]);
 assert.deepEqual(h.ref(row('/safe',10)).identity,{device:'1',inode:'10'});
 const unsafe={path:'/unsafe',identity:{device:1,inode:2**60}};
@@ -43,3 +43,8 @@ const independent=h.presentation({selection:[row('/selected',101)],current:row('
 assert.deepEqual(h.reconcile(independent,[row('/selected',101),row('/focused',999)]),{paths:['/selected'],selected:-1,anchor:-1},'Replacing focused unselected row cannot focus another selected object');
 assert.deepEqual(h.reconcile(h.presentation({selection:[row('/selected',101)]}),[row('/selected',101)]),{paths:['/selected'],selected:-1,anchor:-1},'No focused object remains distinct from a nonempty selected set');
 console.log('PASS independent focused object never falls back to first selected row');
+
+const linked={...row("/linked-one",123),renameFollow:false};
+assert.deepEqual(h.reconcile(h.presentation({selection:[linked],current:linked}),[{...row("/linked-two",123),renameFollow:true}]).paths,[],"Unlinked hardlink must not retarget remaining name");
+assert.deepEqual(h.reconcile(h.presentation({selection:[{path:"/unknown",identity:{device:1,inode:123}}]}),[row("/renamed",123)]).paths,[],"Missing provenance cannot follow another name");
+assert.deepEqual(h.reconcile(h.presentation({selection:[linked]}),[linked]).paths,["/linked-one"],"Same-path hardlink remains a valid selected entry");

@@ -3,14 +3,15 @@
 function ref(row){
     if(!row || typeof row.path!=="string" || !row.path.startsWith("/") || row.path.length>4096)return null;
     const identity=Identity.normalize(row.identity);
-    return identity?{path:row.path,identity:identity}:null;
+    return identity?{path:row.path,identity:identity,renameFollow:row.renameFollow===true}:null;
 }
 function key(value){const item=ref(value);return item?JSON.stringify([item.path,item.identity.device,item.identity.inode]):"";}
 function locate(rows,value){
     const item=ref(value);if(!item)return -1;
     const exact=rows.findIndex(row=>row.path===item.path && Identity.equal(row.identity,item.identity));
     if(exact>=0)return exact;
-    const matches=rows.map((row,index)=>({row:row,index:index})).filter(entry=>Identity.equal(entry.row.identity,item.identity));
+    if(item.renameFollow!==true)return -1;
+    const matches=rows.map((row,index)=>({row:row,index:index})).filter(entry=>entry.row.renameFollow===true && Identity.equal(entry.row.identity,item.identity));
     return matches.length===1?matches[0].index:-1;
 }
 function capture(rows,paths,current,anchor){

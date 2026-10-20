@@ -31,7 +31,7 @@ FloatingWindow {
     property var selectedPaths:[]
     property var bandPreviewPaths:null
     readonly property bool bandPermitted:visible && selectionActive && !service.busy && (!shell.screenSaverPreferences || shell.screenSaverPreferences.permitted)
-    readonly property string bandContext:service.path+"|"+activeTabId+"|"+service.viewMode+"|"+(screen?screen.name:"")
+    readonly property string bandContext:JSON.stringify([service.path,activeTabId,service.viewMode,service.query,service.sort,service.descending,service.hidden,service.groupBy,service.foldersFirst,screen?screen.name:""])
     function cancelPendingPresentation(){if(restoringPresentationState){++presentationRevision;restoringPresentationState=false;pendingPresentation=null;}}
     function commitBand(value){if(!value)return;cancelPendingPresentation();bandPreviewPaths=null;selectedPaths=value.paths;selected=value.current;selectionAnchor=value.anchor;content.forceActiveFocus();saveTab();}
     function cancelBand(reason){bandPreviewPaths=null;if(reason==="escape" && selectionActive)content.forceActiveFocus();}
@@ -85,7 +85,7 @@ FloatingWindow {
     }
     function restorePresentation(saved){
         pendingPresentation=saved;restoringPresentationState=true;const revision=++presentationRevision;
-        if(saved){if(saved.selectionOverflow)service.warning="The previous selection exceeded the navigation history limit and was cleared. Select the items again.";service.restoreView(saved.view);filter.text=service.query;const selectedState=HistoryModel.reconcile(saved,service.rows);selectedPaths=selectedState.paths;selected=selectedState.selected;selectionAnchor=selectedState.anchor;}
+        if(saved){if(saved.selectionOverflow)service.warning="The previous selection exceeded the navigation history limit and was cleared. Select the items again.";service.restoreView(saved.view);filter.text=service.query;const selectedState=HistoryModel.reconcile(saved,service.rows);if(!saved.selectionOverflow && ((saved.selection || []).length>selectedState.paths.length || (saved.current && selectedState.selected<0)))service.warning="Some selected or focused items changed or could not be followed. Select them again.";selectedPaths=selectedState.paths;selected=selectedState.selected;selectionAnchor=selectedState.anchor;}
         else {selectedPaths=[];selected=-1;selectionAnchor=-1;}
         Qt.callLater(()=>{if(revision!==presentationRevision)return;if(service.busy){restoringPresentationState=false;return;}const scroll=(saved || {}).scroll || {};restoreScroll(list,scroll.list,false);restoreScroll(grid,scroll.grid,false);restoreScroll(galleryStrip,scroll.gallery,true);columnView.restoreSnapshot(scroll.columns || {});restoringPresentationState=false;saveTab();});
     }

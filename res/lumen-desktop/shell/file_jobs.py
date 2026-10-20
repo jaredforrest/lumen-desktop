@@ -98,7 +98,7 @@ def trash_items():
             original = local_path(raw)
             item = root/'files'/info.name[:-10]
             s = item.lstat()
-            rows.append(dict(identity=file_identity.wire(s),name=original.name, path=str(item), uri=item.as_uri(), original=str(original),
+            rows.append(dict(identity=file_identity.wire(s),renameFollow=file_identity.rename_follow(s),name=original.name, path=str(item), uri=item.as_uri(), original=str(original),
                 trashInfo=str(info), directory=item.is_dir(), link=item.is_symlink(), size=s.st_size,
                 mtime=s.st_mtime, kind='Trashed item', deleted=parser['Trash Info'].get('DeletionDate', '')))
         except (OSError, ValueError, KeyError, configparser.Error):

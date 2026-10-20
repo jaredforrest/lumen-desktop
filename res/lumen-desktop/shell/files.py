@@ -48,7 +48,7 @@ def listing(data):
                 directory = entry.is_dir()
                 tags=file_tags.read(entry.path)
                 if not all(tag in [t["id"] for t in tags["tags"]] for tag in tag_terms):continue
-                rows.append(dict(actionFacts=wire_facts((info.st_dev,info.st_ino,info.st_mode,info.st_size,info.st_mtime_ns,info.st_ctime_ns)),identity=file_identity.wire(info),tags=tags["tags"],tagsSupported=tags["supported"],tagsError=tags["error"],name=entry.name, path=entry.path, uri=Path(entry.path).as_uri(), directory=directory,
+                rows.append(dict(actionFacts=wire_facts((info.st_dev,info.st_ino,info.st_mode,info.st_size,info.st_mtime_ns,info.st_ctime_ns)),identity=file_identity.wire(info),renameFollow=file_identity.rename_follow(info),tags=tags["tags"],tagsSupported=tags["supported"],tagsError=tags["error"],name=entry.name, path=entry.path, uri=Path(entry.path).as_uri(), directory=directory,
                                  link=entry.is_symlink(), size=info.st_size, mtime=info.st_mtime,
                                  kind="Folder" if directory else mimetypes.guess_type(entry.name)[0] or "Document"))
             except OSError:

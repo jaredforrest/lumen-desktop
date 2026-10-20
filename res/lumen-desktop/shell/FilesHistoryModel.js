@@ -1,14 +1,15 @@
 .import "FileIdentity.js" as Identity
 // Runtime-only presentation snapshots. No directory preferences are persisted.
 function path(entry){return typeof entry==="string"?entry:entry && entry.path || "";}
-function ref(row){if(!row || typeof row.path!=="string" || row.path.length>4096)return null;return {path:row.path,identity:row.identity!==undefined && row.identity!==null?(Identity.normalize(row.identity) || {invalid:true}):null};}
+function ref(row){if(!row || typeof row.path!=="string" || row.path.length>4096)return null;return {path:row.path,renameFollow:row.renameFollow===true,identity:row.identity!==undefined && row.identity!==null?(Identity.normalize(row.identity) || {invalid:true}):null};}
 function locate(rows,item){
     if(!item)return -1;
     const known=Identity.normalize(item.identity);
     if(item.identity!==undefined && item.identity!==null && !known)return -1;
     const exact=rows.findIndex(row=>row.path===item.path && (!known?(row.identity===undefined || row.identity===null):Identity.equal(row.identity,known)));
     if(exact>=0 || !known)return exact;
-    const candidates=rows.map((row,index)=>({row:row,index:index})).filter(value=>Identity.equal(value.row.identity,known));
+    if(item.renameFollow!==true)return -1;
+    const candidates=rows.map((row,index)=>({row:row,index:index})).filter(value=>value.row.renameFollow===true && Identity.equal(value.row.identity,known));
     return candidates.length===1?candidates[0].index:-1;
 }
 function offset(value){return Number.isFinite(value)?Math.max(0,Math.min(10000000,value)):0;}
