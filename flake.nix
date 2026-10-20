@@ -72,6 +72,9 @@
           };
           bus = "${pkgs.dbus}/bin/dbus-daemon";
         });
+        test-offscreen-font-config = (import ./packages/font-configuration.nix { inherit pkgs; }) {
+          fontDirectories = [ "${pkgs.dejavu_fonts}/share/fonts" ];
+        };
         test-application-software-driver = pkgs.mesa;
         shell-runtime = quickshell;
         test-physical-keyboard = import ./tests/desktop/physical_keyboard_driver.nix { inherit pkgs; };

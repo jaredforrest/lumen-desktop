@@ -32,6 +32,8 @@ jobs:
       - run: |
           mkdir -p artifacts
           nix build .#shell --out-link artifacts/shell-package --option abort-on-warn true
+          nix build .#test-offscreen-font-config --out-link artifacts/offscreen-font-config --option abort-on-warn true
+          bash tests/ci/run-native.sh calendar_toggle_contrast nix develop --command desktop-test-python tests/desktop/calendar_toggle_contrast.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/offscreen-font-config" --output artifacts/calendar-toggle-contrast
           LUMEN_TEST_SHELL_LAUNCHER="$PWD/artifacts/shell-package/bin/lumen-desktop-shell" bash tests/ci/run-native.sh run_backend_tests nix develop --command desktop-test-python tests/desktop/run_backend_tests.py --output artifacts/backends
           bash tests/ci/run-native.sh biometric_provider nix develop --command desktop-test-python tests/desktop/biometric_provider.py --output artifacts/biometric-provider
       - run: |
@@ -185,6 +187,7 @@ jobs:
             artifacts/native-command-logs
             artifacts/native-namespace-policy
             artifacts/backends
+            artifacts/calendar-toggle-contrast
             artifacts/biometric-provider
             artifacts/clipboard-native-*
             artifacts/search-native-*
