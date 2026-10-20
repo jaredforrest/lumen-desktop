@@ -1,4 +1,4 @@
-{ pkgs, settingsPackage, user ? "user", displayName ? user, homeDirectory ? "/home/${user}", timeZone ? "UTC", swayPackage ? pkgs.sway, rofiPackage ? pkgs.rofi, assets ? ../res/lumen-desktop, emojiFamily ? "Noto Color Emoji", clipboardRetentionSeconds ? 3600, clipboardMaxItems ? 100, networkProviderPackage ? null, readerCommandsEnabled ? false }:
+{ pkgs, settingsPackage, user ? "user", displayName ? user, homeDirectory ? "/home/${user}", timeZone ? "UTC", swayPackage ? pkgs.sway, rofiPackage ? pkgs.rofi, assets ? ../res/lumen-desktop, emojiFamily ? "Noto Color Emoji", clipboardRetentionSeconds ? 3600, clipboardMaxItems ? 100, networkProviderPackage ? null, readerCommandsEnabled ? false, nearbySharingProvider ? null, nearbySharingLabel ? "Nearby Sharing" }:
 let
   lib = pkgs.lib;
   quickshell = import ./quickshell-runtime.nix { inherit pkgs; };
@@ -125,17 +125,25 @@ let
         exec python3 ${assets}/launch-app.py "$@"
       '';
     };
+    nearbySharing = pkgs.writeShellApplication {
+      name = "lumen-nearby-sharing";
+      text = ''
+        exec ${pkgs.python3}/bin/python3 ${assets}/runtime/nearby_sharing.py "$@"
+      '';
+    };
     shellLauncher = pkgs.writeShellApplication {
       name = "lumen-desktop-shell";
       # Desktop entries launched through Rofi inherit this service's PATH.
       # Entries such as ChatGPT use `env` from coreutils in their Exec command.
-      runtimeInputs = [ pkgs.remmina pkgs.fontconfig pkgs.hyprpicker personalServices pkgs.rembg pkgs.whisper-cpp pkgs.pipewire (pkgs.tesseract.override { enableLanguages = [ "eng" ]; }) (pkgs.aspellWithDicts (d: [ d.en ])) pkgs.wordnet pkgs.espeak-ng pkgs.wtype pkgs.poppler-utils pkgs.ffmpeg-headless pkgs.util-linux fileClipboard pkgs.wl-clipboard pkgs.glib pkgs.udisks2 launchApp pkgs.ddcutil pkgs.blueman pkgs.coreutils pkgs.jq pkgs.sway focusWindow windowGeometry quickshell pkgs.foot pkgs.wireplumber pkgs.pavucontrol
+      runtimeInputs = [ nearbySharing pkgs.remmina pkgs.fontconfig pkgs.hyprpicker personalServices pkgs.rembg pkgs.whisper-cpp pkgs.pipewire (pkgs.tesseract.override { enableLanguages = [ "eng" ]; }) (pkgs.aspellWithDicts (d: [ d.en ])) pkgs.wordnet pkgs.espeak-ng pkgs.wtype pkgs.poppler-utils pkgs.ffmpeg-headless pkgs.util-linux fileClipboard pkgs.wl-clipboard pkgs.glib pkgs.udisks2 launchApp pkgs.ddcutil pkgs.blueman pkgs.coreutils pkgs.jq pkgs.sway focusWindow windowGeometry quickshell pkgs.foot pkgs.wireplumber pkgs.pavucontrol
         hotCorners spaces networkLocations trashActions clipboardHistory desktopState shellIpc dockDrop applicationControl applicationLifecycle fileAlias auth.lock pkgs.swaylock pkgs.xdg-utils pkgs.trash-cli appearance nixSettings rofiPackage ];
       text = ''
         # The systemd service does not inherit the interactive login PATH.
         # Desktop entries may name installed commands without absolute paths.
         export PATH="$PATH:/etc/profiles/per-user/${user}/bin:/run/current-system/sw/bin:/run/wrappers/bin"
         export LUMEN_SEARCH_ROOTS=${lib.escapeShellArg (builtins.toJSON (map (name: "${homeDirectory}/${name}") [ "Desktop" "Documents" "Downloads" "Pictures" "Music" "Videos" "data" ]))}
+        export LUMEN_NEARBY_SHARING_LABEL=${lib.escapeShellArg nearbySharingLabel}
+        export LUMEN_NEARBY_SHARING_PROVIDER=${lib.escapeShellArg (if nearbySharingProvider == null then "" else "${nearbySharingProvider}/bin/lumen-nearby-provider")}
         export LUMEN_NOTIFICATION_HELPER=${assets}/notifications/service.py
         export LUMEN_LAUNCH_SCOPES=1
         export LUMEN_NATIVE_WINDOW_CONTROLS=0

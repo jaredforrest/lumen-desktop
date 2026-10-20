@@ -66,6 +66,10 @@ in {
         retentionSeconds = lib.mkOption { type = lib.types.nullOr (lib.types.ints.between 60 86400); default = null; description = "Consumer-selected ephemeral history lifetime; required when enabled."; };
         maxItems = lib.mkOption { type = lib.types.nullOr (lib.types.ints.between 1 1000); default = null; description = "Consumer-selected history bound; required when enabled."; };
       };
+      nearbySharing = {
+        providerPackage = lib.mkOption { type = lib.types.nullOr lib.types.package; default = null; description = "Optional consumer provider exposing bin/lumen-nearby-provider status and open. Does not install or enable a receiver service."; };
+        label = lib.mkOption { type = lib.types.str; default = "Nearby Sharing"; description = "Consumer-selected sharing control label."; };
+      };
       authorization.enable = lib.mkEnableOption "session authorization dialog appearance integration";
       calendar.enable = lib.mkEnableOption "calendar account services";
       bluetooth.enable = lib.mkEnableOption "Bluetooth UI integration";
@@ -100,6 +104,8 @@ in {
     session = import ../packages/session.nix {
       inherit pkgs settingsPackage assets;
       readerCommandsEnabled = cfg.integrations.readerCommands.enable;
+      nearbySharingProvider = cfg.integrations.nearbySharing.providerPackage;
+      nearbySharingLabel = cfg.integrations.nearbySharing.label;
       networkProviderPackage = if cfg.integrations.networkLocations.enable then hostGvfsPackage else null;
       emojiFamily = cfg.appearance.emojiFamily;
       clipboardRetentionSeconds = if cfg.integrations.clipboard.retentionSeconds == null then 3600 else cfg.integrations.clipboard.retentionSeconds;

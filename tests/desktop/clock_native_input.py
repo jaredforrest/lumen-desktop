@@ -58,11 +58,8 @@ try:
  for name in ('MenuBar.qml','NotificationPanel.qml','CalendarCard.qml','shell.qml'):
   assert (source/name).read_bytes()==(Path('/source/res/lumen-desktop/shell')/name).read_bytes(),('Installed clock source mismatch',name)
  isolate_providers(source,out)
- # Unrelated receiving status is fixed unavailable; no host service command runs.
- target=source/'ControlCentre.qml';original=target.read_text();needle='["iphone-airdrop","status"]';assert original.count(needle)==1
- helper=out/'receiving-unavailable.py';helper.write_text('import sys\nassert sys.argv[1:]==["status"]\nraise SystemExit(1)\n')
- replacement=json.dumps([sys.executable,str(helper),'status']);modified=original.replace(needle,replacement,1);assert modified.replace(replacement,needle,1)==original;target.chmod(0o600);target.write_text(modified)
- (out/'receiving-provider-manifest.json').write_text(json.dumps(dict(originalSha256=hashlib.sha256(original.encode()).hexdigest(),modifiedSha256=hashlib.sha256(modified.encode()).hexdigest(),roundtrip=True,scope='Unrelated receiving status unavailable; actions unchanged')))
+ # No consumer sharing provider is configured in this private fixture.
+ env["LUMEN_NEARBY_SHARING_PROVIDER"]=""
  # Read-only geometry/hover inspection; no replacement control or activation path.
  target=source/'MenuBar.qml';original=target.read_text();needle='id: bar';assert original.count(needle)==1
  probe='''

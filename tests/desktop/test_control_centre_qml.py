@@ -10,9 +10,10 @@ env=dict(v.decode().split('=',1) for v in raw.split(b'\0') if b'=' in v)
 with tempfile.TemporaryDirectory() as directory:
  root=Path(directory)
  env.update(HOME=directory,XDG_RUNTIME_DIR=directory,XDG_STATE_HOME=directory,XDG_CONFIG_HOME=directory,QT_QPA_PLATFORM='offscreen',QT_QUICK_BACKEND='software')
+ env.update(DBUS_SYSTEM_BUS_ADDRESS='unix:path='+directory+'/absent-system',PULSE_SERVER='unix:'+directory+'/absent-audio')
  for key in ('WAYLAND_DISPLAY','DISPLAY'):env.pop(key,None)
  binary=root/'bin';binary.mkdir();helper=binary/'lumen-appearance';helper.write_text('#!/bin/sh\nprintf \'%s %s\\n\' \"$2\" \"$3\" >> \"$FIXTURE_LOG\"\nprintf \'{}\\n\'\n');helper.chmod(0o700)
- airdrop=binary/'iphone-airdrop';airdrop.write_text('#!/bin/sh\n[ "$1" = status ] || exit 2\nprintf \'{"ready":true,"remaining":129}\\n\'\n');airdrop.chmod(0o700)
+ sharing=binary/'lumen-nearby-sharing';sharing.write_text('#!/bin/sh\n[ "$1" = status ] || exit 2\nprintf \'{"available":true,"active":true,"canSend":true,"detail":"On · 3 min"}\\n\'\n');sharing.chmod(0o700)
  env['FIXTURE_BIN']=str(binary);env['FIXTURE_LOG']=str(root/'writes')
  qml=root/'shell.qml'
  qml.write_text('''import QtQuick
@@ -37,14 +38,21 @@ ShellRoot {
    editor.editing=true;
    if(editor.preferences.order.length!==9)throw Error("controls lost");
    phase=1;return;}
-   if(editor.saving || Object.keys(editor.pending).length || !editor.airDropAvailable)return;
-   if(editor.names.sharing!=="AirDrop" || editor.airDropSubtitle!=="On · 3 min")throw Error("AirDrop status/control mismatch");
+   if(editor.saving || Object.keys(editor.pending).length || !editor.sharingAvailable)return;
+   if(editor.names.sharing!=="Fixture Sharing" || editor.sharingSubtitle!=="On · 3 min")throw Error("Sharing status/control mismatch");
+   if(!D.NearbySharingState.canSend)throw Error("send capability missing");
+   D.NearbySharingState.observedAt=Date.now()-8001;D.NearbySharingState.now=Date.now();
+   if(editor.sharingAvailable || D.NearbySharingState.canSend || editor.sharingSubtitle!=="Unavailable")throw Error("expired status remained actionable");
+   D.NearbySharingState.observedAt=Date.now()+8000;
+   if(editor.sharingAvailable)throw Error("backwards clock retained actionable status");
+   D.NearbySharingState.state=({available:true,active:false,canSend:false,detail:"Receiving only"});D.NearbySharingState.observedAt=Date.now();D.NearbySharingState.now=Date.now();
+   if(!editor.sharingAvailable || D.NearbySharingState.canSend || editor.sharingSubtitle!=="Receiving only")throw Error("receiving-only capability mismatch");
    console.log("FOCUS_EDITOR_PASS");Qt.quit();
   }catch(e){console.error("FOCUS_EDITOR_FAIL "+e);Qt.quit();}
  }}
 }
 ''')
- result=subprocess.run(['dbus-run-session','--','bash','-c',prefix+'\nexport QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_ACCESSIBILITY=0 QT_LINUX_ACCESSIBILITY_ALWAYS_ON=0 NO_AT_BRIDGE=1 GTK_A11Y=none QT_QPA_PLATFORMTHEME=generic\nexport HOME="$XDG_RUNTIME_DIR" XDG_CONFIG_HOME="$XDG_RUNTIME_DIR" XDG_CACHE_HOME="$XDG_RUNTIME_DIR" XDG_DATA_HOME="$XDG_RUNTIME_DIR"\nexport PATH="$FIXTURE_BIN:$PATH"\nunset WAYLAND_DISPLAY DISPLAY\nexec quickshell -p "$1"','fixture',str(qml)],env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=30)
+ result=subprocess.run(['dbus-run-session','--','bash','-c',prefix+'\nexport QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_ACCESSIBILITY=0 QT_LINUX_ACCESSIBILITY_ALWAYS_ON=0 NO_AT_BRIDGE=1 GTK_A11Y=none QT_QPA_PLATFORMTHEME=generic\nexport HOME="$XDG_RUNTIME_DIR" XDG_CONFIG_HOME="$XDG_RUNTIME_DIR" XDG_CACHE_HOME="$XDG_RUNTIME_DIR" XDG_DATA_HOME="$XDG_RUNTIME_DIR"\nexport PATH="$FIXTURE_BIN:$PATH"\nexport LUMEN_NEARBY_SHARING_PROVIDER=/nix/store/synthetic-provider LUMEN_NEARBY_SHARING_LABEL="Fixture Sharing"\nunset WAYLAND_DISPLAY DISPLAY\nexec quickshell -p "$1"','fixture',str(qml)],env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=30)
  if 'FOCUS_EDITOR_PASS' not in result.stdout or 'FOCUS_EDITOR_FAIL' in result.stdout or 'Failed to load' in result.stdout or 'ReferenceError:' in result.stdout or 'TypeError:' in result.stdout or 'Unable to assign' in result.stdout:raise AssertionError(result.stdout)
  writes=(root/'writes').read_text();assert 'order [' in writes and 'hidden [' in writes,writes
  print('PASS actual Qt editable Control Centre: ordered controls, hide/show, edit view and declarative writer')

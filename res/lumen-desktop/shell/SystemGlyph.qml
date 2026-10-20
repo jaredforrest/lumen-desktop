@@ -24,7 +24,7 @@ Canvas {
             line([[12,2],[12,22],[18,16],[6,6]]);line([[12,2],[18,8],[6,18]]);
         } else if(name==="share") {
             c.strokeRect(4,9,16,12);line([[12,15],[12,3],[7,8]]);line([[12,3],[17,8]]);
-        } else if(name==="airdrop") {
+        } else if(name==="nearby") {
             for(const r of [5,9])arc(12,13,r,Math.PI*1.2,Math.PI*1.8);
             line([[8,14],[12,21],[16,14]]);
             c.beginPath();c.arc(12,10,1.2,0,Math.PI*2);c.fill();

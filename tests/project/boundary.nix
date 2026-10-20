@@ -15,6 +15,14 @@ let
   optedIn = (evaluated.extendModules {
     modules = [ { services.lumen-desktop.integrations.authorization.enable = true; } ];
   }).config;
+  sharingConfigured = (evaluated.extendModules {
+    modules = [ ({ pkgs, ... }: {
+      services.lumen-desktop.integrations.nearbySharing = {
+        providerPackage = pkgs.hello;
+        label = "Fixture Sharing";
+      };
+    }) ];
+  }).config;
   readerBinding = { "Mod4+Control+F8" = "where-am-i"; };
   readerDisabled = (evaluated.extendModules { modules = [ {
     services.lumen-desktop.shortcuts.readerBindings = readerBinding;
@@ -41,6 +49,13 @@ assert !((readerHome readerDisabled).wayland.windowManager.sway.config.keybindin
 assert nixpkgs.lib.hasSuffix " where-am-i" (readerHome readerEnabled).wayland.windowManager.sway.config.keybindings.content."Mod4+Control+F8";
 assert builtins.all (entry: entry.assertion) (readerHome readerEnabled).assertions;
 assert !(builtins.head (readerHome readerCollision).assertions).assertion;
+assert c.services.lumen-desktop.integrations.nearbySharing.providerPackage == null;
+assert c.services.lumen-desktop.integrations.nearbySharing.label == "Nearby Sharing";
+assert sharingConfigured.services.lumen-desktop.integrations.nearbySharing.label == "Fixture Sharing";
+assert nixpkgs.lib.getName sharingConfigured.services.lumen-desktop.integrations.nearbySharing.providerPackage == "hello";
+assert sharingConfigured.services.gvfs.enable == c.services.gvfs.enable;
+assert sharingConfigured.services.greetd.enable == c.services.greetd.enable;
+assert sharingConfigured.services.blueman.enable == c.services.blueman.enable;
 assert !c.hardware.i2c.enable;
 assert !c.programs.hyprland.enable;
 assert !c.services.greetd.enable;
