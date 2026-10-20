@@ -28,7 +28,7 @@ jobs:
           fetch-depth: 0
       - uses: cachix/install-nix-action@v31
       - run: nix develop --command gitleaks git . --redact=100
-      - run: nix develop --command desktop-test-python tests/ci/native_namespace_policy.py prepare --output artifacts/native-namespace-policy
+      - run: bash tests/ci/run-native.sh namespace_policy_prepare nix develop --command desktop-test-python tests/ci/native_namespace_policy.py prepare --output artifacts/native-namespace-policy
       - run: |
           mkdir -p artifacts
           nix build .#shell --out-link artifacts/shell-package --option abort-on-warn true
@@ -165,7 +165,7 @@ jobs:
           nix build .#test-network-provider --out-link artifacts/network-provider --option abort-on-warn true
           bash tests/ci/run-native.sh network_locations_provider nix develop --command desktop-test-python tests/desktop/network_locations_provider.py --provider "$PWD/artifacts/network-provider" | tee artifacts/network-provider.log
       - if: always()
-        run: nix develop --command desktop-test-python tests/ci/native_namespace_policy.py cleanup --output artifacts/native-namespace-policy
+        run: bash tests/ci/run-native.sh namespace_policy_cleanup nix develop --command desktop-test-python tests/ci/native_namespace_policy.py cleanup --output artifacts/native-namespace-policy
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
