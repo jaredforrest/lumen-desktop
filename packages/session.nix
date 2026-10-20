@@ -86,6 +86,10 @@ let
       export PATH=${lib.makeBinPath [ pkgs.sway ]}:"$PATH"
       exec ${pkgs.python3}/bin/python ${assets}/focus-window.py "$@"
     '';
+    windowGeometry = pkgs.writeShellScriptBin "lumen-window-geometry" ''
+      export PATH=${lib.makeBinPath [ pkgs.sway ]}:"$PATH"
+      exec ${pkgs.python3}/bin/python ${assets}/runtime/window_geometry.py "$@"
+    '';
     clipboardObserver = import ./clipboard-observer.nix { inherit pkgs; };
     clipboardHistory = pkgs.writeShellApplication {
       name = "lumen-clipboard-history";
@@ -121,7 +125,7 @@ let
       name = "lumen-desktop-shell";
       # Desktop entries launched through Rofi inherit this service's PATH.
       # Entries such as ChatGPT use `env` from coreutils in their Exec command.
-      runtimeInputs = [ pkgs.remmina pkgs.fontconfig pkgs.hyprpicker personalServices pkgs.rembg pkgs.whisper-cpp pkgs.pipewire (pkgs.tesseract.override { enableLanguages = [ "eng" ]; }) (pkgs.aspellWithDicts (d: [ d.en ])) pkgs.wordnet pkgs.espeak-ng pkgs.wtype pkgs.poppler-utils pkgs.ffmpeg-headless pkgs.util-linux fileClipboard pkgs.wl-clipboard pkgs.glib pkgs.udisks2 launchApp pkgs.ddcutil pkgs.blueman pkgs.coreutils pkgs.jq pkgs.sway focusWindow quickshell pkgs.foot pkgs.wireplumber pkgs.pavucontrol
+      runtimeInputs = [ pkgs.remmina pkgs.fontconfig pkgs.hyprpicker personalServices pkgs.rembg pkgs.whisper-cpp pkgs.pipewire (pkgs.tesseract.override { enableLanguages = [ "eng" ]; }) (pkgs.aspellWithDicts (d: [ d.en ])) pkgs.wordnet pkgs.espeak-ng pkgs.wtype pkgs.poppler-utils pkgs.ffmpeg-headless pkgs.util-linux fileClipboard pkgs.wl-clipboard pkgs.glib pkgs.udisks2 launchApp pkgs.ddcutil pkgs.blueman pkgs.coreutils pkgs.jq pkgs.sway focusWindow windowGeometry quickshell pkgs.foot pkgs.wireplumber pkgs.pavucontrol
         hotCorners spaces networkLocations clipboardHistory desktopState shellIpc dockDrop applicationControl applicationLifecycle fileAlias auth.lock pkgs.swaylock pkgs.xdg-utils pkgs.trash-cli appearance nixSettings rofiPackage ];
       text = ''
         # The systemd service does not inherit the interactive login PATH.
@@ -232,4 +236,4 @@ let
     settingsLauncher = pkgs.writeShellScriptBin "lumen-system-settings" ''
       exec ${shellIpc}/bin/lumen-shell-ipc call desktop settings ""
     '';
-in { inherit hotCorners spaces wallpaperPreferences inputPreferences networkLocations quickshell nixSettings appearance qtTheme qtTheme5 palette menuRuntime personalServices fileClipboard displayLayout fileOperations focusWindow dockDrop applicationControl applicationLifecycle fileAlias desktopState shellIpc clipboardHistory launchApp shellLauncher audioKey mediaKey notifications menuCommand desktopDoctor desktopAction appLauncher filesLauncher remoteDesktopLauncher calendarLauncher settingsLauncher; }
+in { inherit hotCorners spaces wallpaperPreferences inputPreferences networkLocations quickshell nixSettings appearance qtTheme qtTheme5 palette menuRuntime personalServices fileClipboard displayLayout fileOperations focusWindow windowGeometry dockDrop applicationControl applicationLifecycle fileAlias desktopState shellIpc clipboardHistory launchApp shellLauncher audioKey mediaKey notifications menuCommand desktopDoctor desktopAction appLauncher filesLauncher remoteDesktopLauncher calendarLauncher settingsLauncher; }

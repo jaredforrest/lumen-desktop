@@ -121,16 +121,15 @@ FloatingWindow {
     readonly property int sidebarWidth:LayoutModel.sidebarWidth(sidebarDragWidth>=0?sidebarDragWidth:service.sidebarWidth,width)
     function groupCollapsed(name){return Array.isArray(service.collapsedSidebarGroups) && service.collapsedSidebarGroups.includes(name);}
     function collapseSidebar(name,value){let groups=Array.isArray(service.collapsedSidebarGroups)?service.collapsedSidebarGroups.slice():[];groups=groups.filter(group=>group!==name);if(value)groups.push(name);service.collapsedSidebarGroups=groups;}
+    WindowGeometry {id:windowGeometry;ownerWindow:root;containerId:root.swayContainer}
     function fitScreen() {
-        if(!visible || !screen)return;
-        const fitWidth=Math.max(480,Math.min(width,screen.width-32));
-        const fitHeight=Math.max(320,Math.min(height,screen.height-150));
-        implicitWidth=fitWidth;implicitHeight=fitHeight;
-        if(swayContainer && Quickshell.env("SWAYSOCK"))Quickshell.execDetached(["swaymsg","[con_id="+swayContainer+"] resize set width "+Math.round(fitWidth)+" px height "+Math.round(fitHeight)+" px, move position center"]);
-
+        if(!visible || !screen || !Quickshell.env("SWAYSOCK"))return;
+        windowGeometry.fit(Math.max(1,screen.width-32),Math.max(1,screen.height-150));
     }
+
     Timer {id:fitTimer;interval:100;onTriggered:root.fitScreen()}
     Connections {target:root.shell.exportedMenu;function onStateChanged(){const state=root.shell.exportedMenu.state;if(state.appName==="org.quickshell" && state.title===root.title)root.swayContainer=state.windowId;}}
+    onScreenChanged:Qt.callLater(root.fitScreen)
     Connections {target:root.screen;function onWidthChanged(){fitTimer.restart();}function onHeightChanged(){fitTimer.restart();}}
     function openPath(path) {
         if(shell.claimPopup)shell.claimPopup("");

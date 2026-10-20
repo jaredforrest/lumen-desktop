@@ -43,12 +43,13 @@ FloatingWindow {
     }
     function choose(d){calendar.selectDate(d);}
     function step(delta){choose(view==="Year"?new Date(selected.getFullYear()+delta,selected.getMonth(),selected.getDate()):view==="Month"?new Date(month.getFullYear(),month.getMonth()+delta,1):new Date(selected.getFullYear(),selected.getMonth(),selected.getDate()+delta*(view==="Week"?7:1)));}
-    function fitScreen(){
-        if(!visible || !screen)return;
-        const w=Math.max(480,Math.min(width,screen.width-32)),h=Math.max(320,Math.min(height,screen.height-100));
-        implicitWidth=w;implicitHeight=h;
-        if(Quickshell.env("SWAYSOCK"))Quickshell.execDetached(["swaymsg",'[app_id="org.quickshell" title="^Calendar$"] resize set width '+Math.round(w)+' px height '+Math.round(h)+' px, move position center']);
+    WindowGeometry {id:windowGeometry;ownerWindow:root}
+    function fitScreen() {
+        if(!visible || !screen || !Quickshell.env("SWAYSOCK"))return;
+        windowGeometry.fit(Math.max(1,screen.width-32),Math.max(1,screen.height-100));
     }
+
+    onScreenChanged:Qt.callLater(root.fitScreen)
     Connections {target:root.screen;function onWidthChanged(){Qt.callLater(root.fitScreen);}function onHeightChanged(){Qt.callLater(root.fitScreen);}}
     function openAt(day,event){open();calendar.selectDate(day);if(event){calendar.detail=event;calendar.editing=false;inspector=true;}}
     function open(){shell.claimPopup("");if(minimized && Quickshell.env("SWAYSOCK")){Quickshell.execDetached(["swaymsg",'[app_id="org.quickshell" title="^Calendar$"] move workspace current, focus']);minimized=false;}visible=true;calendar.refresh();Qt.callLater(root.fitScreen);Qt.callLater(()=>{content.forceActiveFocus();if(content.Window.window)content.Window.window.requestActivate();});shell.focusOwnedWindow("Calendar");}

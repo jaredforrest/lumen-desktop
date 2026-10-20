@@ -44,15 +44,14 @@ FloatingWindow {
         {name:"Notifications",icon:"bell",color:"#ff3b30",terms:"focus do not disturb alerts"},
         {name:"Search",icon:"search",color:"#56565b",terms:"files applications search index"}
     ]
+    WindowGeometry {id:windowGeometry;ownerWindow:root}
     function fitScreen() {
-        if(!visible || !screen)return;
-        const fitWidth=Math.max(480,Math.min(width,screen.width-32));
-        const fitHeight=Math.max(320,Math.min(height,screen.height-150));
-        implicitWidth=fitWidth;implicitHeight=fitHeight;
-        if(Quickshell.env("SWAYSOCK"))
-            Quickshell.execDetached(["swaymsg",'[app_id="org.quickshell" title="^System Settings$"] resize set width '+Math.round(fitWidth)+' px height '+Math.round(fitHeight)+' px, move position center']);
+        if(!visible || !screen || !Quickshell.env("SWAYSOCK"))return;
+        windowGeometry.fit(Math.max(1,screen.width-32),Math.max(1,screen.height-150));
     }
+
     Timer {id:fitTimer;interval:100;onTriggered:root.fitScreen()}
+    onScreenChanged:Qt.callLater(root.fitScreen)
     Connections {target:root.screen;function onWidthChanged(){fitTimer.restart();}function onHeightChanged(){fitTimer.restart();}}
     function navigate(name) {
         if(!pages.some(p=>p.name===name) || page===name)return;

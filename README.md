@@ -30,3 +30,5 @@ Window Groups provides optional native presentation groups; see [the workflow an
 [Live transparency acceptance](docs/transparency-testing.md) documents mapped-surface geometry, paint and input checks.
 
 [Mixed output scaling](docs/mixed-output-scale-testing.md) describes native geometry, painted-frame and input acceptance.
+
+[Content clipping](docs/content-clipping-testing.md) covers declared masks, vivid edge pixels and preserved production input targets.
