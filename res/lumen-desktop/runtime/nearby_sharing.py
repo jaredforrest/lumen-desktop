@@ -76,12 +76,14 @@ def status(command, seconds=STATUS_SECONDS):
         return result
     finally:
         try:
-            os.killpg(child.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        child.wait(timeout=1)
-        child.stdout.close()
-        child.stderr.close()
+            try:
+                os.killpg(child.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            child.wait(timeout=1)
+        finally:
+            child.stdout.close()
+            child.stderr.close()
 
 
 def configured(environment):
