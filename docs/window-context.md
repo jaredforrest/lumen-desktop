@@ -123,3 +123,12 @@ not advertise `native_preferred_zoom`; the geometry adapter continues fitting
 windows without registering unsupported metadata. Newly installed native actions
 require the new compositor to be running; package activation alone does not
 replace the existing compositor process.
+
+Explicit filled/zoomed Restore waits for acknowledgement of the native configure
+that represents the current requested client size. Older client commits still
+update the observed rendering geometry and complete their own transactions, but
+cannot rewrite the newer pending restored rectangle. A queued native resize
+invalidates an older acknowledgement tag; the later matching transaction tags
+its own size and wrap-safe serial. The guard also accepts a later serial after a
+transaction timeout. It does not extend transaction deadlines or require a client
+to commit an exact size before later legitimate self-resizing is allowed.
