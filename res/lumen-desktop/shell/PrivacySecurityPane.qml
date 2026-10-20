@@ -44,6 +44,8 @@ Column {
         Rectangle {
             required property var modelData
             readonly property var fact: root.facts[modelData.key] || ({value:worker.running?"Checking…":"Unavailable",detail:""})
+            Accessible.role: Accessible.StaticText
+            Accessible.name: modelData.name + ". " + fact.value + ". " + fact.detail
             width: root.width
             height: details.y + details.height + 16
             radius: 10; color: Theme.colors.surface; border.color: Theme.hairline
