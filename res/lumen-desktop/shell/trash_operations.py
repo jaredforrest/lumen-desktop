@@ -20,6 +20,9 @@ MAX_DEPTH=64
 MAX_MANIFEST_BYTES=4*1024**2
 MAX_JOURNAL_BYTES=32*1024**2
 MAX_PUBLIC_BYTES=1024**2
+MAX_ERROR_BYTES=1024
+MAX_MESSAGE_CHARS=1024
+PUBLIC_ENVELOPE_BYTES=128
 PREPARE_SECONDS=2
 DELETE_SECONDS=5
 CONFIRM_SECONDS=120
@@ -57,6 +60,16 @@ def observed(parent,name):
     fd=os.open(name,os.O_PATH|os.O_NOFOLLOW|os.O_CLOEXEC,dir_fd=parent)
     try:return facts(os.fstat(fd)),mount_id(fd)
     finally:os.close(fd)
+
+def encoded_size(value):return len(json.dumps(value).encode())
+
+def error_fields(value):
+    value=str(value);low=0;high=min(len(value),MAX_ERROR_BYTES)
+    while low<high:
+        middle=(low+high+1)//2
+        if encoded_size(value[:middle])<=MAX_ERROR_BYTES:low=middle
+        else:high=middle-1
+    return dict(error=value[:low],errorTruncated=low<len(value))
 
 def bounded_names(fd,limit,deadline):
     names=[]
@@ -138,13 +151,38 @@ class TrashOperations:
             if expected is not None and values!=expected:raise ValueError('The personal Trash location changed')
             yield root,files,info,values
 
+    def status_payload(self,history,busy,operations=None):
+        return dict(available=True,busy=busy,operations=list(history.values())[-1:] if operations is None else operations,history=[dict(id=value['id'],state=value['state'],count=len(value.get('items',[])),message=value.get('message','')) for value in list(history.values())[-40:]],limits=dict(items=MAX_ITEMS,nodes=MAX_NODES,bytes=MAX_BYTES,prepareSeconds=PREPARE_SECONDS,deleteSeconds=DELETE_SECONDS,confirmationSeconds=CONFIRM_SECONDS,manifestBytes=MAX_MANIFEST_BYTES,resultBytes=MAX_PUBLIC_BYTES,errorBytes=MAX_ERROR_BYTES),scope='Recognized items already in personal Trash only')
+
+    def bounded_public(self,value):
+        if encoded_size(value)+PUBLIC_ENVELOPE_BYTES>MAX_PUBLIC_BYTES:raise ValueError('Trash result exceeds the supported transport budget; retained journal was not changed')
+        return json.loads(json.dumps(value))
+
+    def reserve(self,token,plan,history):
+        items=[]
+        for index,outcome in enumerate(plan['outcomes']):
+            stage=self.root/'.lumen-deletion'/(token+'-'+str(index))
+            item=dict(outcome,state='interrupted',removedNodes=MAX_NODES,recoveryPath=str(stage),uncertain=True,error='\\'*(MAX_ERROR_BYTES//2-1),errorTruncated=False)
+            for key,name in (('payloadPath','data'),('metadataPath','record.trashinfo')):
+                item[key]=max((outcome[key],str(stage/name)),key=encoded_size)
+            items.append(item)
+        operation=dict(id=token,mode=plan['mode'],state='interrupted',started=-1.7976931348623157e308,items=items,message='\U0010ffff'*MAX_MESSAGE_CHARS)
+        candidate=dict(history);candidate[token]=operation
+        while len(candidate)>40:
+            completed=next((key for key,value in candidate.items() if key!=token and value.get('state')=='complete'),None)
+            if completed is None:raise ValueError('Review retained incomplete Trash operations before starting another deletion')
+            candidate.pop(completed)
+        for value in candidate.values():self.bounded_public(self.status_payload(candidate,False,[value]))
+        self.bounded_public(dict(operation=operation))
+        if encoded_size(dict(version=1,operations=candidate))>MAX_JOURNAL_BYTES:raise ValueError('Trash journal cannot reserve all possible outcomes; nothing was changed')
+
     def status(self):
-        with self.lock:return dict(available=True,busy=self.active is not None,operations=json.loads(json.dumps(list(self.history.values())[-1:])),history=[dict(id=value['id'],state=value['state'],count=len(value.get('items',[])),message=value.get('message','')) for value in list(self.history.values())[-40:]],limits=dict(items=MAX_ITEMS,nodes=MAX_NODES,bytes=MAX_BYTES,prepareSeconds=PREPARE_SECONDS,deleteSeconds=DELETE_SECONDS,confirmationSeconds=CONFIRM_SECONDS,manifestBytes=MAX_MANIFEST_BYTES,resultBytes=MAX_PUBLIC_BYTES),scope='Recognized items already in personal Trash only')
+        with self.lock:return self.bounded_public(self.status_payload(self.history,self.active is not None))
 
     def inspect(self,ident):
         with self.lock:
             if token_value(ident) not in self.history:raise ValueError('Trash operation is no longer in the retained journal')
-            return dict(operation=json.loads(json.dumps(self.history[ident])))
+            return self.bounded_public(dict(operation=self.history[ident]))
 
     def capture_tree(self,parent,name,mount,budget,prefix=()):
         if time.monotonic()>budget['deadline']:raise ValueError('Trash preparation exceeded its time limit; nothing was changed')
@@ -203,8 +241,8 @@ class TrashOperations:
                 if len(selected)>MAX_ITEMS:raise ValueError('Trash selection exceeds the item limit; nothing was changed')
                 captured=[self.capture(files,info,name,root_identity[0][-1],budget,expected) for name,expected in selected]
             outcomes=[dict(name=item['label'],storedName=item['name'],state='pending',removedNodes=0,recoveryPath='',payloadPath=str(self.root/'files'/item['name']),metadataPath=str(self.root/'info'/item['metadata'])) for item in captured]
-            if len(json.dumps(outcomes).encode())>MAX_PUBLIC_BYTES:raise ValueError('Trash result metadata exceeds its declared limit; nothing was changed')
-            token=secrets.token_hex(24);self.pending[token]=dict(items=captured,outcomes=outcomes,roots=root_identity,expires=now+CONFIRM_SECONDS,mode=mode)
+            token=secrets.token_hex(24);plan=dict(items=captured,outcomes=outcomes,roots=root_identity,expires=now+CONFIRM_SECONDS,mode=mode)
+            self.reserve(token,plan,self.history);self.pending[token]=plan
             return dict(token=token,mode=mode,count=len(captured),names=[item['label'] for item in captured],nodes=budget['nodes'],bytes=budget['bytes'],consequence='These items will be permanently deleted. This action cannot be undone.',expiresIn=CONFIRM_SECONDS,limits=self.status()['limits'])
 
     def cancel(self,token):
@@ -216,11 +254,12 @@ class TrashOperations:
         token_value(token)
         with self.lock:
             if token in self.history:
-                result=self.status();result['operations']=[json.loads(json.dumps(self.history[token]))];return result
+                result=self.status();result['operations']=[json.loads(json.dumps(self.history[token]))];return self.bounded_public(result)
             if self.active is not None:raise ValueError('Wait for the current deletion or stop it first')
             plan=self.pending.pop(token,None)
             if plan is None or plan['expires']<=time.monotonic():raise ValueError('This confirmation expired; review the Trash again')
             with self.roots(plan['roots']):pass
+            self.reserve(token,plan,self.history)
             previous=self.history;self.history=dict(previous)
             self.history[token]=dict(id=token,mode=plan['mode'],state='running',started=time.time(),items=copy.deepcopy(plan['outcomes']),message='Permanent deletion started')
             while len(self.history)>40:
@@ -289,7 +328,7 @@ class TrashOperations:
                                 outcome['payloadPath']='';self.remove(stage,'record.trashinfo',moved_meta);outcome['metadataPath']='';os.fsync(stage)
                             os.rmdir(stage_name,dir_fd=quarantine);os.fsync(quarantine);outcome.update(state='deleted',recoveryPath='')
                         except Exception as error:
-                            outcome.update(state='partial' if outcome['removedNodes'] else 'kept',error=str(error)[:1024])
+                            outcome.update(state='partial' if outcome['removedNodes'] else 'kept',**error_fields(error))
                             # Never overwrite a later arrival while restoring an untouched item.
                             if staged_data and not outcome['removedNodes']:
                                 try:
@@ -297,14 +336,15 @@ class TrashOperations:
                                         rename_exact('data',stage,captured['name'],files);outcome['payloadPath']=str(self.root/'files'/captured['name'])
                                         if staged_info:rename_exact('record.trashinfo',stage,captured['metadata'],info);outcome['metadataPath']=str(self.root/'info'/captured['metadata'])
                                     os.rmdir(stage_name,dir_fd=quarantine);os.fsync(files);os.fsync(info);os.fsync(quarantine);outcome['recoveryPath']=''
-                                except Exception as recovery_error:outcome['error']=(outcome['error']+'; remaining item kept at recovery location: '+str(recovery_error))[:1024]
+                                except Exception as recovery_error:
+                                    truncated=outcome.get('errorTruncated',False);outcome.update(error_fields(outcome['error']+'; remaining item kept at recovery location: '+str(recovery_error)));outcome['errorTruncated']=truncated or outcome['errorTruncated']
                         self.persist()
             operation['state']='complete' if all(item['state']=='deleted' for item in operation['items']) else 'partial'
             operation['message']='Confirmed items were permanently deleted' if operation['state']=='complete' else 'Some items were kept or only partly deleted; inspect each result and recovery location'
         except Exception as error:
-            operation.update(state='failed',message=str(error)[:1024])
+            operation.update(state='failed',message=str(error)[:MAX_MESSAGE_CHARS])
             for item in operation['items']:
-                if item['state']=='pending':item.update(state='kept',error=str(error)[:1024])
+                if item['state']=='pending':item.update(state='kept',**error_fields(error))
         finally:
             with self.lock:
                 self.active=None

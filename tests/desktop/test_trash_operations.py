@@ -65,6 +65,30 @@ class TrashOperations(unittest.TestCase):
   later=self.item('two');second=self.engine.prepare('empty');self.engine.confirm(second['token']);self.wait()
   replacement=self.item('one');result=self.engine.confirm(first['token'])
   self.assertEqual(result['operations'][0]['id'],first['token']);self.assertEqual(result['operations'][0]['items'][0]['storedName'],'one');self.assertTrue(replacement.exists());self.assertFalse(later.exists())
+ def test_many_failure_response_budget_is_reserved_before_mutation(self):
+  paths=[self.item('item-%03d-'%index+'x'*120) for index in range(80)]
+  first=self.engine.prepare('empty');outcomes=self.engine.pending[first['token']]['outcomes'];initial=trash.encoded_size(outcomes);self.engine.cancel(first['token'])
+  with patch.object(trash,'MAX_PUBLIC_BYTES',initial+10000):
+   self.assertLess(initial,trash.MAX_PUBLIC_BYTES)
+   with self.assertRaises(ValueError):self.engine.prepare('empty')
+  self.assertTrue(all(path.exists() for path in paths));self.assertFalse(self.engine.pending);self.assertFalse(self.engine.journal.parent.exists())
+ def test_many_unicode_failures_keep_every_outcome_within_transport_and_journal(self):
+  paths=[self.item('failure-%03d'%index) for index in range(40)];plan=self.engine.prepare('empty')
+  with patch.object(self.engine,'capture',side_effect=ValueError('\U0010ffff'*1024)):
+   self.engine.confirm(plan['token']);result=self.wait()
+  self.assertEqual(len(result['items']),40);self.assertTrue(all(path.exists() for path in paths))
+  for item in result['items']:
+   self.assertEqual(item['state'],'kept');self.assertTrue(item['errorTruncated']);self.assertLessEqual(trash.encoded_size(item['error']),trash.MAX_ERROR_BYTES)
+  status=self.engine.status();inspected=self.engine.inspect(plan['token'])
+  for value in (status,inspected):self.assertLessEqual(trash.encoded_size(value)+trash.PUBLIC_ENVELOPE_BYTES,trash.MAX_PUBLIC_BYTES)
+  saved=json.loads(self.engine.journal.read_text());self.assertEqual(len(saved['operations'][plan['token']]['items']),40);self.assertLessEqual(self.engine.journal.stat().st_size,trash.MAX_JOURNAL_BYTES)
+ def test_final_journal_growth_is_reserved_again_before_confirmation(self):
+  path=self.item();plan=self.engine.prepare('empty')
+  initial=dict(version=1,operations={plan['token']:dict(id=plan['token'],mode='empty',state='running',started=time.time(),items=self.engine.pending[plan['token']]['outcomes'],message='Permanent deletion started')})
+  self.assertLess(trash.encoded_size(initial),5000)
+  with patch.object(trash,'MAX_JOURNAL_BYTES',5000):
+   with self.assertRaises(ValueError):self.engine.confirm(plan['token'])
+  self.assertTrue(path.exists());self.assertFalse(self.engine.history);self.assertFalse(self.engine.journal.parent.exists())
  def test_actual_listing_emits_lossless_selected_identity(self):
   from file_jobs import trash_items
   from types import SimpleNamespace

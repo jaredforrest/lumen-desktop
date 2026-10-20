@@ -11,7 +11,7 @@ Popup {id:root;objectName:"trash-results";required property var state;modal:true
                             DialogButton {required property var modelData;width:parent.width;text:modelData.count+" item(s) · "+modelData.state;onClicked:root.state.inspect(modelData.id)}
                         }
                         TextArea {width:parent.width;readOnly:true;selectByMouse:true;textFormat:TextEdit.PlainText;wrapMode:TextEdit.Wrap;color:Theme.colors.text;font.pixelSize:Theme.textSize(13);background:null
-                            text:root.state.operations.map(operation=>operation.message+"\n"+(operation.items || []).map(item=>item.name+": "+item.state+(item.error?" — "+item.error:"")+(item.payloadPath?"\nRemaining contents: "+item.payloadPath:"")+(item.metadataPath?"\nRecovery record: "+item.metadataPath:"")+(item.recoveryPath?"\nRecovery folder: "+item.recoveryPath:"")).join("\n\n")).join("\n\n")
+                            text:root.state.operations.map(operation=>operation.message+"\n"+(operation.items || []).map(item=>item.name+": "+item.state+(item.error?" — "+item.error+(item.errorTruncated?" (diagnostic shortened)":""):"")+(item.payloadPath?"\nRemaining contents: "+item.payloadPath:"")+(item.metadataPath?"\nRecovery record: "+item.metadataPath:"")+(item.recoveryPath?"\nRecovery folder: "+item.recoveryPath:"")).join("\n\n")).join("\n\n")
                         }
                     }
                 }
