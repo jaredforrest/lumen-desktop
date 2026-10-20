@@ -47,6 +47,8 @@ ShellRoot {
   function geometry():string {const b=fixture.band();if(!b || !b.permitted)return "null";const boxes=b.boxes().filter(box=>box.x>=b.view.contentX && box.y>=b.view.contentY && box.x+box.width<b.view.contentX+b.width && box.y+box.height<b.view.contentY+b.height);if(!boxes.length)return "null";const first=boxes[0],at=b.mapToItem(files.contentItem,0,0),horizontal=service.viewMode==="gallery";const start=horizontal?{x:first.x+first.width/2,y:b.view.contentY+b.height-b.bottomInset-6}:{x:first.x+first.width+6,y:first.y+first.height/2};const end={x:first.x+1,y:first.y+1};return JSON.stringify({start:{x:at.x+start.x-b.view.contentX,y:at.y+start.y-b.view.contentY},end:{x:at.x+end.x-b.view.contentX,y:at.y+end.y-b.view.contentY},row:{x:at.x+first.x-b.view.contentX+first.width/2,y:at.y+first.y-b.view.contentY+first.height/2},path:first.row.path,populated:horizontal?b.view.contentWidth>b.width:b.view.contentHeight>b.height});}
  }
 }''')
+def record(message):
+ checks.append(message);(out/'progress.json').write_text(json.dumps(dict(checks=checks),indent=2))
 def launch(command,name):
  with (out/name).open('w') as log:process=sp.Popen(command,env=env,stdout=log,stderr=sp.STDOUT,start_new_session=True)
  processes.append(process);return process
@@ -81,16 +83,16 @@ try:
  pointer=sp.Popen([a.pointer_tool,'pointer','move','0','0'],env=env,stdin=sp.PIPE,text=True,start_new_session=True);processes.append(pointer)
  for mode in ('list','grid','gallery','columns'):
   ipc('mode',mode);box=wait(lambda:json.loads(ipc('geometry')));assert box['populated'],box
-  before=state()['selection'];begin(box);assert state()['selection']==before and state()['preview'],state();button('r');wait(lambda:not state()['pending']);assert box['path'] in state()['selection'];checks.append(mode+': actual blank gutter starts preview without writes; release selects exact row')
-  before=state()['selection'];begin(box);key('-k','Escape');button('r');assert not state()['pending'] and state()['selection']==before and state()['preview'] is None;checks.append(mode+': physical Escape cancels without committing preview')
-  key('-M','ctrl');begin(box);button('r');key('-m','ctrl');wait(lambda:not state()['pending']);assert box['path'] not in state()['selection'];checks.append(mode+': physical Control band toggles captured membership')
-  key('-M','shift');begin(box);button('r');key('-m','shift');wait(lambda:not state()['pending']);assert box['path'] in state()['selection'];checks.append(mode+': physical Shift band adds exact captured membership')
-  point(box['row']);button('p');button('r');wait(lambda:state()['selection']==[box['path']]);checks.append(mode+': ordinary delegate pointer selection remains available')
-  before=state()['selection'];begin(box);ipc('reverse');wait(lambda:not state()['pending'] and state()['ready']);button('r');assert state()['selection']==before and state()['preview'] is None;checks.append(mode+': actual resort cancels held geometry without selecting another object')
-  box=wait(lambda:json.loads(ipc('geometry')));before=state()['selection'];begin(box);pointer.stdin.write('w 1\n');pointer.stdin.flush();wait(lambda:not state()['pending']);button('r');assert state()['selection']==before and state()['preview'] is None;checks.append(mode+': physical wheel cancels held viewport preview')
+  before=state()['selection'];begin(box);assert state()['selection']==before and state()['preview'],state();button('r');wait(lambda:not state()['pending']);assert box['path'] in state()['selection'];record(mode+': actual blank gutter starts preview without writes; release selects exact row')
+  before=state()['selection'];begin(box);key('-k','Escape');button('r');assert not state()['pending'] and state()['selection']==before and state()['preview'] is None;record(mode+': physical Escape cancels without committing preview')
+  key('-M','ctrl');begin(box);button('r');key('-m','ctrl');wait(lambda:not state()['pending']);assert box['path'] not in state()['selection'];record(mode+': physical Control band toggles captured membership')
+  key('-M','shift');begin(box);button('r');key('-m','shift');wait(lambda:not state()['pending']);assert box['path'] in state()['selection'];record(mode+': physical Shift band adds exact captured membership')
+  point(box['row']);button('p');button('r');wait(lambda:state()['selection']==[box['path']]);record(mode+': ordinary delegate pointer selection remains available')
+  before=state()['selection'];begin(box);ipc('reverse');wait(lambda:not state()['pending'] and state()['ready']);button('r');assert state()['selection']==before and state()['preview'] is None;record(mode+': actual resort cancels held geometry without selecting another object')
+  box=wait(lambda:json.loads(ipc('geometry')));before=state()['selection'];begin(box);pointer.stdin.write('w 1\n');pointer.stdin.flush();wait(lambda:not state()['pending']);button('r');assert state()['selection']==before and state()['preview'] is None;record(mode+': physical wheel cancels held viewport preview')
   if mode in ('list','grid'):
    box=wait(lambda:json.loads(ipc('geometry')));point(box['row']);button('p');point({"x":box['row']['x']+20,"y":box['row']['y']+20});point({"x":box['row']['x']+40,"y":box['row']['y']+40})
-   wait(lambda:any(seat.get('lumen_drag',{}).get('active') for seat in json.loads(call('swaymsg','-r','-t','get_seats'))));assert not state()['pending'];key('-k','Escape');button('r');wait(lambda:not any(seat.get('lumen_drag',{}).get('active') for seat in json.loads(call('swaymsg','-r','-t','get_seats'))));checks.append(mode+': actual delegate drag starts native offer rather than a selection band')
+   wait(lambda:any(seat.get('lumen_drag',{}).get('active') for seat in json.loads(call('swaymsg','-r','-t','get_seats'))));assert not state()['pending'];key('-k','Escape');button('r');wait(lambda:not any(seat.get('lumen_drag',{}).get('active') for seat in json.loads(call('swaymsg','-r','-t','get_seats'))));record(mode+': actual delegate drag starts native offer rather than a selection band')
  call('grim',str(out/'selection.png'))
  log=(out/'shell.log').read_text();assert not any(marker in log for marker in ('ReferenceError:','TypeError:','Binding loop','Failed to load configuration','Cannot assign','Accessible attached property must')),log
  (out/'result.json').write_text(json.dumps(dict(passed=True,checks=checks,source=call('git','-C',str(repo),'rev-parse','HEAD'),launcher=str(a.launcher),sway=a.sway,effects=a.effects,fixtureSha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),assetsSha256={str(path.relative_to(assets)):hashlib.sha256(path.read_bytes()).hexdigest() for path in sorted(assets.rglob('*')) if path.is_file()}),indent=2))
