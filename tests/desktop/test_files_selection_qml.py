@@ -18,7 +18,7 @@ class FilesSelectionQt(unittest.TestCase):
    env.update(QT_QPA_PLATFORM='offscreen',QT_QPA_PLATFORMTHEME='generic',QT_QUICK_BACKEND='software',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none',LUMEN_FILE_SERVICE='0',LUMEN_LAUNCH_SCOPES='0')
    appearance=root/'appearance.json';palettes=json.loads((ROOT/'res/lumen-desktop/appearance/palette.json').read_text());appearance.write_text(json.dumps(dict(font=palettes['font'],palette=palettes['dark'],preferences={})));env['LUMEN_APPEARANCE_STATE']=str(appearance)
    assets=root/'assets';shutil.copytree(ROOT/'res/lumen-desktop',assets)
-   backend=assets/'shell/files.py';original=backend.read_text();needle="    if action=='volumes':\n";self.assertEqual(original.count(needle),1);backend.chmod(0o600);backend.write_text(original.replace(needle,"    if action=='volumes':return dict(volumes=[])\n"+needle))
+   backend=assets/'shell/files.py';original=backend.read_text();needle="    if action=='volumes':\n";self.assertEqual(original.count(needle),1);backend.chmod(0o600);backend.write_text(original.replace(needle,"    if action=='volumes':return dict(volumes=[])\n"+needle).replace("    if action=='column-list':return listing(data)","    if action=='column-list' and data.get('path') not in "+repr([str(docs),str(full)])+":return dict(rows=[])\n    if action=='column-list':return listing(data)"))
    mutate=root/'replace.py';mutate.write_text("import os,sys\nfrom pathlib import Path\np=Path(sys.argv[1]);fd=os.open(p,os.O_PATH);p.unlink();p.write_text('replacement');os.close(fd)\n")
    qml=root/'shell.qml';qml.write_text('''import QtQuick
 import Quickshell
