@@ -14,6 +14,7 @@ jobs:
           fetch-depth: 0
       - uses: cachix/install-nix-action@v31
       - run: nix flake check --print-build-logs --option abort-on-warn true
+      - run: python3 tests/ci/test_prepare_software_effects.py
   integration:
     runs-on: ubuntu-24.04
     steps:
@@ -29,17 +30,7 @@ jobs:
       - run: |
           mkdir -p artifacts
           nix build .#compositor --out-link artifacts/compositor-effects --option abort-on-warn true
-          if ! sudo modprobe udmabuf; then
-            echo "::error::Software effects require the running kernel's udmabuf module. Use a hosted image with CONFIG_UDMABUF=m/y and its matching modules; no effects tests were skipped."
-            exit 1
-          fi
-          sudo udevadm settle
-          if [[ ! -c /dev/udmabuf ]]; then
-            echo "::error::The udmabuf module did not expose /dev/udmabuf; software DMA-BUF allocation is unavailable."
-            exit 1
-          fi
-          sudo chown "$(id -u):$(id -g)" /dev/udmabuf
-          sudo chmod 0600 /dev/udmabuf
+          bash tests/ci/prepare-software-effects.sh artifacts/software-effects-kernel
           nix develop --command desktop-test-python tests/desktop/effects_software_render.py --sway "$PWD/artifacts/compositor-effects/bin/sway" --output artifacts/effects-software-render
           nix build .#shell-runtime --out-link artifacts/shell-runtime --option abort-on-warn true
           nix build .#test-typography --out-link artifacts/typography-probe --option abort-on-warn true
@@ -121,6 +112,7 @@ jobs:
           path: |
             artifacts/backends
             artifacts/force-quit
+            artifacts/software-effects-kernel
             artifacts/effects-software-render
             artifacts/group-membership-*
             artifacts/group-selector-*
