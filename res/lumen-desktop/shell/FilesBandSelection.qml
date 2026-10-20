@@ -73,11 +73,13 @@ Item {
         id:area;width:Math.max(0,root.width-root.rightInset);height:Math.max(0,root.height-root.bottomInset)
         enabled:root.permitted;acceptedButtons:Qt.LeftButton;preventStealing:true
         onPressed:event=>{
-            if(root.view.indexAt(event.x+root.view.contentX,event.y+root.view.contentY)>=0){event.accepted=false;return;}
+            const point={x:event.x+root.view.contentX,y:event.y+root.view.contentY},observed=root.boxes();
+            const index=root.view.indexAt(point.x,point.y);
+            if((index>=0 && !root.view.itemAtIndex(index)) || observed.some(box=>Selection.contains(box,point))){event.accepted=false;return;}
             const mode=(event.modifiers & Qt.ControlModifier)?"toggle":(event.modifiers & Qt.ShiftModifier)?"add":"replace";
             const captured=Selection.begin(root.rows,root.selectedPaths,root.currentIndex,root.anchorIndex,root.contextKey,mode);
             if(!captured){event.accepted=false;return;}
-            root.transaction=captured;root.capturedBoxes=root.boxes();root.start={x:event.x+root.view.contentX,y:event.y+root.view.contentY};root.last=root.start;root.pending=true;root.active=false;root.began();root.forceActiveFocus();
+            root.transaction=captured;root.capturedBoxes=observed;root.start={x:event.x+root.view.contentX,y:event.y+root.view.contentY};root.last=root.start;root.pending=true;root.active=false;root.began();root.forceActiveFocus();
         }
         onPositionChanged:event=>root.update(event.x,event.y)
         onReleased:event=>{

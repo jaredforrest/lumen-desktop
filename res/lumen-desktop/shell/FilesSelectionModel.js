@@ -31,6 +31,7 @@ function rectangle(start,end){
 function intersects(rect,box){
     return rect && box && [box.x,box.y,box.width,box.height].every(Number.isFinite) && box.width>0 && box.height>0 && rect.width>0 && rect.height>0 && rect.x<box.x+box.width && rect.x+rect.width>box.x && rect.y<box.y+box.height && rect.y+rect.height>box.y;
 }
+function contains(box,point){return !!box && [box.x,box.y,box.width,box.height,point.x,point.y].every(Number.isFinite) && point.x>=box.x && point.x<box.x+box.width && point.y>=box.y && point.y<box.y+box.height;}
 function hits(rect,boxes){return boxes.filter(box=>intersects(rect,box)).map(box=>ref(box.row)).filter(Boolean);}
 function combine(snapshot,hitRows,mode){
     if(!snapshot || !["replace","toggle","add"].includes(mode))return null;
@@ -49,4 +50,4 @@ function finish(transaction,rows,context,hitRows){
     const preview=combine(transaction.snapshot,hitRows,transaction.mode);
     return preview?reconcile(rows,preview):null;
 }
-if(typeof module!=="undefined")module.exports={ref,key,locate,capture,reconcile,revision,rectangle,intersects,hits,combine,begin,finish};
+if(typeof module!=="undefined")module.exports={ref,key,locate,capture,reconcile,revision,rectangle,intersects,contains,hits,combine,begin,finish};

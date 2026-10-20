@@ -33,3 +33,7 @@ assert.deepEqual(s.reconcile([row("/remaining",linked.identity.inode)],{selectio
 assert.deepEqual(s.reconcile([rows[0]],{selection:[{path:"/missing",identity:rows[0].identity}]}).paths,[]);
 assert.deepEqual(s.reconcile([linked],{selection:[linked]}).paths,[linked.path]);
 assert.deepEqual(s.combine(initial,[rows[0],rows[0]],"toggle").selection,[],"Duplicate hit boxes toggle once only");
+
+assert.equal(s.contains(boxes[0],{x:14.9,y:14.9}),true);
+assert.equal(s.contains(boxes[0],{x:15,y:5}),false,"Actual delegate edge leaves explicit blank gutter");
+assert.equal(s.contains(boxes[0],{x:Infinity,y:5}),false);

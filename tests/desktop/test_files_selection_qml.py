@@ -9,6 +9,8 @@ class FilesSelectionQt(unittest.TestCase):
   with tempfile.TemporaryDirectory(prefix='lumen-selection-qt-') as temporary:
    root=Path(temporary);root.chmod(0o700);docs=root/'Documents';docs.mkdir()
    for name in ('one.txt','two.txt','three.txt'):(docs/name).write_text('synthetic '+name)
+   full=root/'Full';full.mkdir()
+   for index in range(160):(full/f'item-{index:03}.txt').write_text('synthetic')
    env=dict(os.environ,HOME=temporary,XDG_RUNTIME_DIR=temporary,DBUS_SYSTEM_BUS_ADDRESS='unix:path='+temporary+'/no-system-bus',PULSE_SERVER='unix:'+temporary+'/no-audio',PIPEWIRE_RUNTIME_DIR=temporary,PIPEWIRE_REMOTE='no-pipewire')
    for key in ('CONFIG','STATE','CACHE','DATA'):env['XDG_'+key+'_HOME']=str(root/key.lower())
    for key in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK','DBUS_SESSION_BUS_ADDRESS','AT_SPI_BUS_ADDRESS'):env.pop(key,None)
@@ -38,9 +40,10 @@ ShellRoot {
  TextInput {id:focusSink;parent:files.contentItem;width:1;height:1}
  function find(name,item){if(item.objectName===name)return item;for(const child of item.children || []){const found=find(name,child);if(found)return found;}return null;}
  function arm(){const band=find("files-list-band-selection",files.contentItem);check(!!band,"Missing production band");band.permitted=true;band.transaction=Selection.begin(service.rows,files.selectedPaths,files.selected,files.selectionAnchor,band.contextKey,"replace");check(!!band.transaction,"Band capture failed");band.start={x:band.width-20,y:band.height-20};check(band.view.indexAt(band.start.x,band.start.y+band.view.contentY)<0,"Start is not blank");band.capturedBoxes=band.boxes();check(band.capturedBoxes.length===3,"Real delegate geometry unavailable");band.pending=true;band.forceActiveFocus();band.update(1,1);return band;}
+ function gutter(name,horizontal){const band=find(name,files.contentItem);if(!band || !band.permitted || !band.boxes().length)return false;const boxes=band.boxes();const box=boxes.find(box=>box.x+box.width>band.view.contentX && box.y+box.height>band.view.contentY);if(!box)return false;const point=horizontal?{x:box.x+box.width/2,y:band.view.contentY+band.height-band.bottomInset-6}:{x:box.x+box.width+6,y:Math.max(box.y,band.view.contentY)+Math.min(10,box.height/2)};check(point.x>=band.view.contentX && point.x<band.view.contentX+band.width-band.rightInset && point.y>=band.view.contentY && point.y<band.view.contentY+band.height-band.bottomInset,"Gutter outside usable viewport "+name);check(!boxes.some(box=>Selection.contains(box,point)),"Gutter occupied by actual delegate "+name);check(horizontal?band.view.contentWidth>band.width:band.view.contentHeight>band.height,"Folder not fully populated "+name);return true;}
  function check(value,message){if(!value)throw Error(message+" phase="+phase+" details="+JSON.stringify({current:files.current,selected:files.selected,paths:files.selectedPaths,expectedFocus:focused,history:service.history,restoring:files.restoringPresentationState}));}
  Timer {interval:50;running:true;repeat:true;onTriggered:{try {
-  if(++ticks>140)throw Error("Selection fixture timed out");
+  if(++ticks>140)throw Error("Selection fixture timed out phase="+phase+" rows="+service.rows.length+" mode="+service.viewMode);
   if(!service.ready || service.busy)return;
   if(phase===0){service.navigate(service.path);phase=1;return;}
   if(phase===1){if(service.rows.length!==3)return;files.restorePresentation(null);check(files.restoringPresentationState,"Deferred restore setup failed");files.choose(0,0);check(!files.restoringPresentationState,"Explicit selection did not retire deferred restore");fixture.chosen=files.current.path;files.choose(1,Qt.ControlModifier);fixture.focused=files.current.path;files.choose(1,Qt.ControlModifier);check(files.current.path===focused && files.selectedPaths.length===1 && files.selectedPaths[0]===chosen,"Focus not distinct before refresh");service.descending=true;service.refresh();phase=2;return;}
@@ -49,7 +52,11 @@ ShellRoot {
   if(phase===5){const band=arm();band.view.contentY+=1;check(!band.pending && files.bandPreviewPaths===null,"Viewport scrolling retained stale band");band.view.contentY=0;phase=6;return;}
   if(phase===6){const band=arm();focusSink.forceActiveFocus();check(!band.pending && focusSink.activeFocus,"Cancellation stole a legitimate new focus");phase=7;return;}
   if(phase===7){const band=arm();band.contextKey="retired-output";check(!band.pending && files.bandPreviewPaths===null,"Context change retained gesture");phase=8;return;}
-  if(phase===8){const band=arm();band.permitted=false;check(!band.pending,"Unknown or locked policy did not cancel");console.log("FILES_SELECTION_QT_PASS");Qt.quit();}
+  if(phase===8){const band=arm();band.permitted=false;check(!band.pending,"Unknown or locked policy did not cancel");band.permitted=true;files.contentItem.forceActiveFocus();service.navigate('''+json.dumps(str(full))+''');phase=9;return;}
+  if(phase===9){if(service.rows.length!==160 || !gutter("files-list-band-selection",false))return;service.viewMode="grid";phase=10;return;}
+  if(phase===10){if(!gutter("files-grid-band-selection",false))return;service.viewMode="gallery";phase=11;return;}
+  if(phase===11){if(!gutter("files-gallery-band-selection",true))return;service.viewMode="columns";phase=12;return;}
+  if(phase===12){if(!gutter("files-column-band-"+service.path,false))return;console.log("FILES_SELECTION_QT_PASS");Qt.quit();}
  }catch(error){console.error("FILES_SELECTION_QT_FAIL "+error);Qt.quit();}}}
 }''')
    result=subprocess.run(['dbus-run-session','--','quickshell','-p',str(qml)],env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=20)

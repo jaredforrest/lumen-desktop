@@ -65,7 +65,7 @@ Flickable {
                     delegate:AbstractButton {
                         required property var modelData
                         readonly property bool selected:ListView.view.parent.modelData.path===root.selectionFolder?root.selectedPaths.includes(modelData.path):modelData.path===root.currentPath || root.columns.some(c=>c.path===modelData.path)
-                        width:ListView.view.width-6;height:28
+                        width:Math.max(0,ListView.view.width-12-(columnScrollBar.visible?columnScrollBar.width:0));height:28
                         Accessible.name:modelData.name+(modelData.directory?", folder":"");Accessible.selected:selected
                         background:Rectangle {radius:5;color:parent.selected?(root.selectionActive?Theme.colors.accent:Theme.selection):parent.hovered?Theme.colors.hover:"transparent";border.color:parent.activeFocus?Theme.colors.accent:"transparent"}
                         contentItem:Item {

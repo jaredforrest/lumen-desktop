@@ -11,7 +11,12 @@ model for list, icon and gallery views and the active leaf column. The leaf
 column query and ordered identity rows must match the active folder. Ancestor
 columns retain navigation. A press inside an existing row remains available to
 its original file-drag, click or context-menu implementation. Scrollbar strips
-are excluded. The component changes only a painted preview until a valid release.
+are excluded. A visible12-pixel blank selection gutter is reserved next to
+vertical list/column rows, between icon cells and above the gallery scrollbar,
+including fully packed folders. This is a provisional engineering affordance, not
+a reference geometry measurement. Row interaction stays within the actual
+delegate; hit testing does not guess which text pixels are painted.
+The component changes only a painted preview until a valid release.
 Plain drag replaces the selected set, Control toggles membership against the
 captured set, and Shift adds membership. These are declared engineering policies.
 Focus and anchor retain their captured identities rather than following the last
