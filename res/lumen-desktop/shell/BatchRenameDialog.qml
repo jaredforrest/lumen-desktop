@@ -18,8 +18,6 @@ Popup {
     property bool completed:false
     property bool acceptingReplies:false
     modal:true;focus:true
-    Accessible.role:Accessible.Dialog
-    Accessible.name:"Rename selected items"
     width:Math.min(640,ownerWidth-24);height:Math.min(620,ownerHeight-24)
     x:(ownerWidth-width)/2;y:12;padding:16
     closePolicy:executing?Popup.NoAutoClose:Popup.CloseOnEscape
@@ -56,7 +54,7 @@ Popup {
         }
     }
     contentItem:ScrollView {
-        id:scroll;clip:true;ScrollBar.vertical:DesktopScrollBar {}
+        id:scroll;clip:true;Accessible.role:Accessible.Dialog;Accessible.name:"Rename selected items";ScrollBar.vertical:DesktopScrollBar {}
         Column {
             width:scroll.availableWidth;spacing:9
             PanelLabel {width:parent.width;text:"Rename "+root.captured.length+" Items";font.pixelSize:18;font.weight:Font.DemiBold}

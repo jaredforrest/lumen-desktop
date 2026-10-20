@@ -47,7 +47,7 @@ ShellRoot {
 }''')
    result=subprocess.run(['quickshell','-p',str(qml)],env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=20)
    self.assertEqual(result.returncode,0,result.stdout);self.assertIn('BATCH_RENAME_QT_PASS',result.stdout,result.stdout)
-   for marker in ('BATCH_RENAME_QT_FAIL','ReferenceError:','TypeError:','Binding loop','Failed to load configuration','Cannot assign','ResourceWarning','Exception ignored'):
+   for marker in ('BATCH_RENAME_QT_FAIL','ReferenceError:','TypeError:','Binding loop','Failed to load configuration','Cannot assign','ResourceWarning','Exception ignored','Accessible attached property must'):
     self.assertNotIn(marker,result.stdout,result.stdout)
 
 if __name__=='__main__':unittest.main()
