@@ -40,6 +40,7 @@ class Observer:
     children=bounded_call(self.interface(reference,'org.a11y.atspi.Accessible').GetChildren,deadline=deadline)
     pending.extend((child,parents+[dict(reference=row['reference'],name=row['name'],role=row['role'])]) for child in children)
    except dbus.DBusException as error:rows.append(dict(reference=list(reference),unavailable=str(error)))
+   if time.monotonic()>deadline:raise ValueError('Private accessibility observation exceeded its budget')
    if len(json.dumps(rows).encode())>4*1024**2:raise ValueError('Private accessibility snapshot exceeds byte budget')
   return rows
  def focus(self,row):
