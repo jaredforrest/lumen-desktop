@@ -92,6 +92,7 @@ ShellRoot {id:stub
  property string applicationCommandError:""
  property date currentDate:new Date()
  property var windows:ToplevelManager.toplevels.values.filter(w=>w.title==="Same document title")
+ property var firstWindow:null
  property var captured:null
  property int attempts:0
  property int launches:0
@@ -116,22 +117,28 @@ ShellRoot {id:stub
  function status():string{return JSON.stringify({output:dock.outputName,mode:D.Theme.preferences.dockMinimizeDestination,keyboard:dock.keyboardMode,keyboardIndex:dock.keyboardIndex,active:dock.contentItem.Window.window?dock.contentItem.Window.window.active:false,width:dock.width,shelf:dock.shelfThickness,slot:dock.slot,hovered:dock.hovered,pressed:dock.pressedKey,keys:stub.referenceDock.map(i=>i.key),entries:mini.items.map(i=>({key:i.key,name:i.name})),records:mini.records.map(r=>r.key),minimized:stub.windows.map(w=>w.minimized),attempts:stub.attempts,launches:stub.launches});}
  function mode(value:string):void{D.Theme.preferences=Object.assign({},D.Theme.preferences,{dockMinimizeDestination:value});}
  function focus():void{stub.requestDockFocus("HEADLESS-1");}
+ function observeFirst():void{stub.firstWindow=stub.windows[0];}
+ function firstKey():string{const item=mini.items.find(i=>i.window===stub.firstWindow);return item?item.key:"";}
  function capture(key:string):void{stub.captured=mini.items.find(i=>i.key===key);}
  function stale():bool{return mini.activate(stub.captured);}
+ function capturedKey():string{const item=mini.items.find(i=>stub.captured && i.window===stub.captured.window);return item?item.key:"";}
+ function cycleMode():void{D.Theme.preferences=Object.assign({},D.Theme.preferences,{dockMinimizeDestination:"application"});D.Theme.preferences=Object.assign({},D.Theme.preferences,{dockMinimizeDestination:"windows"});}
  }
 }''')
   launch(['quickshell','-p',str(qml)],'dock.log')
   def ipc(action,*args):return call('quickshell','-p',qml,'ipc','call','minimizedDock',action,*args)
   def ui():return json.loads(ipc('status'))
-  wait(lambda:ui()['mode']=='application');checked('focus output HEADLESS-1');first,cid1=make('first');wait(lambda:len(ui()['records'])==1);key1=ui()['records'][0]
-  checked('focus output HEADLESS-2');second,cid2=make('second');wait(lambda:len(ui()['records'])==2);key2=next(k for k in ui()['records'] if k!=key1)
+  wait(lambda:ui()['mode']=='application');checked('focus output HEADLESS-1');first,cid1=make('first');wait(lambda:len(ui()['minimized'])==1);ipc('observeFirst')
+  checked('focus output HEADLESS-2');second,cid2=make('second');wait(lambda:len(ui()['minimized'])==2)
   boxes={cid:dict(native(cid)['rect']) for cid in (cid1,cid2)}
   for cid in (cid1,cid2):checked('[con_id=%d] lumen_window minimize'%cid)
   wait(lambda:all(ui()['minimized']));assert ui()['keys']==['synthetic-documents'];checks.append('Default application destination retains one app item for two same-title minimized documents')
-  ipc('mode','windows');wait(lambda:len(ui()['entries'])==2);assert {r['key'] for r in ui()['entries']}=={key1,key2};checks.append('Separate destination publishes distinct ephemeral handles despite identical titles')
+  ipc('mode','windows');wait(lambda:len(ui()['entries'])==2);key1=ipc('firstKey');key2=next(r['key'] for r in ui()['entries'] if r['key']!=key1);assert key1 and key1!=key2;checks.append('Separate destination publishes distinct ephemeral handles despite identical titles')
+  ipc('capture',key1);ipc('cycleMode');assert ipc('stale')=='false';key1=ipc('capturedKey');key2=next(r['key'] for r in ui()['entries'] if r['key']!=key1);checks.append('Same-turn destination disable/re-enable cannot resurrect a captured prior lease')
+  ipc('capture',key2);oldkey2=key2
   ipc('focus');wait(lambda:ui()['keyboard'] and ui()['active']);index=ui()['keys'].index(key2);call('wtype','-k','Home',*sum((['-k','Right'] for _ in range(index)),[]));wait(lambda:ui()['keyboardIndex']==index);call('wtype','-k','Return');wait(lambda:not native(cid2)['lumen_state']['minimised'] and native(cid2)['focused']);assert native(cid1)['lumen_state']['minimised'] and native(cid2)['rect']==boxes[cid2] and native(cid2)['visible'],dict(first=native(cid1),second=native(cid2),boxes=boxes);checks.append('Physical keyboard activates exact second handle, clears native minimized state and restores original output/geometry')
-  checked('[con_id=%d] lumen_window minimize'%cid2);wait(lambda:len(ui()['entries'])==2);point(ui()['keys'].index(key1));button('p');button('r');wait(lambda:not native(cid1)['lumen_state']['minimised'] and native(cid1)['focused']);assert native(cid2)['lumen_state']['minimised'] and native(cid1)['rect']==boxes[cid1] and native(cid1)['visible'],dict(first=native(cid1),second=native(cid2),boxes=boxes);checks.append('Physical pointer independently restores first handle without restoring its same-title sibling')
-  checked('[con_id=%d] lumen_window minimize'%cid1);wait(lambda:len(ui()['entries'])==2);ipc('capture',key1);point(ui()['keys'].index(key1));button('p');wait(lambda:ui()['pressed']==key1);checked('[con_id=%d] kill'%cid1);wait(lambda:native(cid1) is None);third,cid3=make('replacement');checked('[con_id=%d] lumen_window minimize'%cid3);wait(lambda:len(ui()['entries'])==2);before=ui()['attempts'];button('r');wait(lambda:ui()['pressed']=='');assert ipc('stale')=='false' and native(cid3)['lumen_state']['minimised'] and native(cid2)['lumen_state']['minimised'] and ui()['attempts']==before and ui()['launches']==0;checks.append('Held pointer and retired capability cannot restore or launch a same-title replacement')
+  checked('[con_id=%d] lumen_window minimize'%cid2);wait(lambda:len(ui()['entries'])==2);key2=next(r['key'] for r in ui()['entries'] if r['key']!=key1);assert key2!=oldkey2 and ipc('stale')=='false';checks.append('Restore/re-minimize same native handle retires its previous action lease');point(ui()['keys'].index(key1));button('p');button('r');wait(lambda:not native(cid1)['lumen_state']['minimised'] and native(cid1)['focused']);assert native(cid2)['lumen_state']['minimised'] and native(cid1)['rect']==boxes[cid1] and native(cid1)['visible'],dict(first=native(cid1),second=native(cid2),boxes=boxes);checks.append('Physical pointer independently restores first handle without restoring its same-title sibling')
+  checked('[con_id=%d] lumen_window minimize'%cid1);wait(lambda:len(ui()['entries'])==2);key1=next(r['key'] for r in ui()['entries'] if r['key']!=key2);ipc('capture',key1);point(ui()['keys'].index(key1));button('p');wait(lambda:ui()['pressed']==key1);checked('[con_id=%d] kill'%cid1);wait(lambda:native(cid1) is None);third,cid3=make('replacement');checked('[con_id=%d] lumen_window minimize'%cid3);wait(lambda:len(ui()['entries'])==2);before=ui()['attempts'];button('r');wait(lambda:ui()['pressed']=='');assert ipc('stale')=='false' and native(cid3)['lumen_state']['minimised'] and native(cid2)['lumen_state']['minimised'] and ui()['attempts']==before and ui()['launches']==0;checks.append('Held pointer and retired capability cannot restore or launch a same-title replacement')
   key3=next(r['key'] for r in ui()['entries'] if r['key']!=key2);point(ui()['keys'].index(key3));button('p');wait(lambda:ui()['pressed']==key3);ipc('mode','application');wait(lambda:len(ui()['entries'])==0);button('r');wait(lambda:ui()['pressed']=='');assert native(cid2)['lumen_state']['minimised'] and native(cid3)['lumen_state']['minimised'] and ui()['launches']==0;checks.append('Destination change retires held item without app relaunch or bystander restore')
   call('grim',a.output/'application-destination.png');ipc('mode','windows');wait(lambda:len(ui()['entries'])==2);call('grim',a.output/'window-destination.png')
   (a.output/'result.json').write_text(json.dumps(dict(passed=True,checks=checks,source=a.source_revision,compositor=str(a.sway),nativeIds=[cid1,cid2,cid3],liveSocketUnchanged=os.environ.get('SWAYSOCK')==original_socket),indent=2));print(json.dumps(dict(passed=True,checks=len(checks))))

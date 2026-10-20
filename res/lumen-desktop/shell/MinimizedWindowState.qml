@@ -1,4 +1,5 @@
 import QtQuick
+import QtQml.Models
 QtObject {
     id: root
     property bool enabled: false
@@ -6,10 +7,25 @@ QtObject {
     property var entryForWindow: window => null
     property var records: []
     property int nextToken: 1
-    function reconcile() {
-        records=windows.map(window=>records.find(record=>record.window===window) || {window:window,key:"minimized-window:"+(nextToken++)});
+    function reconcile(retiredWindow) {
+        const previous=records;
+        records=enabled?windows.filter(window=>window && window.minimized).map(window=>
+            previous.find(record=>record.window===window && window!==retiredWindow) || {window:window,key:"minimized-window:"+(nextToken++)}):[];
+    }
+    // Observe transitions directly: a false/true cycle in one turn must retire intent.
+    property Instantiator observers:Instantiator {
+        model:root.windows
+        delegate:QtObject {
+            id:observer
+            required property var modelData
+            property Connections changes:Connections {
+                target:observer.modelData
+                function onMinimizedChanged(){root.reconcile(observer.modelData);}
+            }
+        }
     }
     onWindowsChanged:reconcile()
+    onEnabledChanged:{records=[];reconcile();}
     Component.onCompleted:reconcile()
     readonly property var items:!enabled?[]:records.filter(record=>windows.includes(record.window) && record.window.minimized).map(record=>({
         key:record.key,action:"minimized-window",section:"documents",name:record.window.title || "Untitled window",
