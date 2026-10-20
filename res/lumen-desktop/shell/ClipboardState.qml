@@ -8,6 +8,7 @@ Item {
     property bool listWhenActive:true
     property bool available:false
     property bool enabled:false
+    property bool collecting:false
     property bool busy:false
     property string query:""
     property var entries:[]
@@ -36,7 +37,9 @@ Item {
             if(data.error){error=data.error;return;}
             available=true;
             if(typeof data.enabled==="boolean")enabled=data.enabled;
-            if(!enabled)entries=[];
+            if(typeof data.collecting==="boolean")collecting=data.collecting;
+            if(!enabled){entries=[];collecting=false;}
+            else if(typeof data.collecting==="boolean" && !collecting)error="Clipboard collection is unavailable. Your consent is retained; retry or disable history.";
             if(action==="list" && active && requestRevision===revision) {
                 if(!Array.isArray(data.entries) || data.entries.some(e=>!e || typeof e.id!=="string" || typeof e.text!=="string"))throw new Error("Invalid clipboard entries");
                 entries=data.entries;
@@ -57,7 +60,7 @@ Item {
         onStarted:response=""
         onExited:(code,status)=>{
             root.busy=false;
-            if(code!==0){root.error="Clipboard history is unavailable. No clipboard contents were read.";root.available=false;}
+            if(code!==0){root.error="Clipboard history is unavailable. Retry or disable history.";root.available=false;root.entries=[];if(action==="clear" || action==="disable" || action==="enable"){root.enabled=false;root.collecting=false;}}
             else root.receive(response,action,requestRevision);
             if(root.refreshPending && root.active){root.refreshPending=false;Qt.callLater(()=>root.request(root.enabled && root.listWhenActive?"list":"status"));}
         }

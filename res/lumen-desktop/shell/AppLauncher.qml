@@ -208,7 +208,7 @@ PanelSurface {
                 DialogButton {text:"Enable Clipboard History";enabled:!clipboard.busy;onClicked:clipboard.enable()}
             }
             ListView {
-                id:list;visible:root.showingResults && !root.gridMode;anchors.fill:parent;anchors.leftMargin:10;anchors.rightMargin:10;clip:true;model:root.results
+                id:list;visible:root.showingResults && !root.gridMode && (root.provider!=="Clipboard" || clipboard.enabled);anchors.fill:parent;anchors.leftMargin:10;anchors.rightMargin:10;clip:true;model:root.results
                 delegate:Rectangle {
                     required property var modelData
                     required property int index

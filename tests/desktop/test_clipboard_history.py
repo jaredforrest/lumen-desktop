@@ -29,6 +29,28 @@ class ClipboardPrivacy(unittest.TestCase):
         with self.assertRaises(ValueError):self.history.copy(item,lambda text:self.fail('stale copy'))
         self.history.ingest('two');self.history.clear();self.assertEqual(self.history.list()['entries'],[])
         self.history.ingest('three');self.history.set_enabled(False);self.assertEqual(self.history.list()['entries'],[])
+    def test_capture_barrier_rejects_preclear_and_accepts_new_event(self):
+        self.history.set_enabled(True);self.history.ingest('old',captured_at=1)
+        self.clock[0]=2;self.history.clear()
+        self.assertFalse(self.history.ingest('in flight',captured_at=1)['recorded'])
+        self.clock[0]=3;self.assertTrue(self.history.ingest('new',captured_at=3)['recorded'])
+        self.assertFalse(self.history.ingest('future',captured_at=4)['recorded'])
+        self.assertEqual([e['text'] for e in self.history.list()['entries']],['new'])
+        self.assertEqual(json.loads((self.history.runtime/'clear-state.json').read_text())['time'],2)
+        self.assertEqual([p.name for p in self.history.state.iterdir()],['consent'])
+    def test_revoked_interval_and_old_observer_epoch_cannot_replay(self):
+        self.clock[0]=100;self.history.set_enabled(True);epoch=self.history.barrier()['epoch']
+        self.clock[0]=101;self.history.set_enabled(False);self.clock[0]=102;self.history.set_enabled(True)
+        self.assertFalse(self.history.ingest('old',captured_at=100)['recorded'])
+        self.assertFalse(self.history.ingest('during revoke',captured_at=101.5)['recorded'])
+        self.assertFalse(self.history.ingest('old observer',captured_at=102,epoch=epoch)['recorded'])
+        self.assertTrue(self.history.ingest('new',captured_at=102,epoch=self.history.barrier()['epoch'])['recorded'])
+    def test_delayed_ingest_uses_capture_age_and_cannot_refresh_retention(self):
+        self.clock[0]=100;self.history.set_enabled(True);self.clock[0]=1000
+        self.assertFalse(self.history.ingest('expired queue',captured_at=100)['recorded'])
+        self.assertTrue(self.history.ingest('recent',captured_at=990)['recorded'])
+        self.assertEqual(self.history.entries()[0]['created_monotonic'],990)
+        self.clock[0]=1051;self.assertEqual(self.history.list()['entries'],[])
     def test_bounded_and_deduplicated(self):
         self.history.set_enabled(True)
         for text in ['one','one','two','three']:self.history.ingest(text)

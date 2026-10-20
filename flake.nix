@@ -46,6 +46,8 @@
         test-runtime = runtime;
         test-network-provider = pkgs.gvfs;
         test-session-lock = import ./tests/desktop/session_lock_driver.nix { inherit pkgs; };
+        clipboard-observer = import ./packages/clipboard-observer.nix { inherit pkgs; };
+        test-clipboard-producer = import ./tests/desktop/clipboard_producer.nix { inherit pkgs; };
         test-window-relationships = import ./tests/desktop/window_relationship_client.nix { inherit pkgs; };
         test-constraint-client = import ./tests/desktop/constraint_client.nix { inherit pkgs; };
         test-typography = import ./tests/desktop/typography_probe.nix { inherit pkgs; };

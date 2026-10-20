@@ -39,14 +39,54 @@ clear and copy-by-ID. It never pastes into another application. Collection begin
 only after the user accepts the warning and enables the installed integration.
 The module integration is off by default and requires an explicit consumer
 retention and item bound. Starting an overlay only reads status; it cannot start
-collection. A failed collector start rolls consent back instead of showing success.
+collection. Explicit first enable waits for the observer's initial-event acknowledgement;
+a failed user-service or unsupported provider rolls that initial consent back.
+`enabled` reports consent separately from `collecting`. Availability is backed by
+private runtime readiness metadata with exact supervisor/native PID start-time
+identities and the current consent epoch. A background disconnect/restart retains
+valid consent and reports collection unavailable rather than pretending it is
+active. Readiness files contain process facts, never clipboard text or hashes.
 
 Only consent persists. Entries live under the private user runtime directory,
 expire by monotonic age, are bounded, and disappear at logout. Disabled/expired/
-cleared entries cannot be copied by stale ID. Marked sensitive clipboard offers
-are excluded. Arbitrary unmarked secrets cannot reliably be recognised, so the
-consent interface explains this limit and provides Clear and Disable. Tests use
-synthetic text and injected writers; no regression captures the real clipboard.
+cleared entries cannot be copied by stale ID. The native data-control observer
+skips the initial selection event (including an empty selection), then reads
+future `text/plain;charset=utf-8` or `text/plain` offers, preferring explicit
+UTF-8 plaintext independent of MIME advertisement order. Rich-only offers are
+unsupported; no HTML conversion is fabricated. It checks the exact offer's `x-kde-passwordManagerHint` and
+`application/x-keepassxc` MIME markers before requesting payload data. Marked
+history exclusions do not prevent the destination application from independently
+reading the ordinary clipboard. Arbitrary unmarked secrets cannot reliably be
+recognised, so the consent interface explains this limit and provides Clear and
+Disable.
+
+Transfers are limited to 256 KiB and three suspend-aware BOOTTIME seconds. A replaced unfinished offer
+is discarded. Clear and permission transitions rotate a private runtime epoch and CLOCK_BOOTTIME barrier; append
+checks the original selection-event observation timestamp and bound observer
+epoch under the same lock, so an older
+observed in-flight transfer cannot repopulate cleared history. Native timestamps
+are client observation times, since the protocol has no server event timestamp.
+The Clear CLI stops the owned user collector, clears under the lock, and starts
+it only if consent is still enabled; this also drops undispatched events. A
+service failure clears and revokes consent, and the supervisor independently
+polls for revocation every half-second and terminates its own observer, with a
+three-second kill fallback.
+Restart skips the current
+selection without saving a startup snapshot or fingerprint. Capture age is checked before append and retained entries preserve their original
+capture age, so delayed or suspended supervision cannot extend retention. The barrier is
+runtime-only and resets with the user runtime directory each boot.
+
+`clipboard_native_input.py` uses a disposable compositor, private buses/HOME,
+synthetic real Wayland producers and an editable document observer. It exercises
+actual launcher pointer/keyboard controls, clipboard reads/writes and explicit
+paste on both compositor variants. Only user-service supervision is adapted to
+the private fixture; no host clipboard, user service or account is accessed. It
+uses the first advertised seat; multi-seat collection is not certified. It
+also checks initial empty and same-byte future offers, clear/restart and pending
+clear barriers, retired result identities, both marker offers during replacement,
+transfer bounds, failed/unsupported provider readiness, a paused supervisor with
+an injected BOOTTIME advance, and Disable. The virtual clock case does not
+suspend the machine. Backend tests cover storage validation separately.
 
 ### Focus profiles
 

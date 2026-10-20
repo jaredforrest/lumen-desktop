@@ -6,6 +6,7 @@ import hashlib
 import json
 import math
 import signal
+import selectors
 import os
 from pathlib import Path
 import stat
@@ -40,6 +41,17 @@ def atomic(path,value):
         os.replace(tmp,path)
     finally:
         if os.path.exists(tmp):os.unlink(tmp)
+
+
+def process_identity(pid):
+    if type(pid) is not int or pid<=0:return None
+    try:
+        directory=Path('/proc')/str(pid)
+        if directory.stat().st_uid!=os.getuid():return None
+        fields=(directory/'stat').read_text().rsplit(') ',1)[1].split()
+        if fields[0]=='Z':return None
+        return dict(pid=pid,start=int(fields[19]))
+    except (OSError,ValueError,IndexError):return None
 
 
 class History:
@@ -102,24 +114,76 @@ class History:
 
     def set_enabled(self,enabled):
         with self.locked():
-            if enabled:atomic(self.consent,{'version':1,'enabled':True})
+            if enabled:
+                if not self.enabled():self.advance_barrier()
+                atomic(self.consent,{'version':1,'enabled':True})
             else:
+                self.advance_barrier()
                 try:self.consent.unlink()
                 except FileNotFoundError:pass
                 atomic(self.data,[])
         return self.status()
 
-    def status(self):
-        return dict(enabled=self.enabled(),warning=WARNING,entries=[],retentionSeconds=self.retention,maxItems=self.limit,ephemeral=True)
+    def observer_status(self):
+        try:
+            fd=os.open(self.runtime/'observer.json',os.O_RDONLY|os.O_NOFOLLOW)
+            with os.fdopen(fd) as stream:
+                info=os.fstat(stream.fileno())
+                if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid() or info.st_mode&0o077 or info.st_size>1024:return None
+                value=json.load(stream)
+            if not isinstance(value,dict) or set(value)!={'supervisor','observer','ready','epoch'} or type(value['ready']) is not bool or not isinstance(value['epoch'],str):return None
+            for role in ('supervisor','observer'):
+                identity=value[role]
+                if not isinstance(identity,dict) or set(identity)!={'pid','start'} or type(identity['pid']) is not int or type(identity['start']) is not int:return None
+            return value
+        except (OSError,ValueError):return None
 
-    def ingest(self,text,sensitive=False):
+    def collecting(self):
+        value=self.observer_status()
+        return bool(value and value['ready'] and value['epoch']==self.barrier()['epoch'] and all(process_identity(value[role]['pid'])==value[role] for role in ('supervisor','observer')))
+
+    def publish_observer(self,owner,child,ready,epoch):
+        with self.locked():atomic(self.runtime/'observer.json',dict(supervisor=owner,observer=child,ready=ready,epoch=epoch))
+
+    def retire_observer(self,owner):
         with self.locked():
+            value=self.observer_status()
+            if value and value['supervisor']==owner:
+                try:(self.runtime/'observer.json').unlink()
+                except FileNotFoundError:pass
+
+    def await_observer(self):
+        deadline=time.monotonic()+3
+        while self.enabled() and not self.collecting() and time.monotonic()<deadline:time.sleep(.03)
+        return self.collecting()
+
+    def status(self):
+        return dict(enabled=self.enabled(),collecting=self.enabled() and self.collecting(),warning=WARNING,entries=[],retentionSeconds=self.retention,maxItems=self.limit,ephemeral=True)
+
+    def advance_barrier(self):
+        atomic(self.runtime/'clear-state.json',dict(time=self.clock(),epoch=uuid.uuid4().hex))
+
+    def barrier(self):
+        try:fd=os.open(self.runtime/'clear-state.json',os.O_RDONLY|os.O_NOFOLLOW)
+        except FileNotFoundError:return dict(time=0,epoch="")
+        with os.fdopen(fd) as stream:
+            info=os.fstat(stream.fileno())
+            if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid() or info.st_mode&0o077 or info.st_size>128:raise ValueError('Invalid clear barrier')
+            value=json.load(stream)
+        if not isinstance(value,dict) or set(value)!={'time','epoch'} or type(value['time']) not in (int,float) or not math.isfinite(value['time']) or value['time']<0 or not isinstance(value['epoch'],str) or len(value['epoch'])!=32 or any(c not in '0123456789abcdef' for c in value['epoch']):raise ValueError('Invalid clear barrier')
+        return value
+
+    def ingest(self,text,sensitive=False,captured_at=None,epoch=None):
+        with self.locked():
+            now=self.clock();barrier=self.barrier()
+            if epoch is not None and epoch!=barrier['epoch']:return dict(recorded=False)
+            if captured_at is not None and (not math.isfinite(captured_at) or captured_at<barrier['time'] or not 0<=now-captured_at<self.retention):return dict(recorded=False)
             if not self.enabled() or sensitive or not isinstance(text,str) or not text or len(text.encode('utf-8'))>MAX_BYTES or '\x00' in text:
                 return dict(recorded=False)
             items=self.entries()
             # Consecutive duplicate selections do not create a new historical copy.
             if items and items[0]['text']==text:return dict(recorded=False)
-            items=[dict(id=uuid.uuid4().hex,text=text,timestamp=self.wall(),created_monotonic=self.clock())]+items
+            items=[dict(id=uuid.uuid4().hex,text=text,timestamp=self.wall(),created_monotonic=now if captured_at is None else captured_at)]+items
             atomic(self.data,items[:self.limit]);return dict(recorded=True)
 
     def list(self,query=''):
@@ -130,7 +194,8 @@ class History:
             return dict(self.status(),entries=[dict(id=v['id'],text=v['text'][:4096],timestamp=v['timestamp'],truncated=len(v['text'])>4096) for v in items if folded in v['text'].casefold()])
 
     def clear(self):
-        with self.locked():atomic(self.data,[])
+        with self.locked():
+            self.advance_barrier();atomic(self.data,[])
         return self.status()
 
     def copy(self,item_id,writer):
@@ -159,34 +224,74 @@ def main():
     parser.add_argument('id',nargs='?');parser.add_argument('--query',default='');args=parser.parse_args();store=history()
     if args.action=='watch':
         if not store.enabled():store.prune();return
-        executable=os.environ.get('LUMEN_CLIPBOARD_COMMAND')
-        command=[executable] if executable and os.path.isabs(executable) else [sys.executable,str(Path(__file__).resolve())]
-        child=subprocess.Popen(['wl-paste','--type','text','--watch',*command,'ingest'])
+        executable=os.environ.get('LUMEN_CLIPBOARD_OBSERVER','lumen-clipboard-observer')
+        child=subprocess.Popen([executable],stdout=subprocess.PIPE,stderr=subprocess.DEVNULL)
         def stop(*_):raise SystemExit(0)
         signal.signal(signal.SIGTERM,stop)
+        # Only the owned observer writes this bounded private binary pipe.
+        received=bytearray();ready=False;deadline=time.monotonic()+3
+        owner=process_identity(os.getpid());observer=process_identity(child.pid);epoch=store.barrier()['epoch']
         try:
-            while child.poll() is None and store.enabled():
-                store.prune()
-                time.sleep(1)
-            if child.poll() not in (None,0):raise ValueError('Clipboard watcher stopped')
+            if not owner or not observer:raise ValueError('Clipboard process identity unavailable')
+            store.publish_observer(owner,observer,False,epoch)
+            with selectors.DefaultSelector() as events:
+                events.register(child.stdout,selectors.EVENT_READ)
+                while child.poll() is None and store.enabled():
+                    store.prune()
+                    if not ready and time.monotonic()>deadline:raise ValueError('Clipboard observer unavailable')
+                    if not events.select(.5):continue
+                    data=os.read(child.stdout.fileno(),65536)
+                    if not data:break
+                    received.extend(data)
+                    while len(received)>=5:
+                        kind,size=received[0],int.from_bytes(received[1:5],'big')
+                        if size>MAX_BYTES+8 or kind not in (1,2) or (kind==1 and (ready or size)) or (kind==2 and (not ready or size<8)):raise ValueError('Invalid clipboard transport')
+                        if len(received)<5+size:break
+                        payload=bytes(received[5:5+size]);del received[:5+size]
+                        if kind==1:
+                            ready=True;store.publish_observer(owner,observer,True,epoch);print(json.dumps(dict(watching=True)),flush=True)
+                        else:
+                            captured_at=int.from_bytes(payload[:8],'big')/1000000000
+                            try:text=payload[8:].decode('utf-8')
+                            except UnicodeDecodeError:continue
+                            print(json.dumps(store.ingest(text,captured_at=captured_at,epoch=epoch)),flush=True)
+            if store.enabled():raise ValueError('Clipboard observer stopped')
         finally:
+            try:
+                if child.poll() is None:
+                    child.terminate()
+                    try:child.wait(timeout=3)
+                    except subprocess.TimeoutExpired:child.kill();child.wait()
+            finally:
+                child.stdout.close();store.retire_observer(owner)
             if not store.enabled():store.prune()
-            if child.poll() is None:
-                child.terminate()
-                try:child.wait(timeout=3)
-                except subprocess.TimeoutExpired:child.kill();child.wait()
+        return
     elif args.action=='enable':
-        store.set_enabled(True)
-        try:subprocess.run(['systemctl','--user','start','lumen-clipboard-history.service'],check=True,capture_output=True,timeout=8)
-        except (OSError,subprocess.SubprocessError):
+        new_consent=not store.enabled();store.set_enabled(True)
+        try:
+            if new_consent:subprocess.run(['systemctl','--user','stop','lumen-clipboard-history.service'],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=8)
+            subprocess.run(['systemctl','--user','start','lumen-clipboard-history.service'],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=8)
+            if store.enabled() and not store.await_observer():raise ValueError('Clipboard observer unavailable')
+        except (OSError,ValueError,subprocess.SubprocessError):
             store.set_enabled(False);raise ValueError('Clipboard integration is unavailable; history remains disabled')
         result=store.status()
     elif args.action=='disable':
         result=store.set_enabled(False)
         subprocess.run(['systemctl','--user','stop','lumen-clipboard-history.service'],capture_output=True,timeout=8)
-    elif args.action=='clear':result=store.clear()
+    elif args.action=='clear':
+        enabled=store.enabled()
+        try:
+            if enabled:subprocess.run(['systemctl','--user','stop','lumen-clipboard-history.service'],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=8)
+            result=store.clear()
+            # Revocation during the transaction must never be turned back on.
+            if enabled and store.enabled():subprocess.run(['systemctl','--user','start','lumen-clipboard-history.service'],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=8)
+            if enabled and store.enabled():store.await_observer()
+            result=store.status()
+        except (OSError,subprocess.SubprocessError):
+            store.set_enabled(False);store.clear()
+            raise ValueError('Clipboard collection unavailable; history cleared and disabled')
     elif args.action=='copy':
-        result=store.copy(args.id,lambda text:subprocess.run(['wl-copy','--type','text/plain;charset=utf-8'],input=text.encode('utf-8'),check=True,capture_output=True,timeout=5))
+        result=store.copy(args.id,lambda text:subprocess.run(['wl-copy','--type','text/plain;charset=utf-8'],input=text.encode('utf-8'),check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=5))
     elif args.action=='ingest':
         # Offer state and password-manager MIME markers are best-effort protection.
         text=sys.stdin.buffer.read(MAX_BYTES+1)
@@ -204,5 +309,7 @@ if __name__=='__main__':
     try:main()
     except (OSError,ValueError,KeyError,TypeError,UnicodeError,subprocess.SubprocessError):
         # Never log the copied content or external command's output.
-        print(json.dumps(dict(error='Clipboard operation unavailable; retry or disable history',enabled=False,entries=[])))
+        try:state=history().status()
+        except (OSError,ValueError,TypeError):state=dict(entries=[])
+        print(json.dumps(dict(state,error='Clipboard operation unavailable; retry or disable history')))
         sys.exit(1)

@@ -86,12 +86,11 @@ let
       export PATH=${lib.makeBinPath [ pkgs.sway ]}:"$PATH"
       exec ${pkgs.python3}/bin/python ${assets}/focus-window.py "$@"
     '';
+    clipboardObserver = import ./clipboard-observer.nix { inherit pkgs; };
     clipboardHistory = pkgs.writeShellApplication {
       name = "lumen-clipboard-history";
-      runtimeInputs = [ pkgs.wl-clipboard pkgs.systemd pkgs.coreutils ];
+      runtimeInputs = [ clipboardObserver pkgs.wl-clipboard pkgs.systemd ];
       text = ''
-        LUMEN_CLIPBOARD_COMMAND="$(readlink -f -- "$0")"
-        export LUMEN_CLIPBOARD_COMMAND
         export LUMEN_CLIPBOARD_RETENTION_SECONDS=${toString clipboardRetentionSeconds}
         export LUMEN_CLIPBOARD_MAX_ITEMS=${toString clipboardMaxItems}
         exec ${pkgs.python3}/bin/python3 ${assets}/runtime/clipboard_history.py "$@"
