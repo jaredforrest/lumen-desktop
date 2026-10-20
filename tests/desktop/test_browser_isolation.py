@@ -1,7 +1,7 @@
 """Actual namespace boundary, independent of optional browser/native rendering."""
 import json,os,sys,tempfile,unittest
 from pathlib import Path
-sys.path.insert(0,str(Path(__file__).resolve().parent/'browser_fixture'))
+sys.path.insert(0,str(Path(__file__).resolve().parent/'application_fixture'))
 import isolation
 ROOT=Path(__file__).resolve().parents[2]
 class Isolation(unittest.TestCase):
