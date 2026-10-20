@@ -124,7 +124,7 @@ try:
    call(a.sway.parent/'swaymsg','seat','seat0','cursor','set',str(round(x)),str(round(y)))
    for operation in ('m 0.5 0.5','p','r'):pointer.stdin.write(operation+'\n');pointer.stdin.flush();time.sleep(.12)
   outputs=json.loads(call(a.sway.parent/'swaymsg','-r','-t','get_outputs'));assert len(outputs)==1 and outputs[0]['scale']==1; (out/'outputs.json').write_text(json.dumps(outputs,indent=2));capture_presented("document.querySelector('#sample')",'main.png')
-  navigate('brave://sandbox');sandbox=wait(lambda:evaluate('document.body.innerText') if 'sandbox' in str(evaluate('location.href')) else None,'actual browser sandbox status')
+  navigate('brave://sandbox');sandbox=wait(lambda:text if 'sandbox' in str(evaluate('location.href')) and 'Seccomp-BPF sandbox' in (text:=str(evaluate('document.body.innerText'))) and any(value in text for value in ('PID namespaces','Namespace sandbox','User namespaces')) else None,'complete actual browser sandbox status')
   (out/'sandbox-status.txt').write_text(sandbox);call('grim',out/'sandbox.png')
   assert re.search(r'Seccomp-BPF sandbox\s+Yes',sandbox,re.I),sandbox
   assert re.search(r'(?:Namespace sandbox|PID namespaces|User namespaces)\s+Yes',sandbox,re.I),sandbox
