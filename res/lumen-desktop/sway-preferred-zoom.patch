@@ -43,7 +43,7 @@
  }
  
  void container_lumen_restore_snapshot(struct sway_container *con,struct sway_lumen_placement *placement,bool focus) { lumen_restore(con,placement,focus); }
-@@ -394,9 +397,62 @@
+@@ -394,9 +397,71 @@
   if (!con || !con->lumen_filled) return;
   struct sway_lumen_placement *p = con->lumen_filled;
   con->lumen_filled = NULL;
@@ -69,7 +69,16 @@
 +   con->lumen_preferred_width < 1 || con->lumen_preferred_height < 1) return false;
 + struct sway_view *parent = NULL;
 + int modal = -1;
-+ return lumen_view_relationship(con->view, &parent, &modal) && !parent && modal != 1;
++ if (!lumen_view_relationship(con->view, &parent, &modal) || parent || modal == 1) return false;
++ int border = con->pending.border == B_CSD || con->pending.border == B_NONE ?
++  0 : con->pending.border_thickness;
++ double top = con->pending.border == B_NORMAL ? (double)container_titlebar_height() : border;
++ double minw, maxw, minh, maxh;
++ view_get_constraints(con->view, &minw, &maxw, &minh, &maxh);
++ return isfinite(minw) && isfinite(minh) && maxw >= 1 && maxh >= 1 &&
++  minw <= maxw && minh <= maxh &&
++  minw <= con->pending.workspace->width - 2 * border &&
++  minh <= con->pending.workspace->height - top - border;
 +}
 +
 +bool container_lumen_zoom(struct sway_container *con) {
