@@ -4,7 +4,7 @@ from urllib.parse import urlsplit
 
 def run(c):
  def snapshot(name):
-  rows=c.accessibility.snapshot();(c.out/(name+'.json')).write_text(json.dumps(rows,indent=2));return rows
+  rows=c.accessibility.snapshot();(c.out/(name+'-owners.json')).write_text(json.dumps(c.accessibility.diagnostics(),indent=2));(c.out/(name+'.json')).write_text(json.dumps(rows,indent=2));return rows
  def button(name,rows=None):
   candidates=[row for row in (rows if rows is not None else snapshot('permission-current')) if row.get('states',{}).get('showing') and row.get('pid')==c.main['pid'] and row.get('role')=='button' and row.get('name')==name]
   assert len(candidates)<=1,(name,candidates);return candidates[0] if candidates else None

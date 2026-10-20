@@ -13,6 +13,13 @@ class Observer:
   accessible=self.interface(reference,'org.a11y.atspi.Accessible');properties=self.interface(reference,'org.freedesktop.DBus.Properties')
   values={key:properties.Get('org.a11y.atspi.Accessible',key,timeout=.5) for key in ('Name','Description')};words=[int(value) for value in accessible.GetState(timeout=.5)]
   return dict(reference=list(map(str,reference)),pid=self.pid(reference[0]),name=str(values.get('Name','')),description=str(values.get('Description','')),role=str(accessible.GetRoleName(timeout=.5)),states={name:bool(words[index//32]&(1<<(index%32))) if index//32<len(words) else False for name,index in STATES.items()})
+ def diagnostics(self):
+  rows=[]
+  for owner in self.bus.list_names():
+   if not str(owner).startswith(':'):continue
+   try:rows.append(dict(owner=str(owner),pid=self.pid(owner)))
+   except dbus.DBusException as error:rows.append(dict(owner=str(owner),unavailable=str(error)))
+  return rows
  def snapshot(self):
   pending=[(('org.a11y.atspi.Registry','/org/a11y/atspi/accessible/root'),[])];seen=set();rows=[];deadline=time.monotonic()+5
   while pending:
