@@ -34,7 +34,7 @@ class PhysicalKeyboard:
    if operation in ('-M','-m'):
     bit=MODIFIERS[name];self.modifiers=self.modifiers|bit if operation=='-M' else self.modifiers&~bit;self.send('m',self.modifiers)
    elif operation=='-k':
-    code=SPECIAL.get(name,LETTERS.get(name));
+    code=SPECIAL.get(name,PLAIN.get(name));
     if code is None:raise ValueError('Unsupported named physical key')
     self.send('k',code,1);self.send('k',code,0)
    else:raise ValueError('Unsupported structured keyboard operation')

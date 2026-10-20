@@ -46,3 +46,7 @@ Native OOXML and PDF checks remain separate from those limitations. ODT
 same-format checks start from the explicitly measured converted fixture and do
 not erase its earlier losses. No application replacement or proprietary reference
 implementation is implied by these tests.
+
+The historical CLI report's `capabilities` array contains scoped action observations. It is not a complete per-capability conformance record. Generate a separate record set with `tests/desktop/office_capability_records.py --cli REPORT --gui NATIVE_REPORT --output NEW_FILE` (repeat `--gui` as needed). Each provider/capability record includes the normative identity, permission, offline, scenario, difference and status fields. A partial successful fixture remains `implemented_unverified`; unassessed actions remain explicit, and no record is promoted to full compatibility or reference verification. The generator hashes evidence and never rewrites the input report.
+
+The installed-window prototype uses the shared persistent full-US physical keyboard. Per-command virtual keymaps are unsuitable for these providers' physical-key handling. Text is paced at 40 ms per character, then read-only live provider acknowledgement is required before Save. This is a fixture delivery policy, not a reference latency measurement. The prototype currently proves physical edit/save for three providers and Writer dirty-close Escape/pointer Cancel in its fixed private viewport; other close and recovery paths remain outstanding. It does not measure desktop appearance parity.
