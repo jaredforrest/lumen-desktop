@@ -1,6 +1,13 @@
 """Read captured application semantics from an explicitly private accessibility bus."""
 import json,time
 import dbus
+def bounded_call(method,*args,deadline=None):
+ remaining=None if deadline is None else deadline-time.monotonic()
+ if remaining is not None and remaining<=0:raise ValueError('Private accessibility observation exceeded its budget')
+ value=method(*args,timeout=.5 if remaining is None else min(.5,remaining))
+ if deadline is not None and time.monotonic()>deadline:raise ValueError('Private accessibility observation exceeded its budget')
+ return value
+
 STATES={'enabled':8,'focusable':11,'focused':12,'sensitive':24,'showing':25,'visible':30}
 
 class Observer:
@@ -8,11 +15,11 @@ class Observer:
   if not address.startswith('unix:path=/run/fixture/'):raise ValueError('Explicit private accessibility bus required')
   self.bus=dbus.bus.BusConnection(address)
  def interface(self,reference,name):return dbus.Interface(self.bus.get_object(*reference,introspect=False),name)
- def pid(self,owner):return int(self.interface(('org.freedesktop.DBus','/org/freedesktop/DBus'),'org.freedesktop.DBus').GetConnectionUnixProcessID(owner,timeout=.5))
- def describe(self,reference):
+ def pid(self,owner,deadline=None):return int(bounded_call(self.interface(('org.freedesktop.DBus','/org/freedesktop/DBus'),'org.freedesktop.DBus').GetConnectionUnixProcessID,owner,deadline=deadline))
+ def describe(self,reference,deadline=None):
   accessible=self.interface(reference,'org.a11y.atspi.Accessible');properties=self.interface(reference,'org.freedesktop.DBus.Properties')
-  values={key:properties.Get('org.a11y.atspi.Accessible',key,timeout=.5) for key in ('Name','Description')};words=[int(value) for value in accessible.GetState(timeout=.5)]
-  return dict(reference=list(map(str,reference)),pid=self.pid(reference[0]),name=str(values.get('Name','')),description=str(values.get('Description','')),role=str(accessible.GetRoleName(timeout=.5)),states={name:bool(words[index//32]&(1<<(index%32))) if index//32<len(words) else False for name,index in STATES.items()})
+  values={key:bounded_call(properties.Get,'org.a11y.atspi.Accessible',key,deadline=deadline) for key in ('Name','Description')};words=[int(value) for value in bounded_call(accessible.GetState,deadline=deadline)]
+  return dict(reference=list(map(str,reference)),pid=self.pid(reference[0],deadline),name=str(values.get('Name','')),description=str(values.get('Description','')),role=str(bounded_call(accessible.GetRoleName,deadline=deadline)),states={name:bool(words[index//32]&(1<<(index%32))) if index//32<len(words) else False for name,index in STATES.items()})
  def diagnostics(self):
   rows=[]
   for owner in self.bus.list_names():
@@ -28,9 +35,9 @@ class Observer:
    if reference in seen or reference[1]=='/org/a11y/atspi/null':continue
    seen.add(reference)
    try:
-    row=self.describe(reference);row['ancestors']=parents;rows.append(row)
+    row=self.describe(reference,deadline);row['ancestors']=parents;rows.append(row)
     if len(parents)>=48:raise ValueError('Private accessibility ancestry exceeds budget')
-    children=self.interface(reference,'org.a11y.atspi.Accessible').GetChildren(timeout=.5)
+    children=bounded_call(self.interface(reference,'org.a11y.atspi.Accessible').GetChildren,deadline=deadline)
     pending.extend((child,parents+[dict(reference=row['reference'],name=row['name'],role=row['role'])]) for child in children)
    except dbus.DBusException as error:rows.append(dict(reference=list(reference),unavailable=str(error)))
    if len(json.dumps(rows).encode())>4*1024**2:raise ValueError('Private accessibility snapshot exceeds byte budget')
