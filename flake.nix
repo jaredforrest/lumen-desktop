@@ -36,6 +36,8 @@
         default = session.shellLauncher;
         shell = session.shellLauncher;
         desktop-action = session.desktopAction;
+        reader-command = session.readerCommand;
+        test-reader-command = import ./packages/reader-commands.nix { inherit pkgs; enabled = true; };
         app-launcher = session.appLauncher;
         settings-adapter = settings;
         authorization-agent = import ./packages/lumen-authorization-agent.nix { inherit pkgs; };

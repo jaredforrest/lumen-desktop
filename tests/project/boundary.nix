@@ -15,11 +15,32 @@ let
   optedIn = (evaluated.extendModules {
     modules = [ { services.lumen-desktop.integrations.authorization.enable = true; } ];
   }).config;
+  readerBinding = { "Mod4+Control+F8" = "where-am-i"; };
+  readerDisabled = (evaluated.extendModules { modules = [ {
+    services.lumen-desktop.shortcuts.readerBindings = readerBinding;
+  } ]; }).config;
+  readerEnabled = (evaluated.extendModules { modules = [ {
+    services.lumen-desktop.integrations.readerCommands.enable = true;
+    services.lumen-desktop.shortcuts.readerBindings = readerBinding;
+  } ]; }).config;
+  readerCollision = (evaluated.extendModules { modules = [ {
+    services.lumen-desktop.integrations.readerCommands.enable = true;
+    services.lumen-desktop.shortcuts.readerBindings."Mod4+Tab" = "where-am-i";
+  } ]; }).config;
+  readerHome = settings: settings.home-manager.users.test-user {
+    config = { home.username = "test-user"; home.homeDirectory = "/home/test-user"; };
+    lib = nixpkgs.lib;
+  };
   defaultHome = c.home-manager.users.test-user { config = {}; lib = nixpkgs.lib; };
   optedInHome = optedIn.home-manager.users.test-user { config = {}; lib = nixpkgs.lib; };
 in
 assert (defaultHome.wayland.windowManager.sway.config.input or {}) == {};
 assert c.boot.kernel.sysctl."vm.swappiness" == 73;
+assert !c.services.lumen-desktop.integrations.readerCommands.enable;
+assert !((readerHome readerDisabled).wayland.windowManager.sway.config.keybindings.content ? "Mod4+Control+F8");
+assert nixpkgs.lib.hasSuffix " where-am-i" (readerHome readerEnabled).wayland.windowManager.sway.config.keybindings.content."Mod4+Control+F8";
+assert builtins.all (entry: entry.assertion) (readerHome readerEnabled).assertions;
+assert !(builtins.head (readerHome readerCollision).assertions).assertion;
 assert !c.hardware.i2c.enable;
 assert !c.programs.hyprland.enable;
 assert !c.services.greetd.enable;

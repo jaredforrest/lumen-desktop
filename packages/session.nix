@@ -1,8 +1,9 @@
-{ pkgs, settingsPackage, user ? "user", displayName ? user, homeDirectory ? "/home/${user}", timeZone ? "UTC", swayPackage ? pkgs.sway, rofiPackage ? pkgs.rofi, assets ? ../res/lumen-desktop, emojiFamily ? "Noto Color Emoji", clipboardRetentionSeconds ? 3600, clipboardMaxItems ? 100, networkProviderPackage ? null }:
+{ pkgs, settingsPackage, user ? "user", displayName ? user, homeDirectory ? "/home/${user}", timeZone ? "UTC", swayPackage ? pkgs.sway, rofiPackage ? pkgs.rofi, assets ? ../res/lumen-desktop, emojiFamily ? "Noto Color Emoji", clipboardRetentionSeconds ? 3600, clipboardMaxItems ? 100, networkProviderPackage ? null, readerCommandsEnabled ? false }:
 let
   lib = pkgs.lib;
   quickshell = import ./quickshell-runtime.nix { inherit pkgs; };
   desktopTimeZone = timeZone;
+  readerCommand = import ./reader-commands.nix { inherit pkgs assets; enabled = readerCommandsEnabled; };
   auth = import ./lumen-auth.nix { inherit pkgs user displayName assets; swayPackage = swayPackage; };
     nixSettings = settingsPackage;
     appearance = import ../packages/lumen-appearance.nix { inherit pkgs nixSettings; };
@@ -239,4 +240,4 @@ let
     settingsLauncher = pkgs.writeShellScriptBin "lumen-system-settings" ''
       exec ${shellIpc}/bin/lumen-shell-ipc call desktop settings ""
     '';
-in { inherit hotCorners spaces wallpaperPreferences inputPreferences networkLocations quickshell nixSettings appearance qtTheme qtTheme5 palette menuRuntime personalServices fileClipboard displayLayout fileOperations focusWindow windowGeometry dockDrop applicationControl applicationLifecycle fileAlias desktopState shellIpc clipboardHistory launchApp shellLauncher audioKey mediaKey notifications menuCommand desktopDoctor desktopAction appLauncher filesLauncher remoteDesktopLauncher calendarLauncher settingsLauncher; }
+in { inherit readerCommand hotCorners spaces wallpaperPreferences inputPreferences networkLocations quickshell nixSettings appearance qtTheme qtTheme5 palette menuRuntime personalServices fileClipboard displayLayout fileOperations focusWindow windowGeometry dockDrop applicationControl applicationLifecycle fileAlias desktopState shellIpc clipboardHistory launchApp shellLauncher audioKey mediaKey notifications menuCommand desktopDoctor desktopAction appLauncher filesLauncher remoteDesktopLauncher calendarLauncher settingsLauncher; }
