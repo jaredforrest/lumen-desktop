@@ -26,3 +26,5 @@ Per-device input preferences: [supported capabilities, identity scope and tests]
 Window Groups provides optional native presentation groups; see [the workflow and current boundaries](docs/window-groups.md).
 
 [Application desktop assignment](docs/application-desktops.md) documents supported membership and native acceptance.
+
+[Live transparency acceptance](docs/transparency-testing.md) documents mapped-surface geometry, paint and input checks.

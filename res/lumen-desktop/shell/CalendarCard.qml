@@ -14,6 +14,7 @@ PanelSurface {
     property bool compact:false
     property bool agendaOnly:false
     property bool reduceTransparency:false
+    readonly property bool opaqueMaterial:reduceTransparency || !!Theme.preferences.reduceTransparency || Theme.increaseContrast
     property bool monochrome:false
     function textSize(base){return compact?Theme.textSize(base):base;}
     readonly property int dayDiameter:Math.max(26,textSize(12)+12)
@@ -104,7 +105,7 @@ PanelSurface {
     property int mutationEpoch:0
     readonly property bool busy:worker.running
     readonly property int weekCount: Math.ceil((CalendarLogic.offset(month,firstDayOfWeek)+new Date(month.getFullYear(),month.getMonth()+1,0).getDate())/7)
-    color:compact && Theme.compositorEffects && !root.reduceTransparency?Qt.alpha(Theme.colors.background,.91):Theme.colors.background;radius:22
+    color:compact && Theme.compositorEffects && !root.opaqueMaterial?Qt.alpha(Theme.colors.background,.91):Theme.colors.background;radius:22
     implicitHeight:(editing?editor.height:content.height)+36+(compact?relatedLink.height+4:0)
     function iso(d) {return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");}
     function send(data) {

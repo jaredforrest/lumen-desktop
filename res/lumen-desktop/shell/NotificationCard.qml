@@ -10,6 +10,7 @@ PanelSurface {
     property int stackCount:1
     property bool expandStack:false
     property bool reduceTransparency:false
+    readonly property bool opaqueMaterial:reduceTransparency || !!Theme.preferences.reduceTransparency || Theme.increaseContrast
     signal expandRequested()
     activeFocusOnTab:true
     Accessible.role:Accessible.Button
@@ -27,11 +28,11 @@ PanelSurface {
         return DesktopEntries.applications.values.find(e=>normal(e.name)===name || normal(e.id)===name) || null;
     }
     HoverHandler {id:cardHover}
-    color:Theme.compositorEffects && !root.reduceTransparency?Qt.alpha(Theme.colors.background,.91):Theme.colors.background
+    color:Theme.compositorEffects && !root.opaqueMaterial?Qt.alpha(Theme.colors.background,.91):Theme.colors.background
     readonly property bool expanded: !!service.expandedCards[notification.id]
     signal detailsRequested()
     implicitHeight: content.height + 28
-    border.width:root.reduceTransparency?1:0
+    border.width:root.opaqueMaterial?1:0
     radius: 18
     function stamp(){const age=Math.max(0,(Date.now()-notification.timestamp)/60000);return age<1?"now":age<60?Math.floor(age)+"m ago":age<1440?Math.floor(age/60)+"h ago":Qt.formatDateTime(new Date(notification.timestamp),"d MMM");}
     property string timeLabel: stamp()
