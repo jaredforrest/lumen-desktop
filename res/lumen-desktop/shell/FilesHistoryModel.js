@@ -25,5 +25,5 @@ function commit(history,index,target,requested,id){
     if(path(history[index])===target)return {history:history,index:index,restore:false};
     const next=history.slice(0,index+1).concat([{id:id,path:target,presentation:null}]).slice(-128);return {history:next,index:next.length-1,restore:false};
 }
-function reconcile(state,rows){state=presentation(state);const selection=state.selection.map(item=>locate(rows,item)).filter(i=>i>=0),current=locate(rows,state.current),anchor=locate(rows,state.anchor);return {paths:selection.map(i=>rows[i].path),selected:current>=0?current:(selection[0]===undefined?-1:selection[0]),anchor:anchor>=0?anchor:-1};}
+function reconcile(state,rows){state=presentation(state);const selection=state.selection.map(item=>locate(rows,item)).filter(i=>i>=0),current=locate(rows,state.current),anchor=locate(rows,state.anchor);return {paths:selection.map(i=>rows[i].path),selected:current,anchor:anchor>=0?anchor:-1};}
 if(typeof module!=="undefined")module.exports={path,ref,locate,offset,clone,presentation,save,commit,reconcile};

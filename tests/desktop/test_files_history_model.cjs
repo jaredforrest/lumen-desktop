@@ -39,3 +39,7 @@ for(const malformed of [0,false,"",NaN,[],{}, {device:1,inode:2,extra:3}]){
 }
 for(const absent of [undefined,null])assert.deepEqual(h.reconcile(h.presentation({selection:[{path:'/legacy',identity:absent}]}),[{path:'/legacy'}]).paths,['/legacy']);
 console.log('PASS falsy malformed identities never degrade to absent legacy identity');
+const independent=h.presentation({selection:[row('/selected',101)],current:row('/focused',102),anchor:row('/focused',102)});
+assert.deepEqual(h.reconcile(independent,[row('/selected',101),row('/focused',999)]),{paths:['/selected'],selected:-1,anchor:-1},'Replacing focused unselected row cannot focus another selected object');
+assert.deepEqual(h.reconcile(h.presentation({selection:[row('/selected',101)]}),[row('/selected',101)]),{paths:['/selected'],selected:-1,anchor:-1},'No focused object remains distinct from a nonempty selected set');
+console.log('PASS independent focused object never falls back to first selected row');

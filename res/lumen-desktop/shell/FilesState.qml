@@ -40,7 +40,7 @@ Item {
     function loadColumns(){
         columnRequests={};columns=[];if(viewMode!=="columns" || path==="trash:")return;
         const ancestors=breadcrumbs.slice(-3);columns=ancestors.map(c=>({path:c.path,name:c.name,rows:[],loaded:false}));
-        let requests={};ancestors.forEach((c,i)=>{requests[send("column-list",{path:c.path,hidden:hidden,sort:sort,descending:descending,foldersFirst:foldersFirst,groupBy:groupBy})]=i;});columnRequests=requests;
+        let requests={};ancestors.forEach((c,i)=>{requests[send("column-list",{path:c.path,query:c.path===path?query:"",hidden:hidden,sort:sort,descending:descending,foldersFirst:foldersFirst,groupBy:groupBy})]=i;});columnRequests=requests;
     }
     onViewModeChanged:{savePreferences();loadColumns();}
     onFavoritesChanged:savePreferences()

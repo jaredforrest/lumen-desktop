@@ -29,6 +29,12 @@ FloatingWindow {
     readonly property bool columnsMode:service.viewMode==="columns"
     property int selected:-1
     property var selectedPaths:[]
+    property var bandPreviewPaths:null
+    readonly property bool bandPermitted:visible && selectionActive && !service.busy && (!shell.screenSaverPreferences || shell.screenSaverPreferences.permitted)
+    readonly property string bandContext:service.path+"|"+activeTabId+"|"+service.viewMode+"|"+(screen?screen.name:"")
+    function cancelPendingPresentation(){if(restoringPresentationState){++presentationRevision;restoringPresentationState=false;pendingPresentation=null;}}
+    function commitBand(value){if(!value)return;cancelPendingPresentation();bandPreviewPaths=null;selectedPaths=value.paths;selected=value.current;selectionAnchor=value.anchor;content.forceActiveFocus();saveTab();}
+    function cancelBand(reason){bandPreviewPaths=null;if(reason==="escape" && selectionActive)content.forceActiveFocus();}
     property int selectionAnchor:-1
     property int tabSerial:1
     property var tabs:[TabModel.create("tab-1",Quickshell.env("HOME"))]
@@ -106,8 +112,8 @@ FloatingWindow {
     function closeTab(){closeTabId(activeTabId);}
     function duplicateSelected(){if(service.writable && service.path!=="trash:" && selectedPaths.length && !service.working)service.startJob("copy",selectedPaths,service.path,"keep-both");}
     function selectedUris(){return selectedPaths.map(p=>"file://"+p.split("/").map(encodeURIComponent).join("/"));}
-    function isSelected(index){return service.rows[index] && selectedPaths.includes(service.rows[index].path);}
-    function selectAll(){selectedPaths=service.rows.map(r=>r.path);selected=service.rows.length?0:-1;}
+    function isSelected(index){const paths=bandPreviewPaths===null?selectedPaths:bandPreviewPaths;return service.rows[index] && paths.includes(service.rows[index].path);}
+    function selectAll(){cancelPendingPresentation();selectedPaths=service.rows.map(r=>r.path);selected=service.rows.length?0:-1;}
     onVisibleChanged:{service.active=visible;if(!visible){previewDelay.stop();service.requestPreview("");}else if(previewOpen || galleryMode)schedulePreview();if(!visible && shell.ownedContext)shell.ownedContext.close(root)}
 
     readonly property var defaultFavorites:[{name:"Home",path:Quickshell.env("HOME")},{name:"Desktop",path:Quickshell.env("HOME")+"/Desktop"},{name:"Documents",path:Quickshell.env("HOME")+"/Documents"},{name:"Downloads",path:Quickshell.env("HOME")+"/Downloads"},{name:"Pictures",path:Quickshell.env("HOME")+"/Pictures"},{name:"Music",path:Quickshell.env("HOME")+"/Music"},{name:"Videos",path:Quickshell.env("HOME")+"/Videos"},{name:"Data",path:Quickshell.env("HOME")+"/data"}]
@@ -172,7 +178,7 @@ FloatingWindow {
     function quickLookStep(delta){step(delta,false);if(current)shell.quickLookWindow.show(current.path,root);}
     function openCurrent(){if(!current || service.busy)return;if(current.directory)navigate(current.path);else service.act("open",{path:current.path});}
     function choose(index,modifiers){
-        const row=service.rows[index];if(!row)return;
+        const row=service.rows[index];if(!row)return;cancelPendingPresentation();
         if((modifiers || 0)&Qt.ShiftModifier){const from=selectionAnchor<0?index:selectionAnchor;selectedPaths=service.rows.slice(Math.min(from,index),Math.max(from,index)+1).map(r=>r.path);}
         else if((modifiers || 0)&Qt.ControlModifier){selectedPaths=selectedPaths.includes(row.path)?selectedPaths.filter(p=>p!==row.path):selectedPaths.concat([row.path]);selectionAnchor=index;}
         else {selectedPaths=[row.path];selectionAnchor=index;}
@@ -226,7 +232,7 @@ FloatingWindow {
                 if(root.selected<0)root.selected=root.service.rows.findIndex(row=>root.selectedPaths.includes(row.path));
                 root.selectionAnchor=root.selected;
             }
-            else if(path==="@preserve"){root.selectedPaths=root.selectedPaths.filter(p=>root.service.rows.some(r=>r.path===p));root.selected=root.service.rows.findIndex(r=>root.selectedPaths.includes(r.path));}
+            else if(path==="@preserve"){root.selectedPaths=root.selectedPaths.filter(p=>root.service.rows.some(r=>r.path===p));}
             else {root.selectedPaths=path?[path]:[];root.selected=root.service.rows.findIndex(r=>r.path===path);}
             root.saveTab();
         }
@@ -484,7 +490,7 @@ FloatingWindow {
                 section.property:root.service.groupBy==="kind"?"modelData.group":""
                 section.delegate:PanelLabel {required property string section;width:list.width;height:30;text:section;font.weight:Font.DemiBold;topPadding:8;leftPadding:8}
                 id:list;objectName:"files-list-view";visible:root.listMode;anchors.top:headings.bottom;anchors.bottom:parent.bottom;width:parent.width;clip:true;model:root.service.rows
-                ScrollBar.vertical:DesktopScrollBar {}
+                ScrollBar.vertical:DesktopScrollBar {id:listScrollBar}
                 delegate:Rectangle {
                     required property var modelData;required property int index
                     width:list.width;height:31;radius:5;color:root.isSelected(index)?root.selectionFill:index%2?Theme.colors.background:"transparent"
@@ -502,7 +508,7 @@ FloatingWindow {
             }
             GridView {
                 id:grid;objectName:"files-grid-view";visible:root.service.viewMode==="grid";anchors.fill:parent;cellWidth:108;cellHeight:108;clip:true;model:root.service.rows
-                ScrollBar.vertical:DesktopScrollBar {}
+                ScrollBar.vertical:DesktopScrollBar {id:gridScrollBar}
                 delegate:Item {
                     required property var modelData;required property int index
                     width:108;height:108
@@ -521,10 +527,12 @@ FloatingWindow {
                         onClicked:event=>{if(event.button!==Qt.RightButton || !root.isSelected(index))root.choose(index,event.modifiers);if(event.button===Qt.RightButton){actions.x=Math.min(root.width-actions.width-8,mapToItem(content,event.x,event.y).x);actions.y=Math.min(root.height-actions.height-8,mapToItem(content,event.x,event.y).y);actions.open();}} onDoubleClicked:root.openCurrent()}
                 }
             }
-            ColumnView {id:columnView;selectionActive:root.selectionActive;dropCoordinator:fileDrop;visible:root.columnsMode;anchors.fill:parent;columns:root.service.columns;currentPath:root.current?root.current.path:"";onChosen:(path,directory)=>{if(directory)root.navigate(path);else {const index=root.service.rows.findIndex(r=>r.path===path);if(index>=0)root.choose(index,0);else {root.service.nextSelection=path;root.navigate(path.slice(0,path.lastIndexOf("/")) || "/");}}}}
+            FilesBandSelection {objectName:"files-list-band-selection";parent:list;anchors.fill:parent;view:list;rows:root.service.rows;selectedPaths:root.selectedPaths;currentIndex:root.selected;anchorIndex:root.selectionAnchor;contextKey:root.bandContext;permitted:root.bandPermitted && list.visible;rightInset:listScrollBar.visible?listScrollBar.width:0;onBegan:root.cancelPendingPresentation();onPreviewed:paths=>root.bandPreviewPaths=paths;onCommitted:value=>root.commitBand(value);onCanceled:reason=>root.cancelBand(reason)}
+            FilesBandSelection {objectName:"files-grid-band-selection";parent:grid;anchors.fill:parent;view:grid;rows:root.service.rows;selectedPaths:root.selectedPaths;currentIndex:root.selected;anchorIndex:root.selectionAnchor;contextKey:root.bandContext;permitted:root.bandPermitted && grid.visible;rightInset:gridScrollBar.visible?gridScrollBar.width:0;onBegan:root.cancelPendingPresentation();onPreviewed:paths=>root.bandPreviewPaths=paths;onCommitted:value=>root.commitBand(value);onCanceled:reason=>root.cancelBand(reason)}
+            ColumnView {id:columnView;selectedPaths:root.bandPreviewPaths===null?root.selectedPaths:root.bandPreviewPaths;bandBasePaths:root.selectedPaths;bandRows:root.service.rows;bandPermitted:root.bandPermitted;bandContext:root.bandContext;bandCurrent:root.selected;bandAnchor:root.selectionAnchor;selectionFolder:root.service.path;onBandBegan:root.cancelPendingPresentation();onBandPreviewed:paths=>root.bandPreviewPaths=paths;onBandCommitted:value=>root.commitBand(value);onBandCanceled:reason=>root.cancelBand(reason);selectionActive:root.selectionActive;dropCoordinator:fileDrop;visible:root.columnsMode;anchors.fill:parent;columns:root.service.columns;currentPath:root.current?root.current.path:"";onChosen:(path,directory)=>{if(directory)root.navigate(path);else {const index=root.service.rows.findIndex(r=>r.path===path);if(index>=0)root.choose(index,0);else {root.service.nextSelection=path;root.navigate(path.slice(0,path.lastIndexOf("/")) || "/");}}}}
             Item {visible:root.galleryMode;anchors.fill:parent
                 FilePreview {resourceRetirement:root.service.previewResourceRetirement;x:12;y:0;width:parent.width-24;height:Math.max(60,parent.height-118);result:root.current?root.service.preview:{text:"Select an item"};active:root.visible && root.galleryMode;loading:root.service.previewBusy;onPageRequested:number=>root.service.requestPreview(root.current.path,number)}
-                ListView {id:galleryStrip;objectName:"files-gallery-view";anchors.bottom:parent.bottom;width:parent.width;height:104;orientation:ListView.Horizontal;clip:true;spacing:5;model:root.service.rows;ScrollBar.horizontal:DesktopScrollBar {}
+                ListView {id:galleryStrip;objectName:"files-gallery-view";anchors.bottom:parent.bottom;width:parent.width;height:104;orientation:ListView.Horizontal;clip:true;spacing:5;model:root.service.rows;ScrollBar.horizontal:DesktopScrollBar {id:galleryScrollBar}
                     delegate:AbstractButton {required property var modelData;required property int index;width:92;height:92;
                         FolderDropTarget {anchors.fill:parent;enabled:modelData.directory && root.service.path!=="trash:";folder:modelData.path;coordinator:fileDrop}
 Accessible.name:modelData.name;Accessible.selected:root.isSelected(index);onClicked:root.choose(index,0);onDoubleClicked:root.openCurrent()
@@ -536,6 +544,7 @@ Accessible.name:modelData.name;Accessible.selected:root.isSelected(index);onClic
                     }
                 }
             }
+            FilesBandSelection {objectName:"files-gallery-band-selection";parent:galleryStrip;anchors.fill:parent;view:galleryStrip;rows:root.service.rows;selectedPaths:root.selectedPaths;currentIndex:root.selected;anchorIndex:root.selectionAnchor;contextKey:root.bandContext;permitted:root.bandPermitted && root.galleryMode;bottomInset:galleryScrollBar.visible?galleryScrollBar.height:0;onBegan:root.cancelPendingPresentation();onPreviewed:paths=>root.bandPreviewPaths=paths;onCommitted:value=>root.commitBand(value);onCanceled:reason=>root.cancelBand(reason)}
             PanelLabel {anchors.centerIn:parent;visible:root.service.rows.length===0;text:root.service.busy?"Loading…":root.service.query?"No matching items":"This folder is empty";color:Theme.colors.muted}
         }
         Item {

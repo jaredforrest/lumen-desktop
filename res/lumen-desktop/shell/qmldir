@@ -142,3 +142,5 @@ WindowGeometry 1.0 WindowGeometry.qml
 CapturedActionButton 1.0 CapturedActionButton.qml
 
 BatchRenameDialog 1.0 BatchRenameDialog.qml
+
+FilesBandSelection 1.0 FilesBandSelection.qml
