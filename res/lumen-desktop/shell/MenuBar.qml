@@ -187,17 +187,10 @@ PanelWindow {
         }
         MenuButton {id:overflowButton;visible:bar.overflowItems.length>0;text:"»";selected:bar.menu==="Overflow";Accessible.name:"More menus and status controls";onClicked:{bar.selectedWindow=shell.active;bar.toggle("Overflow",mapToItem(bar.contentItem,0,0).x);}}
     }
-    MenuButton {
-        id:captureIndicator
-        visible:!!bar.shell.capture && (bar.shell.capture.audio || bar.shell.capture.video)
+    CaptureIndicator {
+        id:captureIndicator;state:bar.shell.capture || null
         anchors.right:statusIcons.left;anchors.verticalCenter:parent.verticalCenter
-        width:28;text:"";selected:bar.menu==="Capture"
-        Row {anchors.centerIn:parent;spacing:3
-            Rectangle {visible:!!bar.shell.capture && bar.shell.capture.audio;width:6;height:6;radius:3;color:Theme.warningText}
-            Rectangle {visible:!!bar.shell.capture && bar.shell.capture.video;width:6;height:6;radius:3;color:Theme.successText}
-        }
-        textSize:12
-        Accessible.name:(bar.shell.capture && bar.shell.capture.audio?"Audio ":"")+(bar.shell.capture && bar.shell.capture.video?"video ":"")+"capture observed. Open capture observations"
+        width:28;selected:bar.menu==="Capture"
         onClicked:bar.toggle("Capture",bar.width-370)
     }
     StatusStrip {
