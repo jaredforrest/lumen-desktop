@@ -8,6 +8,16 @@ def bounded_call(method,*args,deadline=None):
  if deadline is not None and time.monotonic()>deadline:raise ValueError('Private accessibility observation exceeded its budget')
  return value
 
+def role_name(accessible,deadline=None):
+ try:return str(bounded_call(accessible.GetRoleName,deadline=deadline))
+ except dbus.DBusException as error:
+  if error.get_dbus_name()!='org.freedesktop.DBus.Error.UnknownMethod':raise
+  import gi
+  gi.require_version('Atspi','2.0')
+  from gi.repository import Atspi
+  value=int(bounded_call(accessible.GetRole,deadline=deadline))
+  return str(Atspi.Role(value).value_nick).replace('-',' ')
+
 STATES={'enabled':8,'focusable':11,'focused':12,'sensitive':24,'showing':25,'visible':30}
 
 class Observer:
@@ -19,7 +29,7 @@ class Observer:
  def describe(self,reference,deadline=None):
   accessible=self.interface(reference,'org.a11y.atspi.Accessible');properties=self.interface(reference,'org.freedesktop.DBus.Properties')
   values={key:bounded_call(properties.Get,'org.a11y.atspi.Accessible',key,deadline=deadline) for key in ('Name','Description')};words=[int(value) for value in bounded_call(accessible.GetState,deadline=deadline)]
-  return dict(reference=list(map(str,reference)),pid=self.pid(reference[0],deadline),name=str(values.get('Name','')),description=str(values.get('Description','')),role=str(bounded_call(accessible.GetRoleName,deadline=deadline)),states={name:bool(words[index//32]&(1<<(index%32))) if index//32<len(words) else False for name,index in STATES.items()})
+  return dict(reference=list(map(str,reference)),pid=self.pid(reference[0],deadline),name=str(values.get('Name','')),description=str(values.get('Description','')),role=role_name(accessible,deadline),states={name:bool(words[index//32]&(1<<(index%32))) if index//32<len(words) else False for name,index in STATES.items()})
  def diagnostics(self):
   deadline=time.monotonic()+5;rows=[]
   names=bounded_call(self.interface(('org.freedesktop.DBus','/org/freedesktop/DBus'),'org.freedesktop.DBus').ListNames,deadline=deadline)

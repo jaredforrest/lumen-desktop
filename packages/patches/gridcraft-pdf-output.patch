@@ -1,0 +1,275 @@
+diff --git a/apps/gridcraft/src/main.rs b/apps/gridcraft/src/main.rs
+index 3c73a95..800491e 100644
+--- a/apps/gridcraft/src/main.rs
++++ b/apps/gridcraft/src/main.rs
+@@ -140,6 +140,9 @@ fn services() -> Services {
+                 .pick_file()
+                 .and_then(|p| p.to_str().map(str::to_string))
+         })),
++        pick_pdf: Some(Box::new(|suggested: &str| {
++            rfd::FileDialog::new().set_file_name(suggested).add_filter("PDF document (.pdf)", &["pdf"]).save_file().and_then(|p| p.to_str().map(str::to_string))
++        })),
+         pick_save: Some(Box::new(|suggested: &str| {
+             let stem = std::path::Path::new(suggested).file_stem().and_then(|s| s.to_str()).unwrap_or("Book1").to_string();
+             rfd::FileDialog::new()
+diff --git a/apps/gridcraft/src/native_menu.rs b/apps/gridcraft/src/native_menu.rs
+index 621b27a..90eb7ec 100644
+--- a/apps/gridcraft/src/native_menu.rs
++++ b/apps/gridcraft/src/native_menu.rs
+@@ -28,7 +28,7 @@ fn tree() -> Vec<(&'static str, Vec<Entry>)> {
+                 ("Save as Web Page…", "dialog:saveCopy:html", None),
+                 ("-", "", None),
+                 ("Page Setup…", "dialog:pageSetup", None),
+-                ("Print…", "file.print", Some("CMD+P")),
++                ("Print to PDF…", "file.print", Some("CMD+P")),
+                 ("-", "", None),
+                 ("Properties…", "file.properties", None),
+             ],
+diff --git a/crates/engine/src/catalog.rs b/crates/engine/src/catalog.rs
+index d6b67e1..f94042f 100644
+--- a/crates/engine/src/catalog.rs
++++ b/crates/engine/src/catalog.rs
+@@ -10,7 +10,7 @@ pub const CATALOG: &[(&str, &str, &str, &str)] = &[
+     ("file.save", "File", "File", "Save"),
+     ("file.saveAs", "File", "File", "Save As"),
+     ("file.close", "File", "File", "Close"),
+-    ("file.print", "File", "File", "Print"),
++    ("file.print", "File", "File", "Print to PDF"),
+     ("file.exportPdf", "File", "Export", "Export to PDF"),
+     ("file.exportCsv", "File", "Export", "CSV"),
+     ("file.exportHtml", "File", "Export", "Web Page"),
+diff --git a/crates/engine/src/cmd/print.rs b/crates/engine/src/cmd/print.rs
+index 0331321..6bc7208 100644
+--- a/crates/engine/src/cmd/print.rs
++++ b/crates/engine/src/cmd/print.rs
+@@ -29,7 +29,7 @@ pub fn specs() -> Vec<CommandSpec> {
+         ),
+         cmd!(
+             noundo "file.print",
+-            "Print…",
++            "Print to PDF…",
+             ["File"],
+             Some("Cmd+P"),
+             "{path?, sheets?: active|all, range?, fitToPage?: bool} → {pages, bytes, base64} — the PDF the UI hands to the system print dialog",
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index 4790e67..c133379 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -16,6 +16,8 @@ pub mod editor;
+ pub mod formula_bar;
+ mod formula_locale;
+ mod native_close;
++mod pdf_output;
++mod pdf_publication;
+ pub mod grid;
+ pub mod i18n;
+ pub mod icons;
+@@ -107,6 +109,8 @@ pub struct SheetView {
+ pub struct Services {
+     pub pick_open: Option<Box<dyn Fn() -> Option<String>>>,
+     pub pick_save: Option<Box<dyn Fn(&str) -> Option<String>>>,
++    /// Destination picker restricted to PDF output; cancellation never saves the workbook.
++    pub pick_pdf: Option<Box<dyn Fn(&str) -> Option<String>>>,
+     /// Native picture picker (PNG/JPEG), separate from workbook opening.
+     pub pick_picture: Option<Box<dyn Fn() -> Option<String>>>,
+     /// Browser picture picker. Each dialog owns its inbox, so canceled picks cannot
+@@ -239,6 +243,10 @@ impl SheetApp {
+         if let Some(r) = self.run_ui_command(id, &params) {
+             return r;
+         }
++        if let Some(result) = self.run_pdf_output(id, &params) {
++            self.after_engine();
++            return result;
++        }
+         let r = self.session.run(id, params);
+         self.after_engine();
+         if id == "file.exportPdf"
+diff --git a/crates/ui-egui/src/pdf_output.rs b/crates/ui-egui/src/pdf_output.rs
+new file mode 100644
+index 0000000..62791ae
+--- /dev/null
++++ b/crates/ui-egui/src/pdf_output.rs
+@@ -0,0 +1,108 @@
++//! Provider-owned PDF destination selection; engine output remains unchanged.
++use crate::SheetApp;
++use gridcraft_engine::Selection;
++use serde_json::{Value, json};
++use std::path::Path;
++
++#[derive(Clone, Debug, PartialEq)]
++struct Source {
++    uid: u64,
++    revision: u64,
++    path: Option<String>,
++    sheet: usize,
++    selection: Selection,
++}
++impl Source {
++    fn capture(app: &SheetApp) -> Option<Self> {
++        app.session.active().map(|d| Self { uid: d.uid, revision: d.revision, path: d.path.clone(), sheet: d.wb.active_sheet, selection: d.selection.clone() })
++    }
++    fn matches(&self, app: &SheetApp) -> bool { Self::capture(app).as_ref() == Some(self) }
++}
++
++impl SheetApp {
++    pub(super) fn run_pdf_output(&mut self, id: &str, params: &Value) -> Option<Result<Value, String>> {
++        if !matches!(id, "file.print" | "file.exportPdf") || params.get("path").and_then(Value::as_str).is_some_and(|p| !p.is_empty()) { return None; }
++        if !params.is_object() || params.get("path").is_some_and(|path| !path.is_string() && !path.is_null()) { return Some(Err("PDF parameters must be an object with a text destination".into())); }
++        Some(self.pick_pdf_output(id, params))
++    }
++    fn pick_pdf_output(&mut self, id: &str, params: &Value) -> Result<Value, String> {
++        let source = Source::capture(self).ok_or("No workbook is available to print")?;
++        if let Some(pick) = &self.services.pick_pdf {
++            let document = self.session.active().ok_or("No workbook is available to print")?;
++            let original = document.path.clone();
++            let original_canonical = original.as_deref().and_then(|p| Path::new(p).canonicalize().ok());
++            #[cfg(unix)]
++            let original_identity = original.as_deref().and_then(|p| std::fs::metadata(p).ok()).map(|m| { use std::os::unix::fs::MetadataExt; (m.dev(), m.ino()) });
++            let suggested = Path::new(&document.display_title()).with_extension("pdf").to_string_lossy().to_string();
++            let Some(path) = pick(&suggested) else { return Ok(json!({"cancelled": true})); };
++            if !source.matches(self) { return Err("Workbook changed while choosing a PDF destination; reopen Print to PDF".into()); }
++            let destination = Path::new(&path);
++            if !destination.is_absolute() || !destination.extension().and_then(|s| s.to_str()).is_some_and(|s| s.eq_ignore_ascii_case("pdf")) { return Err("Choose an absolute PDF destination ending in .pdf".into()); }
++            if original_canonical.is_some() && original_canonical == destination.canonicalize().ok() { return Err("Print to PDF cannot replace the source workbook".into()); }
++            #[cfg(unix)]
++            if original_identity.is_some() && original_identity == std::fs::metadata(destination).ok().map(|m| { use std::os::unix::fs::MetadataExt; (m.dev(), m.ino()) }) { return Err("Print to PDF cannot replace the source workbook".into()); }
++            let mut parameters = params.clone();
++            parameters.as_object_mut().ok_or("PDF parameters must be an object")?.remove("path");
++            let mut result = self.session.run(id, parameters)?;
++            let bytes = gridcraft_engine::io::base64_decode(result["base64"].as_str().ok_or("PDF renderer returned no payload")?).ok_or("PDF renderer returned an invalid payload")?;
++            crate::pdf_publication::publish(destination, &bytes)?;
++            result["path"] = json!(path);
++            return Ok(result);
++        }
++        if self.services.download.is_some() {
++            let result = self.session.run(id, params.clone())?;
++            self.deliver_pdf(&result);
++            return Ok(result);
++        }
++        Err("PDF output is unavailable: no destination picker or download provider is configured".into())
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::Services;
++    use gridcraft_engine::Session;
++    fn app(services: Services) -> SheetApp { let mut session = Session::new(); session.new_workbook(); SheetApp::new(session, services) }
++    #[test]
++    fn pdf_output_missing_provider_is_explicit_and_cancel_preserves_document() {
++        let mut a = app(Services::default());
++        assert!(a.run("file.print", json!({})).unwrap_err().contains("unavailable"));
++        assert!(a.run("file.exportPdf", json!({})).unwrap_err().contains("unavailable"));
++        a.services.pick_pdf = Some(Box::new(|_| None));
++        let before = Source::capture(&a);
++        assert_eq!(a.run("file.print", json!({})).unwrap()["cancelled"], true);
++        assert_eq!(Source::capture(&a), before);
++    }
++    #[test]
++    fn pdf_output_shortcut_dispatches_once_and_malformed_parameters_do_not_pick() {
++        let calls = std::rc::Rc::new(std::cell::Cell::new(0)); let seen = calls.clone();
++        let mut a = app(Services { pick_pdf: Some(Box::new(move |_| { seen.set(seen.get()+1); None })), ..Default::default() });
++        crate::ribbon::shortcut(&mut a, egui::Key::P, egui::Modifiers::COMMAND); assert_eq!(calls.get(), 1);
++        assert!(a.run("file.print", json!([])).is_err()); assert!(a.run("file.print", json!({"path":42})).is_err()); assert_eq!(calls.get(), 1);
++    }
++    #[test]
++    fn pdf_output_source_replacement_revision_and_selection_are_not_retargeted() {
++        let mut a = app(Services::default()); let first = Source::capture(&a).unwrap();
++        a.run("cell.set", json!({"cell":"A1","input":"Changed"})).unwrap(); assert!(!first.matches(&a));
++        let second = Source::capture(&a).unwrap(); a.session.active_mut().unwrap().selection.active.col = 1; assert!(!second.matches(&a));
++        let third = Source::capture(&a).unwrap(); a.session.active_mut().unwrap().path = Some("/captured/new-name.xlsx".into()); assert!(!third.matches(&a));
++        let fourth = Source::capture(&a).unwrap(); a.session.new_workbook(); assert!(!fourth.matches(&a));
++    }
++    #[test]
++    fn pdf_output_picker_writes_pdf_without_saving_workbook_and_rejects_other_extension() {
++        let root = std::env::temp_dir().join(format!("grid-pdf-output-{}", std::process::id())); std::fs::create_dir_all(&root).unwrap();
++        let target = root.join("copy.pdf"); let selected = target.to_string_lossy().to_string();
++        let mut a = app(Services { pick_pdf: Some(Box::new(move |_| Some(selected.clone()))), ..Default::default() });
++        let before = Source::capture(&a); a.run("file.print", json!({})).unwrap();
++        assert!(std::fs::read(&target).unwrap().starts_with(b"%PDF")); assert_eq!(Source::capture(&a), before);
++        a.services.pick_pdf = Some(Box::new(|_| Some("/invalid/changed.xlsx".into()))); assert!(a.run("file.print", json!({})).is_err());
++        #[cfg(unix)]
++        {
++            let original = root.join("source.xlsx"); let alias = root.join("alias.pdf"); std::fs::write(&original, b"Original workbook").unwrap(); std::fs::hard_link(&original, &alias).unwrap();
++            a.session.active_mut().unwrap().path = Some(original.to_string_lossy().to_string()); let chosen = alias.to_string_lossy().to_string();
++            a.services.pick_pdf = Some(Box::new(move |_| Some(chosen.clone()))); assert!(a.run("file.print", json!({})).is_err()); assert_eq!(std::fs::read(&original).unwrap(), b"Original workbook");
++        }
++        std::fs::remove_dir_all(root).unwrap();
++    }
++}
+diff --git a/crates/ui-egui/src/ribbon.rs b/crates/ui-egui/src/ribbon.rs
+index 264479a..717b64c 100644
+--- a/crates/ui-egui/src/ribbon.rs
++++ b/crates/ui-egui/src/ribbon.rs
+@@ -76,7 +76,7 @@ pub fn title_bar(app: &mut SheetApp, ui: &mut Ui) {
+                     ("New Workbook", "file.new"),
+                     ("Open…", "file.open"),
+                     ("Save As…", "file.saveAs"),
+-                    ("Print…", "file.print"),
++                    ("Print to PDF…", "file.print"),
+                     ("Sort A to Z", "data.sortAscending"),
+                     ("Calculate Now", "formulas.calculateNow"),
+                 ] {
+@@ -1848,6 +1848,7 @@ pub fn shortcut(app: &mut SheetApp, key: Key, m: Modifiers) {
+         Key::S if shift => Some(("file.saveAs", json!({}))),
+         Key::S => Some(("file.save", json!({}))),
+         Key::O => Some(("file.open", json!({}))),
++        Key::P if !shift => Some(("file.print", json!({}))),
+         Key::N => Some(("file.new", json!({}))),
+         Key::W => Some(("file.close", json!({}))),
+         Key::K => {
+--- /dev/null
++++ b/crates/ui-egui/src/pdf_publication.rs
+@@ -0,0 +1,51 @@
++//! Exclusive PDF staging in the captured destination directory.
++use std::{fs::{File, OpenOptions}, io::Write, path::Path, sync::atomic::{AtomicU64, Ordering}};
++static NEXT: AtomicU64 = AtomicU64::new(0);
++pub(crate) fn publish(path: &Path, bytes: &[u8]) -> Result<(), String> { publish_with(path, bytes, || {}) }
++fn publish_with(path: &Path, bytes: &[u8], before_publish: impl FnOnce()) -> Result<(), String> {
++    let parent = path.parent().ok_or("PDF destination has no parent")?;
++    let canonical = parent.canonicalize().map_err(|e| e.to_string())?;
++    let directory = File::open(&canonical).map_err(|e| e.to_string())?;
++    let captured = directory.metadata().map_err(|e| e.to_string())?;
++    if !captured.is_dir() { return Err("PDF destination parent is not a directory".into()); }
++    #[cfg(target_os = "linux")]
++    let anchor = { use std::os::fd::AsRawFd; std::path::PathBuf::from(format!("/proc/self/fd/{}", directory.as_raw_fd())) };
++    #[cfg(not(target_os = "linux"))]
++    let anchor = canonical.clone();
++    let leaf = path.file_name().ok_or("PDF destination has no filename")?;
++    let (temporary, mut file) = (0..100).find_map(|_| {
++        let temporary = anchor.join(format!(".provider-pdf-{}-{}.tmp", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
++        OpenOptions::new().write(true).create_new(true).open(&temporary).ok().map(|file| (temporary, file))
++    }).ok_or("Cannot create exclusive PDF output staging file")?;
++    let result = (|| {
++        file.write_all(bytes).map_err(|e| e.to_string())?; file.sync_all().map_err(|e| e.to_string())?;
++        before_publish();
++        let current = parent.canonicalize().and_then(std::fs::metadata).map_err(|e| e.to_string())?;
++        #[cfg(unix)]
++        { use std::os::unix::fs::MetadataExt; if (current.dev(), current.ino()) != (captured.dev(), captured.ino()) { return Err("PDF destination directory changed".into()); } }
++        #[cfg(not(unix))]
++        if parent.canonicalize().map_err(|e| e.to_string())? != canonical { return Err("PDF destination directory changed".into()); }
++        std::fs::rename(&temporary, anchor.join(leaf)).map_err(|e| e.to_string())
++    })();
++    drop(file); if result.is_err() { let _ = std::fs::remove_file(&temporary); } result
++}
++#[cfg(all(test, unix))]
++mod tests {
++    use super::*;
++    #[test]
++    fn pdf_output_publication_never_writes_through_destination_or_predictable_temporary_alias() {
++        let root = std::env::temp_dir().join(format!("pdf-publish-alias-{}", std::process::id())); std::fs::create_dir_all(&root).unwrap();
++        let source = root.join("source.xlsx"); let target = root.join("copy.pdf"); std::fs::write(&source, b"Original").unwrap();
++        std::fs::hard_link(&source, root.join("copy.pdf.sctmp")).unwrap();
++        publish_with(&target, b"%PDF-copy", || { std::fs::hard_link(&source, &target).unwrap(); }).unwrap();
++        assert_eq!(std::fs::read(&source).unwrap(), b"Original"); assert_eq!(std::fs::read(&target).unwrap(), b"%PDF-copy"); std::fs::remove_dir_all(root).unwrap();
++    }
++    #[test]
++    fn pdf_output_publication_rejects_retargeted_directory_and_cleans_owned_staging() {
++        use std::os::unix::fs::symlink;
++        let root = std::env::temp_dir().join(format!("pdf-publish-parent-{}", std::process::id())); std::fs::create_dir_all(root.join("one")).unwrap(); std::fs::create_dir_all(root.join("two")).unwrap();
++        let alias = root.join("selected"); symlink(root.join("one"), &alias).unwrap();
++        assert!(publish_with(&alias.join("copy.pdf"), b"%PDF-copy", || { std::fs::remove_file(&alias).unwrap(); symlink(root.join("two"), &alias).unwrap(); }).is_err());
++        assert_eq!(std::fs::read_dir(root.join("one")).unwrap().count(), 0); assert_eq!(std::fs::read_dir(root.join("two")).unwrap().count(), 0); std::fs::remove_dir_all(root).unwrap();
++    }
++}

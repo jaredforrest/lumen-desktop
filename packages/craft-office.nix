@@ -48,5 +48,10 @@ in {
       cp ${import ./gridcraft-source.nix { inherit pkgs; }}/bin/gridcraft-cli $out/bin/gridcraft-cli
     '';
   });
-  deckcraft = makeCraft "deckcraft" "sha256-wmSMYHH2MezGY5zmt9YPaO7YPd6rprFVmwfFBGhjEXw=";
+  deckcraft = (makeCraft "deckcraft" "sha256-wmSMYHH2MezGY5zmt9YPaO7YPd6rprFVmwfFBGhjEXw=").overrideAttrs (old: {
+    postInstall = (old.postInstall or "") + ''
+      cp ${import ./deckcraft-source.nix { inherit pkgs; }}/bin/deckcraft $out/bin/deckcraft
+      cp ${import ./deckcraft-source.nix { inherit pkgs; }}/bin/deckcraft-cli $out/bin/deckcraft-cli
+    '';
+  });
 }

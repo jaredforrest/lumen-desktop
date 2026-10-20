@@ -6,7 +6,8 @@ from application_fixture.keyboard import PhysicalKeyboard
 from fixture_resources import close_reaped_pipes
 from office_fixture import corpus,formats,live
 from office_fixture.control import Control,ControlError
-p=argparse.ArgumentParser();p.add_argument('--writer',required=True);p.add_argument('--sheet',required=True);p.add_argument('--slides',required=True);p.add_argument('--software-driver',required=True);p.add_argument('--sway',required=True);p.add_argument('--keyboard-tool',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--close-probe',action='store_true');p.add_argument('--document-probe',action='store_true');p.add_argument('--pdf-tools',default='');p.add_argument('--pdf-viewer',default='');p.add_argument('--xdg-tools',default='');p.add_argument('--mime-data',default='');p.add_argument('--at-spi-prefix',default=os.environ.get('LUMEN_TEST_AT_SPI',''));p.add_argument('--dialog-tools',default='');p.add_argument('--new-saveas',action='store_true');p.add_argument('--sheet-close-outcome',choices=['cancel','discard','save','error'],default='');p.add_argument('--slides-close-outcome',choices=['cancel','discard','save'],default='');p.add_argument('--effects',action='store_true');p.add_argument('--writer-close-outcome',choices=['cancel','discard','save'],default='cancel');p.add_argument('--app',choices=['writer','sheet','slides'],default='writer');p.add_argument('--output',type=Path,required=True);p.add_argument('--inside',action='store_true');p.add_argument('--profiles-json',default='');p.add_argument('--source-sha',default='');a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--writer',required=True);p.add_argument('--sheet',required=True);p.add_argument('--slides',required=True);p.add_argument('--software-driver',required=True);p.add_argument('--sway',required=True);p.add_argument('--keyboard-tool',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--close-probe',action='store_true');p.add_argument('--document-probe',action='store_true');p.add_argument('--pdf-output',action='store_true');p.add_argument('--pdf-tools',default='');p.add_argument('--pdf-viewer',default='');p.add_argument('--xdg-tools',default='');p.add_argument('--mime-data',default='');p.add_argument('--at-spi-prefix',default=os.environ.get('LUMEN_TEST_AT_SPI',''));p.add_argument('--dialog-tools',default='');p.add_argument('--new-saveas',action='store_true');p.add_argument('--sheet-close-outcome',choices=['cancel','discard','save','error'],default='');p.add_argument('--slides-close-outcome',choices=['cancel','discard','save'],default='');p.add_argument('--effects',action='store_true');p.add_argument('--writer-close-outcome',choices=['cancel','discard','save'],default='cancel');p.add_argument('--app',choices=['writer','sheet','slides'],default='writer');p.add_argument('--output',type=Path,required=True);p.add_argument('--inside',action='store_true');p.add_argument('--profiles-json',default='');p.add_argument('--source-sha',default='');a=p.parse_args()
+if a.pdf_output and (a.app=='writer' or not a.dialog_tools or not a.pdf_tools or not a.at_spi_prefix):p.error('PDF output requires a retained spreadsheet/presentation, private chooser, PDF tools and accessibility prefix')
 if a.new_saveas and (not a.dialog_tools or a.close_probe or a.sheet_close_outcome or a.slides_close_outcome or a.writer_close_outcome!='cancel'):p.error('New SaveAs requires private dialog tools and a separate lifecycle scenario')
 if a.sheet_close_outcome and a.app!='sheet':p.error('Spreadsheet close outcome requires the spreadsheet provider')
 if a.slides_close_outcome and a.app!='slides':p.error('Presentation close outcome requires the presentation provider')
@@ -20,8 +21,10 @@ if not a.inside:
  if a.effects:args.append('--effects')
  if a.close_probe:args.append('--close-probe')
  if a.document_probe:args.append('--document-probe')
+ if a.pdf_output:args.append('--pdf-output')
  if a.pdf_tools:args.extend(['--pdf-tools',a.pdf_tools])
- if a.pdf_viewer:args.extend(['--pdf-viewer',a.pdf_viewer,'--xdg-tools',a.xdg_tools,'--mime-data',a.mime_data,'--at-spi-prefix',a.at_spi_prefix])
+ if a.pdf_viewer:args.extend(['--pdf-viewer',a.pdf_viewer,'--xdg-tools',a.xdg_tools,'--mime-data',a.mime_data])
+ if a.pdf_viewer or a.pdf_output:args.extend(['--at-spi-prefix',a.at_spi_prefix])
  if a.dialog_tools:args.extend(['--dialog-tools',a.dialog_tools])
  if a.new_saveas:args.append('--new-saveas')
  if a.sheet_close_outcome:args.extend(['--sheet-close-outcome',a.sheet_close_outcome])
@@ -270,6 +273,7 @@ try:
  if a.pdf_viewer:
   from office_fixture.pdf_viewer import configure
   facts['pdfViewer']=configure(env,a.pdf_viewer,a.xdg_tools,a.mime_data)
+ if a.pdf_viewer or a.pdf_output:
   from application_fixture.accessibility import start as start_accessibility
   accessibility=start_accessibility(Path(a.at_spi_prefix),env,launch,wait)
  provider=launch([app,str(source)],name);window=wait(native,'exact profile child maps a native window',provider);pid=live_pid();assert pid==window['pid']
@@ -280,7 +284,13 @@ try:
  elif a.app=='sheet':assert 'Summary' in json.dumps(initial),'Live controller returned a default headless model'
  else:assert 'Synthetic title' in json.dumps(initial),'Live controller returned a default headless model'
  checks.append('Installed profile wrapper, exact native PID/conId and private live document agree')
- if a.document_probe:
+ if a.pdf_output:
+  from office_fixture.provider_pdf import exercise
+  facts.update(documentProbeCli=cli,documentProbePort=port,documentPdfTools=a.pdf_tools)
+  pointer=launch([a.pointer_tool,'pointer','move','0','0'],'pointer',stdin=subprocess.PIPE,text=True)
+  def release_pointer():pointer.stdin.write('r\n');pointer.stdin.flush()
+  exercise(a.app,control,key,pointer_events,command,wait,provider,source,out,facts,checks,tree,walk,accessibility,release_pointer)
+ elif a.document_probe:
   from office_fixture.document_actions import inspect_print
   facts.update(documentProbeCli=cli,documentProbePort=port,documentPdfTools=a.pdf_tools)
   pointer=launch([a.pointer_tool,'pointer','move','0','0'],'pointer',stdin=subprocess.PIPE,text=True)

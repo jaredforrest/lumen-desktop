@@ -43,12 +43,22 @@ returns to the document on failure so the existing status message is immediately
 visible. Successful handoffs preserve the Print page. The source build retains
 the release's exact embedded font input and font licences.
 
-The spreadsheet engine returns a PDF for `file.print`; its UI only routes
-`file.exportPdf` to the download hook. The presentation provider has PDF export,
-but no print command was found in its pinned command/UI source. Physical Print
-invocation and Escape retain the captured provider UI and source hashes; these
-observations are not described as working print destination dialogs. No generic
-printing or version-history service compensates for missing provider workflows.
+The spreadsheet and presentation packages contain separate provider-owned
+Print to PDF actions. Each uses the provider's existing PDF renderer and a real
+PDF-only destination picker. They do not provide physical printer queues.
+The spreadsheet's advertised shortcut is wired to the same command as its menu.
+The presentation reuses its PDF layout choices while preserving ordinary export
+formats. Its captured document identity, revision, path and selected slide are
+revalidated before output, including after an asynchronous picker returns.
+A changed document retires the captured dialog rather than redirecting its action.
+The PDF subset renders bytes before publishing them through exclusively created
+staging in an opened destination directory, then atomically replaces the chosen
+entry. It never writes through a destination or predictable temporary-file link;
+a retargeted selected parent is rejected and owned staging is removed.
+Native acceptance for these actions is recorded separately with `--pdf-output`;
+source implementation alone does not establish working picker interactions.
+No generic printing or version-history service compensates for missing provider
+workflows.
 
 ## Reproduction
 
@@ -65,3 +75,12 @@ configured viewer route; a separate unavailable-viewer run checks immediate
 failure visibility. Persistent version browsing remains unsupported by the
 observed session snapshots. These optional installed-provider fixtures are
 separate from the ordinary shell CI lane.
+
+For the spreadsheet and presentation subset, use `office_native_workflows.py`
+with `--app sheet` or `--app slides`, `--pdf-output`, `--dialog-tools`,
+`--pdf-tools` and the same pinned physical keyboard/pointer dependencies.
+The test uses real Cancel, unavailable destination and Save interactions, checks
+source hashes and parses generated PDF content independently. The presentation
+also holds the Save control while the document is changed or replaced, then
+releases it without moving the pointer and checks that no bystander was mutated.
+All capability records remain incomplete for physical printer submission.

@@ -1,0 +1,302 @@
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -10,6 +10,8 @@
+ pub mod control;
+ pub mod credits;
+ pub mod dialogs;
++mod pdf_output;
++mod pdf_publication;
+ pub mod fillui;
+ pub mod icons;
+ pub mod media;
+@@ -160,6 +162,7 @@
+     ("app.insertVideoDialog", "Video from File…", None, "{}"),
+     ("app.saveAsDialog", "Save As…", None, "{}"),
+     ("app.exportDialog", "Export…", None, "{}"),
++    ("app.printPdfDialog", "Print to PDF…", Some("Cmd+P"), "{}"),
+     ("app.dialog", "Open Dialog", None, "{id}"),
+     ("app.links", "Community Links", None, "{}"),
+ ];
+@@ -351,10 +354,11 @@
+             "app.insertAudioDialog" => self.pick_and_insert("audio", "insert.audio"),
+             "app.insertVideoDialog" => self.pick_and_insert("video", "insert.video"),
+             "app.saveAsDialog" => self.save_as_dialog("deckcraft"),
+-            "app.exportDialog" => self.dialog = Some(dialogs::Dialog::new("export")),
++            "app.exportDialog" => self.open_export_dialog(false)?,
++            "app.printPdfDialog" => self.open_export_dialog(true)?,
+             "app.dialog" => {
+                 let d = p.get("id").and_then(Value::as_str).ok_or("missing `id`")?;
+-                self.dialog = Some(dialogs::Dialog::new(d));
++                if d == "export" { self.open_export_dialog(false)?; } else if d == "printPdf" { self.open_export_dialog(true)?; } else { self.dialog = Some(dialogs::Dialog::new(d)); }
+             }
+             "app.links" => {
+                 use deckcraft_engine::links::*;
+--- a/crates/ui-egui/src/menus.rs
++++ b/crates/ui-egui/src/menus.rs
+@@ -30,6 +30,7 @@
+         }
+         (S, true, true, false) => "app.saveAsDialog",
+         (O, true, false, false) => "app.openDialog",
++        (P, true, false, false) => "app.printPdfDialog",
+         (P, true, true, false) => "app.palette",
+         (Comma, true, false, false) => "app.preferences",
+         (Equals | Plus, true, false, false) => "view.zoomIn",
+@@ -137,6 +138,7 @@
+                 ("Save", "file.save"),
+                 ("Save As…", "app.saveAsDialog"),
+                 ("Export…", "app.exportDialog"),
++                ("Print to PDF…", "app.printPdfDialog"),
+                 ("-", ""),
+                 ("Properties", "file.properties"),
+             ],
+--- a/crates/ui-egui/src/dialogs.rs
++++ b/crates/ui-egui/src/dialogs.rs
+@@ -11,6 +11,8 @@
+ pub struct Dialog {
+     pub id: String,
+     pub params: Value,
++    #[serde(skip)]
++    pub(crate) source: Option<crate::pdf_output::ExportSource>,
+     /// Field values while the dialog is open.
+     #[serde(skip)]
+     pub fields: std::collections::HashMap<String, String>,
+@@ -18,7 +20,7 @@
+ 
+ impl Dialog {
+     pub fn new(id: &str) -> Self {
+-        Dialog { id: id.into(), params: Value::Null, fields: Default::default() }
++        Dialog { id: id.into(), params: Value::Null, fields: Default::default(), source: None }
+     }
+     pub fn modal(&self) -> bool {
+         true
+@@ -46,6 +48,7 @@
+         "about" => "About DeckCraft",
+         "preferences" => "Preferences",
+         "export" => "Export",
++        "printPdf" => "Print to PDF",
+         "symbol" => "Symbol",
+         "equation" => "Equation",
+         "spelling" => "Spelling",
+@@ -62,6 +65,10 @@
+ 
+ pub fn show(app: &mut SlideApp, ctx: &egui::Context) {
+     let Some(mut d) = app.dialog.take() else { return };
++    if matches!(d.id.as_str(), "export" | "printPdf") && !d.source.as_ref().is_some_and(|source| source.matches(app)) {
++        app.set_status("The presentation changed; reopen the export destination");
++        return;
++    }
+     let mut open = true;
+     let mut close = false;
+     egui::Window::new(title(&d.id))
+@@ -367,9 +374,10 @@
+             }
+             ok || cancel
+         }
+-        "export" => {
+-            ui.label("Export the presentation as:");
+-            let fmt = d.get("fmt", "pdf");
++        "export" | "printPdf" => {
++            let printing = d.id == "printPdf";
++            ui.label(if printing { "Print to a PDF file. System printer queues are not provided here." } else { "Export the presentation as:" });
++            let fmt = if printing { "pdf".to_string() } else { d.get("fmt", "pdf") };
+             for (l, f) in [
+                 ("PDF document (.pdf)", "pdf"),
+                 ("PNG images (current slide)", "png"),
+@@ -378,7 +386,7 @@
+                 ("PowerPoint Presentation (.pptx)", "pptx"),
+                 ("Outline (.txt)", "outline"),
+             ] {
+-                if ui.radio(fmt == f, l).clicked() {
++                if !printing && ui.radio(fmt == f, l).clicked() {
+                     d.fields.insert("fmt".into(), f.into());
+                 }
+             }
+@@ -428,7 +436,7 @@
+                 };
+                 json!({"layout": layout, "perPage": per, "includeHidden": d.get("pdfHidden", "false") == "true"})
+             };
+-            let (ok, cancel) = buttons(ui, "Export");
++            let (ok, cancel) = buttons(ui, if printing { "Save PDF" } else { "Export" });
+             if ok {
+                 let name = app.session.active().map(|s| s.title()).unwrap_or_else(|| "Presentation".into());
+                 let (ext, all) = match fmt.as_str() {
+@@ -442,6 +450,15 @@
+                 let suggested = format!("{name}.{ext}");
+                 if let Some(pick) = app.services.pick_save.as_mut() {
+                     if let Some(path) = pick(&suggested) {
++                        if !d.source.as_ref().is_some_and(|source| source.matches(app)) { app.set_status("The presentation changed while choosing a destination"); return true; }
++                        if printing && !std::path::Path::new(&path).extension().and_then(|s| s.to_str()).is_some_and(|s| s.eq_ignore_ascii_case("pdf")) { app.set_status("Choose a PDF destination ending in .pdf"); return false; }
++                        if printing && d.source.as_ref().is_some_and(|source| source.is_source_destination(&path)) { app.set_status("Export cannot replace the source presentation"); return false; }
++                        if printing {
++                            let rendered = app.session.active().ok_or_else(|| "No presentation is available to print".to_string()).and_then(|s| crate::pdf_output::render_pdf(&s.doc, &pdf_params));
++                            let bytes = match rendered { Ok(bytes) => bytes, Err(error) => { app.set_status(error); return false; } };
++                            match crate::pdf_publication::publish(std::path::Path::new(&path), &bytes) { Ok(()) => app.set_status(format!("Exported {path}")), Err(error) => { app.set_status(error); return false; } }
++                            return true;
++                        }
+                         let mut params = json!({"path": path, "all": all});
+                         if ext == "pdf"
+                             && let (Some(o), Some(extra)) = (params.as_object_mut(), pdf_params.as_object())
+@@ -464,10 +481,13 @@
+                             );
+                             if ext == "png" { img.to_png() } else { img.to_jpeg(92) }
+                         }
+-                        "pdf" => deckcraft_pdf_bytes(&s.doc, &pdf_params),
++                        "pdf" => match crate::pdf_output::render_pdf(&s.doc, &pdf_params) { Ok(bytes) => bytes, Err(error) => { app.set_status(error); return false; } },
+                         other => deckcraft_engine::cmd::file::save_bytes(&s.doc, other).unwrap_or_default(),
+                     };
+                     dl(&suggested, &bytes);
++                } else {
++                    app.set_status("PDF output is unavailable: no destination picker or download provider is configured");
++                    return false;
+                 }
+             }
+             ok || cancel
+@@ -923,10 +943,6 @@
+     });
+ }
+ 
+-/// PDF bytes with the export dialog's options (web: downloaded instead of written).
+-fn deckcraft_pdf_bytes(doc: &deckcraft_model::Presentation, params: &serde_json::Value) -> Vec<u8> {
+-    deckcraft_engine::cmd::file::pdf_bytes(doc, params).unwrap_or_default()
+-}
+ 
+ #[cfg(test)]
+ mod tests {
+--- /dev/null
++++ b/crates/ui-egui/src/pdf_output.rs
+@@ -0,0 +1,81 @@
++//! Captured provider document for export and the explicit PDF-print subset.
++use crate::{SlideApp, dialogs::Dialog};
++use std::path::{Path, PathBuf};
++
++pub(crate) fn render_pdf(doc: &deckcraft_model::Presentation, params: &serde_json::Value) -> Result<Vec<u8>, String> {
++    deckcraft_engine::cmd::file::pdf_bytes(doc, params).map_err(|error| error.to_string())
++}
++
++#[derive(Clone, Debug, PartialEq)]
++pub(crate) struct ExportSource {
++    uid: u64,
++    revision: u64,
++    path: Option<String>,
++    slide: usize,
++    canonical: Option<PathBuf>,
++    #[cfg(unix)]
++    file_identity: Option<(u64, u64)>,
++}
++impl ExportSource {
++    pub(crate) fn capture(app: &SlideApp) -> Option<Self> {
++        app.session.active().map(|d| Self {
++            uid: d.uid, revision: d.revision, path: d.path.clone(), slide: d.selection.slide,
++            canonical: d.path.as_deref().and_then(|p| Path::new(p).canonicalize().ok()),
++            #[cfg(unix)]
++            file_identity: d.path.as_deref().and_then(|p| std::fs::metadata(p).ok()).map(|m| { use std::os::unix::fs::MetadataExt; (m.dev(), m.ino()) }),
++        })
++    }
++    pub(crate) fn matches(&self, app: &SlideApp) -> bool {
++        app.session.active().is_some_and(|d| self.uid == d.uid && self.revision == d.revision && self.path == d.path && self.slide == d.selection.slide)
++    }
++    pub(crate) fn is_source_destination(&self, path: &str) -> bool {
++        if self.canonical.is_some() && self.canonical == Path::new(path).canonicalize().ok() { return true; }
++        #[cfg(unix)]
++        if self.file_identity.is_some() && self.file_identity == std::fs::metadata(path).ok().map(|m| { use std::os::unix::fs::MetadataExt; (m.dev(), m.ino()) }) { return true; }
++        false
++    }
++}
++impl SlideApp {
++    pub(crate) fn open_export_dialog(&mut self, printing: bool) -> Result<(), String> {
++        if printing && self.services.pick_save.is_none() && self.services.download.is_none() { return Err("PDF output is unavailable: no destination picker or download provider is configured".into()); }
++        let source = ExportSource::capture(self).ok_or("No presentation is available to export")?;
++        let mut dialog = Dialog::new(if printing { "printPdf" } else { "export" });
++        dialog.source = Some(source);
++        self.dialog = Some(dialog);
++        Ok(())
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    use crate::Services;
++    use deckcraft_engine::Session;
++    use serde_json::json;
++    fn app() -> SlideApp { SlideApp::new(Session::with_new(), Services { pick_save: Some(Box::new(|_| None)), ..Default::default() }) }
++    #[test]
++    fn pdf_output_dialog_is_captured_and_does_not_replace_regular_export() {
++        let mut a = app(); a.run("app.printPdfDialog", json!({})).unwrap();
++        assert_eq!(a.dialog.as_ref().unwrap().id, "printPdf"); assert!(a.dialog.as_ref().unwrap().source.as_ref().unwrap().matches(&a));
++        a.run("app.exportDialog", json!({})).unwrap(); assert_eq!(a.dialog.as_ref().unwrap().id, "export");
++    }
++    #[test]
++    fn pdf_output_replacement_revision_and_selection_invalidate_captured_dialog() {
++        let mut a = app(); let first = ExportSource::capture(&a).unwrap(); a.session.active_mut().unwrap().revision += 1; assert!(!first.matches(&a));
++        let second = ExportSource::capture(&a).unwrap(); a.session.active_mut().unwrap().selection.slide += 1; assert!(!second.matches(&a));
++        let third = ExportSource::capture(&a).unwrap(); a.session.active_mut().unwrap().path = Some("/captured/new-name.pptx".into()); assert!(!third.matches(&a));
++        let fourth = ExportSource::capture(&a).unwrap(); a.run("file.new", json!({"blank":true})).unwrap(); assert!(!fourth.matches(&a));
++    }
++    #[test]
++    fn pdf_output_empty_page_set_is_an_error_not_a_successful_empty_file() {
++        let mut a = app(); std::sync::Arc::make_mut(&mut a.session.active_mut().unwrap().doc).slides.clear();
++        let target = std::env::temp_dir().join(format!("deck-no-pages-{}.pdf", std::process::id())); std::fs::write(&target, b"Existing copy").unwrap();
++        let result = render_pdf(&a.session.active().unwrap().doc, &json!({})).and_then(|bytes| crate::pdf_publication::publish(&target, &bytes));
++        assert!(result.is_err()); assert_eq!(std::fs::read(&target).unwrap(), b"Existing copy"); std::fs::remove_file(target).unwrap();
++    }
++    #[test]
++    fn pdf_output_missing_provider_is_explicit() {
++        let mut a = SlideApp::new(Session::with_new(), Services::default());
++        assert!(a.run("app.printPdfDialog", json!({})).unwrap_err().contains("unavailable")); assert!(a.dialog.is_none());
++    }
++}
+--- /dev/null
++++ b/crates/ui-egui/src/pdf_publication.rs
+@@ -0,0 +1,51 @@
++//! Exclusive PDF staging in the captured destination directory.
++use std::{fs::{File, OpenOptions}, io::Write, path::Path, sync::atomic::{AtomicU64, Ordering}};
++static NEXT: AtomicU64 = AtomicU64::new(0);
++pub(crate) fn publish(path: &Path, bytes: &[u8]) -> Result<(), String> { publish_with(path, bytes, || {}) }
++fn publish_with(path: &Path, bytes: &[u8], before_publish: impl FnOnce()) -> Result<(), String> {
++    let parent = path.parent().ok_or("PDF destination has no parent")?;
++    let canonical = parent.canonicalize().map_err(|e| e.to_string())?;
++    let directory = File::open(&canonical).map_err(|e| e.to_string())?;
++    let captured = directory.metadata().map_err(|e| e.to_string())?;
++    if !captured.is_dir() { return Err("PDF destination parent is not a directory".into()); }
++    #[cfg(target_os = "linux")]
++    let anchor = { use std::os::fd::AsRawFd; std::path::PathBuf::from(format!("/proc/self/fd/{}", directory.as_raw_fd())) };
++    #[cfg(not(target_os = "linux"))]
++    let anchor = canonical.clone();
++    let leaf = path.file_name().ok_or("PDF destination has no filename")?;
++    let (temporary, mut file) = (0..100).find_map(|_| {
++        let temporary = anchor.join(format!(".provider-pdf-{}-{}.tmp", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
++        OpenOptions::new().write(true).create_new(true).open(&temporary).ok().map(|file| (temporary, file))
++    }).ok_or("Cannot create exclusive PDF output staging file")?;
++    let result = (|| {
++        file.write_all(bytes).map_err(|e| e.to_string())?; file.sync_all().map_err(|e| e.to_string())?;
++        before_publish();
++        let current = parent.canonicalize().and_then(std::fs::metadata).map_err(|e| e.to_string())?;
++        #[cfg(unix)]
++        { use std::os::unix::fs::MetadataExt; if (current.dev(), current.ino()) != (captured.dev(), captured.ino()) { return Err("PDF destination directory changed".into()); } }
++        #[cfg(not(unix))]
++        if parent.canonicalize().map_err(|e| e.to_string())? != canonical { return Err("PDF destination directory changed".into()); }
++        std::fs::rename(&temporary, anchor.join(leaf)).map_err(|e| e.to_string())
++    })();
++    drop(file); if result.is_err() { let _ = std::fs::remove_file(&temporary); } result
++}
++#[cfg(all(test, unix))]
++mod tests {
++    use super::*;
++    #[test]
++    fn pdf_output_publication_never_writes_through_destination_or_predictable_temporary_alias() {
++        let root = std::env::temp_dir().join(format!("pdf-publish-alias-{}", std::process::id())); std::fs::create_dir_all(&root).unwrap();
++        let source = root.join("source.xlsx"); let target = root.join("copy.pdf"); std::fs::write(&source, b"Original").unwrap();
++        std::fs::hard_link(&source, root.join("copy.pdf.sctmp")).unwrap();
++        publish_with(&target, b"%PDF-copy", || { std::fs::hard_link(&source, &target).unwrap(); }).unwrap();
++        assert_eq!(std::fs::read(&source).unwrap(), b"Original"); assert_eq!(std::fs::read(&target).unwrap(), b"%PDF-copy"); std::fs::remove_dir_all(root).unwrap();
++    }
++    #[test]
++    fn pdf_output_publication_rejects_retargeted_directory_and_cleans_owned_staging() {
++        use std::os::unix::fs::symlink;
++        let root = std::env::temp_dir().join(format!("pdf-publish-parent-{}", std::process::id())); std::fs::create_dir_all(root.join("one")).unwrap(); std::fs::create_dir_all(root.join("two")).unwrap();
++        let alias = root.join("selected"); symlink(root.join("one"), &alias).unwrap();
++        assert!(publish_with(&alias.join("copy.pdf"), b"%PDF-copy", || { std::fs::remove_file(&alias).unwrap(); symlink(root.join("two"), &alias).unwrap(); }).is_err());
++        assert_eq!(std::fs::read_dir(root.join("one")).unwrap().count(), 0); assert_eq!(std::fs::read_dir(root.join("two")).unwrap().count(), 0); std::fs::remove_dir_all(root).unwrap();
++    }
++}
