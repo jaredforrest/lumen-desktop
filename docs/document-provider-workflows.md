@@ -143,3 +143,27 @@ picture selection/target, recipient replacement and stale Save Changes
 continuations. This does not add cancellation to a foreign host's legacy
 `open_async` callback interface; the selected native host uses the owned
 `Services::file_dialog` response channel.
+
+## Presentation output formats
+
+The presentation provider checks the requested output family before writing or
+marking the document saved. Unsupported suffixes, unknown explicit formats and
+conflicting known suffix/format pairs fail without replacing an existing
+destination. The in-memory download path also propagates an unsupported format
+error instead of presenting an empty or native-container download as success.
+
+The existing native `.deckcraft`/`.slidecraft` and extensionless paths remain
+available, as do case-normalized presentation, PDF, outline and image exports.
+The existing `.potx` and `.ppsx` aliases still contain ordinary presentation
+content; they are not evidence of template or slide-show format semantics.
+There is no ODP exporter. Refusing ODP is preferable to reporting success for
+native-container bytes bearing an ODP suffix.
+
+`deck_format_truthfulness.py` runs the installed command-line provider in the
+disposable application namespace. It checks refusal against existing destination
+sentinels and original source hashes, verifies supported container signatures,
+and checks that an unsupported conversion produces no output. Source tests
+additionally retain the complete document, identity, revision, path, dirty state
+and selection across refusal, and exercise legitimate outline and image output.
+These checks establish format honesty and source preservation, not complete
+cross-format fidelity or a new format engine.

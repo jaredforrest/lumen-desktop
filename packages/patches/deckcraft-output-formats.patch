@@ -1,0 +1,250 @@
+diff --git a/crates/engine/src/cmd/file.rs b/crates/engine/src/cmd/file.rs
+index 55aac8b..31bb4a1 100644
+--- a/crates/engine/src/cmd/file.rs
++++ b/crates/engine/src/cmd/file.rs
+@@ -106,11 +106,13 @@ fn open_bytes(s: &mut Session, p: &Value) -> Result<Value> {
+ 
+ /// Encode the presentation in `format` (`deckcraft`, `pptx`, `outline`).
+ pub fn save_bytes(doc: &Presentation, format: &str) -> Result<Vec<u8>> {
+-    match format {
+-        "pptx" | "potx" | "ppsx" => deckcraft_pptx::export(doc).map_err(|e| EngineError::Other(e.to_string())),
+-        "outline" | "txt" => Ok(deckcraft_format::slides_to_outline(doc).into_bytes()),
+-        "pdf" => deckcraft_pdf::export(doc, &Default::default()).map_err(|e| EngineError::Other(e.to_string())),
+-        _ => deckcraft_format::save(doc).map_err(|e| EngineError::Other(e.to_string())),
++    use crate::output_formats::Format;
++    match crate::output_formats::parse(format).map_err(EngineError::Other)? {
++        Format::Presentation => deckcraft_pptx::export(doc).map_err(|e| EngineError::Other(e.to_string())),
++        Format::Outline => Ok(deckcraft_format::slides_to_outline(doc).into_bytes()),
++        Format::Pdf => deckcraft_pdf::export(doc, &Default::default()).map_err(|e| EngineError::Other(e.to_string())),
++        Format::Native => deckcraft_format::save(doc).map_err(|e| EngineError::Other(e.to_string())),
++        Format::Png | Format::Jpeg => Err(EngineError::Other("Use the image export action for this output format".into())),
+     }
+ }
+ 
+@@ -137,20 +139,7 @@ pub fn pdf_bytes(doc: &Presentation, p: &Value) -> Result<Vec<u8>> {
+ }
+ 
+ pub fn format_for_path(path: &str) -> &'static str {
+-    let l = path.to_ascii_lowercase();
+-    if l.ends_with(".pptx") || l.ends_with(".potx") || l.ends_with(".ppsx") {
+-        "pptx"
+-    } else if l.ends_with(".png") {
+-        "png"
+-    } else if l.ends_with(".jpg") || l.ends_with(".jpeg") {
+-        "jpeg"
+-    } else if l.ends_with(".pdf") {
+-        "pdf"
+-    } else if l.ends_with(".txt") || l.ends_with(".md") {
+-        "outline"
+-    } else {
+-        "deckcraft"
+-    }
++    crate::output_formats::infer(path).map(|format| format.name()).unwrap_or("unsupported")
+ }
+ 
+ fn mark_saved(s: &mut Session, path: Option<String>) -> Result<()> {
+@@ -185,7 +174,7 @@ fn save(s: &mut Session, p: &Value) -> Result<Value> {
+         s.ui_requests.push(crate::UiRequest::PickFile { purpose: "saveAs".into() });
+         return Ok(json!({"needsPath": true}));
+     };
+-    let format = str_param(p, "format").unwrap_or(format_for_path(&path));
++    let format = crate::output_formats::checked(&path, str_param(p, "format")).map_err(EngineError::Other)?.name();
+     let bytes = save_bytes(&s.doc()?.doc, format)?;
+     write_file(&path, &bytes)?;
+     mark_saved(s, Some(path.clone()))?;
+@@ -225,7 +214,9 @@ fn render(s: &mut Session, p: &Value) -> Result<Value> {
+ 
+ fn export(s: &mut Session, p: &Value) -> Result<Value> {
+     let path = str_param(p, "path").ok_or_else(|| bad("file.export", "missing `path`"))?.to_string();
+-    let format = str_param(p, "format").unwrap_or(format_for_path(&path)).to_string();
++    let explicit = str_param(p, "format");
++    let format = crate::output_formats::checked(&path, explicit).map_err(EngineError::Other)?.name().to_string();
++    let default_extension = if format == "jpeg" && explicit.is_some_and(|value| value.eq_ignore_ascii_case("jpg")) { "jpg" } else { format.as_str() };
+     let st = s.doc()?;
+     let scale = f64_or(p, "scale", 2.0);
+     match format.as_str() {
+@@ -251,7 +242,7 @@ fn export(s: &mut Session, p: &Value) -> Result<Value> {
+                 } else {
+                     let pth = std::path::Path::new(&path);
+                     let stem = pth.file_stem().map(|x| x.to_string_lossy().to_string()).unwrap_or_else(|| "Slide".into());
+-                    let ext = pth.extension().map(|x| x.to_string_lossy().to_string()).unwrap_or_else(|| format.clone());
++                    let ext = pth.extension().map(|x| x.to_string_lossy().to_string()).unwrap_or_else(|| default_extension.to_string());
+                     pth.with_file_name(format!("{stem}{}.{ext}", k + 1)).to_string_lossy().to_string()
+                 };
+                 write_file(&out, &bytes)?;
+@@ -363,3 +354,68 @@ fn recovery_discard(s: &mut Session, p: &Value) -> Result<Value> {
+     }
+     ok()
+ }
++
++#[cfg(test)]
++mod output_formats_contract {
++    use super::*;
++    use std::path::PathBuf;
++    struct Fixture(PathBuf);
++    impl Fixture {
++        fn new(label: &str) -> Self {
++            let root = std::env::temp_dir().join(format!("deck-output-formats-{label}-{}",std::process::id()));
++            std::fs::create_dir(&root).unwrap(); Self(root)
++        }
++        fn path(&self, name: &str) -> PathBuf { self.0.join(name) }
++    }
++    impl Drop for Fixture { fn drop(&mut self) { std::fs::remove_dir_all(&self.0).unwrap(); } }
++    fn edited() -> Session {
++        let mut s=Session::with_new();
++        s.execute("slide.notes",&json!({"index":0,"text":"Protected output format fixture"})).unwrap(); s
++    }
++    fn facts(s: &Session) -> Value {
++        let d=s.active().unwrap(); json!({"uid":d.uid,"revision":d.revision,"path":d.path,"dirty":d.is_dirty(),"doc":&*d.doc,"selection":d.selection})
++    }
++    #[test]
++    fn unsupported_output_refuses_every_path_route_and_preserves_session_and_existing_files() {
++        let root=Fixture::new("refuse"); let mut s=edited(); let source=root.path("source.deckcraft");
++        s.execute("file.saveAs",&json!({"path":source})).unwrap();
++        s.execute("slide.notes",&json!({"index":0,"text":"Newer unsaved notes"})).unwrap();
++        let before=facts(&s); let source_bytes=std::fs::read(&source).unwrap();
++        for (index,(command,path,explicit)) in [
++            ("file.saveAs","refused.odp",None),("file.save","refused.ODP",None),
++            ("file.export","refused.odp",Some("deckcraft")),("file.saveAs","refused.deckcraft",Some("odp")),
++            ("file.export","refused.pdf",Some("pptx")),("file.export","refused.png",Some("jpeg")),
++        ].into_iter().enumerate() {
++            let path=root.path(&format!("{index}-{path}"));std::fs::write(&path,b"Existing destination").unwrap();
++            let mut params=json!({"path":path});if let Some(value)=explicit {params["format"]=json!(value);}
++            assert!(s.execute(command,&params).is_err());assert_eq!(facts(&s),before);
++            assert_eq!(std::fs::read(path).unwrap(),b"Existing destination");assert_eq!(std::fs::read(&source).unwrap(),source_bytes);
++        }
++        let absent=root.path("absent.odp");assert!(s.execute("file.saveAs",&json!({"path":absent})).is_err());assert!(!absent.exists());assert_eq!(facts(&s),before);
++    }
++    #[test]
++    fn unsupported_in_memory_format_is_not_a_successful_native_payload() {
++        let mut s=edited();let before=facts(&s);
++        for value in ["odp","ODP","invented",""] {assert!(s.execute("file.saveBytes",&json!({"format":value})).is_err());assert_eq!(facts(&s),before);}
++    }
++    #[test]
++    fn declared_native_and_presentation_formats_keep_real_containers() {
++        let root=Fixture::new("containers");
++        for suffix in ["deckcraft","slidecraft","PPTX","potx","ppsx",""] {
++            let mut s=edited();let target=root.path(&if suffix.is_empty() { "extensionless".into() } else { format!("copy.{suffix}") });
++            s.execute("file.saveAs",&json!({"path":target})).unwrap();let bytes=std::fs::read(&target).unwrap();
++            if ["PPTX","potx","ppsx"].contains(&suffix) {assert!(deckcraft_pptx::sniff(&bytes));} else {assert!(deckcraft_format::sniff(&bytes));}
++            let reopened=open_presentation("copy",&bytes).unwrap();assert!(reopened.slides[0].notes.text().contains("Protected output format fixture"));assert!(!s.active().unwrap().is_dirty());
++        }
++    }
++    #[test]
++    fn declared_pdf_outline_and_image_exports_keep_real_payloads_and_do_not_mark_saved() {
++        let root=Fixture::new("exports");let mut s=edited();let before=facts(&s);
++        for (suffix,explicit,signature) in [("pdf","PDF",b"%PDF-".as_slice()),("PNG","PNG",b"\x89PNG\r\n\x1a\n".as_slice()),("jpg","JPEG",b"\xff\xd8".as_slice())] {
++            let path=root.path(&format!("copy.{suffix}"));s.execute("file.export",&json!({"path":path,"format":explicit,"scale":0.01})).unwrap();assert!(std::fs::read(path).unwrap().starts_with(signature));assert_eq!(facts(&s),before);
++        }
++        let outline=root.path("copy.md");s.execute("file.export",&json!({"path":outline,"format":"OUTLINE"})).unwrap();let outline_bytes=std::fs::read(outline).unwrap();assert!(std::str::from_utf8(&outline_bytes).is_ok());assert!(!deckcraft_format::sniff(&outline_bytes));assert_eq!(facts(&s),before);
++        s.execute("slide.new",&json!({})).unwrap();let before_batch=facts(&s);let prefix=root.path("image-batch");s.execute("file.export",&json!({"path":prefix,"format":"PNG","all":true,"scale":0.01})).unwrap();
++        for index in 1..=2 {assert!(std::fs::read(root.path(&format!("image-batch{index}.png"))).unwrap().starts_with(b"\x89PNG\r\n\x1a\n"));}assert_eq!(facts(&s),before_batch);
++    }
++}
+diff --git a/crates/engine/src/lib.rs b/crates/engine/src/lib.rs
+index a2d2d2a..20dea5e 100644
+--- a/crates/engine/src/lib.rs
++++ b/crates/engine/src/lib.rs
+@@ -15,6 +15,7 @@ pub mod links;
+ pub mod recovery;
+ pub mod sample;
+ pub mod tools;
++mod output_formats;
+ 
+ use std::sync::Arc;
+ 
+diff --git a/crates/engine/src/output_formats.rs b/crates/engine/src/output_formats.rs
+new file mode 100644
+index 0000000..0852215
+--- /dev/null
++++ b/crates/engine/src/output_formats.rs
+@@ -0,0 +1,76 @@
++//! Truthful output routing; an unimplemented format never becomes a native container.
++use std::path::Path;
++
++#[derive(Clone, Copy, Debug, PartialEq, Eq)]
++pub(crate) enum Format { Native, Presentation, Pdf, Outline, Png, Jpeg }
++impl Format {
++    pub(crate) fn name(self) -> &'static str {
++        match self { Self::Native => "deckcraft", Self::Presentation => "pptx", Self::Pdf => "pdf", Self::Outline => "outline", Self::Png => "png", Self::Jpeg => "jpeg" }
++    }
++}
++
++pub(crate) fn parse(value: &str) -> Result<Format, String> {
++    match value.to_ascii_lowercase().as_str() {
++        "deckcraft" | "slidecraft" => Ok(Format::Native),
++        "pptx" | "potx" | "ppsx" => Ok(Format::Presentation),
++        "pdf" => Ok(Format::Pdf),
++        "outline" | "txt" | "md" => Ok(Format::Outline),
++        "png" => Ok(Format::Png),
++        "jpeg" | "jpg" => Ok(Format::Jpeg),
++        _ => Err(format!("Output format '{value}' is unsupported")),
++    }
++}
++
++pub(crate) fn infer(path: &str) -> Result<Format, String> {
++    let extension = Path::new(path).extension().and_then(|v| v.to_str()).unwrap_or("");
++    if extension.is_empty() { return Ok(Format::Native); }
++    // These filename extensions are the provider's declared native and export families.
++    match extension.to_ascii_lowercase().as_str() {
++        "deckcraft" | "slidecraft" | "pptx" | "potx" | "ppsx" | "pdf" | "txt" | "md" | "png" | "jpeg" | "jpg" => parse(extension),
++        _ => Err(format!("Output filename extension '.{extension}' is unsupported")),
++    }
++}
++
++pub(crate) fn checked(path: &str, explicit: Option<&str>) -> Result<Format, String> {
++    let inferred = infer(path)?;
++    let Some(explicit) = explicit else { return Ok(inferred) };
++    let requested = parse(explicit)?;
++    let has_extension = Path::new(path).extension().is_some_and(|v| !v.is_empty());
++    if has_extension && inferred != requested {
++        return Err("The filename extension does not match the selected output format".into());
++    }
++    Ok(requested)
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++    #[test]
++    fn declared_aliases_and_case_keep_their_real_output_family() {
++        for (suffix, expected) in [("deckcraft",Format::Native),("slidecraft",Format::Native),("PPTX",Format::Presentation),("potx",Format::Presentation),("ppsx",Format::Presentation),("PDF",Format::Pdf),("md",Format::Outline),("txt",Format::Outline),("PNG",Format::Png),("jpg",Format::Jpeg),("jpeg",Format::Jpeg)] {
++            assert_eq!(infer(&format!("copy.{suffix}")).unwrap(),expected);
++            assert_eq!(checked(&format!("copy.{suffix}"),Some(expected.name())).unwrap(),expected);
++        }
++        assert_eq!(checked("copy.pptx",Some("PpTx")).unwrap(),Format::Presentation);
++    }
++    #[test]
++    fn extensionless_native_and_explicit_known_formats_remain_available() {
++        assert_eq!(infer("folder.with.dots/copy").unwrap(),Format::Native);
++        assert_eq!(checked("copy",Some("PDF")).unwrap(),Format::Pdf);
++        assert_eq!(parse("SLIDECRAFT").unwrap(),Format::Native);
++    }
++    #[test]
++    fn unsupported_suffix_cannot_be_disguised_with_an_explicit_native_format() {
++        for suffix in ["odp","ODP","otp","ppt","pptm","invented"] {
++            assert!(infer(&format!("copy.{suffix}")).is_err());
++            assert!(checked(&format!("copy.{suffix}"),Some("deckcraft")).is_err());
++        }
++        assert!(parse("odp").is_err()); assert!(parse("").is_err());
++    }
++    #[test]
++    fn conflicting_declared_families_are_refused() {
++        assert!(checked("copy.pdf",Some("pptx")).is_err());
++        assert!(checked("copy.pptx",Some("odp")).is_err());
++        assert!(checked("copy.png",Some("jpeg")).is_err());
++    }
++}
+diff --git a/crates/ui-egui/src/dialogs.rs b/crates/ui-egui/src/dialogs.rs
+index a940f91..bc640e3 100644
+--- a/crates/ui-egui/src/dialogs.rs
++++ b/crates/ui-egui/src/dialogs.rs
+@@ -482,7 +482,7 @@ fn body(app: &mut SlideApp, ui: &mut Ui, d: &mut Dialog) -> bool {
+                             if ext == "png" { img.to_png() } else { img.to_jpeg(92) }
+                         }
+                         "pdf" => match crate::pdf_output::render_pdf(&s.doc, &pdf_params) { Ok(bytes) => bytes, Err(error) => { app.set_status(error); return false; } },
+-                        other => deckcraft_engine::cmd::file::save_bytes(&s.doc, other).unwrap_or_default(),
++                        other => match deckcraft_engine::cmd::file::save_bytes(&s.doc, other) { Ok(bytes) => bytes, Err(error) => { app.set_status(error.to_string()); return false; } },
+                     };
+                     dl(&suggested, &bytes);
+                 } else {
