@@ -490,7 +490,7 @@ FloatingWindow {
                     required property var modelData;required property int index
                     width:list.width;height:31;radius:5;color:root.isSelected(index)?root.selectionFill:index%2?Theme.colors.background:"transparent"
                     SystemGlyph {x:8;anchors.verticalCenter:parent.verticalCenter;name:modelData.directory?"folder":"document";width:18;height:18;ink:root.isSelected(index)?root.selectionText:Theme.colors.accent}
-                    PanelLabel {x:34;anchors.verticalCenter:parent.verticalCenter;width:parent.width*.55-40;text:(modelData.link?"↗ ":"")+FileLinks.label(modelData);textFormat:Text.PlainText;color:root.isSelected(index)?root.selectionText:Theme.colors.text;font.pixelSize:12}
+                    PanelLabel {x:34;anchors.verticalCenter:parent.verticalCenter;width:parent.width*.55-40;text:FileLinks.markedLabel(modelData);textFormat:Text.PlainText;color:root.isSelected(index)?root.selectionText:Theme.colors.text;font.pixelSize:12}
                     PanelLabel {x:parent.width*.55+8;anchors.verticalCenter:parent.verticalCenter;width:parent.width*.27-10;text:Qt.formatDateTime(new Date(modelData.mtime*1000),"dd MMM yyyy");font.pixelSize:11;color:root.isSelected(index)?root.selectionText:Theme.colors.muted}
                     PanelLabel {x:parent.width*.82+8;anchors.verticalCenter:parent.verticalCenter;width:parent.width*.18-12;text:root.sizeText(modelData);font.pixelSize:11;color:root.isSelected(index)?root.selectionText:Theme.colors.muted}
                     FolderDropTarget {anchors.fill:parent;enabled:modelData.directory && root.service.path!=="trash:";folder:modelData.path;coordinator:fileDrop}
@@ -512,7 +512,7 @@ FloatingWindow {
                     Image {visible:modelData.directory;x:25;y:9;width:58;height:48;source:"icons/folder.svg";sourceSize:Qt.size(116,96)}
                     Image {id:thumbnail;property bool failed:false;onStatusChanged:if(status===Image.Error)failed=true;visible:!modelData.directory && ["image/png","image/jpeg","image/webp","image/gif","image/bmp"].includes(modelData.kind) && modelData.size<=33554432 && !failed;x:24;y:8;width:60;height:54;source:visible?modelData.uri:"";sourceSize:Qt.size(120,108);fillMode:Image.PreserveAspectFit;asynchronous:true}
                     SystemGlyph {visible:!modelData.directory && !thumbnail.visible;x:36;y:14;width:36;height:40;name:"document";ink:Theme.colors.muted}
-                    PanelLabel {visible:modelData.link;x:22;y:45;text:"↗";font.pixelSize:16}
+                    PanelLabel {visible:modelData.link;x:22;y:45;text:FileLinks.badge(modelData);font.pixelSize:16}
                     Rectangle {x:3;y:70;width:102;height:30;radius:4;color:root.isSelected(index)?root.selectionFill:"transparent"}
                     PanelLabel {x:5;y:70;width:98;height:30;text:FileLinks.label(modelData);textFormat:Text.PlainText;horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter;wrapMode:Text.Wrap;maximumLineCount:2;font.pixelSize:12;color:root.isSelected(index)?root.selectionText:Theme.colors.text}
                     FolderDropTarget {anchors.fill:parent;enabled:modelData.directory && root.service.path!=="trash:";folder:modelData.path;coordinator:fileDrop}
