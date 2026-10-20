@@ -1,0 +1,32 @@
+--- a/render/allocator/udmabuf.c
++++ b/render/allocator/udmabuf.c
+@@ -4,6 +4,7 @@
+ #include <drm_fourcc.h>
+ #include <fcntl.h>
+ #include <linux/udmabuf.h>
++#include <limits.h>
+ #include <stdlib.h>
+ #include <sys/ioctl.h>
+ #include <sys/mman.h>
+@@ -68,8 +69,19 @@
+ 	wlr_buffer_init(&buffer->base, &buffer_impl, width, height);
+ 
+ 	// TODO: consider using a single file for multiple buffers
+-	int stride = pixel_format_info_min_stride(info, width); // TODO: align?
+-	size_t size = stride * height;
++	// Rasterizers may access a complete 4x4 pixel block at the image edge.
++	// Keep each row cache-line aligned and include padded rows in the backing
++	// allocation while retaining the requested logical buffer dimensions.
++	int min_stride = pixel_format_info_min_stride(info, width);
++	if (min_stride <= 0 || min_stride > INT_MAX - 63 || height > INT_MAX - 3) {
++		goto err_buffer;
++	}
++	int stride = (min_stride + 63) & ~63;
++	size_t padded_height = ((size_t)height + 3) & ~(size_t)3;
++	if (padded_height > SIZE_MAX / (size_t)stride) {
++		goto err_buffer;
++	}
++	size_t size = (size_t)stride * padded_height;
+ 	if (size % page_size != 0) {
+ 		size += page_size - (size % page_size);
+ 	}

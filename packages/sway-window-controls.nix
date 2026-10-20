@@ -1,6 +1,12 @@
 { pkgs, effects ? false }:
 let
-  compositor = if effects then pkgs.swayfx-unwrapped else pkgs.sway-unwrapped;
+  alignedWlroots = pkgs.wlroots_0_20.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [ ../res/lumen-desktop/wlroots-udmabuf-raster-alignment.patch ];
+  });
+  compositor = if effects then pkgs.swayfx-unwrapped.override {
+    wlroots_0_20 = alignedWlroots;
+    scenefx = pkgs.scenefx.override { wlroots_0_20 = alignedWlroots; };
+  } else pkgs.sway-unwrapped.override { wlroots_0_20 = alignedWlroots; };
   expectedVersion = if effects then "0.6" else "1.12";
   framePatch = if effects then ../res/lumen-desktop/swayfx-traffic-lights.patch else ../res/lumen-desktop/sway-traffic-lights.patch;
 in

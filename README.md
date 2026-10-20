@@ -28,3 +28,5 @@ Window Groups provides optional native presentation groups; see [the workflow an
 [Application desktop assignment](docs/application-desktops.md) documents supported membership and native acceptance.
 
 [Live transparency acceptance](docs/transparency-testing.md) documents mapped-surface geometry, paint and input checks.
+
+[Mixed output scaling](docs/mixed-output-scale-testing.md) describes native geometry, painted-frame and input acceptance.

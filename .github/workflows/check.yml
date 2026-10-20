@@ -113,6 +113,8 @@ jobs:
           done
           bash tests/ci/run-native.sh native_hot_corners nix develop --command desktop-test-python tests/desktop/native_hot_corners.py --sway "$PWD/artifacts/compositor/bin/sway" --pointer "$PWD/artifacts/pointer/bin/wlrctl" --keyboard wtype --lock "$PWD/artifacts/session-lock/bin/lumen-test-session-lock" --output artifacts/hot-corners
           bash tests/ci/run-native.sh window_frames_render nix develop --command desktop-test-python tests/desktop/window_frames_render.py --core-only --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/native-layouts
+          bash tests/ci/run-native.sh mixed_output_scale_native nix develop --command desktop-test-python tests/desktop/mixed_output_scale_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/mixed-output-scale-basic
+          bash tests/ci/run-native.sh mixed_output_scale_native nix develop --command desktop-test-python tests/desktop/mixed_output_scale_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --effects --output artifacts/mixed-output-scale-effects
           PATH="$PWD/artifacts/shell-package/bin:$PATH" bash tests/ci/run-native.sh interaction_regression nix develop --command desktop-test-python tests/desktop/interaction_regression.py --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/interactions
           bash tests/ci/run-native.sh accessibility_protocol nix develop --command desktop-test-python tests/desktop/accessibility_protocol.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/accessibility --full-shell
           PYTHONWARNINGS=error bash tests/ci/run-native.sh force_quit_surface nix develop --command desktop-test-python tests/desktop/force_quit_surface.py --sway "$PWD/artifacts/compositor/bin/sway" --wtype wtype --output artifacts/force-quit
@@ -156,6 +158,7 @@ jobs:
             artifacts/shell
             artifacts/interactions
             artifacts/native-layouts
+            artifacts/mixed-output-scale-*
             artifacts/accessibility
             artifacts/hot-corners
             artifacts/edge-layouts
