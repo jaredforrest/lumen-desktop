@@ -39,7 +39,7 @@ Item {
         PanelLabel {width:parent.width;wrapMode:Text.WordWrap;elide:Text.ElideNone;color:Theme.colors.muted;
           text:{const s=root.internet,c=s.checks || [],ok=c.filter(x=>x.ok).length;
             return c.length?"Secure reachability: "+ok+" of "+c.length+" checks passed":"Secure reachability: no route to test";}}
-        ControlRow {width:parent.width;text:"Check again";onClicked:root.shell.systemState.refreshInternet(true)}
+        ControlRow {width:parent.width;text:"Check again";enabled:!!root.shell.systemState && typeof root.shell.systemState.refreshInternet==="function";onClicked:root.shell.systemState.refreshInternet(true)}
         ControlRow {width:parent.width;text:"Network settings…";onClicked:root.shell.openSettings("Network")}
         ControlRow {width:parent.width;text:"VPN controls…";onClicked:root.panelRequested("VPN")}
       }
