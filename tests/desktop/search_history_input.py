@@ -2,6 +2,7 @@
 import argparse,ast,hashlib,json,os,re,shutil,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
 from private_native_bus import start_private_bus
+from fixture_resources import close_reaped_pipes
 p=argparse.ArgumentParser();p.add_argument('--launcher',type=Path,required=True);p.add_argument('--app-launcher',type=Path,required=True);p.add_argument('--sway',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--effects',action='store_true');p.add_argument('--output',type=Path,required=True);a=p.parse_args();out=a.output.resolve();out.mkdir(parents=True,exist_ok=False);processes=[];checks=[];transforms=[]
 with tempfile.TemporaryDirectory(prefix='lumen-query-history-') as temporary:
  home=Path(temporary);env=dict(os.environ,HOME=temporary,XDG_RUNTIME_DIR=temporary,GSETTINGS_BACKEND='memory')
@@ -116,5 +117,4 @@ with tempfile.TemporaryDirectory(prefix='lumen-query-history-') as temporary:
   for proc in reversed(processes):
    try:proc.wait(timeout=5)
    except sp.TimeoutExpired:os.killpg(proc.pid,signal.SIGKILL);proc.wait(timeout=3)
-   for stream in (proc.stdin,proc.stdout,proc.stderr):
-    if stream:stream.close()
+  close_reaped_pipes(processes)
