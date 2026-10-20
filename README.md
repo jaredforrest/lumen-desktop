@@ -36,3 +36,4 @@ Window Groups provides optional native presentation groups; see [the workflow an
 File identity serialization and compatibility are documented in [file identity wire format](docs/file-identity-wire.md).
 
 The [icon catalogue acceptance](docs/icon-catalogue-testing.md) documents reproducible scale and symbol rendering checks.
+Confirmed deletion in personal Trash, durable outcomes and consumer persistence: [Trash confirmation](docs/trash-confirmation.md).

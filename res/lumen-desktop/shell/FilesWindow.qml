@@ -16,6 +16,7 @@ FloatingWindow {
     required property var shell
     required property var service
     NetworkLocationsState {id:networkLocations;active:networkPopup.visible}
+    TrashActionsState {id:trashActions;active:root.visible && root.service.path==="trash:";onChanged:root.service.refresh()}
     property int windowNumber:1
     title:"Files"+(windowNumber>1?" "+windowNumber:"")+" — "+(service.path==="trash:"?"Trash":service.path.split("/").pop() || "Computer")
     visible:false
@@ -181,6 +182,11 @@ FloatingWindow {
     }
     function step(delta,extend){choose(Math.max(0,Math.min(service.rows.length-1,selected+delta)),extend?Qt.ShiftModifier:0);if(listMode)list.positionViewAtIndex(selected,ListView.Contain);else if(galleryMode)galleryStrip.positionViewAtIndex(selected,ListView.Contain);else if(columnsMode)columnView.ensureVisible(current?current.path:"");else grid.positionViewAtIndex(selected,GridView.Contain);}
     function stage(action){if(selectedPaths.length)service.stage(selectedPaths,action);}
+    function prepareDeletion(mode){
+        if(service.path!=="trash:" || service.working || service.busy)return;
+        const items=mode==="selected"?selectedPaths.map(path=>{const row=service.rows.find(item=>item.path===path);return {path:path,identity:row?row.identity:null};}):[];
+        trashActions.prepare(mode,items);
+    }
     function dialogFor(action){
         if(service.busy || (action==="rename" && service.working))return;
         if(["rename","trash"].includes(action) && !current)return;
@@ -567,6 +573,9 @@ Accessible.name:FileLinks.accessible(modelData);Accessible.selected:root.isSelec
         }
         FontMetrics {id:labelMetrics;font.family:Theme.font;font.pixelSize:13}
         PanelLabel {x:root.sidebarWidth+14;y:parent.height-28;width:parent.width-x-14;height:20;text:root.service.busy?"Loading…":root.selectedPaths.length?root.selectedPaths.length+" selected · "+root.service.rows.length+" items":root.service.stagedPath?(root.service.stagedAction==="move"?"Move":"Copy")+" ready · Navigate to a destination and Paste":root.service.rows.length+(root.service.rows.length===1?" item":" items")+(root.service.hidden?" · Hidden items shown":"");font.pixelSize:11;color:Theme.colors.muted}
+        TrashConfirmation {state:trashActions}
+        TrashResults {id:trashResults;state:trashActions}
+        Connections {target:trashActions;function onErrorChanged(){if(trashActions.error)trashResults.open();}function onBusyChanged(){if(trashActions.busy)trashResults.open();}}
         Popup {
             id:actions;focus:true;width:220;height:Math.min(550,root.height-70);padding:6;clip:true
             background:Rectangle {radius:10;color:Theme.colors.background;border.color:Theme.outline}
@@ -576,7 +585,7 @@ Accessible.name:FileLinks.accessible(modelData);Accessible.selected:root.isSelec
               ScrollBar.vertical:DesktopScrollBar {}
               Column {id:actionColumn;width:208
                 Repeater {id:actionRows
-                    model:[{label:"Open",action:"open",enabled:!!root.current},{label:"Open With…",action:"open-with",enabled:!!root.current && !root.current.directory},{label:"AirDrop…",action:"airdrop",enabled:root.selectedPaths.length>0 && root.selectedPaths.every(p=>root.service.rows.some(r=>r.path===p && !r.directory)) && root.service.path!=="trash:"},{label:"AirDrop Receiving…",action:"airdrop-receive",enabled:true},{separator:true,label:""},{label:"New Tab",action:"new-tab",enabled:true},{label:"New Window",action:"new-window",enabled:true},{label:"New Folder…",action:"mkdir",enabled:root.service.writable},{label:"Rename…",action:"rename",enabled:root.selectedPaths.length>0 && root.service.path!=="trash:" && !root.service.working},{separator:true,label:""},{label:"Copy",action:"copy",enabled:!!root.current},{label:"Cut",action:"move",enabled:!!root.current},{label:"View Options…",action:"view-options",enabled:true},{label:"Colour Tags…",action:"tags",enabled:root.selectedPaths.length===1 && root.service.path!=="trash:"},{label:"Make Symbolic Link",action:"make-link",enabled:root.selectedPaths.length===1 && root.service.path!=="trash:" && root.service.writable},{label:"Duplicate",action:"duplicate",enabled:root.selectedPaths.length>0 && root.service.writable && root.service.path!=="trash:" && !root.service.working},{label:"Paste",action:"paste",enabled:root.service.writable},{label:"Paste Keeping Both",action:"paste-both",enabled:root.service.writable},{label:"Undo Last Move",action:"undo",enabled:root.service.canUndo},{separator:true,label:""},{label:"Put Back",action:"restore",enabled:root.service.path==="trash:" && !!root.current},{label:"Move to Trash…",action:"trash",enabled:root.service.path!=="trash:" && !!root.current},{separator:true,label:""},{label:"Go to Folder…",action:"goto",enabled:true},{label:root.service.hidden?"Hide Hidden Files":"Show Hidden Files",action:"hidden",enabled:true},{label:"Refresh",action:"refresh",enabled:true}]
+                    model:[{label:"Open",action:"open",enabled:!!root.current},{label:"Open With…",action:"open-with",enabled:!!root.current && !root.current.directory},{label:"AirDrop…",action:"airdrop",enabled:root.selectedPaths.length>0 && root.selectedPaths.every(p=>root.service.rows.some(r=>r.path===p && !r.directory)) && root.service.path!=="trash:"},{label:"AirDrop Receiving…",action:"airdrop-receive",enabled:true},{separator:true,label:""},{label:"New Tab",action:"new-tab",enabled:true},{label:"New Window",action:"new-window",enabled:true},{label:"New Folder…",action:"mkdir",enabled:root.service.writable},{label:"Rename…",action:"rename",enabled:root.selectedPaths.length>0 && root.service.path!=="trash:" && !root.service.working},{separator:true,label:""},{label:"Copy",action:"copy",enabled:!!root.current},{label:"Cut",action:"move",enabled:!!root.current},{label:"View Options…",action:"view-options",enabled:true},{label:"Colour Tags…",action:"tags",enabled:root.selectedPaths.length===1 && root.service.path!=="trash:"},{label:"Make Symbolic Link",action:"make-link",enabled:root.selectedPaths.length===1 && root.service.path!=="trash:" && root.service.writable},{label:"Duplicate",action:"duplicate",enabled:root.selectedPaths.length>0 && root.service.writable && root.service.path!=="trash:" && !root.service.working},{label:"Paste",action:"paste",enabled:root.service.writable},{label:"Paste Keeping Both",action:"paste-both",enabled:root.service.writable},{label:"Undo Last Move",action:"undo",enabled:root.service.canUndo},{separator:true,label:""},{label:"Put Back",action:"restore",enabled:root.service.path==="trash:" && !!root.current},{label:"Delete Permanently…",action:"permanent-delete",enabled:root.service.path==="trash:" && root.selectedPaths.length>0 && !trashActions.busy},{label:"Empty Trash…",action:"empty-trash",enabled:root.service.path==="trash:" && !trashActions.busy},{label:"Trash Results…",action:"trash-results",enabled:root.service.path==="trash:"},{label:"Move to Trash…",action:"trash",enabled:root.service.path!=="trash:" && !!root.current},{separator:true,label:""},{label:"Go to Folder…",action:"goto",enabled:true},{label:root.service.hidden?"Hide Hidden Files":"Show Hidden Files",action:"hidden",enabled:true},{label:"Refresh",action:"refresh",enabled:true}]
                     ControlRow {
                         required property var modelData;width:208;height:modelData.separator?9:30;text:modelData.label;Rectangle {visible:!!modelData.separator;x:8;width:parent.width-16;height:1;anchors.verticalCenter:parent.verticalCenter;color:Theme.hairline}enabled:!modelData.separator && modelData.enabled && !root.service.busy
                         onClicked:{
@@ -587,6 +596,9 @@ Accessible.name:FileLinks.accessible(modelData);Accessible.selected:root.isSelec
                             else if(a==="new-tab")root.newTab();
                             else if(a==="new-window")root.shell.newFilesWindow(root.service.path);
                             else if(a==="restore")root.service.startJob("restore",root.selectedPaths);
+                            else if(a==="permanent-delete")root.prepareDeletion("selected");
+                            else if(a==="empty-trash")root.prepareDeletion("empty");
+                            else if(a==="trash-results"){trashActions.refresh();trashResults.open();}
                             else if(a==="open-with")root.service.act("applications",{path:root.current.path});
                             else if(a==="airdrop")AppLaunch.run(["lumen-airdrop-send"].concat(root.selectedPaths));
                             else if(a==="airdrop-receive")AppLaunch.run(["lumen-airdrop-receive"]);
