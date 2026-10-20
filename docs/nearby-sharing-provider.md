@@ -28,8 +28,8 @@ interoperability, authenticated peer identity or successful delivery.
 `lumen-nearby-sharing status` validates the configured immutable executable and
 bounds collection, EOF/wait and decoding to two seconds and 16 KiB combined
 output. A failure, malformed response or any diagnostic returns unavailable
-without exposing raw output. A timed-out owned status process is killed and
-reaped with a separate one-second cleanup bound. No configuration means no
+without exposing raw output. The owned status process group is retired on success and failure before its
+leader is reaped, with a separate one-second cleanup bound. No configuration means no
 provider process. Opening and sending happen only on explicit user actions.
 
 The shared QML state expires after 7.5 seconds, rejects backwards-clock freshness

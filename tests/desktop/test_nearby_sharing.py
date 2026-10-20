@@ -1,8 +1,11 @@
 """Actual bounded provider processes, schema rejection and disabled defaults."""
 import importlib.util
+import ctypes
+import os
 from pathlib import Path
 import sys
 import tempfile
+import signal
 import time
 import unittest
 from unittest.mock import patch
@@ -47,6 +50,47 @@ class Provider(unittest.TestCase):
     def test_success_cannot_hide_provider_diagnostics(self):
         with self.assertRaisesRegex(ValueError, 'diagnostic'):
             self.process('print(\'{"available":true,"active":false}\');print("Synthetic provider warning",file=sys.stderr)')
+
+    def test_success_retires_descendant_after_leader_exits(self):
+        libc = ctypes.CDLL(None, use_errno=True)
+        previous = ctypes.c_int()
+        self.assertEqual(libc.prctl(37, ctypes.byref(previous), 0, 0, 0), 0)
+        self.assertEqual(libc.prctl(36, 1, 0, 0, 0), 0)
+        descendant = None
+        reaped = False
+        temporary = tempfile.TemporaryDirectory()
+        pid_file = Path(temporary.name) / 'descendant'
+        try:
+            source = ('pid=os.fork()\n'
+                      'if pid==0:\n'
+                      ' os.close(0);os.close(1);os.close(2);time.sleep(10);os._exit(0)\n'
+                      'from pathlib import Path\n'
+                      'Path(' + repr(str(pid_file)) + ').write_text(str(pid))\n'
+                      'print(\'{"available":true,"active":false}\')\n')
+            value = self.process(source)
+            descendant = int(pid_file.read_text())
+            self.assertTrue(value['available'])
+            deadline = time.monotonic() + 1
+            while time.monotonic() < deadline:
+                pid, status = os.waitpid(descendant, os.WNOHANG)
+                if pid == descendant:
+                    reaped = True
+                    self.assertTrue(os.WIFSIGNALED(status))
+                    self.assertEqual(os.WTERMSIG(status), signal.SIGKILL)
+                    break
+                time.sleep(.005)
+            self.assertTrue(reaped, 'Owned status descendant survived successful status')
+        finally:
+            if descendant is None and pid_file.exists():
+                descendant = int(pid_file.read_text())
+            if descendant is not None and not reaped:
+                try:
+                    os.kill(descendant, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                os.waitpid(descendant, 0)
+            temporary.cleanup()
+            self.assertEqual(libc.prctl(36, previous.value, 0, 0, 0), 0)
 
     def test_eof_cannot_hide_a_still_running_provider(self):
         started = time.monotonic()

@@ -56,8 +56,17 @@ def status(command, seconds=STATUS_SECONDS):
                         chunks.extend(chunk)
                     else:
                         diagnostic = True
-        remaining = deadline - time.monotonic()
-        if remaining <= 0 or child.wait(timeout=remaining) != 0:
+        # Leave the leader unreaped until its owned group is retired. Reaping
+        # first would permit PID/group identity reuse before final cleanup.
+        exited = None
+        while exited is None:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError('Provider status deadline')
+            exited = os.waitid(os.P_PID, child.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+            if exited is None:
+                time.sleep(min(.005, remaining))
+        if exited.si_code != os.CLD_EXITED or exited.si_status != 0:
             raise ValueError('Provider status failed')
         if diagnostic:
             raise ValueError('Provider emitted a diagnostic')
@@ -66,12 +75,11 @@ def status(command, seconds=STATUS_SECONDS):
             raise TimeoutError('Provider status deadline')
         return result
     finally:
-        if child.returncode is None:
-            try:
-                os.killpg(child.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            child.wait(timeout=1)
+        try:
+            os.killpg(child.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        child.wait(timeout=1)
         child.stdout.close()
         child.stderr.close()
 
