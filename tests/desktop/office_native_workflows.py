@@ -5,12 +5,12 @@ from application_fixture.isolation import run as isolate
 from fixture_resources import close_reaped_pipes
 from office_fixture import corpus,formats
 from office_fixture.control import Control
-p=argparse.ArgumentParser();p.add_argument('--writer',required=True);p.add_argument('--sheet',required=True);p.add_argument('--slides',required=True);p.add_argument('--software-driver',required=True);p.add_argument('--sway',required=True);p.add_argument('--app',choices=['writer','sheet','slides'],default='writer');p.add_argument('--output',type=Path,required=True);p.add_argument('--inside',action='store_true');p.add_argument('--profiles-json',default='');p.add_argument('--source-sha',default='');a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--writer',required=True);p.add_argument('--sheet',required=True);p.add_argument('--slides',required=True);p.add_argument('--software-driver',required=True);p.add_argument('--sway',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--app',choices=['writer','sheet','slides'],default='writer');p.add_argument('--output',type=Path,required=True);p.add_argument('--inside',action='store_true');p.add_argument('--profiles-json',default='');p.add_argument('--source-sha',default='');a=p.parse_args()
 if not a.inside:
  source=Path(__file__).resolve().parents[2];out=a.output.resolve();out.mkdir(mode=0o700,parents=True,exist_ok=False)
  policies=subprocess.check_output(['nix','eval','--json','--file',str(source/'config/application-profiles.nix')],text=True)
  sha=subprocess.check_output(['git','-C',str(source),'rev-parse','HEAD'],text=True).strip()
- args=[sys.executable,'/source/tests/desktop/office_native_workflows.py','--inside','--writer',a.writer,'--sheet',a.sheet,'--slides',a.slides,'--software-driver',a.software_driver,'--sway',a.sway,'--app',a.app,'--profiles-json',policies,'--source-sha',sha,'--output','/artifacts']
+ args=[sys.executable,'/source/tests/desktop/office_native_workflows.py','--inside','--writer',a.writer,'--sheet',a.sheet,'--slides',a.slides,'--software-driver',a.software_driver,'--sway',a.sway,'--pointer-tool',a.pointer_tool,'--app',a.app,'--profiles-json',policies,'--source-sha',sha,'--output','/artifacts']
  raise SystemExit(isolate(source,out,args))
 assert os.getpid()==1 and os.getuid()!=0 and os.uname().nodename=='fixture' and Path.home()==Path('/home/fixture')
 out=Path('/artifacts');processes=[];control=None;checks=[];facts={};env=dict(os.environ)
@@ -83,6 +83,22 @@ try:
   facts['savedSha256']=formats.digest(source);facts['savedDocument']=saved
   checks.append('Physical keyboard edit stays dirty until explicit Save and appears in independently parsed DOCX')
   facts['uiBeforeClose']=control.tool('ui_inspect')
+  key('-d','25','--',' Unsaved close fixture')
+  wait(lambda:'Unsaved close fixture' in json.dumps(control.tool('get_text')),'second edit acknowledged',provider)
+  saved_hash=formats.digest(source)
+  command(['swaymsg','[con_id='+str(window['id'])+'] kill'])
+  dialog=wait(lambda:(value if (value:=control.tool('ui_inspect')).get('dialog') else None),'native close presents dirty-document decision',provider)
+  facts['dirtyCloseDialog']=dialog
+  assert formats.digest(source)==saved_hash,'Close prompt silently overwrote source'
+  command(['grim',str(out/'dirty-close.png')])
+  assert dialog['dialog'].get('dialog')=='saveChanges'
+  pointer=launch([a.pointer_tool,'pointer','move','0','0'],'pointer',stdin=subprocess.PIPE,text=True)
+  command(['swaymsg','seat','seat0','cursor','set','861','511'])
+  for event in ['m 0.5 0.5','p','r']:
+   pointer.stdin.write(event+'\n');pointer.stdin.flush();time.sleep(.15)
+  wait(lambda:not control.tool('ui_inspect').get('dialog'),'physical Cancel button cancels dirty close',provider)
+  assert native() and 'Unsaved close fixture' in json.dumps(control.tool('get_text')) and formats.digest(source)==saved_hash
+  checks.append('Dirty native close presents Save/Discard/Cancel and physical Cancel preserves document and saved source')
  command(['grim',str(out/'opened.png')]);(out/'tree-opened.json').write_text(json.dumps(tree(),indent=2));(out/'result.json').write_text(json.dumps(dict(passed=True,phase='startup_only',checks=checks,facts=facts,source=a.source_sha),indent=2))
 finally:
  if control is not None:control.close()
