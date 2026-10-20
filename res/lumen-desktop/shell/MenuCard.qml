@@ -8,6 +8,7 @@ PanelSurface {
     property real maximumWidth:410
     function debugRows() {let a=[];for(let i=0;i<delegates.count;i++){const r=delegates.itemAt(i);a.push({id:r.modelData.id,y:card.y+scroll.y+r.y-scroll.contentY,hover:r.pointerInside});}return a;}
     function rowY(id) {for(let i=0;i<delegates.count;i++){const r=delegates.itemAt(i);if(r.modelData.id===id)return card.y+scroll.y+r.y-scroll.contentY;}return card.y+6;}
+    function focusItem(id){for(let i=0;i<delegates.count;i++){const r=delegates.itemAt(i);if(r.modelData.id===id && r.enabled){r.forceActiveFocus();return;}}}
     function reveal(id) {for(let i=0;i<delegates.count;i++){const r=delegates.itemAt(i);if(r.modelData.id!==id)continue;if(r.y<scroll.contentY)scroll.contentY=r.y;else if(r.y+r.height>scroll.contentY+scroll.height)scroll.contentY=r.y+r.height-scroll.height;}}
     readonly property bool overflow:naturalHeight>availableHeight
     readonly property bool canScrollUp:overflow && scroll.contentY>1
@@ -24,6 +25,21 @@ PanelSurface {
                 Rectangle {
                     id:row
                     required property var modelData
+                    property var pressedIntent:null
+                    property var hoverIntent:null
+                    property var semanticIntent:null
+                    Component.onCompleted:semanticIntent=card.host.capture(card.depth,modelData.id)
+                    activeFocusOnTab:enabled
+                    onActiveFocusChanged:if(activeFocus && card.host.valid(semanticIntent))card.host.select(card.depth,modelData.id)
+                    Accessible.focusable:enabled
+                    Accessible.role:Accessible.MenuItem
+                    Accessible.name:card.host.label(modelData.label)
+                    Accessible.description:card.host.shortcut(modelData.shortcut)
+                    Accessible.ignored:modelData.separator
+                    Accessible.checkable:modelData.toggle!==""
+                    Accessible.checked:modelData.checked
+                    Accessible.onPressAction:{const intent=semanticIntent;if(!card.host.valid(intent))return;if(modelData.submenu)card.host.openChild(card.depth,modelData.id,card.rowY(modelData.id),intent);else card.host.activateIntent(intent);}
+                    enabled:modelData.enabled && !modelData.separator
                     readonly property bool pointerInside:hit.containsMouse
                     property bool selected:modelData.enabled && (card.host.highlighted[card.depth]===modelData.id || (modelData.submenu && card.host.path[card.depth+1]===modelData.id))
                     width:contents.width;height:modelData.separator?9:Theme.menuRowHeight;radius:5
@@ -36,21 +52,23 @@ PanelSurface {
                     SystemGlyph {visible:modelData.submenu;anchors.right:parent.right;anchors.rightMargin:7;anchors.verticalCenter:parent.verticalCenter;name:"chevron-right";width:12;height:12;ink:row.selected?Theme.colors.selectedText:Theme.colors.text;opacity:modelData.enabled?1:0.4}
                     Timer {
                         id:expand;interval:160
-                        onTriggered:{if(row.modelData.submenu)card.host.openChild(card.depth,row.modelData.id,card.y+scroll.y+row.y-scroll.contentY);else card.host.closeBelow(card.depth);}
+                        onTriggered:{if(!card.host.valid(row.hoverIntent))return;if(row.modelData.submenu)card.host.openChild(card.depth,row.modelData.id,card.y+scroll.y+row.y-scroll.contentY,row.hoverIntent);else card.host.closeBelow(card.depth);}
                     }
                     MouseArea {
                         id:hit;anchors.fill:parent;hoverEnabled:true;enabled:!modelData.separator
                         onEntered:if(row.modelData.enabled){
-                            card.host.select(card.depth,row.modelData.id);
+                            card.host.hover(card.depth,row.modelData.id);row.hoverIntent=card.host.capture(card.depth,row.modelData.id);
                             expand.interval=card.host.hoverDelay(card.depth,card.x+row.x+mouseX,card.y+scroll.y+row.y-scroll.contentY+mouseY);expand.restart();
                         }
                         onPositionChanged:mouse=>card.host.rememberPointer(card.x+row.x+mouse.x,card.y+scroll.y+row.y-scroll.contentY+mouse.y)
                         onExited:expand.stop()
+                        onPressed:row.pressedIntent=card.host.capture(card.depth,row.modelData.id)
+                        onCanceled:row.pressedIntent=null
                         onClicked:{
-                            if(!modelData.enabled)return;
+                            const intent=row.pressedIntent;row.pressedIntent=null;if(!card.host.valid(intent))return;
                             expand.stop();
-                            if(modelData.submenu)card.host.openChild(card.depth,modelData.id,card.y+scroll.y+row.y-scroll.contentY);
-                            else card.host.activateItem(modelData.id);
+                            if(modelData.submenu)card.host.openChild(card.depth,modelData.id,card.y+scroll.y+row.y-scroll.contentY,intent);
+                            else card.host.activateIntent(intent);
                         }
                     }
                 }

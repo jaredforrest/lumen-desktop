@@ -230,8 +230,8 @@ class Bridge(dbus.service.Object):
             reg = self.registrations.get(int(parts[1]))
             if reg and str(reg[2]) == parts[2] and self.bus.name_has_owner(reg[0]):
                 try:
-                    _, layout = self.proxy(reg).GetLayout(0, -1, dbus.Array([], signature='s'), timeout=2)
-                    self.state = dict(self.state, menu=clean(layout))
+                    revision, layout = self.proxy(reg).GetLayout(0, -1, dbus.Array([], signature='s'), timeout=2)
+                    self.state = dict(self.state, menu=clean(layout), revision=int(revision))
                     self.last_refresh = time.monotonic()
                     self.publish()
                     return
@@ -240,15 +240,16 @@ class Bridge(dbus.service.Object):
         if win and token != self.held_token:
             self.held_token = ''
         menu = None
+        revision = None
         error = ''
         if item:
             try:
-                _, layout = self.proxy(item).GetLayout(0, -1, dbus.Array([], signature='s'), timeout=2)
+                revision, layout = self.proxy(item).GetLayout(0, -1, dbus.Array([], signature='s'), timeout=2)
                 menu = clean(layout)
             except (dbus.DBusException, ValueError, TypeError, RecursionError) as ex:
                 error = ex.get_dbus_name() if isinstance(ex, dbus.DBusException) else 'Invalid menu layout'
         self.state = {'token': token, 'title': win.get('name', '') if win else '',
-                      'supported': menu is not None, 'menu': menu, 'error': error,
+                      'supported': menu is not None, 'menu': menu, 'revision': int(revision) if revision is not None else None, 'error': error,
                       'windowId': win['id'] if win else 0, 'outputName': self.output_name,
                       'contextAppName': self.window_context.get('application_hint'),
                       'contextWindowId': self.window_context.get('context_window'),
@@ -305,10 +306,14 @@ class Bridge(dbus.service.Object):
 
     @dbus.service.method(API, in_signature='si', out_signature='b')
     def Activate(self, token, ident):
+        return Bridge.activate_checked(self, token, ident)
+
+    def activate_checked(self, token, ident, revision=None):
         try:
             item = self.guarded(token)
             self.refresh()
             item = self.guarded(token)
+            if revision is not None and self.state.get('revision') != revision:return False
             node = actionable(self.state['menu'], int(ident))
             if not node or not node['enabled'] or not node['visible'] or node['submenu'] or node['separator']:
                 return False
@@ -318,8 +323,8 @@ class Bridge(dbus.service.Object):
         except (ValueError, dbus.DBusException):
             return False
 
-    def activate_when_focused(self, token, ident):
-        request = (token, ident, time.monotonic() + 0.5)
+    def activate_when_focused(self, token, ident, revision=None):
+        request = (token, ident, time.monotonic() + 0.5, revision)
         self.pending_action = request
         def check():
             if self.pending_action is not request:
@@ -330,7 +335,7 @@ class Bridge(dbus.service.Object):
                     self.pending_action = None
                     if current == token:
                         self.refresh()
-                        self.Activate(token, ident)
+                        self.activate_checked(token, ident, revision)
                     return False
                 if time.monotonic() >= request[2]:
                     self.pending_action = None
@@ -355,7 +360,10 @@ class Bridge(dbus.service.Object):
                 self.queue_refresh()
             elif cmd['action'] == 'open': self.Open(cmd['token'], cmd['id'])
             elif cmd['action'] == 'activate': self.Activate(cmd['token'], cmd['id'])
-            elif cmd['action'] == 'activate_when_focused': self.activate_when_focused(cmd['token'], cmd['id'])
+            elif cmd['action'] == 'activate_when_focused':
+                revision=cmd.get('revision')
+                if revision is not None and (type(revision) is not int or not 0<=revision<2**32):raise ValueError('Invalid menu revision')
+                self.activate_when_focused(cmd['token'], cmd['id'], revision)
         except (ValueError, KeyError, TypeError) as ex:
             print(str(ex), file=sys.stderr)
         return True

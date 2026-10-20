@@ -7,7 +7,7 @@ Item {
     id: root
     required property var shell
     property var output: null
-    Connections {target:root.shell; function onDismissPopups(owner) {if(owner!=="exported")root.path=[];} }
+    Connections {target:root.shell; function onDismissPopups(owner) {if(owner!=="exported")root.path=[];}function onWindowsChanged(){if(!root.invokingAlive())root.path=[];} }
     property string menuFont: Theme.font
     property var state: ({token:"", title:"", supported:false, menu:null, windowId:0, appName:"Desktop"})
     property bool holdDisplay: false
@@ -16,12 +16,16 @@ Item {
         latestState=next;
         if (holdDisplay || resume.running) return;
         if(next.token!==state.token || next.windowId!==state.windowId) path=[];
+        if(next!==state){selection=null;highlighted={};}
         state=next;
+        for(let depth=0;depth<path.length;depth++){const n=node(path[depth],state.menu);if(!n || !n.visible || !n.enabled || !n.submenu){path=path.slice(0,depth);break;}}
     }
-    onHoldDisplayChanged: {if(!holdDisplay)resume.restart();}
+    onHoldDisplayChanged: {if(holdDisplay){release.stop();if(state.supported && state.token)command("hold",0);}else{resume.restart();if(!path.length)release.restart();}}
     Timer {id:resume;interval:120;onTriggered:root.acceptState(root.latestState)}
-    onPathChanged: if(!path.length) {release.restart();highlighted={};if(shell.popupOwner==="exported")shell.popupOwner="";}
+    onPathChanged: if(!path.length) {release.restart();highlighted={};selection=null;if(shell.popupOwner==="exported")shell.popupOwner="";}
     property var path: []
+    property var invokingContext:null
+    property var selection:null
     property real menuX: 120
     function label(s) { return (s || "").replace(/__/g,"\u0000").replace(/_/g,"").replace(/\u0000/g,"_"); }
     function command(action,id) { bridge.write(JSON.stringify({action:action,token:state.token,id:id})+"\n"); }
@@ -31,37 +35,36 @@ Item {
         for (const c of n.children) { const result=node(id,c); if(result) return result; }
         return null;
     }
-    function openMenu(id,x,screen) {
+    function openMenu(id,x,screen,context) {
+        if(context)invokingContext=context;else if(!path.length)invokingContext={window:shell.active,hasWindow:!!shell.active,files:shell.filesWindow || null,epoch:shell.focusEpoch || 0,appName:shell.activeName,exportState:state};
         const closing=path[0]===id && output===screen;
         shell.claimPopup("exported");output=screen || Quickshell.screens.find(s=>s.name===shell.preferredOutput()) || Quickshell.screens[0];
-        command("hold",id);menuX=x;highlighted={};pathY=[];path=closing?[]:[id];if(path.length)command("open",id);
+        command("hold",id);menuX=x;highlighted={};selection=null;pathY=[];path=closing?[]:[id];if(path.length)command("open",id);
     }
     property var highlighted: ({})
-    function select(depth,id) {const copy=Object.assign({},highlighted);copy[depth]=id;highlighted=copy;}
+    function capture(depth,id){const n=node(id,state.menu),parent=node(path[depth],state.menu);return path.length>depth && parent && parent.children.includes(n) && n && n.enabled && n.visible && !n.separator?{token:state.token,revision:state.revision,state:state,node:n,depth:depth,id:id,path:path.slice(0,depth+1)}:null;}
+    function invokingAlive(){return !invokingContext || !invokingContext.hasWindow || (invokingContext.window && shell.windows.includes(invokingContext.window));}
+    function valid(intent){return invokingAlive() && intent && intent.state===state && intent.token===state.token && intent.revision===state.revision && node(intent.id,state.menu)===intent.node && intent.node.enabled && intent.node.visible && !intent.node.separator && intent.path.every((id,i)=>path[i]===id);}
+    function hover(depth,id){selection=null;const copy=Object.assign({},highlighted);copy[depth]=id;highlighted=copy;}
+    function select(depth,id) {selection=capture(depth,id);const copy=Object.assign({},highlighted);copy[depth]=id;highlighted=copy;}
+    function activateIntent(intent){if(!valid(intent) || intent.node.submenu)return;path=[];bridge.write(JSON.stringify({action:"activate_when_focused",token:intent.token,id:intent.id,revision:intent.revision})+"\n");}
     function step(delta) {
         const depth=path.length-1,c=cards.itemAt(depth);if(!c)return;
         const rows=c.rows.filter(n=>n.enabled && !n.separator);if(!rows.length)return;
         const i=rows.findIndex(n=>n.id===highlighted[depth]);
         const next=rows[(i<0?(delta>0?0:rows.length-1):(i+delta+rows.length)%rows.length)];
-        select(depth,next.id);c.reveal(next.id);
+        select(depth,next.id);c.reveal(next.id);c.focusItem(next.id);
     }
-    Timer {id:release;interval:150;onTriggered:if(!root.path.length)root.command("release",0)}
+    Timer {id:release;interval:150;onTriggered:if(!root.path.length && !root.holdDisplay)root.command("release",0)}
     function activateCaptured(token,id){bridge.write(JSON.stringify({action:"activate_when_focused",token:token,id:id})+"\n");}
-    function activateItem(id) {
-        const token=state.token;path=[];
-        bridge.write(JSON.stringify({action:"activate_when_focused",token:token,id:id})+"\n");
-    }
+    function activateItem(id) {activateIntent(capture(path.length-1,id));}
     function enterItem() {
-        const depth=path.length-1,c=cards.itemAt(depth),n=node(highlighted[depth],state.menu);
-        if(!c || !n)return;
-        if(n.submenu){openChild(depth,n.id,c.rowY(n.id));step(1);}else activateItem(n.id);
+        const intent=selection,depth=path.length-1,c=cards.itemAt(depth);
+        if(!c || !valid(intent) || intent.depth!==depth)return;
+        if(intent.node.submenu){openChild(depth,intent.id,c.rowY(intent.id),intent);Qt.callLater(()=>{if(path[depth+1]===intent.id)step(1);});}else activateIntent(intent);
     }
-    function back() {if(path.length>1)path=path.slice(0,-1);else path=[];}
-    function switchTop(delta) {
-        const tops=state.menu?state.menu.children.filter(n=>n.visible && n.enabled && n.submenu):[];
-        const i=tops.findIndex(n=>n.id===path[0]);if(i<0 || !tops.length)return;
-        const n=tops[(i+delta+tops.length)%tops.length];path=[n.id];highlighted={};const bar=output?shell.bars[output.name]:null;if(bar)menuX=bar.exportX(n.id);command("open",n.id);step(1);
-    }
+    function back() {if(path.length>1){path=path.slice(0,-1);const depth=path.length-1;select(depth,highlighted[depth]);const c=cards.itemAt(depth);if(c)c.focusItem(highlighted[depth]);}else path=[];}
+    function switchTop(delta) {const bar=output?shell.bars[output.name]:null;if(bar)bar.switchHeading(delta,path[0]);}
     property var pointer: ({x:0,y:0,time:0})
     function hoverDelay(depth,x,y) {
         const child=cards.itemAt(depth+1),p=pointer;
@@ -98,7 +101,8 @@ Item {
         return n ? Math.max(220,Math.min(410,n.children.filter(c=>c.visible).reduce((w,c)=>Math.max(w,menuMetrics.advanceWidth(label(c.label))+menuMetrics.advanceWidth(shortcut(c.shortcut))+76),0))) : 220;
     }
     function closeBelow(depth) { if(path.length>depth+1)path=path.slice(0,depth+1); }
-    function openChild(depth,id,y) {
+    function openChild(depth,id,y,intent) {
+        if(!valid(intent || capture(depth,id)))return;
         if(path[depth+1]===id)return;
         const ys=pathY.slice(0,depth+1);ys[depth+1]=y;pathY=ys;
         path=path.slice(0,depth+1).concat([id]);command("open",id);
@@ -138,16 +142,15 @@ Item {
         WlrLayershell.layer:WlrLayer.Overlay
         // Release the layer before dispatching an app action; bridge still validates its focus token.
         WlrLayershell.keyboardFocus:WlrKeyboardFocus.Exclusive
-        Item {
+        FocusScope {
             anchors.fill:parent;focus:true
-            Keys.onEscapePressed:root.path=[]
+            Keys.onEscapePressed:root.back()
             Keys.onDownPressed:root.step(1)
             Keys.onUpPressed:root.step(-1)
             Keys.onReturnPressed:root.enterItem()
             Keys.onEnterPressed:root.enterItem()
             Keys.onRightPressed:{const n=root.node(root.highlighted[root.path.length-1],root.state.menu);if(n && n.submenu)root.enterItem();else if(root.path.length===1)root.switchTop(1);}
             Keys.onLeftPressed:{if(root.path.length>1)root.back();else root.switchTop(-1);}
-        }
         MouseArea {anchors.fill:parent;onClicked:root.path=[]}
         Repeater {
             id:cards;model:root.path
@@ -165,6 +168,7 @@ Item {
                 }
                 y:Math.max(Theme.barHeight+1,Math.min(index===0?Theme.barHeight+1:(root.pathY[index] || Theme.barHeight+1),popup.height-height-92))
             }
+        }
         }
     }
 }

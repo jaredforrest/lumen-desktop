@@ -38,6 +38,27 @@ class MenuGuardTests(unittest.TestCase):
         self.assertTrue(bridge.Bridge.Activate(fake, 'captured', 2))
         self.assertEqual(len(events), 1)
 
+    def test_captured_layout_revision_is_exact_and_rechecked_after_refresh(self):
+        events=[]
+        fake=SimpleNamespace(guarded=lambda token:object(),refresh=lambda:fake.state.update(revision=2),
+                             proxy=lambda item:SimpleNamespace(Event=lambda *args,**kwargs:events.append(args)),
+                             state={'menu':bridge.clean(layout()),'revision':1})
+        self.assertFalse(bridge.Bridge.activate_checked(fake,'captured',2,1));self.assertEqual(events,[])
+        self.assertTrue(bridge.Bridge.activate_checked(fake,'captured',2,2));self.assertEqual(len(events),1)
+        fake.refresh=lambda:fake.state.update(revision=0)
+        self.assertFalse(bridge.Bridge.activate_checked(fake,'captured',2,2**32-1))
+        self.assertTrue(bridge.Bridge.activate_checked(fake,'captured',2,0))
+
+    def test_same_layout_new_revision_is_published_in_snapshot(self):
+        published=[]
+        fake=SimpleNamespace(current=lambda:({'id':1,'window':9,'name':'Fixture','app_id':'fixture'},('sender','/',1),'token'),
+                             held_token='',window_context={},output_name='fixture',
+                             proxy=lambda item:SimpleNamespace(GetLayout=lambda *args,**kwargs:(2,layout())),
+                             publish=lambda:published.append(dict(fake.state)),state={'menu':bridge.clean(layout()),'revision':1})
+        bridge.Bridge.refresh(fake)
+        self.assertEqual(fake.state['revision'],2);self.assertEqual(published[-1]['revision'],2)
+        self.assertEqual(fake.state['menu'],bridge.clean(layout()))
+
     def test_invalid_refresh_removes_old_menu(self):
         fake = SimpleNamespace(current=lambda: ({'id': 1, 'name': 'Fixture', 'app_id': 'fixture'}, ('sender', '/', 1), 'token'),
                                held_token='', window_context={}, output_name='fixture', proxy=lambda item: SimpleNamespace(GetLayout=lambda *args, **kwargs: (0, (0, [], []))),

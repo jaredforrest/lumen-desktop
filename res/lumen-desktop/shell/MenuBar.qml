@@ -101,7 +101,7 @@ PanelWindow {
     function activateBuiltin(modelData,captured) {
         const intent=captured || captureBuiltin(modelData);if(!validBuiltin(intent))return;
         const a=intent.row.action;modelData=intent.row;const target=intent.target;
-        if(a==="export-menu"){bar.menu="";exported.openMenu(modelData.exportId,Math.min(bar.menuX,bar.width-220),bar.screen);return;}
+        if(a==="export-menu"){const context=bar.headingContext();bar.menu="";if(!bar.validHeadingContext(context))return;exported.openMenu(modelData.exportId,Math.min(bar.menuX,bar.width-220),bar.screen,context);return;}
         if(a && a.startsWith("heading:")){bar.menu=a.substring(8);return;}
         if(a && a.startsWith("status:")){bar.menu=a.substring(7);return;}
         if(a && a.startsWith("files:"))shell.filesAction(a.substring(6));
@@ -129,7 +129,22 @@ PanelWindow {
     property string menu: ""
     Component.onCompleted:{outputName=screen.name;shell.bars[outputName]=bar}
     Component.onDestruction:delete shell.bars[bar.outputName]
-    function exportX(id) {for(let i=0;i<exportedHeadings.count;i++){const b=exportedHeadings.itemAt(i);if(b.modelData.exportId===id)return b.mapToItem(bar.contentItem,0,0).x;}return 16;}
+    function exportX(id) {for(let i=0;i<exportedHeadings.count;i++){const b=exportedHeadings.itemAt(i);if(b.modelData.exportId===id)return b.mapToItem(bar.contentItem,0,0).x;}return overflowButton.mapToItem(bar.contentItem,0,0).x;}
+    function headingRing(){return [{heading:"Desktop",x:brandButton.mapToItem(bar.contentItem,0,0).x},{heading:"Application",x:applicationButton.mapToItem(bar.contentItem,0,0).x}].concat(menuHeadings.filter(n=>n.enabled).map(n=>Object.assign({},n,{x:n.exportId!==undefined?exportX(n.exportId):headingX(n.heading)})));}
+    function headingX(name){for(let i=0;i<exportedHeadings.count;i++){const b=exportedHeadings.itemAt(i);if(b.modelData.heading===name)return b.mapToItem(bar.contentItem,0,0).x;}return overflowButton.mapToItem(bar.contentItem,0,0).x;}
+    function headingContext(){return {window:menuWindow,hasWindow:!!menuWindow,files:menuFilesWindow,epoch:menuFocusEpoch,appName:menuAppName,exportState:menuExportState};}
+    function validHeadingContext(context){return !(!context || (context.hasWindow && (!context.window || !shell.windows.includes(context.window))) || (context.exportState && context.exportState.supported && (context.exportState.token!==exported.latestState.token || context.exportState.revision!==exported.latestState.revision)));}
+    function switchHeading(delta,exportId){
+        const ring=headingRing(),i=ring.findIndex(n=>exportId!==undefined?n.exportId===exportId:n.heading===menu);
+        if(i<0 || !ring.length)return;
+        const context=exportId!==undefined?exported.invokingContext:headingContext();
+        if(!validHeadingContext(context)){menu="";exported.path=[];return;}
+        const target=ring[(i+delta+ring.length)%ring.length];
+        if(target.exportId!==undefined){menu="";exported.openMenu(target.exportId,target.x,screen,context);Qt.callLater(()=>{if(exported.path[0]===target.exportId)exported.step(1);});return;}
+        exported.path=[];shell.claimPopup("bar:"+outputName);
+        menuWindow=context.window;selectedWindow=context.window;menuFilesWindow=context.files;menuFocusEpoch=context.epoch;menuAppName=context.appName;menuExportState=context.exportState;
+        menuX=target.x;menu=target.heading;Qt.callLater(()=>bar.stepBuiltin(1));
+    }
     function popupLayout() {
         const p=special?(menu==="Launcher"?launcherPanel:["Files","Settings"].includes(menu)?previewPanel:systemViewport):builtinPanel;
         return {screen:bar.outputName,menu:menu,selectedIndex:builtinIndex,width:dismiss.width,height:dismiss.height,x:p.x+p.width*(1-p.scale)/2*(p===previewPanel?1:0),y:p.y+p.height*(1-p.scale)/2*(p===previewPanel?1:0),panelWidth:p.width*p.scale,panelHeight:p.height*p.scale,contentHeight:systemPanel.height,scrollY:systemViewport.contentY,scale:systemViewport.scale,calendar:menu==="Date"?systemPanel.dateStatus():null};
@@ -164,13 +179,13 @@ PanelWindow {
         MenuButton {id:applicationButton;width:Math.min(implicitWidth,Math.max(60,Math.min(160,bar.menuBudget*0.4)));text:bar.menu!==""?bar.menuAppName:bar.displayName;strong:true;selected:bar.menu==="Application";onClicked:{bar.selectedWindow=shell.active;bar.toggle("Application",mapToItem(bar.contentItem,0,0).x);}}
         Repeater {
             id:exportedHeadings;model:bar.menuHeadings.slice(0,bar.visibleHeadingCount)
-            MenuButton {required property var modelData;text:modelData.label;enabled:modelData.enabled
+            MenuButton {required property var modelData;text:modelData.label;enabled:modelData.enabled;opacity:enabled?1:0.45
                 selected:modelData.heading?bar.menu===modelData.heading:exported.path.length>0 && exported.path[0]===modelData.exportId && exported.output===bar.screen
                 onEntered:if(modelData.exportId!==undefined && exported.path.length && exported.path[0]!==modelData.exportId)exported.openMenu(modelData.exportId,mapToItem(bar.contentItem,0,0).x,bar.screen)
-                onClicked:{bar.selectedWindow=shell.active;if(modelData.heading)bar.toggle(modelData.heading,mapToItem(bar.contentItem,0,0).x);else{bar.menu="";exported.openMenu(modelData.exportId,mapToItem(bar.contentItem,0,0).x,bar.screen);}}
+                onClicked:{bar.selectedWindow=shell.active;if(modelData.heading)bar.toggle(modelData.heading,mapToItem(bar.contentItem,0,0).x);else{const context=bar.menu?bar.headingContext():undefined;bar.menu="";if(context && !bar.validHeadingContext(context))return;exported.openMenu(modelData.exportId,mapToItem(bar.contentItem,0,0).x,bar.screen,context);}}
             }
         }
-        MenuButton {visible:bar.overflowItems.length>0;text:"»";selected:bar.menu==="Overflow";Accessible.name:"More menus and status controls";onClicked:{bar.selectedWindow=shell.active;bar.toggle("Overflow",mapToItem(bar.contentItem,0,0).x);}}
+        MenuButton {id:overflowButton;visible:bar.overflowItems.length>0;text:"»";selected:bar.menu==="Overflow";Accessible.name:"More menus and status controls";onClicked:{bar.selectedWindow=shell.active;bar.toggle("Overflow",mapToItem(bar.contentItem,0,0).x);}}
     }
     StatusStrip {
         id:statusIcons
@@ -208,6 +223,8 @@ PanelWindow {
             Keys.onEscapePressed:bar.menu=""
             Keys.onDownPressed:event=>{if(!bar.special){bar.stepBuiltin(1);event.accepted=true;}else event.accepted=false;}
             Keys.onUpPressed:event=>{if(!bar.special){bar.stepBuiltin(-1);event.accepted=true;}else event.accepted=false;}
+            Keys.onRightPressed:event=>{if(!bar.special){bar.switchHeading(1);event.accepted=true;}else event.accepted=false;}
+            Keys.onLeftPressed:event=>{if(!bar.special){bar.switchHeading(-1);event.accepted=true;}else event.accepted=false;}
             Keys.onReturnPressed:event=>{if(!bar.special){bar.activateSelection();event.accepted=true;}else event.accepted=false;}
             Keys.onSpacePressed:event=>{if(!bar.special){bar.activateSelection();event.accepted=true;}else event.accepted=false;}
             Keys.onTabPressed:event=>{if(!bar.special){bar.stepBuiltin(1);event.accepted=true;}else event.accepted=false;}
@@ -301,6 +318,7 @@ PanelWindow {
                             if(event.key===Qt.Key_Escape){bar.menu="";event.accepted=true;}
                             else if(event.key===Qt.Key_Down || event.key===Qt.Key_Tab){bar.stepBuiltin(event.modifiers & Qt.ShiftModifier?-1:1);event.accepted=true;}
                             else if(event.key===Qt.Key_Up || event.key===Qt.Key_Backtab){bar.stepBuiltin(-1);event.accepted=true;}
+                            else if(event.key===Qt.Key_Left || event.key===Qt.Key_Right){bar.switchHeading(event.key===Qt.Key_Right?1:-1);event.accepted=true;}
                             else if(event.key===Qt.Key_Home || event.key===Qt.Key_End){bar.edgeBuiltin(event.key===Qt.Key_End);event.accepted=true;}
                             else if(event.key===Qt.Key_Return || event.key===Qt.Key_Enter){if(!event.isAutoRepeat)bar.activateSelection();event.accepted=true;}
                             else event.accepted=false;

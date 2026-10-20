@@ -66,6 +66,7 @@ jobs:
             nix develop --command desktop-test-python tests/desktop/window_relationships_input.py "${compositor_flags[@]}" --sway "$PWD/artifacts/$compositor/bin/sway" --client "$PWD/artifacts/window-relationships-client/bin/lumen-test-window-relationships" --keyboard wtype --output "artifacts/window-relationships-$compositor"
             nix develop --command desktop-test-python tests/desktop/owned_window_context_input.py "${compositor_flags[@]}" --full-shell --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --output "artifacts/owned-window-context-$compositor"
             nix develop --command desktop-test-python tests/desktop/menubar_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/menubar-$compositor"
+            nix develop --command desktop-test-python tests/desktop/menu_keyboard_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/menu-keyboard-$compositor"
           done
           nix develop --command desktop-test-python tests/desktop/widget_catalogue_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --theme light --output artifacts/widget-catalogue-light
           nix develop --command desktop-test-python tests/desktop/battery_provider.py --output artifacts/power-provider
@@ -160,6 +161,7 @@ jobs:
             artifacts/overview-lifecycle
             artifacts/window-relationships-*
             artifacts/owned-window-context-*
+            artifacts/menu-keyboard-*
             artifacts/menubar-*
             artifacts/status-clock
             artifacts/portal-permissions
