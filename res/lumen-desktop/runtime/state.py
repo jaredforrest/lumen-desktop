@@ -63,6 +63,8 @@ def snapshot(tree, outputs, epoch):
             if extension is not None:
                 if not isinstance(extension, dict) or any(type(extension.get(k)) is not bool for k in ('minimised', 'filled')):
                     raise ProtocolError('Invalid placement extension')
+                for field in ('zoomed', 'preferred_zoom'):
+                    if field in extension and type(extension[field]) is not bool:raise ProtocolError('Invalid preferred zoom state')
                 if 'hidden' in extension and type(extension['hidden']) is not bool:raise ProtocolError('Invalid hidden state')
                 if 'group_hidden' in extension and type(extension['group_hidden']) is not bool:raise ProtocolError('Invalid group visibility state')
                 if 'desktop_hidden' in extension and type(extension['desktop_hidden']) is not bool:raise ProtocolError('Invalid desktop reveal state')
@@ -88,12 +90,12 @@ def snapshot(tree, outputs, epoch):
                 key=bool(node.get('focused')), minimised=extension['minimised'] if extension else None,
                 group_hidden=extension.get('group_hidden') if extension else None, app_hidden=extension.get('hidden') if extension else None, desktop_hidden=extension.get('desktop_hidden') if extension else None, occluded=None,
                 pair=pair,paired_fullscreen_survivor=pairing['survivor'] if pairing is not None else None,
-                placement='paired' if pair else 'fullscreen' if node.get('fullscreen_mode', 0) or pairing and pairing['survivor'] else 'filled' if extension and extension['filled'] else 'floating' if floating else 'layout_managed',
+                placement='paired' if pair else 'fullscreen' if node.get('fullscreen_mode', 0) or pairing and pairing['survivor'] else 'zoomed' if extension and extension.get('zoomed') else 'filled' if extension and extension['filled'] else 'floating' if floating else 'layout_managed',
                 space='s-' + workspace if workspace is not None else None,
                 output=output, bounds=bounds(node.get('rect')),
                 frame_owner='client' if node.get('border') == 'csd' else 'compositor' if node.get('border') in ('normal','pixel') else 'unknown',
                 capabilities=dict(document_state=False, application_menu=False,
-                                  app_hide=False, preferred_zoom=False)))
+                                  app_hide=False, preferred_zoom=extension.get('preferred_zoom',False) if extension else False)))
         for child in node.get('nodes', []):
             walk(child, workspace, output, floating)
         for child in node.get('floating_nodes', []):

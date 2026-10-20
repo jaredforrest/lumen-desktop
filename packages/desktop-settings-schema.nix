@@ -74,7 +74,7 @@ let
           topEdgeFill = mkOption { type = types.bool; default = true; };
           topEdgeOverview = mkOption { type = types.bool; default = true; };
 
-          titlebarDoubleClick = mkOption { type = types.enum [ "fill" "minimize" "none" ]; default = "fill"; };
+          titlebarDoubleClick = mkOption { type = types.enum [ "fill" "zoom" "minimize" "none" ]; default = "fill"; };
         }; };
         default = {};
       };

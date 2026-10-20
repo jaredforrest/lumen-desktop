@@ -80,7 +80,7 @@ def valid_desktop(key,value):
     return key in ('showFiles','fileDescending') and type(value) is bool or key=='fileSort' and value in ('name','modified','size','kind')
 
 def valid_windows(key,value):
-    return key in ('tileMargins','edgeTiling','optionTiling','topEdgeFill','topEdgeOverview') and type(value) is bool or key=='tileGap' and type(value) is int and 0<=value<=32 or key=='titlebarDoubleClick' and value in ('fill','minimize','none')
+    return key in ('tileMargins','edgeTiling','optionTiling','topEdgeFill','topEdgeOverview') and type(value) is bool or key=='tileGap' and type(value) is int and 0<=value<=32 or key=='titlebarDoubleClick' and value in ('fill','zoom','minimize','none')
 
 CONTROL_IDS=('wifi','bluetooth','sharing','media','displays','appearance','focus','brightness','sound')
 def valid_control(key,value):

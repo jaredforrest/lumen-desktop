@@ -114,7 +114,16 @@ def mapped_window(app,title,pid,container):
             if kind!=0x80000003 or not isinstance(event,dict):raise ValueError('Invalid native window event')
 
 
-def execute(app,title,container,budget_width,budget_height,min_width,min_height,margin_width=None,margin_height=None):
+def preferred_plan(row, width, height):
+    integer(width, 'preferred width', 1)
+    integer(height, 'preferred height', 1)
+    if width > 32768 or height > 32768:raise ValueError('Preferred size exceeds supported bounds')
+    node = row[0]
+    identity = 'con_id=%d pid=%d app_id=%s title=%s' % (integer(node.get('id'),'container id',1),integer(node.get('pid'),'owner PID',1),criterion(node.get('app_id')),criterion(node.get('name')))
+    return '[' + identity + '] lumen_window preferred-size %d %d' % (width,height)
+
+
+def execute(app,title,container,budget_width,budget_height,min_width,min_height,margin_width=None,margin_height=None,preferred_width=None,preferred_height=None):
     owner=os.getppid();start=process_start(owner);session=socket_identity(os.environ['SWAYSOCK'])
     first=mapped_window(app,title,owner,container)
     node=first[0];captured=(node['id'],node['pid'],node['app_id'],node['name'])
@@ -125,6 +134,10 @@ def execute(app,title,container,budget_width,budget_height,min_width,min_height,
         raise ValueError('Owned window identity changed before fitting')
     result,command=fit_plan(second,budget_width,budget_height,min_width,min_height,margin_width,margin_height)
     result.update(container=captured[0],pid=owner,processStart=start,app=app,title=title)
+    if preferred_width is not None:
+        registration = preferred_plan(second, preferred_width, preferred_height)
+        command = registration + ('; ' + command if command else '')
+        result['preferredSize'] = dict(width=preferred_width,height=preferred_height)
     if command:
         replies=json.loads(subprocess.check_output(['swaymsg','-r',command],timeout=4))
         if not replies or not all(reply.get('success') for reply in replies):raise ValueError('Native fit request rejected')
@@ -162,12 +175,14 @@ def main():
     parser.add_argument('--margin-width',type=int);parser.add_argument('--margin-height',type=int)
     parser.add_argument('--outer-width',type=int,default=1);parser.add_argument('--outer-height',type=int,default=1)
     parser.add_argument('--minimum-width',type=int,default=1);parser.add_argument('--minimum-height',type=int,default=1)
+    parser.add_argument('--preferred-width',type=int);parser.add_argument('--preferred-height',type=int)
     args=parser.parse_args()
     try:
         if args.container<0:raise ValueError('Invalid captured container')
         if (args.margin_width is None)!=(args.margin_height is None):raise ValueError('Both native workspace margins are required')
+        if (args.preferred_width is None)!=(args.preferred_height is None):raise ValueError('Both preferred dimensions are required')
         if args.watch:watch(args.app,args.title,args.container);return 0
-        result=execute(args.app,args.title,args.container,args.outer_width,args.outer_height,args.minimum_width,args.minimum_height,args.margin_width,args.margin_height)
+        result=execute(args.app,args.title,args.container,args.outer_width,args.outer_height,args.minimum_width,args.minimum_height,args.margin_width,args.margin_height,args.preferred_width,args.preferred_height)
         print(json.dumps(result));return 0
     except (OSError,EOFError,KeyError,IndexError,ValueError,subprocess.SubprocessError) as error:
         print(json.dumps(dict(error=str(error))));return 1

@@ -4,6 +4,8 @@ Item {
     id:root
     required property var ownerWindow
     property int containerId:0
+    property int preferredWidth:Math.floor(ownerWindow.implicitWidth)
+    property int preferredHeight:Math.floor(ownerWindow.implicitHeight)
     property string appId:"org.quickshell"
     property var pending:null
     property int widthMargin:-1
@@ -18,7 +20,7 @@ Item {
     function restartWatch(){watcher.running=false;watchReady=false;Qt.callLater(()=>{if(ownerWindow.visible && marginMode)watcher.running=true;});}
     function fit(outerWidth,outerHeight) {
         if(!ownerWindow.visible)return;
-        pending={width:Math.floor(outerWidth),height:Math.floor(outerHeight),title:ownerWindow.title,container:containerId};
+        pending={width:Math.floor(outerWidth),height:Math.floor(outerHeight),title:ownerWindow.title,container:containerId,preferredWidth:preferredWidth,preferredHeight:preferredHeight};
         drain.restart();
     }
     Timer {id:drain;interval:0;onTriggered:{
@@ -27,6 +29,7 @@ Item {
         if(!root.ownerWindow.visible || request.title!==root.ownerWindow.title)return;
         root.error="";worker.received=false;
         worker.command=["lumen-window-geometry","--app",root.appId,"--title",request.title,"--container",String(request.container),"--outer-width",String(request.width),"--outer-height",String(request.height),"--minimum-width",String(root.ownerWindow.minimumSize.width),"--minimum-height",String(root.ownerWindow.minimumSize.height)];
+        if(request.preferredWidth>0 && request.preferredHeight>0)worker.command=worker.command.concat(["--preferred-width",String(request.preferredWidth),"--preferred-height",String(request.preferredHeight)]);
         if(root.marginMode)worker.command=worker.command.concat(["--margin-width",String(root.widthMargin),"--margin-height",String(root.heightMargin)]);
         worker.running=true;
     }}

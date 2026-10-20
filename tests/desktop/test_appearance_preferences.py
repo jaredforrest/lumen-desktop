@@ -33,7 +33,7 @@ class AppearancePreferences(unittest.TestCase):
         for value in (['relative'],['/same','/same'],['/control\tpath'],[False]):self.assertFalse(module.valid('dockFiles',value))
     def test_windows_and_folder_stack_preferences_are_closed(self):
         self.assertTrue(module.valid_windows('tileMargins',False));self.assertTrue(module.valid_windows('titlebarDoubleClick','minimize'))
-        self.assertFalse(module.valid_windows('tileMargins',1));self.assertFalse(module.valid_windows('titlebarDoubleClick','zoom'))
+        self.assertFalse(module.valid_windows('tileMargins',1));self.assertTrue(module.valid_windows('titlebarDoubleClick','zoom'));self.assertFalse(module.valid_windows('titlebarDoubleClick','invented'))
         for key in ('edgeTiling','optionTiling','topEdgeFill','topEdgeOverview'):
             self.assertTrue(module.valid_windows(key,False));self.assertFalse(module.valid_windows(key,1))
         for value in (0,8,32):self.assertTrue(module.valid_windows('tileGap',value))

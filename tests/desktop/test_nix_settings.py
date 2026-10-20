@@ -144,10 +144,11 @@ class NixSettingsTest(unittest.TestCase):
             self.assertEqual(self.source.read_bytes(),original)
 
     def test_window_preferences_are_typed(self):
+        self.assertEqual(settings.transaction('windows',{'titlebarDoubleClick':'zoom'},merge=True)['windows']['titlebarDoubleClick'],'zoom')
         values=settings.transaction('windows',{'tileMargins':False,'titlebarDoubleClick':'minimize'})
         self.assertEqual(values['windows'],{'tileMargins':False,'titlebarDoubleClick':'minimize','tileGap':8,'edgeTiling':True,'optionTiling':True,'topEdgeFill':True,'topEdgeOverview':True})
         original=self.source.read_bytes()
-        for value in ({'tileMargins':1},{'titlebarDoubleClick':'zoom'},{'tileGap':-1},{'tileGap':33},{'tileGap':True},{'edgeTiling':1},{'optionTiling':'true'}):
+        for value in ({'tileMargins':1},{'titlebarDoubleClick':'invented'},{'tileGap':-1},{'tileGap':33},{'tileGap':True},{'edgeTiling':1},{'optionTiling':'true'}):
             with self.subTest(value=value),self.assertRaises(ValueError):settings.transaction('windows',value,merge=True)
             self.assertEqual(self.source.read_bytes(),original)
 

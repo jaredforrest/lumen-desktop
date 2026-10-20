@@ -81,6 +81,17 @@ def fixture():
 
 
 class CompositorObservation(unittest.TestCase):
+    def test_preferred_zoom_is_explicit_native_metadata(self):
+        tree,outputs,window=fixture()
+        window['lumen_state']=dict(minimised=False,filled=True,zoomed=True,preferred_zoom=True)
+        report=state.snapshot(tree,outputs,'epoch')
+        self.assertEqual(report['windows'][0]['placement'],'zoomed')
+        self.assertTrue(report['windows'][0]['capabilities']['preferred_zoom'])
+        for key in ('zoomed','preferred_zoom'):
+            window['lumen_state'][key]=1
+            with self.assertRaises(protocol.ProtocolError):state.snapshot(tree,outputs,'epoch')
+            window['lumen_state'][key]=True
+
     def test_unknown_is_not_inferred_from_scratchpad(self):
         tree,outputs,_=fixture();report=state.snapshot(tree,outputs,'epoch')
         w=report['windows'][0]
