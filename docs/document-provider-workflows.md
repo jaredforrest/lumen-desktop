@@ -14,6 +14,13 @@ and refuse an invalid snapshot index without writing a misleading output file.
 The saved document reopens with an empty snapshot list. These snapshots therefore
 provide session-local recovery only; this is not persistent version browsing.
 The source document remains unchanged when a restored copy is written.
+Snapshots belong to the current logical document: New and a successful Open
+clear the previous document's snapshots. A failed Open preserves the current
+document and its snapshots. Restoring within the same document keeps its
+snapshot list available for repeated restores. The installed
+`word_version_ownership.py --writer /nix/store/.../bin/wordcraft-cli --output ...`
+fixture separately checks these boundaries inside the disposable namespace.
+This ownership fix does not add persistent history or a version-browser UI.
 
 The spreadsheet's `file.print` action can produce a PDF at a chosen file path.
 The test independently parses the PDF's pages and text, checks the source hash,

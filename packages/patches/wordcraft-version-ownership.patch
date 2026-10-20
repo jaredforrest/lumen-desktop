@@ -1,0 +1,61 @@
+--- a/crates/engine/src/session.rs
++++ b/crates/engine/src/session.rs
+@@ -505,6 +505,7 @@
+     /// Replace the document (open/new).
+     pub fn set_document(&mut self, doc: Document) {
+         self.document_id = self.document_id.wrapping_add(1);
++        self.versions.clear();
+         self.doc = doc;
+         self.doc.ensure_nonempty();
+         self.password = None;
+@@ -786,3 +787,50 @@
+         self.doc.copy_range(&a, &b).plain_text()
+     }
+ }
++
++#[cfg(test)]
++mod document_versions_ownership_tests {
++    use super::*;
++    use serde_json::json;
++    #[test]
++    fn document_versions_ownership_same_document_repeated_restore_preserves_history() {
++        let mut session = Session::new(Document::from_text("Original document"));
++        let original = session.doc.plain_text(StoryRef::Body); let identity = session.document_id;
++        session.run("file.versions", &json!({"save":"First"})).unwrap();
++        session.run("text.insert", &json!({"text":"Changed "})).unwrap();
++        session.run("file.versions", &json!({"restore":0})).unwrap();
++        assert_eq!(session.doc.plain_text(StoryRef::Body), original);
++        session.run("file.versions", &json!({"save":"Second"})).unwrap();
++        for _ in 0..2 {
++            session.run("file.versions", &json!({"restore":0})).unwrap();
++            assert_eq!(session.run("file.versions", &json!({})).unwrap().as_array().unwrap().len(), 2);
++            assert_eq!(session.run("file.recover", &json!({})).unwrap().as_array().unwrap().len(), 2);
++            assert_eq!(session.doc.plain_text(StoryRef::Body), original); assert_eq!(session.document_id, identity);
++        }
++    }
++    #[test]
++    fn document_versions_ownership_new_document_cannot_restore_previous_content() {
++        let mut session = Session::new(Document::from_text("Previous document"));
++        session.run("file.versions", &json!({"save":"Previous only"})).unwrap(); let identity = session.document_id;
++        session.run("file.new", &json!({})).unwrap(); assert_ne!(session.document_id, identity);
++        session.run("text.insert", &json!({"text":"New document"})).unwrap(); let before = session.doc.plain_text(StoryRef::Body);
++        assert_eq!(session.run("file.versions", &json!({})).unwrap(), json!([]));
++        assert_eq!(session.run("file.recover", &json!({})).unwrap(), json!([]));
++        assert!(session.run("file.versions", &json!({"restore":0})).is_err()); assert_eq!(session.doc.plain_text(StoryRef::Body), before);
++    }
++    #[test]
++    fn document_versions_ownership_open_clears_previous_but_failed_open_preserves_current_history() {
++        let directory = std::env::temp_dir().join(format!("word-version-ownership-{}", std::process::id())); std::fs::create_dir_all(&directory).unwrap();
++        let path = directory.join("opened.docx"); crate::io::save_path(&path, &Document::from_text("Opened document")).unwrap(); let source = std::fs::read(&path).unwrap();
++        let mut session = Session::new(Document::from_text("Previous document")); session.run("file.versions", &json!({"save":"Previous only"})).unwrap();
++        session.run("file.open", &json!({"path":path.to_str().unwrap()})).unwrap();
++        assert_eq!(session.run("file.versions", &json!({})).unwrap(), json!([]));
++        let before = session.doc.plain_text(StoryRef::Body); assert!(session.run("file.versions", &json!({"restore":0})).is_err()); assert_eq!(session.doc.plain_text(StoryRef::Body), before);
++        session.run("file.versions", &json!({"save":"Opened only"})).unwrap(); let identity = session.document_id;
++        assert!(session.run("file.open", &json!({"path":directory.join("missing.docx")})).is_err());
++        assert_eq!(session.document_id, identity); assert_eq!(session.doc.plain_text(StoryRef::Body), before);
++        assert_eq!(session.run("file.versions", &json!({})).unwrap().as_array().unwrap().len(), 1);
++        session.run("file.versions", &json!({"restore":0})).unwrap(); assert_eq!(session.doc.plain_text(StoryRef::Body), before);
++        assert_eq!(std::fs::read(&path).unwrap(), source); std::fs::remove_dir_all(directory).unwrap();
++    }
++}
