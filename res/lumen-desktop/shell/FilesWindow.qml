@@ -145,13 +145,13 @@ FloatingWindow {
     Connections {target:root.shell.exportedMenu;function onStateChanged(){const state=root.shell.exportedMenu.state;if(state.appName==="org.quickshell" && state.title===root.title)root.swayContainer=state.windowId;}}
     onScreenChanged:Qt.callLater(root.fitScreen)
     Connections {target:root.screen;function onWidthChanged(){fitTimer.restart();}function onHeightChanged(){fitTimer.restart();}}
-    function openPath(path) {
+    function openPath(path,expectedFacts) {
         if(shell.claimPopup)shell.claimPopup("");
         if(minimized && Quickshell.env("SWAYSOCK")){
             Quickshell.execDetached(["swaymsg",'[con_id='+swayContainer+'] move workspace current, focus']);minimized=false;
         }
         const wasVisible=visible;visible=true;
-        navigate(path || service.path);
+        navigate(path || service.path,expectedFacts);
         if(!wasVisible)fitTimer.restart();
         activationTimer.epoch=shell.focusEpoch;activationTimer.restart();
         Qt.callLater(()=>{if(content.Window.window){if(content.Window.window.visibility===Window.Minimized)content.Window.window.showNormal();content.Window.window.requestActivate();}content.forceActiveFocus();});
@@ -179,7 +179,7 @@ FloatingWindow {
         else if(action==="home")navigate(Quickshell.env("HOME"));
         else dialogFor(action);
     }
-    function navigate(path){captureHistory();restoringTabId="";filterDelay.stop();presentationTransition=true;filter.text="";service.query="";service.navigate(path);presentationTransition=false;}
+    function navigate(path,expectedFacts){captureHistory();restoringTabId="";filterDelay.stop();presentationTransition=true;filter.text="";service.query="";service.navigate(path,undefined,false,expectedFacts);presentationTransition=false;}
     function focusContents(){if(shell.claimPopup)shell.claimPopup("");if(content.Window.window)content.Window.window.requestActivate();content.forceActiveFocus();activationTimer.epoch=shell.focusEpoch;activationTimer.restart();}
     Timer {id:activationTimer;property int epoch;interval:100;onTriggered:{if(epoch!==root.shell.focusEpoch)return;const window=root.shell.windows.find(w=>w.appId==="org.quickshell" && w.title===root.title);if(window)root.shell.focusWindow(window);}}
     function quickLookStep(delta){step(delta,false);if(current)shell.quickLookWindow.show(current.path,root);}

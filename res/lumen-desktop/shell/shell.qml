@@ -109,7 +109,7 @@ ShellRoot {
     VpnState {id:vpnState}
     SettingsState {id:settingsState;active:settingsWindow.visible}
     SettingsWindow {id:settingsWindow;shell:root;service:settingsState}
-    function openFiles(path) {claimPopup("");filesWindow.openPath(path);}
+    function openFiles(path,expectedFacts) {claimPopup("");filesWindow.openPath(path,expectedFacts);}
     property var filesWindow:primaryFiles
     readonly property var filesState:filesWindow.service
     property var filesInstances:[]
@@ -142,6 +142,7 @@ ShellRoot {
     ApplicationLifecycleState {id:applicationLifecycle;onResultReady:result=>{root.applicationCommandError=result.error || "";}}
     property string applicationCommandError:""
     onApplicationCommandErrorChanged:if(applicationCommandError)applicationCommandTimer.restart()
+    function reportApplicationError(message){applicationCommandError=message;applicationCommandTimer.restart();}
     Timer {id:applicationCommandTimer;interval:8000;onTriggered:root.applicationCommandError=""}
     readonly property var runningApplications:applicationLifecycle.applications
     function runningFor(entry){return !!entry && (windowsFor(entry).length>0 || runningApplications.some(app=>{const candidate=entryFor({appId:app.appId,title:""});return candidate && candidate.id===entry.id;}));}

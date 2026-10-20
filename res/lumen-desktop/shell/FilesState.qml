@@ -87,13 +87,13 @@ Item {
         if(ready)transport.write(line);else {queued=queued.concat([line]);if(!transport.running)transport.running=true;}
         return id;
     }
-    function navigate(value,index,preserveError) {
+    function navigate(value,index,preserveError,expectedFacts) {
         if(!busy)capturePresentation();
         busy=true;if(!preserveError)error="";requestedPath=value || path;
         requestedHistory=index===undefined?-1:index;
         const target=requestedHistory>=0?history[requestedHistory]:null;
         if(target && target.presentation)query=target.presentation.query || "";
-        currentId=send("list",{path:requestedPath,query:query,hidden:hidden,sort:sort,descending:descending,foldersFirst:foldersFirst,groupBy:groupBy});
+        currentId=send("list",Object.assign({path:requestedPath,query:query,hidden:hidden,sort:sort,descending:descending,foldersFirst:foldersFirst,groupBy:groupBy},expectedFacts?{expectedFacts:expectedFacts.slice()}:{}));
     }
     function refresh(){if(busy){pendingRefresh=true;return;}navigate(path,historyIndex,true);}
     function back(delta){const i=historyIndex+delta;if(i>=0 && i<history.length){navigate(HistoryModel.path(history[i]),i);}}

@@ -8,6 +8,7 @@ import file_clipboard
 import file_tags
 import file_identity
 import file_link_state
+import captured_directory
 from captured_resource_actions import CapturedResourceActions,facts,wire_facts,parse_facts
 file_actions=CapturedResourceActions()
 
@@ -34,7 +35,11 @@ def listing(data):
     tag_terms=[term[4:] for term in query.split() if term.startswith('tag:')]
     if any(tag not in file_tags.IDS for tag in tag_terms):raise ValueError('Unknown colour tag; use red, orange, yellow, green, blue, purple or grey')
     query=' '.join(term for term in query.split() if not term.startswith('tag:'))
-    with os.scandir(folder) as entries:
+    capture_directory=data.get('captureDirectory',False)
+    if type(capture_directory) is not bool:raise ValueError('Invalid directory capture request')
+    expected=data.get('expectedFacts')
+    if capture_directory and expected is None:expected=wire_facts(facts(folder))
+    with captured_directory.scan(folder,expected) as (entries,entry_paths):
         for entry in entries:
             scanned += 1
             if scanned > 100000:
@@ -45,12 +50,13 @@ def listing(data):
             if query and query not in entry.name.casefold():
                 continue
             try:
+                display_path,inspection_path=entry_paths(entry)
                 info = entry.stat(follow_symlinks=False)
-                link_state = file_link_state.describe(entry.path,info)
+                link_state = file_link_state.describe(inspection_path,info)
                 directory = link_state['directory']
-                tags=file_tags.read(entry.path)
+                tags=file_tags.read(inspection_path)
                 if not all(tag in [t["id"] for t in tags["tags"]] for tag in tag_terms):continue
-                rows.append(dict(actionFacts=wire_facts((info.st_dev,info.st_ino,info.st_mode,info.st_size,info.st_mtime_ns,info.st_ctime_ns)),identity=file_identity.wire(info),renameFollow=file_identity.rename_follow(info),tags=tags["tags"],tagsSupported=tags["supported"],tagsError=tags["error"],name=entry.name, path=entry.path, uri=Path(entry.path).as_uri(), directory=directory,
+                rows.append(dict(actionFacts=wire_facts((info.st_dev,info.st_ino,info.st_mode,info.st_size,info.st_mtime_ns,info.st_ctime_ns)),identity=file_identity.wire(info),renameFollow=file_identity.rename_follow(info),tags=tags["tags"],tagsSupported=tags["supported"],tagsError=tags["error"],name=entry.name, path=display_path, uri=Path(display_path).as_uri(), directory=directory,
                                  link=link_state['link'],linkStatus=link_state['linkStatus'],linkError=link_state['linkError'],size=info.st_size,mtime=info.st_mtime,
                                  kind="Folder" if directory else mimetypes.guess_type(entry.name)[0] or "Document"))
             except OSError:
@@ -74,9 +80,11 @@ def listing(data):
         kind=row['kind']
         row['group']='Folders' if row['directory'] else 'Images' if kind.startswith('image/') else 'Audio' if kind.startswith('audio/') else 'Video' if kind.startswith('video/') else 'Documents'
     if grouping=='kind':rows.sort(key=lambda r:(0 if r['directory'] and folders_first else 1,r['group']))
-    return dict(path=str(folder), parent=str(folder.parent), rows=rows,
+    result=dict(path=str(folder), parent=str(folder.parent), rows=rows,
                 limited=limited, unreadable=unreadable, writable=os.access(folder,os.W_OK),
                 breadcrumbs=[dict(name=p.name or '/', path=str(p)) for p in reversed([folder,*folder.parents])])
+    if expected is not None:result['folderFacts']=wire_facts(parse_facts(expected))
+    return result
 
 from file_preview import preview
 
