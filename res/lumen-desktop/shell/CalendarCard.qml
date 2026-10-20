@@ -166,6 +166,7 @@ PanelSurface {
                     readonly property date dateValue:new Date(root.month.getFullYear(),root.month.getMonth(),day)
                     readonly property bool current:valid && root.iso(dateValue)===root.iso(root.today)
                     readonly property bool selected:valid && root.iso(dateValue)===root.iso(root.selected)
+                    readonly property color dayFill:current?(root.monochrome?Theme.colors.muted:Theme.dark?"#ff453a":"#ff3b30"):selected?(root.monochrome?Theme.colors.muted:Theme.colors.accent):hovered?Theme.colors.hover:"transparent"
                     enabled:valid && !root.busy
                     activeFocusOnTab:false
                     Accessible.role:Accessible.Button
@@ -177,10 +178,10 @@ PanelSurface {
                     onCanceled:activationDate=null
                     onClicked:{const day=activationDate || new Date(dateValue);activationDate=null;root.selectDate(day);dateGrid.forceActiveFocus();}
                     background:Item {
-                        Rectangle {anchors.horizontalCenter:parent.horizontalCenter;width:root.dayDiameter;height:root.dayDiameter;radius:width/2;color:cell.current?(root.monochrome?Theme.colors.muted:Theme.dark?"#ff453a":"#ff3b30"):cell.selected?(root.monochrome?Theme.colors.muted:Theme.colors.accent):cell.hovered?Theme.colors.hover:"transparent";border.width:cell.activeFocus || (dateGrid.activeFocus && cell.selected)?2:0;border.color:Theme.colors.text}
+                        Rectangle {anchors.horizontalCenter:parent.horizontalCenter;width:root.dayDiameter;height:root.dayDiameter;radius:width/2;color:cell.dayFill;border.width:cell.activeFocus || (dateGrid.activeFocus && cell.selected)?2:0;border.color:Theme.colors.text}
                         Row {anchors.horizontalCenter:parent.horizontalCenter;y:root.dayDiameter+2;spacing:2;visible:cell.valid;Repeater {model:cell.valid?root.dayColors(cell.dateValue):[];Rectangle {required property string modelData;width:3;height:3;radius:2;color:root.monochrome?Theme.colors.muted:modelData}}}
                     }
-                    contentItem:PanelLabel {height:root.dayDiameter;text:cell.valid?cell.day:"";color:cell.current || cell.selected?(root.monochrome && Theme.dark?"#111216":"white"):Theme.colors.text;font.pixelSize:root.textSize(12);horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignTop;topPadding:5}
+                    contentItem:PanelLabel {height:root.dayDiameter;text:cell.valid?cell.day:"";color:cell.current || cell.selected?Theme.textOnOpaqueFill(cell.dayFill):Theme.colors.text;font.pixelSize:root.textSize(12);horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignTop;topPadding:5}
                 }
             }
         }

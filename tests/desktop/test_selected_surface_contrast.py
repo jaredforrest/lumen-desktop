@@ -1,4 +1,4 @@
-"""Selected controls must use the resolved foreground across every accent/mode."""
+"""Selected controls and calendar day fills need readable actual foregrounds."""
 import importlib.util,json,os,re,shutil,subprocess,tempfile
 from pathlib import Path
 repo=Path(__file__).resolve().parents[2]
@@ -26,8 +26,10 @@ ShellRoot {
  id:root
  property var cases:'''+json.dumps(cases)+'''
  property int index:0
+ D.CalendarCard {id:calendar;today:new Date(2000,0,21);selected:new Date(2000,0,20);active:false}
  D.AppPreview {id:preview;kind:"Files";listMode:true;selectedFile:0;files:[{name:"Selected fixture",directory:false}]}
  function find(node,text) {
+  if(node.objectName===text)return node;
   if(node.text===text && node.color!==undefined)return node;
   const children=node.children || [];
   for(let i=0;i<children.length;i++){const value=find(children[i],text);if(value)return value;}
@@ -43,10 +45,13 @@ ShellRoot {
   if(String(detail.parent.color)!==String(Qt.color(entry.colors.accent)) || !glyph || String(glyph.ink)!==String(Qt.color(entry.colors.selectedText)))throw Error("Selected row fill/icon bypass resolved palette");
   preview.selectedFile=-1;
   if(String(detail.color)!==String(Qt.color(entry.colors.muted)))throw Error("Unselected detail retains selected foreground");
+  D.Theme.preferences=Object.assign({},D.Theme.preferences,{mode:entry.mode});calendar.followingToday=false;calendar.selected=new Date(2000,0,20);
+  function luminance(color){const channels=[color.r,color.g,color.b].map(value=>value<=0.04045?value/12.92:Math.pow((value+0.055)/1.055,2.4));return channels[0]*0.2126+channels[1]*0.7152+channels[2]*0.0722;}
+  for(const mono of [false,true]){calendar.monochrome=mono;for(const day of ["2000-01-20","2000-01-21"]){const cell=root.find(calendar,"calendar-day-"+day);if(!cell)throw Error("Missing calendar day "+day);const a=luminance(cell.contentItem.color),b=luminance(cell.background.children[0].color),ratio=(Math.max(a,b)+0.05)/(Math.min(a,b)+0.05);if(ratio<4.5)throw Error("Calendar filled day "+day+" foreground="+cell.contentItem.color+" fill="+cell.background.children[0].color+" contrast "+ratio+" in "+entry.mode+"/"+entry.accent+" monochrome="+mono);}}
   root.index++;
  }catch(error){console.error("SELECTED_CONTRAST_FAIL "+error);Qt.quit();}}}
 }''')
  result=subprocess.run(['quickshell','-p',str(qml)],env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=20)
  assert result.returncode==0 and 'SELECTED_CONTRAST_PASS '+str(len(cases)) in result.stdout,result.stdout
  assert not any(value in result.stdout for value in ('SELECTED_CONTRAST_FAIL','Binding loop','ReferenceError:','TypeError:','Failed to load configuration')),result.stdout
-print('PASS actual file-preview selected foregrounds in',len(cases),'mode/accent/contrast cases')
+print('PASS actual file-preview bindings and 128 calendar filled-day pairs across',len(cases),'mode/accent/contrast cases')

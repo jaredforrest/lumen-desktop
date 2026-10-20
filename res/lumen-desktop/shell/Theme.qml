@@ -14,6 +14,12 @@ Singleton {
     property var searchPreferences: ({disabledProviders:[]})
     readonly property real textScale:[1,1.15,1.3,1.5].includes(preferences.textScale)?preferences.textScale:1
     function textSize(base){return Math.round(base*textScale);}
+    function textOnOpaqueFill(fill) {
+        const color=Qt.color(fill);
+        const channels=[color.r,color.g,color.b].map(value=>value<=0.04045?value/12.92:Math.pow((value+0.055)/1.055,2.4));
+        const luminance=channels[0]*0.2126+channels[1]*0.7152+channels[2]*0.0722;
+        return (luminance+0.05)/0.05>=1.05/(luminance+0.05)?"#000000":"#ffffff";
+    }
     property string font: "Interlude Variable"
     property var colors: ({background:"#f2f2f4",surface:"#ffffff",field:"#e5e5e8",text:"#202023",muted:"#626267",border:"#c8c8ce",hover:"#dedee3",accent:"#007aff",selectedText:"#000000"})
     readonly property color backgroundTone: colors.background
