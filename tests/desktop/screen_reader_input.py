@@ -158,6 +158,8 @@ ShellRoot {id:root;property var launched:[];property var finalActions:[]
   call('wtype','-k','Return');observe_idle(2)
   error_messages=[message for message in messages() if 'Application observation is unavailable' in plain_text(message['text'])]
   assert len(error_messages)==1,'Unchanged error is repeatedly announced'
+  continuation=wait(lambda:named('Continue'),'original continuation control')[0]
+  assert int(interface(continuation,'org.a11y.atspi.Accessible').GetState(timeout=2)[0]) & (1<<12),'Announcement stole keyboard focus'
   checks.append('actionable error is announced once without focus steal or idle repeats')
   return_checkpoint=len(messages());call('wtype','-k','Escape');wait(lambda:not state()['modal'],'physical modal cancel')
   wait(lambda:bool(int(interface(query,'org.a11y.atspi.Accessible').GetState(timeout=2)[0]) & (1<<12)),'actual opener focus return')
@@ -168,6 +170,7 @@ ShellRoot {id:root;property var launched:[];property var finalActions:[]
   debug=(out/'orca-debug.log').read_text();(out/'initial-speech.json').write_text(json.dumps(dict(state=state(),utterances=utterances(debug),events=events),indent=2));assert any('Sentinel Alpha' in value for value in utterances(debug)) and any('Sentinel Beta' in value for value in utterances(debug)),'No owned result speech';checks.append('real Orca speech from production owned search')
   accepted=messages();ordered=['Sentinel Alpha','Sentinel Beta','Expand stack','Sentinel Orchard','Sentinel Harbour','Restart confirmation','Cancel','Continue','Application observation is unavailable'];positions=[next(index for index,message in enumerate(accepted) if value in plain_text(message['text'])) for value in ordered];assert positions==sorted(positions),(ordered,positions)
   wait(lambda:all('END' in message['events'] or 'CANCELED' in message['events'] for message in messages() if message['id'] in [accepted[index]['id'] for index in positions]),'reader transport completed selected utterances')
+  assert all('BEGIN' in messages()[index]['events'] for index in positions),'Selected speech never began'
   assert events and any(event['member']=='Announcement' and 'Application observation is unavailable' in event['arguments'] for event in events)
   checks.append('ordered reader transcript has real accepted begin/end speech and timestamped announcement event')
   (out/'transcript.json').write_text(json.dumps(messages(),indent=2))
