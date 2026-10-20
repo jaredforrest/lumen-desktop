@@ -8,12 +8,13 @@ def source():
  return sp.check_output(['git','-C',str(repo),'rev-parse','HEAD'],text=True).strip()
 revision=source();tools={name:offscreen.immutable_file(getattr(a,name)) for name in ('launcher','sway','pointer_tool','lock','fontconfig')};python=offscreen.immutable_file(sys.executable)
 if a.effects:tools['egl']=offscreen.immutable_file(a.egl)
-for name in ('bash','dbus-run-session','dbus-daemon','grim','wtype','swaymsg','quickshell'):
- located=shutil.which(name);assert located,'Missing fixture runtime: '+name
- tools[name]=offscreen.immutable_file(located)
-hashes={name:hashlib.sha256(path.read_bytes()).hexdigest() for name,path in tools.items()}
 prefix=re.split(r'\n[ \t]*exec quickshell ',tools['launcher'].read_text(),maxsplit=1)[0]
 env=dict(value.decode().split('=',1) for value in sp.check_output(['bash','-c',prefix+'\nexec env -0']).split(b'\0') if b'=' in value);env['FONTCONFIG_FILE']=str(tools['fontconfig']);env['PATH']=':'.join(str(path.parent) for path in tools.values())+':'+env['PATH']
+for name in ('bash','dbus-run-session','dbus-daemon','grim','wtype','swaymsg','quickshell'):
+ located=shutil.which(name,path=env['PATH']);assert located,'Missing fixture runtime: '+name
+ tools[name]=offscreen.immutable_file(located)
+hashes={name:hashlib.sha256(path.read_bytes()).hexdigest() for name,path in tools.items()}
+env['PATH']=':'.join(str(path.parent) for path in tools.values())+':'+env['PATH']
 args=['/source/tests/desktop/screen_saver_native.py','--output','/artifacts/result']
 for name in ('launcher','sway','pointer_tool','lock'):args+=['--'+name.replace('_','-'),str(tools[name])]
 if a.effects:args+=['--effects']
