@@ -63,6 +63,7 @@
         test-application-software-driver = pkgs.mesa;
         shell-runtime = quickshell;
         test-physical-keyboard = import ./tests/desktop/physical_keyboard_driver.nix { inherit pkgs; };
+        test-application-font = pkgs.callPackage ./packages/interlude.nix {};
         test-pointer = import ./tests/desktop/pointer_driver.nix { inherit pkgs; };
         inherit (office) wordcraft gridcraft deckcraft;
         profile-bridge = profileBridge;
