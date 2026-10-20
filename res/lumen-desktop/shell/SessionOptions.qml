@@ -48,7 +48,7 @@ FloatingWindow {
    StatusMessage {width:parent.width;text:root.error || root.preflight.error;severity:"error"}
    Row {anchors.right:parent.right;spacing:10
     DialogButton {id:cancel;text:"Cancel";enabled:!worker.running;onClicked:root.dismiss()}
-    DialogButton {text:root.preflight.phase==="waiting"?"Waiting…":root.preflight.phase==="ready"?(root.labels[root.action] || "Continue"):root.action==="suspend"?"Sleep":"Continue";primary:root.action==="suspend";destructive:root.action!=="suspend";enabled:!worker.running && !root.authorizing && root.preflight.phase!=="waiting" && root.preflight.phase!=="checking";onClicked:root.confirm()}
+    DialogButton {text:root.preflight.phase==="waiting"?"Waiting…":root.preflight.phase==="ready"?(root.labels[root.action] || "Continue"):root.action==="suspend"?"Sleep":"Continue";primary:root.action==="suspend";defaultAction:false;destructive:root.action!=="suspend";enabled:!worker.running && !root.authorizing && root.preflight.phase!=="waiting" && root.preflight.phase!=="checking";onClicked:root.confirm()}
    }
   }
   }
