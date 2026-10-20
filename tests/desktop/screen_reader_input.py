@@ -1,7 +1,7 @@
 """Real Orca speech/events over production owned controls in a disposable session."""
 import argparse,hashlib,json,shlex,os,re,shutil,subprocess as sp,sys,tempfile,time
 from pathlib import Path
-from screen_reader_speech import configure,utterances,source_proof,transport_messages,plain_text
+from screen_reader_speech import retire,configure,utterances,source_proof,transport_messages,plain_text
 from private_native_bus import start_private_bus
 from fixture_resources import close_reaped_pipes
 p=argparse.ArgumentParser();p.add_argument('--launcher',type=Path,required=True);p.add_argument('--sway',required=True);p.add_argument('--orca',type=Path,required=True);p.add_argument('--dispatcher',type=Path,required=True);p.add_argument('--dispatcher-source',type=Path,required=True);p.add_argument('--at-spi-prefix',type=Path,default=os.environ.get('LUMEN_TEST_AT_SPI'));p.add_argument('--output',type=Path,required=True);p.add_argument('--schema-compiler',required=True);p.add_argument('--isolation-tool',required=True);p.add_argument('--inside',action='store_true');p.add_argument('--reader-command',type=Path);p.add_argument('--lock-client',type=Path);p.add_argument('--effects',action='store_true');a=p.parse_args();
@@ -211,4 +211,5 @@ ShellRoot {id:root;property var launched:[];property var finalActions:[]
     try:process.wait(timeout=5)
     except sp.TimeoutExpired:process.kill();process.wait(timeout=5)
   close_reaped_pipes(processes)
+  retire(out)
 assert live_before==(live.stat().st_ino if live.exists() else None),'Live accessibility socket changed'

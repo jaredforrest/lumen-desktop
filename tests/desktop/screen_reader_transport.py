@@ -1,7 +1,7 @@
 """Actual Speech Dispatcher acceptance, completion and cancel on a private socket."""
 import argparse,json,os,shutil,subprocess as sp,sys,tempfile,time
 from pathlib import Path
-from screen_reader_speech import configure,source_proof
+from screen_reader_speech import configure,source_proof,retire
 p=argparse.ArgumentParser();p.add_argument('--dispatcher',type=Path,required=True);p.add_argument('--dispatcher-source',type=Path,required=True);p.add_argument('--output',type=Path,required=True);a=p.parse_args();a.output.mkdir(parents=True,exist_ok=False);(a.output/'source-proof.json').write_text(json.dumps(source_proof(a.dispatcher_source),indent=2))
 with tempfile.TemporaryDirectory(prefix='lumen-speech-transport-') as directory:
  root=Path(directory);env=dict(os.environ,HOME=directory,XDG_RUNTIME_DIR=directory,DBUS_SESSION_BUS_ADDRESS='unix:path='+directory+'/no-session',DBUS_SYSTEM_BUS_ADDRESS='unix:path='+directory+'/no-system',PULSE_SERVER='unix:'+directory+'/no-audio',ALSA_CONFIG_PATH=str(root/'no-alsa'))
@@ -37,3 +37,4 @@ with tempfile.TemporaryDirectory(prefix='lumen-speech-transport-') as directory:
    process.terminate()
    try:process.wait(timeout=5)
    except sp.TimeoutExpired:process.kill();process.wait(timeout=5)
+  retire(a.output)

@@ -1,12 +1,14 @@
 """Observer configuration cannot select audio modules or interpolate commands."""
 import tempfile,unittest
 from pathlib import Path
+from unittest.mock import patch
 from screen_reader_speech import configure,utterances,transport_messages,plain_text
 class Observer(unittest.TestCase):
  def test_fixed_true_argument_and_generic_only_directory(self):
   with tempfile.TemporaryDirectory() as directory:
    root=Path(directory);binary=root/'bin';binary.mkdir();true=binary/'true';true.write_text('#!/bin/sh\nexit 0\n');true.chmod(0o700)
-   target=root/'observer';target.mkdir();state=configure(target,root/'dispatcher',true)
+   target=root/'observer';target.mkdir()
+   with patch('screen_reader_speech.execution_shell_proof',return_value={}):state=configure(target,root/'dispatcher',true)
    self.assertEqual(sorted(value.name for value in (target/'speech-modules').iterdir()),['sd_generic'])
    config=(target/'speech-config/modules/observer.conf').read_text();self.assertIn('GenericExecuteSynth "'+str(true)+" '$DATA'\"",config);self.assertNotIn('$PLAY_COMMAND',config)
    self.assertEqual(state['address'],'unix_socket:'+str(target/'speech.sock'))

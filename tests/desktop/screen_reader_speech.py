@@ -4,13 +4,27 @@ import re
 import json
 
 
-def configure(root,dispatcher,true_command):
-    root=Path(root).resolve();dispatcher=Path(dispatcher).resolve();true_command=Path(true_command).absolute()
+def execution_shell_proof(dispatcher):
+    dispatcher=Path(dispatcher).resolve()
     proof=json.loads((dispatcher/'share/lumen-fixtures/speech-shell.json').read_text())
     shell=Path(proof['shell'])
     if not str(shell).startswith('/nix/store/') or shell.name!='bash' or not shell.is_file():raise ValueError('Pinned pipeline-capable fixture shell required')
     if str(shell).encode() not in (dispatcher/'libexec/speech-dispatcher-modules/sd_generic').read_bytes():raise ValueError('Generic fixture does not contain its declared shell')
+    return proof
+
+
+def retire(root):
+    root=Path(root).resolve()
+    socket=root/'speech.sock'
+    if socket.is_socket():socket.unlink()
+    module=root/'speech-modules/sd_generic'
+    if module.is_symlink():module.unlink()
+
+
+def configure(root,dispatcher,true_command):
+    root=Path(root).resolve();dispatcher=Path(dispatcher).resolve();true_command=Path(true_command).absolute()
     if not true_command.is_absolute() or true_command.name!='true' or not true_command.is_file():raise ValueError('A fixed true executable is required')
+    execution_shell_proof(dispatcher)
     config=root/'speech-config';config.mkdir();(config/'modules').mkdir();logs=root/'speech-logs';logs.mkdir()
     module_dir=root/'speech-modules';module_dir.mkdir();(module_dir/'sd_generic').symlink_to(dispatcher/'libexec/speech-dispatcher-modules/sd_generic')
     socket=root/'speech.sock';protocol=root/'speech-protocol.log'
