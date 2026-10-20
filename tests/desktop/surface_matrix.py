@@ -31,7 +31,9 @@ calendar.write_text('#!'+sys.executable+'\nimport json,sys\nr=json.loads(sys.std
 calendar.chmod(0o700);env['PATH']=str(fakebin)+':'+env['PATH']
 processes=[]
 def launch(command,name):
-    proc=sp.Popen(command,env=env,stdout=(out/name).open('w'),stderr=sp.STDOUT,start_new_session=True);processes.append(proc);return proc
+    with (out/name).open('w') as log:
+        proc=sp.Popen(command,env=env,stdout=log,stderr=sp.STDOUT,start_new_session=True)
+    processes.append(proc);return proc
 
 def call(*args):return sp.check_output(args,env=env,text=True,timeout=10).strip()
 def wait(fn):
