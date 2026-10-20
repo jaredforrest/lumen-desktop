@@ -11,22 +11,30 @@ Item {
     signal closeRequested(string id)
     signal moveRequested(string id,int target)
     signal newRequested()
+    function revealActive(){row.forceLayout();ensureVisible(activeId);}
+    function scheduleReveal(){Qt.callLater(revealActive);}
     function cancelDrag(){gestureCancelled=true;draggedId="";dropIndex=-1;}
     onActiveIdChanged:Qt.callLater(()=>ensureVisible(activeId))
     onTabsChanged:Qt.callLater(()=>ensureVisible(activeId))
     onWidthChanged:Qt.callLater(()=>ensureVisible(activeId))
-    function ensureVisible(id){for(let index=0;index<tabItems.count;index++){const item=tabItems.itemAt(index);if(item.modelData.id===id){scroll.contentX=Math.max(0,Math.min(Math.max(0,scroll.contentWidth-scroll.width),item.x-scroll.width/2+item.width/2));return;}}}
-    function focusTab(id){for(let index=0;index<tabItems.count;index++){const item=tabItems.itemAt(index);if(item.modelData.id===id){item.forceActiveFocus();scroll.contentX=Math.max(0,Math.min(scroll.contentWidth-scroll.width,item.x-scroll.width/2+item.width/2));return;}}}
+    function ensureVisible(id){for(let index=0;index<tabItems.count;index++){const item=tabItems.itemAt(index);if(item && item.modelData.id===id){scroll.contentX=Math.max(0,Math.min(Math.max(0,scroll.contentWidth-scroll.width),item.x-scroll.width/2+item.width/2));return;}}}
+    function focusTab(id){for(let index=0;index<tabItems.count;index++){const item=tabItems.itemAt(index);if(item && item.modelData.id===id){item.forceActiveFocus();scroll.contentX=Math.max(0,Math.min(scroll.contentWidth-scroll.width,item.x-scroll.width/2+item.width/2));return;}}}
     function requestMove(id,target){moveRequested(id,target);Qt.callLater(()=>focusTab(id));}
     function requestClose(id){closeRequested(id);Qt.callLater(()=>focusTab(activeId));}
     function move(id,delta){const from=tabs.findIndex(tab=>tab.id===id),to=from+delta;if(from>=0 && to>=0 && to<tabs.length)requestMove(id,to);}
-    implicitHeight:30
+    FontMetrics {id:captionMetrics;font.family:Theme.font;font.pixelSize:Theme.textRole("label")}
+    readonly property real tabRowHeight:Math.max(28,Math.ceil(captionMetrics.height+12))
+    implicitHeight:tabRowHeight+2
     Flickable {id:scroll;anchors {left:parent.left;right:add.left;top:parent.top;bottom:parent.bottom;rightMargin:4}contentWidth:row.width;clip:true;boundsBehavior:Flickable.StopAtBounds;interactive:root.draggedId===""
-        Row {id:row;spacing:2
+        Row {id:row;spacing:2;onWidthChanged:root.scheduleReveal()
             Repeater {id:tabItems;model:root.tabs
                 Item {id:tab;required property var modelData;required property int index
                     objectName:"document-tab-"+modelData.id
-                    width:Math.max(100,Math.min(200,(scroll.width-Math.max(0,root.tabs.length-1)*2)/Math.max(1,root.tabs.length)));height:28
+                    readonly property real baseWidth:Math.max(100,Math.min(200,(scroll.width-Math.max(0,root.tabs.length-1)*2)/Math.max(1,root.tabs.length)))
+                    readonly property real captionScale:Math.max(Theme.textScale,baselineCaption.implicitWidth>0?caption.implicitWidth/baselineCaption.implicitWidth:1)
+                    width:Math.max(baseWidth,Math.ceil((baseWidth-35)*captionScale)+35);height:root.tabRowHeight
+                    onWidthChanged:root.scheduleReveal()
+                    Text {id:baselineCaption;visible:false;text:caption.text;font.family:Theme.font;font.pixelSize:12}
                     activeFocusOnTab:true
                     Accessible.role:Accessible.PageTab;Accessible.name:modelData.path;Accessible.selected:modelData.id===root.activeId
                     Accessible.description:"Control Shift Left or Right to reorder; Control W to close"
@@ -39,7 +47,7 @@ Item {
                         else event.accepted=false;
                     }
                     Rectangle {anchors.fill:parent;radius:6;color:tab.modelData.id===root.activeId?Theme.colors.surface:input.containsMouse?Theme.colors.hover:Theme.colors.field;border.color:tab.activeFocus?Theme.colors.accent:Theme.hairline;opacity:root.draggedId===tab.modelData.id ? .65 : 1}
-                    PanelLabel {x:8;width:parent.width-35;height:parent.height;text:tab.modelData.path==="trash:"?"Trash":tab.modelData.path.split("/").filter(Boolean).pop() || "Computer";elide:Text.ElideRight;verticalAlignment:Text.AlignVCenter;font.pixelSize:12}
+                    PanelLabel {id:caption;x:8;width:parent.width-35;height:parent.height;text:tab.modelData.path==="trash:"?"Trash":tab.modelData.path.split("/").filter(Boolean).pop() || "Computer";elide:Text.ElideRight;verticalAlignment:Text.AlignVCenter;font.pixelSize:Theme.textRole("label")}
                     MouseArea {id:input;anchors.fill:parent;hoverEnabled:true;preventStealing:true
                         property real pressX:0
                         property real pressY:0

@@ -49,6 +49,7 @@
         test-runtime = runtime;
         test-network-provider = pkgs.gvfs;
         test-capture-pipewire = pkgs.pipewire;
+        test-audio-provider = pkgs.pulseaudio;
         test-screen-reader-atspi = import ./tests/desktop/screen_reader_atspi.nix { inherit pkgs; };
         test-screen-reader = import ./tests/desktop/screen_reader_package.nix { inherit pkgs; };
         test-screen-reader-tools = pkgs.symlinkJoin { name = "screen-reader-test-tools"; paths = [ pkgs.glib.dev pkgs.util-linux ]; };

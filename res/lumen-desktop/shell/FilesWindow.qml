@@ -48,7 +48,7 @@ FloatingWindow {
     readonly property string activeTabId:(tabs[activeTab] || {}).id || ""
     property string restoringTabId:""
     property int activeTab:0
-    readonly property int tabHeight:tabs.length>1?30:0
+    readonly property int tabHeight:tabs.length>1?Math.ceil(documentTabs.implicitHeight):0
     property string tagsTarget:""
     property var tagsIdentity:({})
     property bool tagsSupported:false

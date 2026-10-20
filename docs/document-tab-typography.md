@@ -1,0 +1,7 @@
+# Document tab typography
+
+Navigation tab captions use the shared label role. Their text metrics determine band height; the Files content origin derives from that same band. At the default scale, the28px tab and30px band and original caption capacity remain. Enlarged captions retain the original proportion of text through actual current/default Text measurement while the25px close control remains unchanged. The baseline12px Text is hidden measurement only. Horizontal overflow retains the active tab when font metrics change.
+
+The production Files offscreen corpus checks16 light/dark, normal/constrained and100/115/130/150% combinations, actual public font resolution, painted captions, band separation, model reorder and sibling-close identity preservation. Model calls do not claim physical input.
+
+The native Files layout corpus uses a full private namespace, disposable directories, current compositor variants, physical keyboard and virtual pointer. Its original11 sidebar/tab/history outcomes remain, with an additional live-scale selected-tab visibility check. Normal1200px width makes all three enlarged tabs physically reachable before the drag test; later480/900px cases retain actual horizontal overflow and close-target checks. A real private null-sink audio server prevents the eagerly constructed preview AudioOutput from contacting host audio. This is a test prerequisite, not audio functionality proof. No sound devices or host services are mounted. All runtime warnings are inspected after children are reaped.

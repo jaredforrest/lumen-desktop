@@ -1,23 +1,33 @@
 """Genuine nested pointer/keyboard ownership for Files tabs and sidebar layout."""
 from fixture_resources import close_reaped_pipes
+from private_native_bus import start_private_bus
+from application_fixture.isolation import run
+from application_fixture.provenance import FrozenSource
+from application_fixture.keyboard import PhysicalKeyboard
+from application_fixture.audio import start_null_sink
 import argparse,json,os,re,shutil,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
-p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--launcher',type=Path,required=True);p.add_argument('--sway',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--inside',action='store_true');a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--launcher',type=Path,required=True);p.add_argument('--sway',type=Path,required=True);p.add_argument('--pointer-tool',type=Path,required=True);p.add_argument('--keyboard',type=Path,required=True);p.add_argument('--font-config',type=Path,required=True);p.add_argument('--software-driver',type=Path,required=True);p.add_argument('--audio-provider',type=Path,required=True);p.add_argument('--text-scale',type=float,default=1);p.add_argument('--effects',action='store_true');p.add_argument('--inside',action='store_true');a=p.parse_args()
+for name in ('launcher','sway','pointer_tool','keyboard','font_config','software_driver','audio_provider'):
+ value=getattr(a,name).resolve();assert str(value).startswith('/nix/store/') and value.exists();setattr(a,name,value)
+repo=Path(__file__).resolve().parents[2]
 if not a.inside:
-    with tempfile.TemporaryDirectory(prefix='lumen-files-input-',ignore_cleanup_errors=True) as private:
-        env=dict(os.environ,HOME=private,XDG_RUNTIME_DIR=private)
-        for key in ('CONFIG','STATE','CACHE','DATA'):env['XDG_'+key+'_HOME']=str(Path(private)/key.lower())
-        for key in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK','DBUS_SESSION_BUS_ADDRESS','AT_SPI_BUS_ADDRESS'):env.pop(key,None)
-        raise SystemExit(sp.call(['dbus-run-session','--',sys.executable,__file__,*sys.argv[1:],'--inside'],env=env))
+    a.output=a.output.resolve();a.output.mkdir(mode=0o700,parents=True,exist_ok=False);frozen=FrozenSource(repo,__file__,[a.launcher,a.sway,a.pointer_tool,a.keyboard,a.font_config,a.audio_provider/"bin/pulseaudio",a.audio_provider/"bin/pactl",Path(sys.executable).resolve()]);prefix=re.split(r'\n[ \t]*exec quickshell ',a.launcher.read_text(),maxsplit=1)[0];env=dict(value.decode().split('=',1)for value in sp.check_output(['bash','-c',prefix+'\nexec env -0']).split(b'\0')if b'='in value)
+    args=[str(Path(sys.executable).resolve()),'/source/tests/desktop/files_layout_input.py','--inside','--output','/artifacts/result','--text-scale',str(a.text_scale)]+sum((['--'+name.replace('_','-'),str(getattr(a,name))]for name in ('launcher','sway','pointer_tool','keyboard','font_config','software_driver','audio_provider')),[])+(['--effects']if a.effects else [])
+    code=1
+    try:code=run(repo,a.output,args,env,software_graphics=a.effects)
+    finally:frozen.finish(a.output,code)
+    raise SystemExit(code)
+assert repo==Path('/source') and os.environ['HOME']=='/home/fixture' and not Path('/.old-root').exists()
 repo=Path(__file__).resolve().parents[2];out=a.output.resolve();out.mkdir(parents=True,exist_ok=False)
 prefix=re.split(r'\n[ \t]*exec quickshell ',a.launcher.read_text(),maxsplit=1)[0]
 exported=sp.check_output(['bash','-c',prefix+'\nexec env -0']);env=dict(value.decode().split('=',1) for value in exported.split(b'\0') if b'=' in value)
-env.update(WLR_BACKENDS='headless',WLR_RENDERER='pixman',WLR_LIBINPUT_NO_DEVICES='1',QT_QPA_PLATFORM='wayland',QT_QPA_PLATFORMTHEME='generic',QT_QUICK_BACKEND='software',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none',LUMEN_FILE_SERVICE='0',LUMEN_LAUNCH_SCOPES='0',LUMEN_NATIVE_WINDOW_CONTROLS='0',LUMEN_NATIVE_WINDOW_ACTIONS='0',LUMEN_UNIFIED_OWNED_HEADERS='1')
+env.update(WLR_BACKENDS='headless',WLR_RENDERER='gles2' if a.effects else 'pixman',WLR_RENDERER_FORCE_SOFTWARE='1' if a.effects else '0',WLR_RENDERER_ALLOW_SOFTWARE='1',LIBGL_ALWAYS_SOFTWARE='1',MESA_LOADER_DRIVER_OVERRIDE='llvmpipe',LIBGL_DRIVERS_PATH=str(a.software_driver/'lib/dri'),__EGL_VENDOR_LIBRARY_FILENAMES=str(a.software_driver/'share/glvnd/egl_vendor.d/50_mesa.json'),FONTCONFIG_FILE=str(a.font_config),WLR_LIBINPUT_NO_DEVICES='1',QT_QPA_PLATFORM='wayland',QT_QPA_PLATFORMTHEME='generic',QT_QUICK_BACKEND='software',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none',LUMEN_FILE_SERVICE='0',LUMEN_LAUNCH_SCOPES='0',LUMEN_NATIVE_WINDOW_CONTROLS='0',LUMEN_NATIVE_WINDOW_ACTIONS='0',LUMEN_UNIFIED_OWNED_HEADERS='1')
 for key in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK','AT_SPI_BUS_ADDRESS'):env.pop(key,None)
 folders={}
 for name in ('First','Second','Third'):
     folder=Path(env['HOME'])/name;folder.mkdir();(folder/'selected.txt').write_text('unchanged fixture '+name);folders[name]=str(folder)
-palettes=json.loads((repo/'res/lumen-desktop/appearance/palette.json').read_text());appearance=out/'appearance.json';appearance.write_text(json.dumps(dict(font=palettes['font'],palette=palettes['dark'],preferences={})));env['LUMEN_APPEARANCE_STATE']=str(appearance)
+palettes=json.loads((repo/'res/lumen-desktop/appearance/palette.json').read_text());appearance=out/'appearance.json';appearance.write_text(json.dumps(dict(font=palettes['font'],palette=palettes['dark'],preferences=dict(textScale=a.text_scale,reduceMotion=True))));env['LUMEN_APPEARANCE_STATE']=str(appearance)
 shutil.copytree(repo/'res/lumen-desktop',out/'assets')
 qml=out/'shell.qml';qml.write_text('''import QtQuick
 import Quickshell
@@ -30,11 +40,12 @@ ShellRoot {
  QtObject {id:exported;property var state:({appName:"",title:"",windowId:0})}
  QtObject {id:stub;property int focusEpoch:0;property var windows:[];property var exportedMenu:exported;function activeFiles(window){}function focusWindow(window){}}
  D.FilesState {id:service;persistViewPreferences:false;path:fixture.paths.First;viewMode:"list";favorites:[{name:"First",path:fixture.paths.First},{name:"Second",path:fixture.paths.Second},{name:"Third",path:fixture.paths.Third}]}
- D.FilesWindow {id:files;shell:stub;service:service;visible:true}
+ D.FilesWindow {id:files;shell:stub;service:service;visible:true;implicitWidth:1200}
  Component.onCompleted:{files.tabs=["First","Second","Third"].map((name,index)=>{const tab=Tabs.create(name.toLowerCase(),paths[name]);tab.history=index===0?[paths.First]:[paths.First,paths[name]];tab.historyIndex=index===0?0:1;tab.selectedPaths=[paths[name]+"/selected.txt"];tab.selectedPath=tab.selectedPaths[0];tab.viewMode="list";return tab;});service.history=files.tabs[0].history.slice();service.historyIndex=0;service.navigate(paths.First,0);}
  function find(name,item){if(item.objectName===name)return item;for(const child of item.children || []){const found=find(name,child);if(found)return found;}return null;}
  IpcHandler {target:"filesAudit"
-  function state():string {return JSON.stringify({ready:service.ready && !service.busy && service.rows.length>0,tabs:files.tabs,activeId:files.activeTabId,path:service.path,history:service.history,historyIndex:service.historyIndex,selection:files.selectedPaths,sidebarWidth:files.sidebarWidth,savedWidth:service.sidebarWidth,collapsed:service.collapsedSidebarGroups,width:files.width,resizeFocus:fixture.find("files-sidebar-resize",files.contentItem).activeFocus,resizeFacts:fixture.find("files-sidebar-resize",files.contentItem).children.filter(item=>item.pressed!==undefined).map(item=>({pressed:item.pressed,cancelled:item.gestureCancelled})),focused:files.contentItem.Window.window && files.contentItem.Window.window.activeFocusItem?files.contentItem.Window.window.activeFocusItem.objectName:""});}
+  function state():string {return JSON.stringify({ready:service.ready && !service.busy && service.rows.length>0,tabs:files.tabs,activeId:files.activeTabId,path:service.path,history:service.history,historyIndex:service.historyIndex,selection:files.selectedPaths,sidebarWidth:files.sidebarWidth,savedWidth:service.sidebarWidth,collapsed:service.collapsedSidebarGroups,width:files.width,textScale:D.Theme.textScale,tabGeometry:files.tabs.map(tab=>{const item=fixture.find("document-tab-"+tab.id,files.contentItem),at=item.mapToItem(files.contentItem,0,0),close=fixture.find("document-tab-close-"+tab.id,files.contentItem),cp=close.mapToItem(files.contentItem,0,0);return {id:tab.id,x:at.x,width:item.width,closeX:cp.x,closeWidth:close.width};}),resizeFocus:fixture.find("files-sidebar-resize",files.contentItem).activeFocus,resizeFacts:fixture.find("files-sidebar-resize",files.contentItem).children.filter(item=>item.pressed!==undefined).map(item=>({pressed:item.pressed,cancelled:item.gestureCancelled})),focused:files.contentItem.Window.window && files.contentItem.Window.window.activeFocusItem?files.contentItem.Window.window.activeFocusItem.objectName:""});}
+  function scale(value:real):void {D.Theme.preferences={textScale:value,reduceMotion:true};}
   function select():void {files.choose(0,0);files.saveTab();}
   function geometry(name:string):string {const item=fixture.find(name,files.contentItem);if(!item)return "null";const at=item.mapToItem(files.contentItem,0,0);return JSON.stringify({x:at.x,y:at.y,width:item.width,height:item.height});}
  }
@@ -69,7 +80,7 @@ def move(x,y):
     call('swaymsg','seat','seat0','cursor','set',str(round(x)),str(round(y)));pointer.stdin.write('m 0.5 0.5\n');pointer.stdin.flush();time.sleep(.12)
 def command(value):pointer.stdin.write(value+'\n');pointer.stdin.flush();time.sleep(.12)
 def click(position):move(*position);command('p');command('r')
-def key(*keys):call('wtype',*keys);time.sleep(.15)
+def key(*keys):keyboard.key(*keys)
 def drag(start,dx,dy=0,cancel=False):
     move(*start);command('p')
     for index in range(8):command('m '+str(dx/8)+' '+str(dy/8))
@@ -80,12 +91,15 @@ def invariant():
     value=state();assert value['path']==folders['First'] and value['selection']==[folders['First']+'/selected.txt'] and value['activeId']=='first',value
     return value
 try:
+    start_private_bus(env,out,processes)
+    start_null_sink(a.audio_provider,env,out,processes)
     config=out/'sway.conf';config.write_text('output HEADLESS-1 resolution 1280x900\nxwayland disable\nfor_window [all] floating enable, border pixel 0\n')
-    launch([a.sway,'--unsupported-gpu','-c',str(config)],'sway.log');runtime=Path(env['XDG_RUNTIME_DIR']);env['SWAYSOCK']=str(wait(lambda:next(runtime.glob('sway-ipc*.sock'),None)));env['WAYLAND_DISPLAY']=wait(lambda:next((path.name for path in runtime.glob('wayland-*') if not path.name.endswith('.lock')),None))
+    launch([str(a.sway),'--unsupported-gpu','-c',str(config)],'sway.log');runtime=Path(env['XDG_RUNTIME_DIR']);env['SWAYSOCK']=str(wait(lambda:next(runtime.glob('sway-ipc*.sock'),None)));env['WAYLAND_DISPLAY']=wait(lambda:next((path.name for path in runtime.glob('wayland-*') if not path.name.endswith('.lock')),None))
     launch(['quickshell','-p',str(qml)],'shell.log');wait(lambda:state()['ready']);ipc('select');invariant()
     call('grim',str(out/'files-selected.png'))
-    launch(['wtype','-s','60000'],'keyboard.log')
-    pointer=sp.Popen([a.pointer_tool,'pointer','move','0','0'],env=env,stdin=sp.PIPE,text=True,start_new_session=True);processes.append(pointer);time.sleep(.2)
+    with (out/'keyboard.log').open('w')as log:keyboard=PhysicalKeyboard(a.keyboard,env,log)
+    processes.append(keyboard.process)
+    pointer=sp.Popen([str(a.pointer_tool),'pointer','move','0','0'],env=env,stdin=sp.PIPE,text=True,start_new_session=True);processes.append(pointer);time.sleep(.2)
     checks=[]
     click(point('files-sidebar-favourites',.4,.5));wait(lambda:'favourites' in state()['collapsed']);invariant()
     key('-k','space');wait(lambda:'favourites' not in state()['collapsed']);invariant();checks.append('Pointer disclosure and keyboard expansion preserve current route and selected file')
@@ -97,6 +111,11 @@ try:
     drag(point('document-tab-third'),0,80);assert [tab['id'] for tab in state()['tabs']]==before;invariant();checks.append('Release outside tab drop region cancels without navigation')
     click(point('document-tab-first',.4));key('-M','ctrl','-M','shift','-k','Right','-m','shift','-m','ctrl');wait(lambda:[tab['id'] for tab in state()['tabs']]==['third','second','first']);invariant();checks.append('Keyboard tab reorder retains active identity, history and selection')
     node=window();call('swaymsg','[con_id='+str(node['id'])+'] resize set width 480 px height 600 px');wait(lambda:state()['width']==480)
+    for scale in ['1','1.5']:
+        ipc('scale',scale)
+        wait(lambda:(lambda r:r['x']>=state()['sidebarWidth'] and r['x']+r['width']<=state()['width']-30)(json.loads(ipc('geometry','document-tab-close-first'))))
+        invariant()
+    checks.append('Live text scale changes retain narrow selected tab and visible close control')
     tab_close=wait(lambda:json.loads(ipc('geometry','document-tab-close-first')));assert tab_close['x']>=state()['sidebarWidth'] and tab_close['x']+tab_close['width']<=state()['width']-30,tab_close
     call('grim',str(out/'files-narrow-tabs.png'));invariant();checks.append('Narrow tab strip keeps active tab close target visible without shrinking targets')
     call('swaymsg','[con_id='+str(node['id'])+'] resize set width 900 px height 600 px');wait(lambda:state()['width']==900)
@@ -118,4 +137,9 @@ finally:
     for _fixture_process in processes:
         if _fixture_process.poll() is None:_fixture_process.wait(timeout=5)
     close_reaped_pipes(processes)
+    if (out/'shell.log').exists():
+        warnings=[line for line in (out/'shell.log').read_text().splitlines()if 'WARN'in line]
+        if (out/'result.json').exists():
+            result=json.loads((out/'result.json').read_text());result['runtimeWarnings']=warnings;(out/'result.json').write_text(json.dumps(result,indent=2)+'\n')
+        assert not warnings,warnings
 print('PASS native Files tab/sidebar pointer and keyboard regression')
