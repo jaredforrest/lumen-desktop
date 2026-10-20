@@ -42,7 +42,7 @@ Use a new output directory for every run. Repeat with `--workflow downloads`, `p
 
 | Workflow | Actual exercised behavior |
 | --- | --- |
-| `basic` | Main/chooser frame ownership; genuine Save As Cancel; new/close/reopen captured tabs; page zoom/reset; browser and page fullscreen, Escape and input return |
+| `basic` | Main/chooser frame ownership; genuine Save As Cancel; new/close/reopen captured tabs; page zoom/reset; browser fullscreen and input return |
 | `downloads` | Genuine target chooser; independent running partial, pause/resume same ID, complete with exact whole-file hash, cancel a different transfer and remove its partial |
 | `permissions` | Captured-origin notification deny, actual site-controls reset, native reload, allow, and revoke back to default |
 | `library` | Bookmark add/edit same ID/remove; native private window with independent cookies/local storage; private-history exclusion in live provider and durable history after actual native Exit |
@@ -53,3 +53,5 @@ Overwrite cancel/commit, read-only errors and an actual disconnected mount remai
 ## Automatic and namespace checks
 
 `nix flake check` runs the pure invocation, inventory, physical-map, read-only SQLite, actual loopback server, subprocess pipe and ambient-entry rejection regressions. Namespace syscalls are a separate native prerequisite: run `tests/desktop/application_isolation_native.py --output <fresh-directory>` through the pinned development runtime and native warning wrapper. The pure `test_browser_isolation.py` only checks safe preflight and must remain usable in restricted build sandboxes. Optional application runs require the explicit browser dependency and are not inferred from passing unit or namespace checks.
+
+Page-requested fullscreen remains unaccepted: an actual painted-frame probe found a viewport/native-content mapping discrepancy. Logical DOM and compositor fullscreen flags alone are insufficient evidence; this tranche does not close that action.
