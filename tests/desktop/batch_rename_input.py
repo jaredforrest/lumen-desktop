@@ -30,7 +30,7 @@ ShellRoot {
  property var latest:({})
  QtObject {id:exported;property var state:({appName:"",title:"",windowId:0})}
  QtObject {id:stub;property int focusEpoch:0;property var windows:[];property var exportedMenu:exported;function activeFiles(window){}function focusWindow(window){}}
- D.FilesState {id:service;persistViewPreferences:false;preferencesLoaded:true;path:'''+json.dumps(str(docs))+''';viewMode:"list";onBatchRenameReady:reply=>fixture.latest=reply}
+ D.FilesState {id:service;persistViewPreferences:false;preferencesLoaded:true;path:'''+json.dumps(str(docs))+''';viewMode:"list";onBatchRenameReady:reply=>{if(reply.action!=="rename-cancel")fixture.latest=reply}}
  D.FilesWindow {id:files;shell:stub;service:service;visible:true}
  Component.onCompleted:service.navigate(service.path)
  function tree(){return files.contentItem.Window.window.contentItem;}
@@ -67,8 +67,9 @@ def click(name):
  box=wait(lambda:json.loads(ipc('geometry',name)));assert box['visible'],(name,box);native=window()['rect'];call('swaymsg','seat','seat0','cursor','set',str(round(native['x']+box['x']+box['width']/2)),str(round(native['y']+box['y']+box['height']/2)));pointer.stdin.write('m 0.5 0.5\np\nr\n');pointer.stdin.flush();time.sleep(.15)
 def field(name,text):click(name);key('-M','ctrl','-k','a','-m','ctrl');key(text)
 def open_batch():
- key('-M','ctrl','-k','a','-m','ctrl');wait(lambda:len(state()['selection'])==2);key('-k','F2');wait(lambda:state()['open'])
-def preview():click('batch-rename-preview-button');return wait(lambda:state()['reply'].get('action')=='rename-preview' and not state()['error'])
+ wait(lambda:state()['ready']);key('-M','ctrl','-k','a','-m','ctrl');wait(lambda:len(state()['selection'])==2);key('-k','F2');wait(lambda:state()['open'])
+def preview():
+ previous=state()['reply'].get('id',0);click('batch-rename-preview-button');return wait(lambda:state()['reply'].get('action')=='rename-preview' and state()['reply'].get('id',0)>previous and not state()['error'])
 try:
  config=out/'sway.conf';config.write_text('output HEADLESS-1 resolution 1280x900\nxwayland disable\nfor_window [all] floating enable, border pixel 0\n')
  launch([a.sway,'--unsupported-gpu','-c',str(config)],'sway.log');runtime=Path(env['XDG_RUNTIME_DIR']);env['SWAYSOCK']=str(wait(lambda:next(runtime.glob('sway-ipc*.sock'),None)));env['WAYLAND_DISPLAY']=wait(lambda:next((path.name for path in runtime.glob('wayland-*') if not path.name.endswith('.lock')),None))
