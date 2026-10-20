@@ -14,6 +14,9 @@ Singleton {
     property var searchPreferences: ({disabledProviders:[]})
     readonly property real textScale:[1,1.15,1.3,1.5].includes(preferences.textScale)?preferences.textScale:1
     function textSize(base){return Math.round(base*textScale);}
+    // Roles retain their ordinary presentation size at the default text scale.
+    readonly property var typography: ({caption:10,metadata:11,label:12,body:13,subheading:15,title:16,heading:18,display:29})
+    function textRole(role){return textSize(typography[role] === undefined ? typography.body : typography[role]);}
     function textOnOpaqueFill(fill) {
         const color=Qt.color(fill);
         const channels=[color.r,color.g,color.b].map(value=>value<=0.04045?value/12.92:Math.pow((value+0.055)/1.055,2.4));

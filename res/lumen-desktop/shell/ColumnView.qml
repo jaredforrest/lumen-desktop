@@ -46,7 +46,7 @@ Flickable {
                 property alias listView:columnList
                 width: Math.max(200,Math.min(260,root.width/2)); height: columnRow.height
                 Rectangle {anchors.right:parent.right;width:1;height:parent.height;color:Theme.hairline}
-                PanelLabel {x:10;y:3;width:parent.width-20;height:24;text:modelData.name;textFormat:Text.PlainText;font.weight:Font.DemiBold;font.pixelSize:11;color:Theme.colors.muted}
+                PanelLabel {x:10;y:3;width:parent.width-20;height:24;text:modelData.name;textFormat:Text.PlainText;font.weight:Font.DemiBold;font.pixelSize:Theme.textRole("metadata");color:Theme.colors.muted}
                 FilesBandSelection {
                     objectName:"files-column-band-"+columnList.parent.modelData.path
                     parent:columnList;anchors.fill:parent;view:columnList;rows:root.bandRows
@@ -66,12 +66,12 @@ Flickable {
                     delegate:AbstractButton {
                         required property var modelData
                         readonly property bool selected:ListView.view.parent.modelData.path===root.selectionFolder?root.selectedPaths.includes(modelData.path):modelData.path===root.currentPath || root.columns.some(c=>c.path===modelData.path)
-                        width:Math.max(0,ListView.view.width-12-(columnScrollBar.visible?columnScrollBar.width:0));height:28
+                        width:Math.max(0,ListView.view.width-12-(columnScrollBar.visible?columnScrollBar.width:0));height:28+(Theme.textRole("label")-12)
                         Accessible.name:FileLinks.accessible(modelData)+(modelData.directory?", folder":"");Accessible.selected:selected
                         background:Rectangle {radius:5;color:parent.selected?(root.selectionActive?Theme.colors.accent:Theme.selection):parent.hovered?Theme.colors.hover:"transparent";border.color:parent.activeFocus?Theme.colors.accent:"transparent"}
                         contentItem:Item {
                             SystemGlyph {x:7;y:6;width:16;height:16;name:modelData.directory?"folder":"document";ink:parent.parent.selected && root.selectionActive?Theme.colors.selectedText:Theme.colors.accent}
-                            PanelLabel {x:29;width:parent.width-48;height:parent.height;verticalAlignment:Text.AlignVCenter;text:FileLinks.markedLabel(modelData);color:parent.parent.selected && root.selectionActive?Theme.colors.selectedText:Theme.colors.text;textFormat:Text.PlainText;font.pixelSize:12}
+                            PanelLabel {x:29;width:parent.width-48;height:parent.height;verticalAlignment:Text.AlignVCenter;text:FileLinks.markedLabel(modelData);color:parent.parent.selected && root.selectionActive?Theme.colors.selectedText:Theme.colors.text;textFormat:Text.PlainText;font.pixelSize:Theme.textRole("label")}
                             PanelLabel {visible:modelData.directory;anchors.right:parent.right;anchors.rightMargin:6;height:parent.height;verticalAlignment:Text.AlignVCenter;text:"›";color:Theme.colors.muted}
                         }
                         FolderDropTarget {anchors.fill:parent;enabled:modelData.directory;folder:modelData.path;coordinator:root.dropCoordinator}

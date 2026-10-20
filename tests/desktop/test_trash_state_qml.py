@@ -9,7 +9,7 @@ class TrashState(unittest.TestCase):
    root=Path(temporary);assets=ROOT/'res/lumen-desktop/shell'
    for name in ('TrashActionsState.qml','TrashConfirmation.qml','TrashResults.qml','DialogButton.qml','PanelLabel.qml'):shutil.copy(assets/name,root/name)
    (root/'qmldir').write_text('singleton Theme 1.0 Theme.qml\n'+''.join(name+' 1.0 '+name+'.qml\n' for name in ('TrashActionsState','TrashConfirmation','TrashResults','DialogButton','PanelLabel')))
-   (root/'Theme.qml').write_text('pragma Singleton\nimport QtQuick\nQtObject {property string font:"sans-serif";property var colors:({text:"#111111",surface:"#eeeeee",border:"#777777",accent:"#0066bb",selectedText:"#ffffff",hover:"#dddddd"});property color outline:"#777777";property color errorText:"#aa0000";property color destructiveText:"white";property color destructiveFill:"#aa0000";function textSize(value){return value;}}')
+   (root/'Theme.qml').write_text('pragma Singleton\nimport QtQuick\nQtObject {property string font:"sans-serif";property var colors:({text:"#111111",surface:"#eeeeee",border:"#777777",accent:"#0066bb",selectedText:"#ffffff",hover:"#dddddd"});property color outline:"#777777";property color errorText:"#aa0000";property color destructiveText:"white";property color destructiveFill:"#aa0000";function textSize(value){return value;}function textRole(role){return 13;}}')
    (root/'shell.qml').write_text('''import QtQuick
 import QtQuick.Controls
 import Quickshell

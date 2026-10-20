@@ -23,6 +23,9 @@ FloatingWindow {
     visible:false
     implicitWidth:900;implicitHeight:600
     minimumSize:Qt.size(480,320)
+    readonly property int labelRowHeight:31+Theme.textRole("label")-12
+    readonly property int footerHeight:20+Theme.textRole("metadata")-11
+    readonly property bool compactMetadata:width-sidebarWidth<480*Theme.textScale
     color:"transparent"
     surfaceFormat.opaque:false
     property bool minimized:false
@@ -363,10 +366,10 @@ FloatingWindow {
                 }
             }
         }
-        PanelLabel {x:root.sidebarWidth+73;y:14;width:Math.max(0,parent.width-x-195);height:29;verticalAlignment:Text.AlignVCenter;text:root.service.path==="trash:"?"Trash":root.service.path.split("/").filter(Boolean).pop() || "Computer";textFormat:Text.PlainText;font.pixelSize:15;font.weight:Font.DemiBold}
+        PanelLabel {x:root.sidebarWidth+73;y:14;width:Math.max(0,parent.width-x-195);height:29;verticalAlignment:Text.AlignVCenter;text:root.service.path==="trash:"?"Trash":root.service.path.split("/").filter(Boolean).pop() || "Computer";textFormat:Text.PlainText;font.pixelSize:Theme.textRole("subheading");font.weight:Font.DemiBold}
         Row {
             anchors.right:parent.right;anchors.rightMargin:14;y:13;spacing:4
-            DesktopComboBox {width:112;height:30;model:["Icons","List","Columns","Gallery"];currentIndex:["grid","list","columns","gallery"].indexOf(root.service.viewMode);Accessible.name:"Files view";onActivated:index=>root.service.viewMode=["grid","list","columns","gallery"][index]}
+            DesktopComboBox {width:112+(Theme.textRole("body")-13)*5;height:Math.max(30,Theme.textRole("body")+14);model:["Icons","List","Columns","Gallery"];currentIndex:["grid","list","columns","gallery"].indexOf(root.service.viewMode);Accessible.name:"Files view";onActivated:index=>root.service.viewMode=["grid","list","columns","gallery"][index]}
             Repeater {
                 model:[{icon:"info",label:"Preview",action:"preview"},{icon:"more",label:"File actions",action:"menu"}]
                 AbstractButton {
@@ -397,7 +400,7 @@ FloatingWindow {
             onFilesDropped:(urls,destination)=>root.service.drop(urls,destination)
         }
         Row {x:root.sidebarWidth+14;y:parent.height-98;visible:!!root.service.currentJob;width:parent.width-x-14;height:36;spacing:8
-            PanelLabel {width:parent.width-78;anchors.verticalCenter:parent.verticalCenter;font.pixelSize:11;textFormat:Text.PlainText
+            PanelLabel {width:parent.width-78;anchors.verticalCenter:parent.verticalCenter;font.pixelSize:Theme.textRole("metadata");textFormat:Text.PlainText
                 text:root.service.currentJob?root.service.currentJob.operation+" · "+root.service.currentJob.completed+"/"+root.service.currentJob.total+" · "+root.service.currentJob.state+(root.service.working?" · "+(root.service.currentJob.bytes/1048576).toFixed(1)+" MB":""):""
                 Accessible.name:text
             }
@@ -416,7 +419,7 @@ FloatingWindow {
             contentItem:ScrollView {id:tagsEditorScroll;clip:true;ScrollBar.vertical:DesktopScrollBar {}
               Column {width:tagsEditorScroll.availableWidth;spacing:7
                 PanelLabel {text:"Colour Tags";font.weight:Font.DemiBold}
-                PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:root.tagsError?root.tagsError:"Stored in file metadata; filter with tag:red or another colour. Links are not followed.";font.pixelSize:11;color:Theme.colors.muted}
+                PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:root.tagsError?root.tagsError:"Stored in file metadata; filter with tag:red or another colour. Links are not followed.";font.pixelSize:Theme.textRole("metadata");color:Theme.colors.muted}
                 Repeater {model:root.colourTags
                     CheckBox {required property var modelData;text:modelData.label;checked:root.selectedTags.includes(modelData.id);enabled:root.tagsSupported;palette.windowText:Theme.colors.text
                         onToggled:root.selectedTags=checked?root.selectedTags.concat([modelData.id]):root.selectedTags.filter(tag=>tag!==modelData.id)
@@ -435,7 +438,7 @@ FloatingWindow {
             contentItem:ScrollView {id:viewOptionsScroll;clip:true;ScrollBar.vertical:DesktopScrollBar {}
               Column {width:viewOptionsScroll.availableWidth;spacing:10
                 PanelLabel {text:"View Options";font.weight:Font.DemiBold}
-                PanelLabel {width:parent.width;text:"Preferences are saved as defaults for Files windows.";wrapMode:Text.WordWrap;font.pixelSize:11;color:Theme.colors.muted}
+                PanelLabel {width:parent.width;text:"Preferences are saved as defaults for Files windows.";wrapMode:Text.WordWrap;font.pixelSize:Theme.textRole("metadata");color:Theme.colors.muted}
                 DesktopComboBox {width:parent.width;model:["Name","Modified","Size","Kind"];currentIndex:["name","modified","size","kind"].indexOf(root.service.sort);Accessible.name:"Sort files";onActivated:index=>{root.service.sort=["name","modified","size","kind"][index];root.service.refresh();}}
                 SettingsToggle {width:parent.width;text:"Descending order";checked:root.service.descending;onClicked:{root.service.descending=checked;root.service.refresh();}}
                 SettingsToggle {width:parent.width;text:"Keep folders on top";checked:root.service.foldersFirst;onClicked:{root.service.foldersFirst=checked;root.service.refresh();}}
@@ -457,7 +460,7 @@ FloatingWindow {
             placeholderTextColor:Theme.colors.muted;selectionColor:Theme.colors.accent;selectedTextColor:Theme.colors.selectedText
 
             id:filter;x:root.sidebarWidth+14;y:66+root.tabHeight;width:parent.width-x-14;height:30
-            placeholderText:"Filter folder or tag:red";font.family:Theme.font;font.pixelSize:12;color:Theme.colors.text;selectByMouse:true
+            placeholderText:"Filter folder or tag:red";font.family:Theme.font;font.pixelSize:Theme.textRole("label");color:Theme.colors.text;selectByMouse:true
             Accessible.name:"Filter this folder"
             background:Rectangle {radius:7;color:Theme.colors.background;border.color:filter.activeFocus?Theme.colors.accent:Theme.hairline}
             onTextEdited:filterDelay.restart()
@@ -468,7 +471,7 @@ FloatingWindow {
         PanelLabel {
             id:message;x:root.sidebarWidth+14;y:103+root.tabHeight;width:parent.width-x-14;height:visible?48:0
             visible:root.service.error!=="" || root.service.warning!==""
-            text:root.service.error || root.service.warning;wrapMode:Text.WrapAnywhere;textFormat:Text.PlainText;font.pixelSize:12;color:Theme.colors.muted;elide:Text.ElideRight;maximumLineCount:3
+            text:root.service.error || root.service.warning;wrapMode:Text.WrapAnywhere;textFormat:Text.PlainText;font.pixelSize:Theme.textRole("label");color:Theme.colors.muted;elide:Text.ElideRight;maximumLineCount:3
             MouseArea {anchors.fill:parent;onClicked:errorDetails.open()}
             Accessible.name:"Operation details: "+text
             Accessible.onPressAction:errorDetails.open()
@@ -486,13 +489,13 @@ FloatingWindow {
         Item {
             id:files;x:root.sidebarWidth+10;y:message.visible?message.y+message.height+8:105+root.tabHeight
             width:parent.width-x-10-(root.previewOpen?Math.min(280,(parent.width-root.sidebarWidth)*0.43):0)
-            height:parent.height-y-64-(root.service.currentJob?40:0)
+            height:parent.height-y-64-(root.footerHeight-20)-(Theme.textRole("body")-13)-(root.service.currentJob?40:0)
             enabled:!root.service.busy
             Row {
-                id:headings;visible:root.listMode;width:Math.max(0,parent.width-root.selectionGutter-(listScrollBar.visible?listScrollBar.width:0));height:26
+                id:headings;visible:root.listMode;width:Math.max(0,parent.width-root.selectionGutter-(listScrollBar.visible?listScrollBar.width:0));height:Math.max(26,Theme.textRole("body")+12)
                 Repeater {
-                    model:[{key:"name",label:"Name",fraction:0.55},{key:"modified",label:"Modified",fraction:0.27},{key:"size",label:"Size",fraction:0.18}]
-                    ControlRow {required property var modelData;width:headings.width*modelData.fraction;height:26;topPadding:3;bottomPadding:3;text:modelData.label+(root.service.sort===modelData.key?(root.service.descending?" ↓":" ↑"):"");onClicked:root.sortBy(modelData.key)}
+                    model:root.compactMetadata?[{key:"name",label:"Name",fraction:1}]:[{key:"name",label:"Name",fraction:0.55},{key:"modified",label:"Modified",fraction:0.27},{key:"size",label:"Size",fraction:0.18}]
+                    ControlRow {required property var modelData;width:headings.width*modelData.fraction;height:Math.max(26,implicitHeight);topPadding:3;bottomPadding:3;text:modelData.label+(root.service.sort===modelData.key?(root.service.descending?" ↓":" ↑"):"");contentItem:PanelLabel {text:parent.text;elide:Text.ElideRight;verticalAlignment:Text.AlignVCenter}onClicked:root.sortBy(modelData.key)}
                 }
             }
             ListView {
@@ -502,11 +505,11 @@ FloatingWindow {
                 ScrollBar.vertical:DesktopScrollBar {id:listScrollBar}
                 delegate:Rectangle {
                     required property var modelData;required property int index
-                    width:Math.max(0,list.width-root.selectionGutter-(listScrollBar.visible?listScrollBar.width:0));height:31;radius:5;color:root.isSelected(index)?root.selectionFill:index%2?Theme.colors.background:"transparent"
+                    width:Math.max(0,list.width-root.selectionGutter-(listScrollBar.visible?listScrollBar.width:0));height:root.labelRowHeight;radius:5;color:root.isSelected(index)?root.selectionFill:index%2?Theme.colors.background:"transparent"
                     SystemGlyph {x:8;anchors.verticalCenter:parent.verticalCenter;name:modelData.directory?"folder":"document";width:18;height:18;ink:root.isSelected(index)?root.selectionText:Theme.colors.accent}
-                    PanelLabel {x:34;anchors.verticalCenter:parent.verticalCenter;width:parent.width*.55-40;text:FileLinks.markedLabel(modelData);textFormat:Text.PlainText;color:root.isSelected(index)?root.selectionText:Theme.colors.text;font.pixelSize:12}
-                    PanelLabel {x:parent.width*.55+8;anchors.verticalCenter:parent.verticalCenter;width:parent.width*.27-10;text:Qt.formatDateTime(new Date(modelData.mtime*1000),"dd MMM yyyy");font.pixelSize:11;color:root.isSelected(index)?root.selectionText:Theme.colors.muted}
-                    PanelLabel {x:parent.width*.82+8;anchors.verticalCenter:parent.verticalCenter;width:parent.width*.18-12;text:root.sizeText(modelData);font.pixelSize:11;color:root.isSelected(index)?root.selectionText:Theme.colors.muted}
+                    PanelLabel {x:34;anchors.verticalCenter:parent.verticalCenter;width:parent.width*(root.compactMetadata?1:.55)-40;text:FileLinks.markedLabel(modelData);textFormat:Text.PlainText;color:root.isSelected(index)?root.selectionText:Theme.colors.text;font.pixelSize:Theme.textRole("label")}
+                    PanelLabel {visible:!root.compactMetadata;x:parent.width*.55+8;anchors.verticalCenter:parent.verticalCenter;width:parent.width*.27-10;text:Qt.formatDateTime(new Date(modelData.mtime*1000),"dd MMM yyyy");font.pixelSize:Theme.textRole("metadata");color:root.isSelected(index)?root.selectionText:Theme.colors.muted}
+                    PanelLabel {visible:!root.compactMetadata;x:parent.width*.82+8;anchors.verticalCenter:parent.verticalCenter;width:parent.width*.18-12;text:root.sizeText(modelData);font.pixelSize:Theme.textRole("metadata");color:root.isSelected(index)?root.selectionText:Theme.colors.muted}
                     FolderDropTarget {anchors.fill:parent;enabled:modelData.directory && root.service.path!=="trash:";folder:modelData.path;coordinator:fileDrop}
                     MouseArea {anchors.fill:parent;acceptedButtons:Qt.LeftButton|Qt.RightButton;drag.target:dragGhost
                         onPressed:event=>{if(event.button===Qt.LeftButton && !event.modifiers && !root.isSelected(index))root.choose(index,event.modifiers);}
@@ -516,7 +519,7 @@ FloatingWindow {
                 }
             }
             GridView {
-                id:grid;objectName:"files-grid-view";visible:root.service.viewMode==="grid";anchors.fill:parent;cellWidth:108;cellHeight:108;clip:true;model:root.service.rows
+                id:grid;objectName:"files-grid-view";visible:root.service.viewMode==="grid";anchors.fill:parent;cellWidth:108+(Theme.textRole("label")-12)*4;cellHeight:108+(Theme.textRole("label")-12)*3;clip:true;model:root.service.rows
                 ScrollBar.vertical:DesktopScrollBar {id:gridScrollBar}
                 delegate:Item {
                     required property var modelData;required property int index
@@ -527,8 +530,8 @@ FloatingWindow {
                     Image {id:thumbnail;property bool failed:false;onStatusChanged:if(status===Image.Error)failed=true;visible:!modelData.directory && ["image/png","image/jpeg","image/webp","image/gif","image/bmp"].includes(modelData.kind) && modelData.size<=33554432 && !failed;x:(parent.width-60)/2;y:8;width:60;height:54;source:visible?modelData.uri:"";sourceSize:Qt.size(120,108);fillMode:Image.PreserveAspectFit;asynchronous:true}
                     SystemGlyph {visible:!modelData.directory && !thumbnail.visible;x:(parent.width-36)/2;y:14;width:36;height:40;name:"document";ink:Theme.colors.muted}
                     PanelLabel {visible:modelData.link;x:22;y:45;text:FileLinks.badge(modelData);font.pixelSize:16}
-                    Rectangle {x:3;y:70;width:parent.width-6;height:30;radius:4;color:root.isSelected(index)?root.selectionFill:"transparent"}
-                    PanelLabel {x:5;y:70;width:parent.width-10;height:30;text:FileLinks.label(modelData);textFormat:Text.PlainText;horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter;wrapMode:Text.Wrap;maximumLineCount:2;font.pixelSize:12;color:root.isSelected(index)?root.selectionText:Theme.colors.text}
+                    Rectangle {x:3;y:70;width:parent.width-6;height:30+(Theme.textRole("label")-12)*3;radius:4;color:root.isSelected(index)?root.selectionFill:"transparent"}
+                    PanelLabel {x:5;y:70;width:parent.width-10;height:30+(Theme.textRole("label")-12)*3;text:FileLinks.label(modelData);textFormat:Text.PlainText;horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter;wrapMode:Text.Wrap;maximumLineCount:2;font.pixelSize:Theme.textRole("label");color:root.isSelected(index)?root.selectionText:Theme.colors.text}
                     FolderDropTarget {anchors.fill:parent;enabled:modelData.directory && root.service.path!=="trash:";folder:modelData.path;coordinator:fileDrop}
                     MouseArea {anchors.fill:parent;acceptedButtons:Qt.LeftButton|Qt.RightButton;drag.target:dragGhost
                         onPressed:event=>{if(event.button===Qt.LeftButton && !event.modifiers && !root.isSelected(index))root.choose(index,event.modifiers);}
@@ -541,7 +544,7 @@ FloatingWindow {
             ColumnView {id:columnView;selectedPaths:root.bandPreviewPaths===null?root.selectedPaths:root.bandPreviewPaths;bandBasePaths:root.selectedPaths;bandRows:root.service.rows;bandPermitted:root.bandPermitted;bandContext:root.bandContext;bandCurrent:root.selected;bandAnchor:root.selectionAnchor;selectionFolder:root.service.path;onBandBegan:root.cancelPendingPresentation();onBandPreviewed:paths=>root.bandPreviewPaths=paths;onBandCommitted:value=>root.commitBand(value);onBandCanceled:reason=>root.cancelBand(reason);selectionActive:root.selectionActive;dropCoordinator:fileDrop;visible:root.columnsMode;anchors.fill:parent;columns:root.service.columns;currentPath:root.current?root.current.path:"";onChosen:(path,directory)=>{if(directory)root.navigate(path);else {const index=root.service.rows.findIndex(r=>r.path===path);if(index>=0)root.choose(index,0);else {root.service.nextSelection=path;root.navigate(path.slice(0,path.lastIndexOf("/")) || "/");}}}}
             Item {visible:root.galleryMode;anchors.fill:parent
                 FilePreview {resourceRetirement:root.service.previewResourceRetirement;x:12;y:0;width:parent.width-24;height:Math.max(60,parent.height-118);result:root.current?root.service.preview:{text:"Select an item"};active:root.visible && root.galleryMode;loading:root.service.previewBusy;onPageRequested:number=>root.service.requestPreview(root.current.path,number)}
-                ListView {id:galleryStrip;objectName:"files-gallery-view";anchors.bottom:parent.bottom;width:parent.width;height:104;orientation:ListView.Horizontal;clip:true;spacing:5;model:root.service.rows;ScrollBar.horizontal:DesktopScrollBar {id:galleryScrollBar}
+                ListView {id:galleryStrip;objectName:"files-gallery-view";anchors.bottom:parent.bottom;width:parent.width;height:104+(Theme.textRole("metadata")-11)*3;orientation:ListView.Horizontal;clip:true;spacing:5;model:root.service.rows;ScrollBar.horizontal:DesktopScrollBar {id:galleryScrollBar}
                     delegate:AbstractButton {required property var modelData;required property int index;width:92;height:Math.max(1,galleryStrip.height-root.selectionGutter-(galleryScrollBar.visible?galleryScrollBar.height:0));
                         FolderDropTarget {anchors.fill:parent;enabled:modelData.directory && root.service.path!=="trash:";folder:modelData.path;coordinator:fileDrop}
 Accessible.name:FileLinks.accessible(modelData);Accessible.selected:root.isSelected(index);onClicked:root.choose(index,0);onDoubleClicked:root.openCurrent()
@@ -549,7 +552,7 @@ Accessible.name:FileLinks.accessible(modelData);Accessible.selected:root.isSelec
                         contentItem:Item {
                             Image {id:galleryThumb;anchors.horizontalCenter:parent.horizontalCenter;y:4;width:72;height:46;source:modelData.directory?"icons/folder.svg":(["image/png","image/jpeg","image/webp","image/gif","image/bmp"].includes(modelData.kind) && modelData.size<=33554432?modelData.uri:"");sourceSize:Qt.size(144,92);fillMode:Image.PreserveAspectFit;asynchronous:true}
                             SystemGlyph {visible:!galleryThumb.source || galleryThumb.status===Image.Error;anchors.horizontalCenter:parent.horizontalCenter;y:5;width:36;height:42;name:"document";ink:Theme.colors.muted}
-                            PanelLabel {y:52;width:parent.width;height:Math.max(0,parent.height-52);text:FileLinks.markedLabel(modelData);textFormat:Text.PlainText;wrapMode:Text.Wrap;maximumLineCount:2;horizontalAlignment:Text.AlignHCenter;font.pixelSize:11}}
+                            PanelLabel {y:52;width:parent.width;height:Math.max(0,parent.height-52);text:FileLinks.markedLabel(modelData);textFormat:Text.PlainText;wrapMode:Text.Wrap;maximumLineCount:2;horizontalAlignment:Text.AlignHCenter;font.pixelSize:Theme.textRole("metadata")}}
                     }
                 }
             }
@@ -562,28 +565,28 @@ Accessible.name:FileLinks.accessible(modelData);Accessible.selected:root.isSelec
             Column {
                 x:12;width:parent.width-12;spacing:10
                 PanelLabel {width:parent.width;text:root.current?root.current.name:"Select an item";textFormat:Text.PlainText;wrapMode:Text.WrapAnywhere;maximumLineCount:3;font.weight:Font.DemiBold}
-                PanelLabel {width:parent.width;text:root.current?(root.current.directory?"Folder":root.sizeText(root.current)):"";color:Theme.colors.muted;font.pixelSize:11}
+                PanelLabel {width:parent.width;text:root.current?(root.current.directory?"Folder":root.sizeText(root.current)):"";color:Theme.colors.muted;font.pixelSize:Theme.textRole("metadata")}
                 PreviewResourceConsumer {manager:root.service.previewResourceRetirement;sourceObjects:[sidebarPreviewImage]}
                 Image {id:sidebarPreviewImage;visible:root.service.preview.type==="image";width:parent.width;height:visible?Math.max(80,previewPane.height-105):0;source:visible?root.service.preview.uri || "":"";sourceSize:Qt.size(800,800);fillMode:Image.PreserveAspectFit;asynchronous:true;PanelLabel {visible:parent.status===Image.Error;anchors.centerIn:parent;text:"Preview unavailable";color:Theme.colors.muted}}
                 Flickable {
                     visible:root.service.preview.type!=="image";width:parent.width;height:Math.max(40,previewPane.height-110);clip:true;contentHeight:previewText.height;contentWidth:width
-                    PanelLabel {id:previewText;width:parent.width;text:root.current?root.service.preview.text || root.service.preview.error || (root.service.previewBusy?"Loading preview…":"Preview unavailable"):"";textFormat:Text.PlainText;wrapMode:Text.WrapAnywhere;elide:Text.ElideNone;font.pixelSize:12}
+                    PanelLabel {id:previewText;width:parent.width;text:root.current?root.service.preview.text || root.service.preview.error || (root.service.previewBusy?"Loading preview…":"Preview unavailable"):"";textFormat:Text.PlainText;wrapMode:Text.WrapAnywhere;elide:Text.ElideNone;font.pixelSize:Theme.textRole("label")}
                 }
-                PanelLabel {visible:!!root.service.preview.truncated;text:"Preview shortened";font.pixelSize:10;color:Theme.colors.muted}
+                PanelLabel {visible:!!root.service.preview.truncated;text:"Preview shortened";font.pixelSize:Theme.textRole("caption");color:Theme.colors.muted}
             }
         }
         Flickable {
-            id:pathbar;onContentWidthChanged:Qt.callLater(()=>contentX=Math.max(0,contentWidth-width));x:root.sidebarWidth+12;y:parent.height-57;width:parent.width-x-12;height:25;contentWidth:crumbs.width;clip:true
+            id:pathbar;onContentWidthChanged:Qt.callLater(()=>contentX=Math.max(0,contentWidth-width));x:root.sidebarWidth+12;y:parent.height-57-(root.footerHeight-20);width:parent.width-x-12;height:25+(Theme.textRole("body")-13);contentWidth:crumbs.width;clip:true
             Row {
                 id:crumbs;spacing:1
                 Repeater {
                     model:root.displayCrumbs()
-                    ControlRow {required property var modelData;text:modelData.name+"  ›";height:25;topPadding:3;bottomPadding:3;width:Math.min(220,Math.max(40,labelMetrics.advanceWidth(modelData.name)+46));enabled:!root.service.busy;onClicked:root.navigate(modelData.path)}
+                    ControlRow {required property var modelData;text:modelData.name+"  ›";height:25+(Theme.textRole("body")-13);contentItem:PanelLabel {text:parent.text;verticalAlignment:Text.AlignVCenter;elide:Text.ElideRight}topPadding:3;bottomPadding:3;width:Math.min(220,Math.max(40,labelMetrics.advanceWidth(modelData.name)+46));enabled:!root.service.busy;onClicked:root.navigate(modelData.path)}
                 }
             }
         }
-        FontMetrics {id:labelMetrics;font.family:Theme.font;font.pixelSize:13}
-        PanelLabel {x:root.sidebarWidth+14;y:parent.height-28;width:parent.width-x-14;height:20;text:root.service.busy?"Loading…":root.selectedPaths.length?root.selectedPaths.length+" selected · "+root.service.rows.length+" items":root.service.stagedPath?(root.service.stagedAction==="move"?"Move":"Copy")+" ready · Navigate to a destination and Paste":root.service.rows.length+(root.service.rows.length===1?" item":" items")+(root.service.hidden?" · Hidden items shown":"");font.pixelSize:11;color:Theme.colors.muted}
+        FontMetrics {id:labelMetrics;font.family:Theme.font;font.pixelSize:Theme.textRole("body")}
+        PanelLabel {x:root.sidebarWidth+14;y:parent.height-root.footerHeight-8;width:parent.width-x-14;height:root.footerHeight;text:root.service.busy?"Loading…":root.selectedPaths.length?root.selectedPaths.length+" selected · "+root.service.rows.length+" items":root.service.stagedPath?(root.service.stagedAction==="move"?"Move":"Copy")+" ready · Navigate to a destination and Paste":root.service.rows.length+(root.service.rows.length===1?" item":" items")+(root.service.hidden?" · Hidden items shown":"");font.pixelSize:Theme.textRole("metadata");color:Theme.colors.muted}
         TrashConfirmation {state:trashActions}
         TrashResults {id:trashResults;state:trashActions}
         Connections {target:trashActions;function onErrorChanged(){if(trashActions.error)trashResults.open();}function onBusyChanged(){if(trashActions.busy)trashResults.open();}}
@@ -604,7 +607,7 @@ Accessible.name:FileLinks.accessible(modelData);Accessible.selected:root.isSelec
                     model:[{label:"Open",action:"open",enabled:!!root.current},{label:"Open With…",action:"open-with",enabled:!!root.current && !root.current.directory},{label:NearbySharingState.label+"…",action:"nearby-send",enabled:NearbySharingState.canSend && root.selectedPaths.length>0 && root.selectedPaths.every(p=>root.service.rows.some(r=>r.path===p && !r.directory)) && root.service.path!=="trash:"},{label:NearbySharingState.label+" Receiving…",action:"nearby-open",enabled:NearbySharingState.available},{separator:true,label:""},{label:"New Tab",action:"new-tab",enabled:true},{label:"New Window",action:"new-window",enabled:true},{label:"New Folder…",action:"mkdir",enabled:root.service.writable},{label:"Rename…",action:"rename",enabled:root.selectedPaths.length>0 && root.service.path!=="trash:" && !root.service.working},{separator:true,label:""},{label:"Copy",action:"copy",enabled:!!root.current},{label:"Cut",action:"move",enabled:!!root.current},{label:"View Options…",action:"view-options",enabled:true},{label:"Colour Tags…",action:"tags",enabled:root.selectedPaths.length===1 && root.service.path!=="trash:"},{label:"Make Symbolic Link",action:"make-link",enabled:root.selectedPaths.length===1 && root.service.path!=="trash:" && root.service.writable},{label:"Duplicate",action:"duplicate",enabled:root.selectedPaths.length>0 && root.service.writable && root.service.path!=="trash:" && !root.service.working},{label:"Paste",action:"paste",enabled:root.service.writable},{label:"Paste Keeping Both",action:"paste-both",enabled:root.service.writable},{label:"Undo Last Move",action:"undo",enabled:root.service.canUndo},{separator:true,label:""},{label:"Put Back",action:"restore",enabled:root.service.path==="trash:" && !!root.current},{label:"Delete Permanently…",action:"permanent-delete",enabled:root.service.path==="trash:" && root.selectedPaths.length>0 && !trashActions.busy},{label:"Empty Trash…",action:"empty-trash",enabled:root.service.path==="trash:" && !trashActions.busy},{label:"Trash Results…",action:"trash-results",enabled:root.service.path==="trash:"},{label:"Move to Trash…",action:"trash",enabled:root.service.path!=="trash:" && !!root.current},{separator:true,label:""},{label:"Go to Folder…",action:"goto",enabled:true},{label:root.service.hidden?"Hide Hidden Files":"Show Hidden Files",action:"hidden",enabled:true},{label:"Refresh",action:"refresh",enabled:true}]
                     ControlRow {
                         objectName:"files-action-"+modelData.action
-                        required property var modelData;width:208;height:modelData.separator?9:30;text:modelData.label;Rectangle {visible:!!modelData.separator;x:8;width:parent.width-16;height:1;anchors.verticalCenter:parent.verticalCenter;color:Theme.hairline}enabled:!modelData.separator && modelData.enabled && !root.service.busy
+                        required property var modelData;width:208;height:modelData.separator?9:Math.max(30,implicitHeight);text:modelData.label;Rectangle {visible:!!modelData.separator;x:8;width:parent.width-16;height:1;anchors.verticalCenter:parent.verticalCenter;color:Theme.hairline}enabled:!modelData.separator && modelData.enabled && !root.service.busy
                         onClicked:{
                             const sharing=actions.sharingIntent;
                             const sharingCurrent=FileShareIntent.current(sharing,{path:root.service.path,tab:root.activeTabId},root.selectedPaths,root.service.rows);
@@ -653,11 +656,11 @@ Accessible.name:FileLinks.accessible(modelData);Accessible.selected:root.isSelec
             background:Rectangle {radius:14;color:Theme.colors.background;border.color:Theme.outline}
             contentItem:Column {
                 spacing:14
-                PanelLabel {width:parent.width;text:editor.action==="trash"?"Move to Trash?":editor.action==="rename"?"Rename":editor.action==="goto"?"Go to Folder":"New Folder";font.pixelSize:18;font.weight:Font.DemiBold}
+                PanelLabel {width:parent.width;text:editor.action==="trash"?"Move to Trash?":editor.action==="rename"?"Rename":editor.action==="goto"?"Go to Folder":"New Folder";font.pixelSize:Theme.textRole("heading");font.weight:Font.DemiBold}
                 PanelLabel {visible:editor.action==="trash";width:parent.width;text:editor.label+" will be moved to Trash.";textFormat:Text.PlainText;wrapMode:Text.WrapAnywhere}
                 TextField {
             placeholderTextColor:Theme.colors.muted;selectionColor:Theme.colors.accent;selectedTextColor:Theme.colors.selectedText
-id:entry;visible:editor.action!=="trash";width:parent.width;height:34;color:Theme.colors.text;font.family:Theme.font;selectByMouse:true;placeholderText:editor.action==="goto"?"Folder path":"Name";Accessible.name:placeholderText;background:Rectangle{radius:6;color:Theme.colors.field;border.color:Theme.colors.accent} onAccepted:if(text)root.submit()}
+id:entry;visible:editor.action!=="trash";width:parent.width;height:Math.max(34,Theme.textRole("body")+16);font.pixelSize:Theme.textRole("body");color:Theme.colors.text;font.family:Theme.font;selectByMouse:true;placeholderText:editor.action==="goto"?"Folder path":"Name";Accessible.name:placeholderText;background:Rectangle{radius:6;color:Theme.colors.field;border.color:Theme.colors.accent} onAccepted:if(text)root.submit()}
                 Row {
                     spacing:8
                     DialogButton {id:cancelEditor;width:110;text:"Cancel";defaultAction:editor.action==="trash";onClicked:editor.close()}

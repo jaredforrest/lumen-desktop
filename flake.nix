@@ -76,6 +76,9 @@
         test-offscreen-font-config = (import ./packages/font-configuration.nix { inherit pkgs; }) {
           fontDirectories = [ "${pkgs.dejavu_fonts}/share/fonts" ];
         };
+        test-owned-font-config = (import ./packages/font-configuration.nix { inherit pkgs; }) {
+          fontDirectories = [ "${pkgs.callPackage ./packages/interlude.nix {}}/share/fonts" "${pkgs.dejavu_fonts}/share/fonts" ];
+        };
         test-application-software-driver = pkgs.mesa;
         shell-runtime = quickshell;
         test-physical-keyboard = import ./tests/desktop/physical_keyboard_driver.nix { inherit pkgs; };
