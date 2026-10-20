@@ -2,6 +2,7 @@
 from fixture_resources import close_reaped_pipes
 import argparse,json,os,re,shutil,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
+from fixture_providers import isolate_providers
 p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--launcher',required=True);p.add_argument('--sway',default='sway');p.add_argument('--at-spi-prefix',type=Path,default=os.environ.get('LUMEN_TEST_AT_SPI'));p.add_argument('--effects',action='store_true');p.add_argument('--pointer-tool',required=True);p.add_argument('--inside',action='store_true');a=p.parse_args()
 if not a.at_spi_prefix:p.error('Provide --at-spi-prefix or use the pinned desktop-test-python runtime')
 if not a.inside:
@@ -50,6 +51,7 @@ def wait(callback,description):
 
 def call(*args):return sp.check_output(args,env=env,text=True,timeout=8).strip()
 assets=out/'assets';shutil.copytree(Path(env['LUMEN_NOTIFICATION_HELPER']).parent.parent,assets)
+isolate_providers(assets/'shell',out)
 source=assets/'shell';fixture=source
 bridge=source/'GlobalMenu.qml';bridge.chmod(0o600);bridge.write_text(bridge.read_text().replace('id: bridge','id: bridge\n        stderr:SplitParser {onRead:line=>console.warn("Bridge fixture: ",line)}',1))
 (source/'shell.qml').chmod(0o600)

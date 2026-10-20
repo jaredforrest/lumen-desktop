@@ -1,6 +1,7 @@
 """Isolated installed-shell smoke. Run with the normal desktop account, never root."""
 import argparse,json,os,re,shlex,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
+from fixture_providers import isolate_providers
 
 parser=argparse.ArgumentParser()
 parser.add_argument('--output',type=Path,required=True)
@@ -29,6 +30,8 @@ launcher=Path(shutil.which(args.launcher) or args.launcher)
 script=launcher.read_text();prefix,tail=re.split(r'\n[ \t]*exec quickshell ',script,maxsplit=1)
 assets=args.assets.resolve() if args.assets else Path(shlex.split(tail)[-1]).resolve()
 run=args.output.resolve();run.mkdir(parents=True,exist_ok=False)
+source_assets=assets;copied_assets=run/'assets';shutil.copytree(source_assets.parent,copied_assets);assets=copied_assets/source_assets.name
+isolate_providers(assets,run)
 # Unix-domain socket paths have a short length limit, independent of output path.
 runtime=Path(os.environ['XDG_RUNTIME_DIR'])
 # Reuse only the pinned installed runtime exports; never run its final launcher.

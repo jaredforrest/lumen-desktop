@@ -4,6 +4,7 @@ All windows, session bus, process control and document writes are disposable.
 """
 import argparse,json,os,re,shlex,shutil,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
+from fixture_providers import isolate_providers
 from PIL import Image
 p=argparse.ArgumentParser();p.add_argument('--sway',required=True);p.add_argument('--launcher',required=True,type=Path);p.add_argument('--output',required=True,type=Path);p.add_argument('--inside',action='store_true');a=p.parse_args()
 if not a.inside:
@@ -21,6 +22,7 @@ for key in ('PATH','GLOBAL_MENU_PYTHON','QT_PLUGIN_PATH','QML_IMPORT_PATH'):
 env.update(WLR_BACKENDS='headless',WLR_RENDERER='pixman',WLR_LIBINPUT_NO_DEVICES='1',QT_QPA_PLATFORM='wayland',QT_QUICK_BACKEND='software',QT_QPA_PLATFORMTHEME='generic',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none',GLOBAL_MENU_ENABLED='0',LUMEN_FILE_SERVICE='0',LUMEN_LAUNCH_SCOPES='0',GDK_BACKEND='wayland')
 for key in ('WAYLAND_DISPLAY','DISPLAY','SWAYSOCK'):env.pop(key,None)
 assets=out/'assets';shutil.copytree(source,assets);shell=assets/'shell';original=(shell/'shell.qml').read_text();head,tail=original.rsplit('\n}',1)
+isolate_providers(shell,out)
 (shell/'shell.qml').write_text(head+'''
  IpcHandler {target:"lifecycleAudit"
   function status():string {const e=DesktopEntries.byId("org.example.Lifecycle");return JSON.stringify({command:applicationLifecycle.observer.command,observerRunning:applicationLifecycle.observer.running,recoveryAvailable:applicationLifecycle.recoveryAvailable,available:applicationLifecycle.available,observerError:applicationLifecycle.error,apps:root.runningApplications,entry:!!e,running:e?root.runningFor(e):false,error:root.applicationCommandError,pending:applicationLifecycle.pending,extras:root.runningExtras.map(e=>e.id)});}

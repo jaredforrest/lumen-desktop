@@ -1,6 +1,7 @@
 """Real Files main/utility association in a disposable native Qt session."""
 import argparse,json,os,re,shutil,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
+from fixture_providers import isolate_providers
 p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--launcher',type=Path,required=True);p.add_argument('--sway',required=True);p.add_argument('--full-shell',action='store_true');p.add_argument('--inside',action='store_true');p.add_argument('--effects',action='store_true');a=p.parse_args()
 if not a.inside:
  with tempfile.TemporaryDirectory(prefix='lumen-owned-window-') as private:
@@ -52,6 +53,7 @@ ShellRoot {
  }
 }''')
 if a.full_shell:
+ isolate_providers(out/'assets/shell',out)
  qml=out/'assets/shell/shell.qml'
  original=qml.read_text();head,tail=original.rsplit('}',1)
  standalone=(out/'shell.qml').read_text()

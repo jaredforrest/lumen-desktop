@@ -3,6 +3,7 @@ import argparse
 import json
 import os
 from pathlib import Path
+from fixture_providers import isolate_providers
 import re
 import shutil
 import signal
@@ -51,6 +52,7 @@ def nodes(node):
     for child in node.get('nodes',[])+node.get('floating_nodes',[]):yield from nodes(child)
 fixture=out/'assets'/'shell'
 shutil.copytree(source.parent,out/'assets',symlinks=True)
+isolate_providers(fixture,out)
 original=(source/'shell.qml').read_text()
 addition='''
     FileInfoWindow {id:auditInfo}

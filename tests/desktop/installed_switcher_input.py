@@ -1,6 +1,7 @@
 """Full installed shell switching through native keys and service-PID routing."""
 import argparse,hashlib,json,os,re,shutil,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
+from fixture_providers import isolate_providers
 p=argparse.ArgumentParser();p.add_argument('--launcher',required=True);p.add_argument('--action',required=True);p.add_argument('--sway',required=True);p.add_argument('--effects',action='store_true');p.add_argument('--output',type=Path,required=True);p.add_argument('--inside',action='store_true');a=p.parse_args()
 if not a.inside:
     private=tempfile.mkdtemp(prefix='lumen-switch-');env=dict(os.environ,HOME=private,XDG_RUNTIME_DIR=private)
@@ -32,6 +33,7 @@ def wait(callback,description):
 
 def call(*parts):return sp.check_output(parts,env=env,text=True,timeout=8).strip()
 assets=out/'assets';shutil.copytree(Path(env['LUMEN_NOTIFICATION_HELPER']).parent.parent,assets);source=assets/'shell'
+isolate_providers(source,out)
 text=(source/'shell.qml').read_text();assert text.count('        window.activate();')==1
 # Fault injection disables only the first activation request, exercising the
 # actual installed fallback. It never supplies windows, grouping or targets.

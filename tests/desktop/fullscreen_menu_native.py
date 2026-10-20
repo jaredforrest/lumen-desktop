@@ -2,6 +2,7 @@
 from fixture_resources import close_reaped_pipes
 import argparse,json,os,re,shutil,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
+from fixture_providers import isolate_providers
 p=argparse.ArgumentParser();p.add_argument('--output',type=Path,required=True);p.add_argument('--launcher',type=Path,required=True);p.add_argument('--sway',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--effects',action='store_true');p.add_argument('--inside',action='store_true');a=p.parse_args()
 if not a.inside:
     with tempfile.TemporaryDirectory(prefix='lumen-device-input-',ignore_cleanup_errors=True) as private:
@@ -18,6 +19,7 @@ env.update(WLR_BACKENDS='headless',WLR_RENDERER='gles2' if a.effects else 'pixma
 for key in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK','AT_SPI_BUS_ADDRESS'):env.pop(key,None)
 palettes=json.loads((repo/'res/lumen-desktop/appearance/palette.json').read_text());appearance=out/'appearance.json';appearance.write_text(json.dumps(dict(font=palettes['font'],palette=palettes['dark'],preferences={},menuBarPreferences={"fullscreenVisibility":"automatic"})));env['LUMEN_APPEARANCE_STATE']=str(appearance)
 shutil.copytree(repo/'res/lumen-desktop',out/'assets')
+isolate_providers(out/'assets/shell',out)
 from PIL import Image,ImageStat
 env['LUMEN_COMPOSITOR_EFFECTS']='1' if a.effects else '0'
 if a.effects:env['WLR_RENDERER_FORCE_SOFTWARE']='1'

@@ -1,6 +1,7 @@
 """Private installed launcher routing and deliberate recent-query history input."""
 import argparse,ast,hashlib,json,os,re,shutil,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
+from fixture_providers import isolate_providers
 from private_native_bus import start_private_bus
 from fixture_resources import close_reaped_pipes
 p=argparse.ArgumentParser();p.add_argument('--launcher',type=Path,required=True);p.add_argument('--app-launcher',type=Path,required=True);p.add_argument('--sway',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--effects',action='store_true');p.add_argument('--output',type=Path,required=True);a=p.parse_args();out=a.output.resolve();out.mkdir(parents=True,exist_ok=False);processes=[];checks=[];transforms=[]
@@ -18,12 +19,7 @@ with tempfile.TemporaryDirectory(prefix='lumen-query-history-') as temporary:
   modified=original.replace(old,new,1);assert modified.replace(new,old,1)==original
   path.chmod(0o600);path.write_text(modified)
   transforms.append(dict(path=str(path),reason=reason,originalSha256=hashlib.sha256(original.encode()).hexdigest(),modifiedSha256=hashlib.sha256(modified.encode()).hexdigest(),originalMatchCount=1,roundtrip=True))
- # Unrelated providers must never probe real account or wireless control sockets.
- for filename,needle,result in (
-  ('VpnState.qml','Qt.resolvedUrl("vpn_control.py").toString().replace("file://", "")',dict(mullvad=dict(installed=False,state='unavailable',account=False),tailscale=dict(installed=False,state='unavailable',online=False,peers=0,exitNodes=[]))),
-  ('SystemState.qml','Qt.resolvedUrl("system-controls.py").toString().replace(/^file:\\/\\//, "")',dict(wifi=dict(available=False,networks=[]),bluetoothRadios={},power=dict(available=False)))):
-  helper=out/(filename+'.provider.py');helper.write_text('import json\nprint('+repr(json.dumps(result))+')\n')
-  transform(source/filename,needle,json.dumps(str(helper)),'Only unrelated provider command target replaced by synthetic unavailable endpoint')
+ isolate_providers(source,out)
  defaults=next(ast.literal_eval(node.value) for node in ast.parse((assets/'appearance/appearance.py').read_text()).body if isinstance(node,ast.Assign) and any(isinstance(target,ast.Name) and target.id=='DEFAULTS' for target in node.targets))
  preferences=dict(defaults,mode='light',reduceMotion=True,dockRecentApps=False);search_policy=dict(queryHistory=True,disabledProviders=['applications','files','actions'])
  policy=home/'settings.json';policy.write_text(json.dumps(dict(appearance=preferences,search=search_policy)));env['LUMEN_NIX_SETTINGS_ACTIVE']=str(policy)
