@@ -87,7 +87,7 @@ try:
   before=state()['selection'];begin(box);ipc('reverse');wait(lambda:not state()['pending'] and state()['ready']);button('r');assert state()['selection']==before and state()['preview'] is None;checks.append(mode+': actual resort cancels held geometry without selecting another object')
   box=wait(lambda:json.loads(ipc('geometry')));before=state()['selection'];begin(box);pointer.stdin.write('w 1\n');pointer.stdin.flush();wait(lambda:not state()['pending']);button('r');assert state()['selection']==before and state()['preview'] is None;checks.append(mode+': physical wheel cancels held viewport preview')
   if mode in ('list','grid'):
-   box=wait(lambda:json.loads(ipc('geometry')));point(box['row']);button('p');point({"x":box['row']['x']+40,"y":box['row']['y']+40})
+   box=wait(lambda:json.loads(ipc('geometry')));point(box['row']);button('p');point({"x":box['row']['x']+20,"y":box['row']['y']+20});point({"x":box['row']['x']+40,"y":box['row']['y']+40})
    wait(lambda:any(seat.get('lumen_drag',{}).get('active') for seat in json.loads(call('swaymsg','-r','-t','get_seats'))));assert not state()['pending'];key('-k','Escape');button('r');wait(lambda:not any(seat.get('lumen_drag',{}).get('active') for seat in json.loads(call('swaymsg','-r','-t','get_seats'))));checks.append(mode+': actual delegate drag starts native offer rather than a selection band')
  call('grim',str(out/'selection.png'))
  log=(out/'shell.log').read_text();assert not any(marker in log for marker in ('ReferenceError:','TypeError:','Binding loop','Failed to load configuration','Cannot assign','Accessible attached property must')),log
