@@ -4,7 +4,7 @@ import Quickshell
 import Quickshell.Io
 import "assets/shell" as D
 ShellRoot {
- QtObject {id:service;property bool available:true;property bool busy:false;property string error:"";property string warning:"";property var preferences:({mode:"dark"});property var desktopPreferences:({});property var windowsPreferences:({});property var notificationsPreferences:({preview:"always"});property var searchPreferences:({});property var appearance:({});property var system:({});property int writes:0;function refresh(){} function setPreference(k,v){writes++;} function setWindowPreference(k,v){writes++;} property var menuBarPreferences:({})}
+ QtObject {id:service;property bool available:true;property bool busy:false;property string error:"";property string warning:"";property var preferences:({mode:"dark"});property var desktopPreferences:({});property var windowsPreferences:({});property var notificationsPreferences:({preview:"always"});property var searchPreferences:({});property var appearance:({});property var system:({});property int writes:0;property var windowCalls:[];function refresh(){} function setPreference(k,v){writes++;} function setWindowPreference(k,v){writes++;windowCalls=windowCalls.concat([{key:k,value:v}]);windowsPreferences=Object.assign({},windowsPreferences,{[k]:v});} property var menuBarPreferences:({})}
  QtObject {id:audio;property bool available:false;property bool muted:false;property real volume:0;property var outputs:[];property var inputs:[];property var streams:[];property bool inputAvailable:false}
  QtObject {id:notifications;property bool available:false;property bool dnd:false;property var applications:[];property var history:[];property var policies:({});property string error:""}
  QtObject {id:searchState;property bool available:false;property bool scanning:false;property int indexed:0}
@@ -17,7 +17,7 @@ ShellRoot {
  IpcHandler {target:"settingsAudit"
   function state():string {
    const viewport=find("settings-content-scroll",editor.contentItem),search=find("settings-search",editor.contentItem);
-   return JSON.stringify({writes:service.writes,visible:editor.visible,active:editor.contentItem.Window.window?editor.contentItem.Window.window.active:false,page:editor.page,control:editor.controlId,search:search.text,searchIndex:editor.searchIndex,results:editor.searchResults,selected:geometry(editor.revealedControl),searchGeometry:geometry(search),windowWidth:editor.width,windowHeight:editor.height,historyIndex:editor.historyIndex,scroll:viewport?{top:viewport.contentY,height:viewport.height}:null,zoomChoices:find("settings-control-title-bar-double-click-action",editor.contentItem).model});
+   return JSON.stringify({writes:service.writes,windowCalls:service.windowCalls,visible:editor.visible,active:editor.contentItem.Window.window?editor.contentItem.Window.window.active:false,page:editor.page,control:editor.controlId,search:search.text,searchIndex:editor.searchIndex,results:editor.searchResults,selected:geometry(editor.revealedControl),searchGeometry:geometry(search),windowWidth:editor.width,windowHeight:editor.height,historyIndex:editor.historyIndex,scroll:viewport?{top:viewport.contentY,height:viewport.height}:null,zoomChoices:find("settings-control-title-bar-double-click-action",editor.contentItem).model});
   }
   function result(control:string):string{return JSON.stringify(geometry(find("settings-result-"+control,editor.contentItem)));}
   function reopen():void {editor.openPage();}
