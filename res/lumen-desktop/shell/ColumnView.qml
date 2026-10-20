@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import "FilesHistoryModel.js" as HistoryModel
+import "FileLinks.js" as FileLinks
 Flickable {
     id: root
     property bool selectionActive:true
@@ -41,11 +42,11 @@ Flickable {
                         required property var modelData
                         readonly property bool selected:modelData.path===root.currentPath || root.columns.some(c=>c.path===modelData.path)
                         width:ListView.view.width-6;height:28
-                        Accessible.name:modelData.name+(modelData.directory?", folder":"");Accessible.selected:selected
+                        Accessible.name:FileLinks.accessible(modelData)+(modelData.directory?", folder":"");Accessible.selected:selected
                         background:Rectangle {radius:5;color:parent.selected?(root.selectionActive?Theme.colors.accent:Theme.selection):parent.hovered?Theme.colors.hover:"transparent";border.color:parent.activeFocus?Theme.colors.accent:"transparent"}
                         contentItem:Item {
                             SystemGlyph {x:7;y:6;width:16;height:16;name:modelData.directory?"folder":"document";ink:parent.parent.selected && root.selectionActive?Theme.colors.selectedText:Theme.colors.accent}
-                            PanelLabel {x:29;width:parent.width-48;height:parent.height;verticalAlignment:Text.AlignVCenter;text:modelData.name;color:parent.parent.selected && root.selectionActive?Theme.colors.selectedText:Theme.colors.text;textFormat:Text.PlainText;font.pixelSize:12}
+                            PanelLabel {x:29;width:parent.width-48;height:parent.height;verticalAlignment:Text.AlignVCenter;text:FileLinks.markedLabel(modelData);color:parent.parent.selected && root.selectionActive?Theme.colors.selectedText:Theme.colors.text;textFormat:Text.PlainText;font.pixelSize:12}
                             PanelLabel {visible:modelData.directory;anchors.right:parent.right;anchors.rightMargin:6;height:parent.height;verticalAlignment:Text.AlignVCenter;text:"›";color:Theme.colors.muted}
                         }
                         FolderDropTarget {anchors.fill:parent;enabled:modelData.directory;folder:modelData.path;coordinator:root.dropCoordinator}

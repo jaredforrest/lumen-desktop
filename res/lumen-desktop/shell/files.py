@@ -7,6 +7,7 @@ from file_jobs import remote as job_request, trash_items
 import file_clipboard
 import file_tags
 import file_identity
+import file_link_state
 from captured_resource_actions import CapturedResourceActions,facts,wire_facts,parse_facts
 file_actions=CapturedResourceActions()
 
@@ -45,11 +46,12 @@ def listing(data):
                 continue
             try:
                 info = entry.stat(follow_symlinks=False)
-                directory = entry.is_dir()
+                link_state = file_link_state.describe(entry.path,info)
+                directory = link_state['directory']
                 tags=file_tags.read(entry.path)
                 if not all(tag in [t["id"] for t in tags["tags"]] for tag in tag_terms):continue
                 rows.append(dict(actionFacts=wire_facts((info.st_dev,info.st_ino,info.st_mode,info.st_size,info.st_mtime_ns,info.st_ctime_ns)),identity=file_identity.wire(info),tags=tags["tags"],tagsSupported=tags["supported"],tagsError=tags["error"],name=entry.name, path=entry.path, uri=Path(entry.path).as_uri(), directory=directory,
-                                 link=entry.is_symlink(), size=info.st_size, mtime=info.st_mtime,
+                                 link=link_state['link'],linkStatus=link_state['linkStatus'],linkError=link_state['linkError'],size=info.st_size,mtime=info.st_mtime,
                                  kind="Folder" if directory else mimetypes.guess_type(entry.name)[0] or "Document"))
             except OSError:
                 unreadable += 1
@@ -181,11 +183,12 @@ def handle(data):
     if action=='info':
         import pwd,grp,datetime
         info=p.lstat()
+        link_state=file_link_state.describe(p,info)
         def identity(lookup,key):
             try:return lookup(key)[0]
             except KeyError:return str(key)
         def date(stamp):return datetime.datetime.fromtimestamp(stamp).astimezone().strftime('%B %d, %Y at %H:%M:%S %Z')
-        return dict(info=dict(name=p.name,location=str(p.parent),kind='Symbolic link' if p.is_symlink() else 'Folder' if p.is_dir() else mimetypes.guess_type(p.name)[0] or 'Document',size=str(info.st_size)+' bytes',modified=date(info.st_mtime),permissions=stat.filemode(info.st_mode),owner=identity(pwd.getpwuid,info.st_uid),group=identity(grp.getgrgid,info.st_gid),target=os.readlink(p) if p.is_symlink() else ''))
+        return dict(info=dict(name=p.name,location=str(p.parent),kind='Symbolic link' if link_state['link'] else 'Folder' if link_state['directory'] else mimetypes.guess_type(p.name)[0] or 'Document',size=str(info.st_size)+' bytes',modified=date(info.st_mtime),permissions=stat.filemode(info.st_mode),owner=identity(pwd.getpwuid,info.st_uid),group=identity(grp.getgrgid,info.st_gid),target=os.readlink(p) if link_state['link'] else '',linkStatus=link_state['linkStatus'],linkDetail=link_state['linkDetail']))
     if action=='make-link':
         p.lstat()
         for i in range(1,10002):
@@ -194,7 +197,12 @@ def handle(data):
             except FileExistsError:continue
         raise FileExistsError('No available link name')
     if action=='open':
-        if p.is_symlink() and not p.exists():raise FileNotFoundError('This symbolic link no longer resolves. Use File Info to inspect its target or remove the link; the original file is not changed.')
+        try:info=p.lstat()
+        except (FileNotFoundError,NotADirectoryError):raise FileNotFoundError('This item is no longer available') from None
+        link_state=file_link_state.describe(p,info)
+        if link_state['linkStatus']=='broken':raise FileNotFoundError(link_state['linkError'])
+        if link_state['linkStatus']=='permission-denied':raise PermissionError(link_state['linkError'])
+        if link_state['linkError']:raise OSError(link_state['linkError'])
         if not p.exists():raise FileNotFoundError("This item is no longer available")
         subprocess.run((['lumen-launch-app','--'] if os.environ.get('LUMEN_LAUNCH_SCOPES') == '1' else []) + ['xdg-open',p.as_uri()],check=True,timeout=12,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
         return dict(ok=True)
