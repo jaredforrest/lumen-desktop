@@ -13,6 +13,9 @@ MAX_BYTES=8*1024*1024
 MAX_OBJECTS=16384
 MAX_ROWS=64
 DEADLINE=2.0
+def clock():
+    return time.clock_gettime(time.CLOCK_BOOTTIME)
+
 COVERAGE='PipeWire-visible graph only. Direct device access, hidden nodes and other capture paths are not assessed.'
 
 def unavailable(reason):
@@ -68,23 +71,30 @@ def describe(objects):
 
 def read_graph(command=('pw-dump','--no-colors'),deadline=DEADLINE,max_bytes=MAX_BYTES):
     """Never activate a provider, change routing or retain graph data on disk."""
-    end=time.monotonic()+deadline
+    end=clock()+deadline
     with subprocess.Popen(command,stdout=subprocess.PIPE,stdin=subprocess.DEVNULL) as child:
         try:
             with selectors.DefaultSelector() as ready:
                 ready.register(child.stdout,selectors.EVENT_READ);parts=[];size=0
                 while ready.get_map():
-                    remaining=end-time.monotonic()
+                    remaining=end-clock()
                     if remaining<=0:raise TimeoutError('Capture observation timed out')
                     events=ready.select(remaining)
+                    if clock()>=end:raise TimeoutError('Capture observation timed out')
                     if not events:raise TimeoutError('Capture observation timed out')
                     chunk=os.read(child.stdout.fileno(),min(65536,max_bytes-size+1))
+                    if clock()>=end:raise TimeoutError('Capture observation timed out')
                     if not chunk:ready.unregister(child.stdout);break
                     size+=len(chunk)
                     if size>max_bytes:raise ValueError('Capture graph exceeds supported byte limit')
                     parts.append(chunk)
-            if child.wait(timeout=max(.001,end-time.monotonic()))!=0:raise ValueError('PipeWire graph is unavailable')
-            return json.loads(b''.join(parts))
+            remaining=end-clock()
+            if remaining<=0:raise TimeoutError('Capture observation timed out')
+            if child.wait(timeout=remaining)!=0:raise ValueError('PipeWire graph is unavailable')
+            if clock()>=end:raise TimeoutError('Capture observation timed out')
+            value=json.loads(b''.join(parts))
+            if clock()>=end:raise TimeoutError('Capture observation timed out')
+            return value
         finally:
             if child.poll() is None:child.kill()
             child.wait()

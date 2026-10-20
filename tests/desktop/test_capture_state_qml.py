@@ -23,7 +23,7 @@ ShellRoot {
   const row={kind:"audio-input",reportedApplication:"Synthetic recorder <literal>",attribution:"Reported metadata, not authenticated"};
   if(!state.publish({available:true,rows:[row],coverage:"Other paths not assessed"}) || !state.audio || state.video)throw Error("Audio graph");
   state.expire(state.lastPublished+7501);if(state.audio || state.status.available)throw Error("Stale state survived");
-  state.publish({available:true,rows:[row],coverage:"Other paths not assessed"});state.expire(state.lastPublished-1);if(state.audio)throw Error("Clock reversal");
+  state.publish({available:true,rows:[row],coverage:"Other paths not assessed"});const published=state.lastPublished;state.expire(published+5000);state.expire(published+4000);if(state.audio)throw Error("Clock reversal");
   if(state.publish({available:true,rows:[{kind:"camera",reportedApplication:"invented",attribution:"wrong"}],coverage:""}) || state.status.available)throw Error("Unknown classification accepted");
   state.publish({available:true,rows:[row,{kind:"video-input",reportedApplication:"Synthetic video",attribution:"Reported metadata"}],coverage:"Other paths not assessed"});
   if(!state.audio || !state.video || report.height<=0 || report.height>600)throw Error("Actual report layout");

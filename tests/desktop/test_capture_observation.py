@@ -1,5 +1,6 @@
 """Graph facts never become a permission or hardware-use guarantee."""
 import json,sys,unittest
+from unittest.mock import patch
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'res/lumen-desktop/shell'))
 import capture_observation as c
@@ -25,6 +26,22 @@ class CaptureObservation(unittest.TestCase):
   command=[sys.executable,'-c','print('+repr(json.dumps(self.graph()))+')'];self.assertEqual(len(c.describe(c.read_graph(command))['rows']),1)
   with self.assertRaises(ValueError):c.read_graph([sys.executable,'-c','print("x"*10000)'],max_bytes=32)
   self.assertFalse(c.snapshot([sys.executable,'-c','raise SystemExit(2)'])['available'])
+ def test_late_eof_is_rejected_even_after_child_exits(self):
+  now=[0.0];read=c.os.read;popen=c.subprocess.Popen;descriptor=[None]
+  def child(*args,**kwargs):
+   process=popen(*args,**kwargs);descriptor[0]=process.stdout.fileno();return process
+  def receive(*args):
+   value=read(*args)
+   if args[0]==descriptor[0] and not value:now[0]=100
+   return value
+  with patch.object(c,'clock',lambda:now[0]),patch.object(c.subprocess,'Popen',child),patch.object(c.os,'read',receive):
+   with self.assertRaises(TimeoutError):c.read_graph([sys.executable,'-c','print("[]")'],deadline=.05)
+  self.assertEqual(now[0],100)
+ def test_late_parser_completion_is_rejected(self):
+  now=[0.0];loads=json.loads
+  def parse(value):result=loads(value);now[0]=100;return result
+  with patch.object(c,'clock',lambda:now[0]),patch.object(c.json,'loads',parse):
+   with self.assertRaises(TimeoutError):c.read_graph([sys.executable,'-c','print("[]")'],deadline=.05)
  def test_actual_timeout_kills_and_reaps_child(self):
   with self.assertRaises(TimeoutError):c.read_graph([sys.executable,'-c','import time;time.sleep(10)'],deadline=.05)
 if __name__=='__main__':unittest.main()
