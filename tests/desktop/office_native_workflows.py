@@ -1,5 +1,5 @@
 """Private installed office windows with real compositor focus and physical typing."""
-import argparse,json,os,re,signal,socket,subprocess,sys,time,traceback
+import argparse,hashlib,json,os,re,signal,socket,subprocess,sys,time,traceback
 from pathlib import Path
 from application_fixture.isolation import run as isolate
 from application_fixture.keyboard import PhysicalKeyboard
@@ -9,12 +9,16 @@ from office_fixture.control import Control
 p=argparse.ArgumentParser();p.add_argument('--writer',required=True);p.add_argument('--sheet',required=True);p.add_argument('--slides',required=True);p.add_argument('--software-driver',required=True);p.add_argument('--sway',required=True);p.add_argument('--keyboard-tool',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--app',choices=['writer','sheet','slides'],default='writer');p.add_argument('--output',type=Path,required=True);p.add_argument('--inside',action='store_true');p.add_argument('--profiles-json',default='');p.add_argument('--source-sha',default='');a=p.parse_args()
 if not a.inside:
  source=Path(__file__).resolve().parents[2];out=a.output.resolve();out.mkdir(mode=0o700,parents=True,exist_ok=False)
+ for binary in [a.writer,a.sheet,a.slides,a.sway,a.pointer_tool,a.keyboard_tool]:
+  path=Path(binary).resolve();assert str(path).startswith('/nix/store/') and path.is_file() and os.access(path,os.X_OK),'Exact installed application/test binaries required'
  policies=subprocess.check_output(['nix','eval','--json','--file',str(source/'config/application-profiles.nix')],text=True)
  sha=subprocess.check_output(['git','-C',str(source),'rev-parse','HEAD'],text=True).strip()
  args=[sys.executable,'/source/tests/desktop/office_native_workflows.py','--inside','--writer',a.writer,'--sheet',a.sheet,'--slides',a.slides,'--software-driver',a.software_driver,'--sway',a.sway,'--keyboard-tool',a.keyboard_tool,'--pointer-tool',a.pointer_tool,'--app',a.app,'--profiles-json',policies,'--source-sha',sha,'--output','/artifacts']
  raise SystemExit(isolate(source,out,args))
 assert os.getpid()==1 and os.getuid()!=0 and os.uname().nodename=='fixture' and Path.home()==Path('/home/fixture')
 out=Path('/artifacts');processes=[];control=None;keyboard=None;checks=[];facts={};env=dict(os.environ)
+facts['testSources']={str(path.relative_to('/source')):hashlib.sha256(path.read_bytes()).hexdigest() for path in [Path('/source/tests/desktop/office_native_workflows.py'),*sorted(Path('/source/tests/desktop/office_fixture').glob('*.py')),*sorted(Path('/source/tests/desktop/application_fixture').glob('*'))] if path.is_file()}
+facts['installedBinaries']={binary:hashlib.sha256(Path(binary).read_bytes()).hexdigest() for binary in [a.writer,a.sheet,a.slides,a.sway,a.pointer_tool,a.keyboard_tool]}
 settings=Path('/etc/nix');settings.mkdir();(settings/'desktop-settings.json').write_text(json.dumps(dict(applicationPreferences=json.loads(a.profiles_json))))
 mesa=Path(a.software_driver);vulkan=mesa/'share/vulkan/icd.d/lvp_icd.x86_64.json';egl=mesa/'share/glvnd/egl_vendor.d/50_mesa.json';assert vulkan.is_file() and egl.is_file()
 env.update(WLR_BACKENDS='headless',WLR_RENDERER='pixman',WLR_LIBINPUT_NO_DEVICES='1',LIBGL_ALWAYS_SOFTWARE='1',MESA_LOADER_DRIVER_OVERRIDE='llvmpipe',VK_DRIVER_FILES=str(vulkan),VK_ICD_FILENAMES=str(vulkan),__EGL_VENDOR_LIBRARY_FILENAMES=str(egl),LIBGL_DRIVERS_PATH=str(mesa/'lib/dri'),WGPU_BACKEND='vulkan',SWAYSOCK='/run/fixture/sway.sock',DECKCRAFT_WAYLAND='1',DECKCRAFT_NO_AUDIO='1')
@@ -145,7 +149,7 @@ try:
   saved=formats.presentation(source);assert marker.strip() in json.dumps(saved)
   facts['savedSha256']=formats.digest(source);facts['savedDocument']=saved
   checks.append('Physical presentation text edit is acknowledged live and independently parsed after explicit Save')
- command(['grim',str(out/'opened.png')]);(out/'tree-opened.json').write_text(json.dumps(tree(),indent=2));(out/'result.json').write_text(json.dumps(dict(passed=True,phase='startup_only',checks=checks,facts=facts,source=a.source_sha),indent=2))
+ command(['grim',str(out/'opened.png')]);(out/'tree-opened.json').write_text(json.dumps(tree(),indent=2));(out/'result.json').write_text(json.dumps(dict(passed=True,phase='native_partial' if len(checks)>1 else 'startup_only',app=a.app,workflowComplete=False,checks=checks,facts=facts,source=a.source_sha),indent=2))
 finally:
  if keyboard is not None:keyboard.close()
  if control is not None:control.close()
