@@ -1,5 +1,5 @@
 """Optional actual retained-browser workflows inside a disposable application boundary."""
-import argparse,hashlib,json,os,re,shutil,signal,subprocess as sp,sys,time
+import argparse,base64,hashlib,io,json,os,re,shutil,signal,subprocess as sp,sys,time
 from pathlib import Path
 from fixture_resources import close_reaped_pipes
 sys.path.insert(0,str(Path(__file__).resolve().parent/'application_fixture'))
@@ -12,10 +12,11 @@ from server import FixtureServer
 from invocation import command as browser_command,EXCLUDED_SETUP
 from capabilities import Inventory
 from profile import download_rows,COMPLETE
+from paint import match as painted_match
 from private_native_bus import start_private_bus
-p=argparse.ArgumentParser();p.add_argument('--browser',required=True,type=Path);p.add_argument('--launcher',required=True,type=Path);p.add_argument('--sway',required=True,type=Path);p.add_argument('--pointer-tool',required=True,type=Path);p.add_argument('--keyboard-tool',required=True,type=Path);p.add_argument('--font-directory',required=True,type=Path);p.add_argument('--at-spi-prefix',required=True,type=Path);p.add_argument('--output',required=True,type=Path);p.add_argument('--effects',action='store_true');p.add_argument('--trace-wayland',action='store_true');p.add_argument('--workflow',choices=('new-save','basic','downloads','permissions','library'),default='basic');p.add_argument('--inside',action='store_true');a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--browser',required=True,type=Path);p.add_argument('--launcher',required=True,type=Path);p.add_argument('--sway',required=True,type=Path);p.add_argument('--pointer-tool',required=True,type=Path);p.add_argument('--keyboard-tool',required=True,type=Path);p.add_argument('--font-directory',required=True,type=Path);p.add_argument('--at-spi-prefix',required=True,type=Path);p.add_argument('--software-driver',required=True,type=Path);p.add_argument('--output',required=True,type=Path);p.add_argument('--effects',action='store_true');p.add_argument('--trace-wayland',action='store_true');p.add_argument('--workflow',choices=('new-save','basic','downloads','permissions','library'),default='basic');p.add_argument('--inside',action='store_true');a=p.parse_args()
 repo=Path(__file__).resolve().parents[2]
-for name in ('browser','launcher','sway','pointer_tool','keyboard_tool','font_directory','at_spi_prefix'):
+for name in ('browser','launcher','sway','pointer_tool','keyboard_tool','font_directory','at_spi_prefix','software_driver'):
  value=getattr(a,name).resolve()
  if not str(value).startswith('/nix/store/') or not value.exists():p.error('Provide an existing immutable '+name+' dependency')
  setattr(a,name,value)
@@ -26,7 +27,7 @@ if not a.inside:
  for tool in ('dbus-daemon','grim','wtype'):
   binary=shutil.which(tool,path=environment.get('PATH',''))
   if not binary or not str(Path(binary).resolve()).startswith('/nix/store/'):p.error('Run within the pinned nix develop runtime; missing immutable '+tool)
- command=[sys.executable,'/source/tests/desktop/browser_workflows_input.py','--inside','--browser',str(a.browser),'--launcher',str(a.launcher),'--sway',str(a.sway),'--pointer-tool',str(a.pointer_tool),'--keyboard-tool',str(a.keyboard_tool),'--font-directory',str(a.font_directory),'--at-spi-prefix',str(a.at_spi_prefix),'--output','/artifacts','--workflow',a.workflow]
+ command=[sys.executable,'/source/tests/desktop/browser_workflows_input.py','--inside','--browser',str(a.browser),'--launcher',str(a.launcher),'--sway',str(a.sway),'--pointer-tool',str(a.pointer_tool),'--keyboard-tool',str(a.keyboard_tool),'--font-directory',str(a.font_directory),'--at-spi-prefix',str(a.at_spi_prefix),'--software-driver',str(a.software_driver),'--output','/artifacts','--workflow',a.workflow]
  if a.effects:command.append('--effects')
  if a.trace_wayland:command.append('--trace-wayland')
  revision=sp.check_output(['git','-C',str(repo),'rev-parse','HEAD'],text=True).strip();dirty=sp.check_output(['git','-C',str(repo),'status','--porcelain'],text=True).strip()
@@ -34,7 +35,7 @@ if not a.inside:
  sources={str(path.relative_to(repo)):hashlib.sha256(path.read_bytes()).hexdigest() for folder in ('tests/desktop/browser_fixture','tests/desktop/application_fixture') for path in sorted((repo/folder).glob('*')) if path.is_file()}
  sources[str(Path(__file__).relative_to(repo))]=hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
  result=isolation.run(repo,output,command,environment,software_graphics=a.effects)
- (output/'source-provenance.json').write_text(json.dumps(dict(revision=revision,sources=sources,dependencies={name:str(getattr(a,name)) for name in ('browser','launcher','sway','pointer_tool','keyboard_tool','font_directory','at_spi_prefix')},workflow=a.workflow,effects=a.effects,exitCode=result),indent=2))
+ (output/'source-provenance.json').write_text(json.dumps(dict(revision=revision,sources=sources,dependencies={name:str(getattr(a,name)) for name in ('browser','launcher','sway','pointer_tool','keyboard_tool','font_directory','at_spi_prefix','software_driver')},workflow=a.workflow,effects=a.effects,exitCode=result),indent=2))
  raise SystemExit(result)
 if repo!=Path('/source') or a.output!=Path('/artifacts') or os.environ.get('HOME')!='/home/fixture' or os.environ.get('XDG_RUNTIME_DIR')!='/run/fixture' or os.getuid()==0 or Path('/proc/1/status').stat().st_uid!=os.getuid():raise ValueError('Private application boundary required before internal entry')
 status=Path('/proc/self/status').read_text()
@@ -42,6 +43,7 @@ if not all(value in status for value in ('CapEff:\t0000000000000000','CapBnd:\t0
 out=a.output;env=dict(os.environ);runtime=Path(env['XDG_RUNTIME_DIR']);processes=[];browser=None;pointer=None;keyboard=None;accessibility=None
 # Public free font fixture; no host font inventory or consumer private assets.
 fontconfig=runtime/'fonts.conf';fontconfig.write_text('<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd"><fontconfig><dir>'+str(a.font_directory)+'</dir><cachedir>'+env['XDG_CACHE_HOME']+'/fontconfig</cachedir></fontconfig>');env['FONTCONFIG_FILE']=str(fontconfig)
+egl=a.software_driver/'share/glvnd/egl_vendor.d/50_mesa.json';assert egl.is_file();env.update(__EGL_VENDOR_LIBRARY_FILENAMES=str(egl),LIBGL_DRIVERS_PATH=str(a.software_driver/'lib/dri'),MESA_LOADER_DRIVER_OVERRIDE='llvmpipe')
 env.update(GSETTINGS_BACKEND='memory',WLR_BACKENDS='headless',WLR_RENDERER='gles2' if a.effects else 'pixman',WLR_RENDERER_FORCE_SOFTWARE='1' if a.effects else '0',WLR_RENDERER_ALLOW_SOFTWARE='1',LIBGL_ALWAYS_SOFTWARE='1',WLR_LIBINPUT_NO_DEVICES='1',QT_QPA_PLATFORM='wayland',QT_QPA_PLATFORMTHEME='generic',LANG='en_GB.UTF-8')
 for key in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK'):env.pop(key,None)
 
@@ -95,6 +97,17 @@ try:
   def click_accessible(row):
    bounds=accessibility.bounds(row);native=current_main();origin=(native['rect']['x']+native['window_rect']['x'],native['rect']['y']+native['window_rect']['y']);bounds=(bounds[0]+origin[0],bounds[1]+origin[1],bounds[2],bounds[3]);(out/'accessible-pointer-target.json').write_text(json.dumps(dict(control=row,bounds=bounds),indent=2));positioned=json.loads(call(a.sway.parent/'swaymsg','seat','seat0','cursor','set',str(bounds[0]+bounds[2]//2),str(bounds[1]+bounds[3]//2)));assert all(value['success'] for value in positioned),positioned
    for operation in ('m 0.5 0.5','p','r'):pointer.stdin.write(operation+'\n');pointer.stdin.flush();time.sleep(.12)
+  def capture_presented(expression,name,session_id=None,window=None):
+   from PIL import Image
+   def ready():
+    info=read_session('(()=>{const element='+expression+';if(!element)return null;let r=element.getBoundingClientRect();if(!element.childElementCount){const range=document.createRange();range.selectNodeContents(element);r=range.getBoundingClientRect();}return {x:r.x,y:r.y,width:r.width,height:r.height,text:element.innerText,innerWidth,innerHeight,dpr:devicePixelRatio};})()',session_id or session)
+    if not info or info['width']<=0 or info['height']<=0:return False
+    native=current_main() if window is None else next(row for row in windows() if row['id']==window['id'] and row['pid']==window['pid']);client=native['window_rect'];scale=client['width']/info['innerWidth'];assert abs(scale-info['dpr'])<.000001,'This application fixture currently requires output scale one'
+    reference=Image.open(io.BytesIO(base64.b64decode(browser.request('Page.captureScreenshot',dict(format='png',fromSurface=True,captureBeyondViewport=False,clip={key:info[key] for key in ('x','y','width','height')}|dict(scale=1)),session=session_id or session,timeout=3)['data']))).convert('RGB');reference.save(out/(Path(name).stem+'-reference.png'))
+    call('grim',out/name)
+    with Image.open(out/name) as screen:result=painted_match(reference,screen,(native['rect']['x']+client['x']+info['x']*scale,native['rect']['y']+client['y']+client['height']-info['innerHeight']*scale+info['y']*scale))
+    (out/(Path(name).stem+'-paint.json')).write_text(json.dumps(dict(result=result,content=info,native=native),indent=2));return result['painted']
+   wait(ready,'actual presented application content: '+name)
   def current_main():return next(node for node in windows() if node['id']==main['id'] and node['pid']==main['pid'])
   def focus_main():
    current_main();result=json.loads(call(a.sway.parent/'swaymsg','-r','[con_id='+str(main['id'])+'] focus'));assert all(row['success'] for row in result)
@@ -119,6 +132,9 @@ try:
   assert chooser['id']!=main['id'];key('-k','Escape');wait(lambda:all(node['id']!=chooser['id'] for node in windows()),'Save As cancellation');assert not list(downloads.iterdir()) and not list(Path(env['HOME']).glob('*.html'));assert wait(lambda:evaluate('document.hasFocus()'),'page focus after Save cancellation')
   checks.append('Actual browser Save As uses a separate correctly parented chooser; Escape commits no file and returns page focus')
   def finish_result():
+   if a.effects:
+    required=('Creating scenefx FX renderer','Using OpenGL ES','GL renderer: llvmpipe','FX RENDERER: Shaders Initialized Successfully','Trying udmabuf allocator','Created GL FBO for buffer');assert all(value in (out/'sway.log').read_text() for value in required),'Actual software effects renderer proof missing'
+    (out/'software-effects-proof.json').write_text(json.dumps(list(required),indent=2))
    actions={'APP-BROWSE-02':('edit_url','select_url','navigate')}
    by_workflow={
     'basic':{'APP-BROWSE-01':('new_tab','close_tab','reopen_tab'),'APP-BROWSE-08':('zoom_in','zoom_reset'),'APP-BROWSE-09':('browser_fullscreen','page_fullscreen','escape_fullscreen','resume_page_input')},
@@ -169,7 +185,7 @@ try:
   if a.workflow=='library':
    from types import SimpleNamespace
    from library import run
-   run(SimpleNamespace(click_page=click_page,click_expression=click_expression,navigate=navigate,wait=wait,evaluate=evaluate,accessibility=accessibility,main=main,key=key,server=server,profile=profile,checks=checks,capture=lambda name:call('grim',out/name),out=out,windows=windows,targets=lambda:browser.request('Target.getTargets')['targetInfos'],original_target=target,click_accessible=click_accessible,browser_exited=lambda:browser.process.poll() is not None,attach=lambda identity:browser.request('Target.attachToTarget',dict(targetId=identity,flatten=True))['sessionId'],read_session=read_session))
+   run(SimpleNamespace(click_page=click_page,click_expression=click_expression,capture_presented=capture_presented,navigate=navigate,wait=wait,evaluate=evaluate,accessibility=accessibility,main=main,key=key,server=server,profile=profile,checks=checks,capture=lambda name:call('grim',out/name),out=out,windows=windows,targets=lambda:browser.request('Target.getTargets')['targetInfos'],original_target=target,click_accessible=click_accessible,browser_exited=lambda:browser.process.poll() is not None,attach=lambda identity:browser.request('Target.attachToTarget',dict(targetId=identity,flatten=True))['sessionId'],read_session=read_session))
    finish_result();raise SystemExit(0)
   if a.workflow=='permissions':
    from types import SimpleNamespace
@@ -179,7 +195,7 @@ try:
   if a.workflow=='downloads':
    from types import SimpleNamespace
    from downloads import run
-   run(SimpleNamespace(click_page=click_page,navigate=navigate,wait=wait,evaluate=evaluate,ui_downloads=ui_downloads,downloads=downloads,server=server,checks=checks,click_expression=click_expression,windows=windows,main=main,choose_path=choose_path,capture=lambda name:call('grim',out/name),out=out))
+   run(SimpleNamespace(click_page=click_page,navigate=navigate,wait=wait,evaluate=evaluate,capture_presented=capture_presented,ui_downloads=ui_downloads,downloads=downloads,server=server,checks=checks,click_expression=click_expression,windows=windows,main=main,choose_path=choose_path,capture=lambda name:call('grim',out/name),out=out))
    finish_result();raise SystemExit(0)
   if a.workflow=='basic':
    initial={row['targetId'] for row in browser.request('Target.getTargets')['targetInfos'] if row['type']=='page'}

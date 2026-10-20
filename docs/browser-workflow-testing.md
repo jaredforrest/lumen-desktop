@@ -20,6 +20,7 @@ lumen_browser_compositor=$(nix build .#compositor-basic --no-link --print-out-pa
 lumen_browser_pointer=$(nix build .#test-pointer --no-link --print-out-paths)
 lumen_browser_keyboard=$(nix build .#test-physical-keyboard --no-link --print-out-paths)
 lumen_browser_accessibility=$(nix build .#test-screen-reader-atspi --no-link --print-out-paths)
+lumen_browser_software=$(nix build .#test-application-software-driver --no-link --print-out-paths)
 lumen_browser_font=$(nix build .#test-application-font --no-link --print-out-paths)
 
 bash tests/ci/run-native.sh browser_workflows_input \
@@ -31,10 +32,11 @@ bash tests/ci/run-native.sh browser_workflows_input \
   --keyboard-tool "$lumen_browser_keyboard/bin/lumen-test-physical-keyboard" \
   --font-directory "$lumen_browser_font/share/fonts/truetype" \
   --at-spi-prefix "$lumen_browser_accessibility" \
+  --software-driver "$lumen_browser_software" \
   --workflow basic --output artifacts/browser-basic
 ```
 
-Use a new output directory for every run. Repeat with `--workflow downloads`, `permissions`, `library` or `new-save`. For effects, build `.#compositor` instead and add `--effects`. The runner retains source hashes/revision, exact dependency paths, version, actual painted captures, native trees, typed per-action observations and provider/filesystem outcomes. A passing case never closes an entire multi-action row.
+Use a new output directory for every run. Repeat with `--workflow downloads`, `permissions`, `library` or `new-save`. For effects, build `.#compositor` instead and add `--effects`. The runner retains source hashes/revision, exact dependency paths, version, actual painted captures, native trees, typed per-action observations and provider/filesystem outcomes. Download rows and the private-page sentinel must match an actual browser readback in the presented native screenshot, including foreground pixels; logical provider readiness alone cannot pass a blank frame. Matching permits at most one raster pixel of alignment and three channel values of quantization. The application corpus currently uses one 1400×1000 output at scale one. A passing case never closes an entire multi-action row.
 
 ## Accepted scope
 

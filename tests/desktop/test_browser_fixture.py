@@ -10,11 +10,19 @@ from capabilities import Inventory
 from keyboard import text_events,SPECIAL
 from profile import download_rows
 class Fixture(unittest.TestCase):
+ def test_painted_readback_requires_ink_and_rejects_blank_or_wrong_frames(self):
+  from PIL import Image,ImageDraw
+  from paint import match
+  reference=Image.new('RGB',(64,32),'white');ImageDraw.Draw(reference).rectangle((8,8,30,20),fill='#21384a')
+  screen=Image.new('RGB',(100,80),'white');self.assertFalse(match(reference,screen,(10,12))['painted']);self.assertFalse(match(Image.new('RGB',(64,32),'white'),screen,(10,12))['painted'])
+  screen.paste(reference,(10,12));self.assertTrue(match(reference,screen,(10,12))['painted'])
+  shifted=Image.new('RGB',(100,80),'white');shifted.paste(reference,(11,12));self.assertTrue(match(reference,shifted,(10,12))['painted'])
+  shifted=Image.new('RGB',(100,80),'white');shifted.paste(reference,(12,12));self.assertFalse(match(reference,shifted,(10,12))['painted'])
  def test_internal_entry_rejects_ambient_execution_before_creating_state(self):
   with tempfile.TemporaryDirectory(prefix='lumen-browser-entry-') as temporary:
    root=Path(temporary);arguments=[sys.executable,str(Path(__file__).with_name('browser_workflows_input.py')),'--inside','--output',str(root/'artifacts')]
    for name in ('browser','launcher','sway','pointer-tool','keyboard-tool'):arguments.extend(['--'+name,sys.executable])
-   for name in ('font-directory','at-spi-prefix'):arguments.extend(['--'+name,sys.prefix])
+   for name in ('font-directory','at-spi-prefix','software-driver'):arguments.extend(['--'+name,sys.prefix])
    result=subprocess.run(arguments,env=dict(os.environ,HOME=str(root),XDG_RUNTIME_DIR=str(root/'runtime')),text=True,capture_output=True,timeout=5)
    self.assertNotEqual(result.returncode,0);self.assertIn('Private application boundary required',result.stderr);self.assertEqual(list(root.iterdir()),[])
  def test_invocation_cannot_select_host_profile_or_external_origin(self):
