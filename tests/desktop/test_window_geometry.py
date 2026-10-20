@@ -80,7 +80,7 @@ class WindowGeometry(unittest.TestCase):
         self.assertIn('con_id=5 pid=42 app_id="',command);self.assertIn('title="',command)
 
     def test_preferred_registration_is_exact_and_independent_of_fitting(self):
-        with patch.object(g.os,'getppid',return_value=42),patch.object(g,'process_start',return_value=99),patch.object(g,'socket_identity',return_value=(1,2,3)),patch.dict(g.os.environ,SWAYSOCK='/private/socket'),patch.object(g,'read_tree',side_effect=[tree(),tree()]),patch.object(g.subprocess,'check_output',return_value=b'[{"success":true}]') as dispatch:
+        with patch.object(g.os,'getppid',return_value=42),patch.object(g,'process_start',return_value=99),patch.object(g,'socket_identity',return_value=(1,2,3)),patch.dict(g.os.environ,SWAYSOCK='/private/socket'),patch.object(g,'read_tree',side_effect=[tree(),tree()]),patch.object(g.subprocess,'check_output',side_effect=[b'{"native_preferred_zoom":true}',b'[{"success":true}]']) as dispatch:
             result=g.execute('org.quickshell','Settings',0,928,570,480,320,preferred_width=790,preferred_height=640)
             command=dispatch.call_args.args[0][-1]
             self.assertIn('con_id=5 pid=42 app_id=',command)
@@ -88,6 +88,15 @@ class WindowGeometry(unittest.TestCase):
             self.assertNotIn('resize',command)
             self.assertFalse(result['changed'])
             self.assertEqual(result['preferredSize'],dict(width=790,height=640))
+
+    def test_previous_running_compositor_keeps_fitting_without_registration(self):
+        with patch.object(g.os,'getppid',return_value=42),patch.object(g,'process_start',return_value=99),patch.object(g,'socket_identity',return_value=(1,2,3)),patch.dict(g.os.environ,SWAYSOCK='/private/socket'),patch.object(g,'read_tree',side_effect=[tree(1200,900),tree(1200,900)]),patch.object(g.subprocess,'check_output',side_effect=[b'{"native_window_controls":true}',b'[{"success":true}]']) as dispatch:
+            result=g.execute('org.quickshell','Settings',0,928,570,480,320,preferred_width=790,preferred_height=640)
+            command=dispatch.call_args.args[0][-1]
+            self.assertNotIn('preferred-size',command)
+            self.assertIn('resize set',command)
+            self.assertFalse(result['preferredSizeSupported'])
+            self.assertNotIn('preferredSize',result)
 
     def test_invalid_preferred_metadata_never_dispatches(self):
         for width,height in [(0,640),(True,640),(790,None),(32769,640),(790,-1)]:

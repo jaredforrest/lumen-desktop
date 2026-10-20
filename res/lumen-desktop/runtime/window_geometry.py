@@ -136,8 +136,11 @@ def execute(app,title,container,budget_width,budget_height,min_width,min_height,
     result.update(container=captured[0],pid=owner,processStart=start,app=app,title=title)
     if preferred_width is not None:
         registration = preferred_plan(second, preferred_width, preferred_height)
-        command = registration + ('; ' + command if command else '')
-        result['preferredSize'] = dict(width=preferred_width,height=preferred_height)
+        version = json.loads(subprocess.check_output(['swaymsg','-r','-t','get_version'],timeout=4))
+        result['preferredSizeSupported'] = isinstance(version,dict) and version.get('native_preferred_zoom') is True
+        if result['preferredSizeSupported']:
+            command = registration + ('; ' + command if command else '')
+            result['preferredSize'] = dict(width=preferred_width,height=preferred_height)
     if command:
         replies=json.loads(subprocess.check_output(['swaymsg','-r',command],timeout=4))
         if not replies or not all(reply.get('success') for reply in replies):raise ValueError('Native fit request rejected')
