@@ -56,3 +56,18 @@ Overwrite cancel/commit, read-only errors and an actual disconnected mount remai
 Page-requested fullscreen remains unaccepted: a painted-frame and protocol trace found new window geometry committed against the old buffer, followed by resized buffers without another geometry request. The declared effective bounds therefore remain smaller than the output. The discrepancy is present before diagnostic readback. Browser fullscreen uses the correct painted bounds. Logical fullscreen flags alone cannot close the page-requested action; changing compositor geometry to conceal this sequence is not an accepted repair.
 
 One notification-lifecycle replay lost the application accessibility root after Allow (an actual NoReply response). Separate subsequent basic and effects diagnostics completed all seven checks, including native revocation, with captured bus-owner continuity and unchanged deadlines. These observations are separate from the accepted four-workflow tranche and do not establish a repair for intermittent provider availability. Permission-provider state alone cannot prove a native revoke action.
+
+The optional `--workflow overwrite --portal-tools <immutable-tools-json>` corpus
+uses the same standard FileChooser frontend and GTK backend as the office
+fixture. It records unique bus owners, provider processes, mapped libraries,
+FileChooser version and actual SaveFile requests. Provider startup preserves the
+browser's original presentation environment. All providers and files remain in
+the private application boundary.
+
+The corpus captures the existing target before each decision, uses the genuine
+chooser's measured painted Save button and a physical confirmation shortcut,
+and checks Cancel preserves its hash and returns focus. Explicit Replace must
+produce the exact target and a painted completed download record. This does not
+claim every keyboard-only chooser route, error or disconnected-volume workflow.
+The retained browser's direct GTK fallback has a separately retained unsafe
+existing-target diagnostic; it is not accepted by this corpus.

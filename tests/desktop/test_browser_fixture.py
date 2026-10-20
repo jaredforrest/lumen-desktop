@@ -10,6 +10,24 @@ from capabilities import Inventory
 from keyboard import text_events,SPECIAL
 from profile import download_rows
 class Fixture(unittest.TestCase):
+ def test_provider_startup_captures_its_environment_without_changing_client_policy(self):
+  from presentation import start_preserving_client
+  environment=dict(os.environ,FONTCONFIG_FILE='client-font',XDG_CURRENT_DESKTOP='sway',GTK_USE_PORTAL='1',DBUS_SESSION_BUS_ADDRESS='old-private-bus')
+  def provider(env):
+   env.update(FONTCONFIG_FILE='provider-font',XDG_CURRENT_DESKTOP='GNOME',GTK_USE_PORTAL='0',DBUS_SESSION_BUS_ADDRESS='new-private-bus')
+   return json.loads(subprocess.check_output([sys.executable,'-c','import os,json;print(json.dumps({key:os.environ[key] for key in ("FONTCONFIG_FILE","XDG_CURRENT_DESKTOP","GTK_USE_PORTAL")}))'],env=env,text=True,timeout=5))
+  child=start_preserving_client(provider,environment)
+  self.assertEqual(child,dict(FONTCONFIG_FILE='provider-font',XDG_CURRENT_DESKTOP='GNOME',GTK_USE_PORTAL='0'))
+  self.assertEqual({key:environment[key] for key in child},dict(FONTCONFIG_FILE='client-font',XDG_CURRENT_DESKTOP='sway',GTK_USE_PORTAL='1'))
+  self.assertEqual(environment['DBUS_SESSION_BUS_ADDRESS'],'new-private-bus')
+ def test_provider_failure_restores_absent_client_policy(self):
+  from presentation import start_preserving_client
+  environment={}
+  def provider(env):
+   env.update(FONTCONFIG_FILE='provider-font',XDG_CURRENT_DESKTOP='GNOME',GTK_USE_PORTAL='0')
+   raise ValueError('Synthetic provider failure')
+  with self.assertRaisesRegex(ValueError,'Synthetic'):start_preserving_client(provider,environment)
+  self.assertEqual(environment,{})
  def test_painted_readback_requires_ink_and_rejects_blank_or_wrong_frames(self):
   from PIL import Image,ImageDraw
   from paint import match

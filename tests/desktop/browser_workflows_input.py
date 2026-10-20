@@ -14,12 +14,16 @@ from capabilities import Inventory
 from profile import download_rows,COMPLETE
 from paint import match as painted_match
 from private_native_bus import start_private_bus
-p=argparse.ArgumentParser();p.add_argument('--browser',required=True,type=Path);p.add_argument('--launcher',required=True,type=Path);p.add_argument('--sway',required=True,type=Path);p.add_argument('--pointer-tool',required=True,type=Path);p.add_argument('--keyboard-tool',required=True,type=Path);p.add_argument('--font-directory',required=True,type=Path);p.add_argument('--at-spi-prefix',required=True,type=Path);p.add_argument('--software-driver',required=True,type=Path);p.add_argument('--output',required=True,type=Path);p.add_argument('--effects',action='store_true');p.add_argument('--trace-wayland',action='store_true');p.add_argument('--workflow',choices=('new-save','basic','downloads','permissions','library','page-fullscreen'),default='basic');p.add_argument('--inside',action='store_true');a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--browser',required=True,type=Path);p.add_argument('--launcher',required=True,type=Path);p.add_argument('--sway',required=True,type=Path);p.add_argument('--pointer-tool',required=True,type=Path);p.add_argument('--keyboard-tool',required=True,type=Path);p.add_argument('--font-directory',required=True,type=Path);p.add_argument('--at-spi-prefix',required=True,type=Path);p.add_argument('--software-driver',required=True,type=Path);p.add_argument('--portal-tools',type=Path);p.add_argument('--output',required=True,type=Path);p.add_argument('--effects',action='store_true');p.add_argument('--trace-wayland',action='store_true');p.add_argument('--workflow',choices=('new-save','basic','downloads','permissions','library','page-fullscreen','overwrite'),default='basic');p.add_argument('--inside',action='store_true');a=p.parse_args()
 repo=Path(__file__).resolve().parents[2]
 for name in ('browser','launcher','sway','pointer_tool','keyboard_tool','font_directory','at_spi_prefix','software_driver'):
  value=getattr(a,name).resolve()
  if not str(value).startswith('/nix/store/') or not value.exists():p.error('Provide an existing immutable '+name+' dependency')
  setattr(a,name,value)
+if a.portal_tools is not None:
+ a.portal_tools=a.portal_tools.resolve()
+ if not str(a.portal_tools).startswith('/nix/store/') or not a.portal_tools.is_file():p.error('Provide an existing immutable portal tools manifest')
+if a.workflow=='overwrite' and a.portal_tools is None:p.error('Overwrite acceptance requires explicit real portal providers')
 if not a.inside:
  output=a.output.resolve();output.mkdir(parents=True,exist_ok=False)
  prefix=re.split(r'\n[ \t]*exec quickshell ',a.launcher.read_text(),maxsplit=1)[0]
@@ -28,14 +32,17 @@ if not a.inside:
   binary=shutil.which(tool,path=environment.get('PATH',''))
   if not binary or not str(Path(binary).resolve()).startswith('/nix/store/'):p.error('Run within the pinned nix develop runtime; missing immutable '+tool)
  command=[sys.executable,'/source/tests/desktop/browser_workflows_input.py','--inside','--browser',str(a.browser),'--launcher',str(a.launcher),'--sway',str(a.sway),'--pointer-tool',str(a.pointer_tool),'--keyboard-tool',str(a.keyboard_tool),'--font-directory',str(a.font_directory),'--at-spi-prefix',str(a.at_spi_prefix),'--software-driver',str(a.software_driver),'--output','/artifacts','--workflow',a.workflow]
+ if a.portal_tools is not None:command.extend(['--portal-tools',str(a.portal_tools)])
  if a.effects:command.append('--effects')
  if a.trace_wayland:command.append('--trace-wayland')
  revision=sp.check_output(['git','-C',str(repo),'rev-parse','HEAD'],text=True).strip();dirty=sp.check_output(['git','-C',str(repo),'status','--porcelain'],text=True).strip()
  if dirty:raise ValueError('Freeze application fixture source before acceptance')
  sources={str(path.relative_to(repo)):hashlib.sha256(path.read_bytes()).hexdigest() for folder in ('tests/desktop/browser_fixture','tests/desktop/application_fixture') for path in sorted((repo/folder).glob('*')) if path.is_file()}
+ if a.portal_tools is not None:
+  shared=repo/'tests/desktop/office_fixture/dialogs.py';sources[str(shared.relative_to(repo))]=hashlib.sha256(shared.read_bytes()).hexdigest()
  sources[str(Path(__file__).relative_to(repo))]=hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
  result=isolation.run(repo,output,command,environment,software_graphics=a.effects)
- (output/'source-provenance.json').write_text(json.dumps(dict(revision=revision,sources=sources,dependencies={name:str(getattr(a,name)) for name in ('browser','launcher','sway','pointer_tool','keyboard_tool','font_directory','at_spi_prefix','software_driver')},workflow=a.workflow,effects=a.effects,exitCode=result),indent=2))
+ (output/'source-provenance.json').write_text(json.dumps(dict(revision=revision,sources=sources,dependencies={name:str(getattr(a,name)) for name in ('browser','launcher','sway','pointer_tool','keyboard_tool','font_directory','at_spi_prefix','software_driver')},workflow=a.workflow,effects=a.effects,portalTools=str(a.portal_tools) if a.portal_tools else None,exitCode=result),indent=2))
  raise SystemExit(result)
 if repo!=Path('/source') or a.output!=Path('/artifacts') or os.environ.get('HOME')!='/home/fixture' or os.environ.get('XDG_RUNTIME_DIR')!='/run/fixture' or os.getuid()==0 or Path('/proc/1/status').stat().st_uid!=os.getuid():raise ValueError('Private application boundary required before internal entry')
 status=Path('/proc/self/status').read_text()
@@ -78,6 +85,37 @@ try:
  profile=Path(env['HOME'])/'browser-profile';downloads=Path(env['HOME'])/'Downloads';downloads.mkdir()
  configdir=Path(env['XDG_CONFIG_HOME']);(configdir/'user-dirs.dirs').write_text('XDG_DOWNLOAD_DIR="'+str(downloads)+'"\n')
  with FixtureServer() as server:
+  portal_facts=None
+  if a.portal_tools is not None:
+   import dbus
+   from office_fixture.dialogs import start as start_portal
+   def provider_wait(predicate,label,process=None):
+    def ready():
+     if process is not None and process.poll() is not None:raise AssertionError('Owned chooser provider exited: '+label)
+     return predicate()
+    return wait(ready,label)
+   from presentation import start_preserving_client
+   saved_desktop=env.get('XDG_CURRENT_DESKTOP');saved_debug=env.get('WAYLAND_DEBUG')
+   try:
+    if a.trace_wayland:env['WAYLAND_DEBUG']='client'
+    portal_facts=start_preserving_client(start_portal,env,a.portal_tools,launch,provider_wait)
+   finally:
+    if saved_debug is None:env.pop('WAYLAND_DEBUG',None)
+    else:env['WAYLAND_DEBUG']=saved_debug
+   portal_facts['clientDesktop']=saved_desktop
+   connection=dbus.bus.BusConnection(env['DBUS_SESSION_BUS_ADDRESS'])
+   try:
+    owner_api=dbus.Interface(connection.get_object('org.freedesktop.DBus','/org/freedesktop/DBus',introspect=False),'org.freedesktop.DBus');owners={}
+    for name in ('org.freedesktop.portal.Desktop','org.freedesktop.impl.portal.desktop.gtk'):
+     owner=str(owner_api.GetNameOwner(name,timeout=.5));pid=int(owner_api.GetConnectionUnixProcessID(owner,timeout=.5));owners[name]=dict(owner=owner,pid=pid)
+    assert owners['org.freedesktop.impl.portal.desktop.gtk']['pid']==portal_facts['backendPid']
+    version=int(dbus.Interface(connection.get_object('org.freedesktop.portal.Desktop','/org/freedesktop/portal/desktop',introspect=False),'org.freedesktop.DBus.Properties').Get('org.freedesktop.portal.FileChooser','version',timeout=.5));assert version>=3
+    portal_facts.update(owners=owners,fileChooserVersion=version)
+   finally:connection.close()
+   for name,owner in owners.items():
+    maps=Path('/proc/'+str(owner['pid'])+'/maps').read_text();assert len(maps.encode())<4*1024**2;(out/('portal-'+str(owner['pid'])+'-maps.txt')).write_text(maps)
+   monitor=Path(json.loads(a.portal_tools.read_text())['bus']).parent/'dbus-monitor';assert monitor.is_file();launch([monitor,'--address',env['DBUS_SESSION_BUS_ADDRESS'],"type='method_call',interface='org.freedesktop.portal.FileChooser'"],'portal-requests.log')
+   (out/'portal-providers.json').write_text(json.dumps(portal_facts,indent=2))
   command=browser_command(a.browser,profile,server.origin+'/page',accessibility=a.workflow in ('permissions','library'))
   with (out/'browser.log').open('w') as log:browser=PipeTransport(command,dict(env,WAYLAND_DEBUG='client') if a.trace_wayland else env,log)
   version=browser.request('Browser.getVersion',timeout=10);inventory=Inventory(version);target=wait(lambda:next((value for value in browser.request('Target.getTargets')['targetInfos'] if value.get('url')==server.origin+'/page'),None),'synthetic page target');session=browser.request('Target.attachToTarget',dict(targetId=target['targetId'],flatten=True))['sessionId']
@@ -134,8 +172,9 @@ try:
   chooser=wait(lambda:next((node for node in windows() if node['id'] not in existing),None),'actual retained browser Save As chooser')
   (out/'save-chooser-tree.json').write_text(json.dumps(tree(),indent=2));call('grim',out/'save-chooser.png')
   assert chooser.get('lumen_relationships',{}).get('parent')==main['id'],chooser
+  if portal_facts:assert chooser['pid']==portal_facts['backendPid'],chooser
   assert chooser['id']!=main['id'];key('-k','Escape');wait(lambda:all(node['id']!=chooser['id'] for node in windows()),'Save As cancellation');assert not list(downloads.iterdir()) and not list(Path(env['HOME']).glob('*.html'));assert wait(lambda:evaluate('document.hasFocus()'),'page focus after Save cancellation')
-  checks.append('Actual browser Save As uses a separate correctly parented chooser; Escape commits no file and returns page focus')
+  checks.append('Actual browser Save As uses a separate captured chooser; Escape commits no file and returns page focus')
   def finish_result():
    if a.effects:
     required=('Creating scenefx FX renderer','Using OpenGL ES','GL renderer: llvmpipe','FX RENDERER: Shaders Initialized Successfully','Trying udmabuf allocator','Created GL FBO for buffer');assert all(value in (out/'sway.log').read_text() for value in required),'Actual software effects renderer proof missing'
@@ -147,20 +186,24 @@ try:
     'permissions':{'APP-BROWSE-05':('notifications_allow','notifications_deny','notifications_revoke')},
     'library':{'APP-BROWSE-03':('bookmark_add','bookmark_edit','bookmark_delete','private_history_isolation'),'APP-BROWSE-06':('private_window','cookie_isolation','history_isolation')},
     'new-save':{},
+    'overwrite':{},
     'page-fullscreen':{'APP-BROWSE-09':('page_fullscreen','escape_fullscreen','resume_page_input')},
    }
    actions.update(by_workflow[a.workflow])
    for capability,names in actions.items():
     for name in names:inventory.record(capability,name,'verified_compatible',dict(workflow=a.workflow,checks=checks))
-   (out/'result.json').write_text(json.dumps(dict(passed=True,workflow=a.workflow,checks=checks,version=version,browser=str(a.browser),command=command,main=main,profile=str(profile),capabilities=inventory.snapshot(),excludedSetup=EXCLUDED_SETUP,fontFixture=str(a.font_directory),isolation='Private non-root filesystem/PID/network/IPC/UTS namespaces; loopback only; explicit private buses and profile',notClaimed=['Whole multi-action requirement completion','Reference-exact appearance','Consumer private assets','Overwrite/read-only/disconnected-mount workflows','Physical devices, real accounts or external networks']),indent=2))
+   (out/'result.json').write_text(json.dumps(dict(passed=True,workflow=a.workflow,checks=checks,version=version,browser=str(a.browser),command=command,main=main,profile=str(profile),capabilities=inventory.snapshot(),excludedSetup=EXCLUDED_SETUP,fontFixture=str(a.font_directory),isolation='Private non-root filesystem/PID/network/IPC/UTS namespaces; loopback only; explicit private buses and profile',notClaimed=['Whole multi-action requirement completion','Reference-exact appearance','Consumer private assets','Whole save workflow completion including errors and mount loss','Physical devices, real accounts or external networks']),indent=2))
   chooser_mapped={}
   def open_save():
    click_page('#sample');existing={node['id'] for node in windows()};key('-M','ctrl','-k','s','-m','ctrl')
    value=wait(lambda:next((node for node in windows() if node['id'] not in existing),None),'real Save As chooser')
-   assert value.get('lumen_relationships',{}).get('parent')==main['id'];assert value.get('border')=='csd' and value.get('deco_rect',{}).get('height')==0
+   assert value.get('lumen_relationships',{}).get('parent')==main['id']
+   if portal_facts:assert value['pid']==portal_facts['backendPid'],value
+   assert value.get('border')=='csd' and value.get('deco_rect',{}).get('height')==0
    chooser_mapped[value['id']]=time.monotonic();return value
-  def choose_path(path,chooser):
+  def choose_path(path,chooser,finish_entry=False):
    chooser_mapped.setdefault(chooser['id'],time.monotonic());key('-M','ctrl','-k','l','-m','ctrl');key('-M','ctrl','-k','a','-m','ctrl');assert path.parent==downloads;key(path.name)
+   if finish_entry:key('-k','Tab')
    # Chromium ignores acceptance inside its documented 500ms display guard.
    # Observe that readiness boundary; do not bypass it or retry a mutation.
    wait(lambda:time.monotonic()-chooser_mapped[chooser['id']]>=.5,'provider minimum chooser display duration')
@@ -171,7 +214,7 @@ try:
    picture=out/'chooser-accept.png';call('grim',picture);image=Image.open(picture).convert('RGB');rect=chooser['rect'];seen=set();components=[]
    x0,y0=rect['x'],rect['y'];x1=x0+rect['width'];y1=min(image.height,y0+100)
    def eligible(x,y):
-    r,g,b=image.getpixel((x,y));return min(r,g,b)>225 and max(r,g,b)-min(r,g,b)<8
+    r,g,b=image.getpixel((x,y));return (min(r,g,b)>225 and max(r,g,b)-min(r,g,b)<8) or (portal_facts is not None and b>r+60 and b>g+20 and b>120)
    for y in range(y0,y1):
     for x in range(x0,x1):
      if (x,y) in seen or not eligible(x,y):continue
@@ -202,6 +245,11 @@ try:
    from types import SimpleNamespace
    from downloads import run
    run(SimpleNamespace(click_page=click_page,navigate=navigate,wait=wait,evaluate=evaluate,capture_presented=capture_presented,ui_downloads=ui_downloads,downloads=downloads,server=server,checks=checks,click_expression=click_expression,windows=windows,main=main,choose_path=choose_path,capture=lambda name:call('grim',out/name),out=out))
+   finish_result();raise SystemExit(0)
+  if a.workflow=='overwrite':
+   from portal_overwrite import run
+   from types import SimpleNamespace
+   run(SimpleNamespace(out=out,downloads=downloads,main=main,portal_facts=portal_facts,wait=wait,call=call,windows=windows,tree=tree,open_save=open_save,choose_path=choose_path,key=key,evaluate=evaluate,navigate=navigate,ui_downloads=ui_downloads,capture_presented=capture_presented,checks=checks))
    finish_result();raise SystemExit(0)
   if a.workflow=='page-fullscreen':
    click_page('#fullscreen');wait(lambda:evaluate('!!document.fullscreenElement'),'page fullscreen request');wait(lambda:current_main()['fullscreen_mode']==1,'page fullscreen native state');call('grim',out/'page-fullscreen-before-readback.png');(out/'page-fullscreen-before-readback.json').write_text(json.dumps(dict(native=current_main(),layout=browser.request('Page.getLayoutMetrics',session=session),dom=evaluate('({width:innerWidth,height:innerHeight,dpr:devicePixelRatio})')),indent=2));capture_presented("document.querySelector('#sample')",'page-fullscreen.png');key('-k','Escape');wait(lambda:not evaluate('!!document.fullscreenElement') and current_main()['fullscreen_mode']==0,'page fullscreen Escape');assert evaluate('document.hasFocus()');checks.append('Actual page gesture fullscreen and native Escape reconcile page/native state and input')
