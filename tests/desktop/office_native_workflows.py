@@ -37,6 +37,10 @@ def wait(probe,label,owner=None):
    if value:return value
   except (OSError,ValueError,subprocess.SubprocessError):pass
   time.sleep(.05)
+ diagnostics=dict(label=label,profileFiles={str(p):p.read_text() for p in Path('/run/fixture').glob('lumen-profile-*.json')})
+ try:diagnostics['tree']=tree();command(['grim',str(out/'failure.png')])
+ except (OSError,ValueError,subprocess.SubprocessError):pass
+ (out/'timeout.json').write_text(json.dumps(diagnostics,indent=2))
  raise AssertionError('Office readiness condition timed out: '+label)
 def live_pid():
  path=Path('/run/fixture')/('lumen-profile-'+name+'.json')
@@ -45,7 +49,8 @@ def live_pid():
  return values[0] if len(values)==1 else None
 def native():
  pid=live_pid()
- return next((node for node in walk(tree()) if pid and node.get('pid')==pid and node.get('type')=='con'),None)
+ candidates=[node for node in walk(tree()) if pid and node.get('pid')==pid and node.get('app_id')=='ai.storyteller.'+name and node.get('type') in ('con','floating_con') and node.get('rect',{}).get('width',0)>0]
+ return candidates[0] if len(candidates)==1 else None
 def listener():
  with socket.socket(socket.AF_INET,socket.SOCK_STREAM) as client:client.settimeout(.1);return client.connect_ex(('127.0.0.1',port))==0
 
@@ -65,6 +70,19 @@ try:
  elif a.app=='sheet':assert 'Summary' in json.dumps(initial),'Live controller returned a default headless model'
  else:assert 'Synthetic title' in json.dumps(initial),'Live controller returned a default headless model'
  checks.append('Installed profile wrapper, exact native PID/conId and private live document agree')
+ if a.app=='writer':
+  marker=' Native keyboard fixture edit'
+  key('-M','ctrl','-P','Control_L','-s','100','-k','End','-s','100','-p','Control_L','-m','ctrl');key('-d','25','--',marker)
+  facts['typedLiveText']=wait(lambda: (value if marker.strip() in json.dumps(value:=control.tool('get_text')) else None),'complete physical text is acknowledged in live document',provider)
+  changed=wait(lambda: (value if (value:=control.command('writer','file.info')).get('dirty') else None),'physical typing marks live document dirty',provider)
+  assert formats.digest(source)==before,'Typing changed saved source before explicit Save'
+  facts['dirtyLiveDocument']=changed;facts['typedText']=marker
+  key('-M','ctrl','-P','Control_L','-s','100','-k','s','-s','100','-p','Control_L','-m','ctrl')
+  wait(lambda:formats.digest(source)!=before,'physical Save changes owned source',provider)
+  saved=formats.writer(source);assert marker.strip() in json.dumps(saved),'Saved DOCX lacks physical keyboard edit'
+  facts['savedSha256']=formats.digest(source);facts['savedDocument']=saved
+  checks.append('Physical keyboard edit stays dirty until explicit Save and appears in independently parsed DOCX')
+  facts['uiBeforeClose']=control.tool('ui_inspect')
  command(['grim',str(out/'opened.png')]);(out/'tree-opened.json').write_text(json.dumps(tree(),indent=2));(out/'result.json').write_text(json.dumps(dict(passed=True,phase='startup_only',checks=checks,facts=facts,source=a.source_sha),indent=2))
 finally:
  if control is not None:control.close()
