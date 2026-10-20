@@ -105,7 +105,9 @@ try:
     native=current_main() if window is None else next(row for row in windows() if row['id']==window['id'] and row['pid']==window['pid']);client=native['window_rect'];scale=client['width']/info['innerWidth']
     if abs(scale-info['dpr'])>=.000001:
      (out/(Path(name).stem+'-paint.json')).write_text(json.dumps(dict(painted=False,reason='Native configure and application viewport have not committed together',content=info,native=native),indent=2));return False
-    reference=Image.open(io.BytesIO(base64.b64decode(browser.request('Page.captureScreenshot',dict(format='png',fromSurface=True,captureBeyondViewport=False,clip={key:info[key] for key in ('x','y','width','height')}|dict(scale=1)),session=session_id or session,timeout=3)['data']))).convert('RGB');reference.save(out/(Path(name).stem+'-reference.png'))
+    viewport=Image.open(io.BytesIO(base64.b64decode(browser.request('Page.captureScreenshot',dict(format='png',fromSurface=True,captureBeyondViewport=False),session=session_id or session,timeout=3)['data']))).convert('RGB')
+    if viewport.size!=(round(info['innerWidth']*info['dpr']),round(info['innerHeight']*info['dpr'])):return False
+    left,top=round(info['x']*info['dpr']),round(info['y']*info['dpr']);reference=viewport.crop((left,top,left+round(info['width']*info['dpr']),top+round(info['height']*info['dpr'])));reference.save(out/(Path(name).stem+'-reference.png'))
     call('grim',out/name)
     with Image.open(out/name) as screen:result=painted_match(reference,screen,(native['rect']['x']+client['x']+info['x']*scale,native['rect']['y']+client['y']+client['height']-info['innerHeight']*scale+info['y']*scale))
     (out/(Path(name).stem+'-paint.json')).write_text(json.dumps(dict(result=result,content=info,native=native),indent=2));return result['painted']
