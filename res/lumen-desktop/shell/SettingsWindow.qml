@@ -50,7 +50,7 @@ FloatingWindow {
         {name:"Notifications",icon:"bell",color:"#ff3b30",terms:"focus do not disturb alerts"},
         {name:"Search",icon:"search",color:"#56565b",terms:"files applications search index"}
     ]
-    WindowGeometry {id:windowGeometry;ownerWindow:root}
+    WindowGeometry {id:windowGeometry;ownerWindow:root;persistenceKey:"settings.main"}
     function fitScreen() {
         if(!visible || !screen || !Quickshell.env("SWAYSOCK"))return;
         windowGeometry.fitWorkspace(32,150);
@@ -166,9 +166,9 @@ FloatingWindow {
             Keys.onUpPressed:root.searchIndex=Math.max(0,root.searchIndex-1)
         }
         ScrollView {
-            id:sidebarScroll
+            id:sidebarScroll;objectName:"settings-navigation-viewport"
             ScrollBar.vertical:DesktopScrollBar {}
-            x:12;y:search.y+search.height+15;width:root.sidebarWidth-24;height:parent.height-y-12;clip:true
+            x:12;y:search.y+search.height+15;width:root.sidebarWidth-24;height:Math.max(1,parent.height-y-12-geometryStatus.height);clip:true
             Column {
                 width:root.sidebarWidth-24;spacing:2
                 Repeater {
@@ -210,7 +210,7 @@ FloatingWindow {
             PanelLabel {width:parent.width-62;height:Math.max(30,implicitHeight);wrapMode:Text.Wrap;elide:Text.ElideNone;verticalAlignment:Text.AlignVCenter;text:root.page;font.weight:Font.DemiBold;font.pixelSize:Theme.textSize(15)}
         }
         Flickable {
-            id:scroller;objectName:"settings-content-scroll";x:root.sidebarWidth+24;y:Math.max(63,pageHeader.y+pageHeader.height+20);width:parent.width-x-24;height:parent.height-y-18
+            id:scroller;objectName:"settings-content-scroll";x:root.sidebarWidth+24;y:Math.max(63,pageHeader.y+pageHeader.height+20);width:parent.width-x-24;height:Math.max(1,parent.height-y-18-geometryStatus.height)
             clip:true;contentWidth:width;contentHeight:body.height;boundsBehavior:Flickable.StopAtBounds
             onContentHeightChanged:Qt.callLater(root.revealFocus)
             ScrollBar.vertical:DesktopScrollBar {}
@@ -317,6 +317,7 @@ FloatingWindow {
                     SettingsToggle {objectName:"settings-control-hold-a-window-at-the-top-edge-to-open-overview";width:parent.width;text:"Hold a window at the top edge to open Overview";checked:root.service.windowsPreferences.topEdgeOverview!==false;enabled:root.service.available && !root.service.busy;onClicked:root.service.setWindowPreference("topEdgeOverview",checked)}
                     PanelLabel {text:"Tile gap: "+Math.round(tileGapSlider.value)}
                     SystemSlider {objectName:"settings-control-tile-gap";id:tileGapSlider;width:parent.width;from:0;to:32;stepSize:1;value:root.service.windowsPreferences.tileGap ?? 8;enabled:root.service.available && !root.service.busy && root.service.windowsPreferences.tileMargins!==false;Accessible.name:"Tile gap";onMoved:if(!pressed)root.service.setWindowPreference("tileGap",Math.round(value));onPressedChanged:if(!pressed && Math.round(value)!==(root.service.windowsPreferences.tileGap ?? 8))root.service.setWindowPreference("tileGap",Math.round(value))}
+                    SettingsToggle {objectName:"settings-control-remember-owned-window-geometry";width:parent.width;text:"Remember Settings and Calendar window placement";checked:!!root.service.windowsPreferences.rememberOwnedGeometry;enabled:root.service.available && !root.service.busy;onClicked:root.service.setWindowPreference("rememberOwnedGeometry",checked)}
                     PanelLabel {text:"Double-click a title bar to"}
                     DesktopComboBox {objectName:"settings-control-title-bar-double-click-action";width:parent.width;model:["Fill","Zoom","Minimize","Do nothing"];currentIndex:["fill","zoom","minimize","none"].indexOf(root.service.windowsPreferences.titlebarDoubleClick || "fill");enabled:root.service.available && !root.service.busy;Accessible.name:"Title bar double-click action";onActivated:index=>root.service.setWindowPreference("titlebarDoubleClick",["fill","zoom","minimize","none"][index])}
                     PanelLabel {text:"Dock position"}
@@ -475,5 +476,6 @@ FloatingWindow {
                 }
             }
         }
+        WindowGeometryStatus {id:geometryStatus;text:windowGeometry.persistenceStatus}
     }
 }

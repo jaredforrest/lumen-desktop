@@ -96,6 +96,14 @@ jobs:
           nix build .#clipboard-observer --out-link artifacts/clipboard-observer --option abort-on-warn true
           nix build .#test-display-spaces-legacy-compositor --out-link artifacts/legacy-display-compositor --option abort-on-warn true
           bash tests/ci/run-native.sh display_spaces_recovery_native nix develop --command desktop-test-python tests/desktop/display_spaces_recovery_native.py --legacy --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/legacy-display-compositor/bin/sway" --font-config "$PWD/artifacts/offscreen-font-config" --output artifacts/display-spaces-recovery-legacy
+          nix build .#test-owned-geometry-legacy-compositor --out-link artifacts/owned-geometry-legacy-compositor --option abort-on-warn true
+          nix build .#test-owned-geometry-legacy-effects --out-link artifacts/owned-geometry-legacy-effects --option abort-on-warn true
+          for geometry_variant in compositor compositor-effects owned-geometry-legacy-compositor owned-geometry-legacy-effects; do
+            geometry_flags=()
+            if [[ "$geometry_variant" == *effects ]]; then geometry_flags+=(--effects); fi
+            if [[ "$geometry_variant" == owned-geometry-legacy-* ]]; then geometry_flags+=(--legacy); fi
+            bash tests/ci/run-native.sh owned_geometry_native nix develop --command desktop-test-python tests/desktop/owned_geometry_native.py "${geometry_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$geometry_variant/bin/sway" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --pointer "$PWD/artifacts/pointer/bin/wlrctl" --font-config "$PWD/artifacts/offscreen-font-config" --egl-vendor "$PWD/artifacts/owned-typography-driver/share/glvnd/egl_vendor.d/50_mesa.json" --output "artifacts/owned-geometry-$geometry_variant"
+          done
           for compositor in compositor compositor-effects; do
             compositor_flags=()
             if [[ "$compositor" == compositor-effects ]]; then compositor_flags=(--effects); fi
@@ -292,6 +300,7 @@ jobs:
             artifacts/interactions
             artifacts/native-layouts
             artifacts/window-controls-*
+            artifacts/owned-geometry-*
             artifacts/minimized-dock-*
             artifacts/icon-grid
             artifacts/content-clipping-*

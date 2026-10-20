@@ -77,7 +77,7 @@ FloatingWindow {
     }
     function choose(d){calendar.selectDate(d);}
     function step(delta){choose(view==="Year"?new Date(selected.getFullYear()+delta,selected.getMonth(),selected.getDate()):view==="Month"?new Date(month.getFullYear(),month.getMonth()+delta,1):new Date(selected.getFullYear(),selected.getMonth(),selected.getDate()+delta*(view==="Week"?7:1)));}
-    WindowGeometry {id:windowGeometry;ownerWindow:root}
+    WindowGeometry {id:windowGeometry;ownerWindow:root;persistenceKey:"calendar.main"}
     function fitScreen() {
         if(!visible || !screen || !Quickshell.env("SWAYSOCK"))return;
         windowGeometry.fitWorkspace(32,100);
@@ -126,7 +126,7 @@ FloatingWindow {
             }
         }
         TextField {id:search;width:root.width<900?100+(Theme.textRole("label")-12)*5:155;height:Math.max(28,Theme.textRole("label")+14);anchors.right:parent.right;anchors.rightMargin:16;y:12;placeholderText:"Search";font.family:Theme.font;font.pixelSize:Theme.textRole("label");color:Theme.colors.text;placeholderTextColor:Theme.colors.muted;selectByMouse:true;Accessible.name:"Search this month's events";background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline}}
-        ScrollView {id:calendarSidebarScroll;objectName:"calendar-sidebar-viewport";visible:root.sidebar;x:12;y:root.toolbarHeight+20;width:root.sidebarWidth-24;height:parent.height-y-45;clip:true
+        ScrollView {id:calendarSidebarScroll;objectName:"calendar-sidebar-viewport";visible:root.sidebar;x:12;y:root.toolbarHeight+20;width:root.sidebarWidth-24;height:Math.max(1,parent.height-y-45-geometryStatus.height);clip:true
             FocusFlickable {id:calendarSidebarContent;clip:true;contentWidth:width;contentHeight:calendarSidebarColumn.height
             Column {id:calendarSidebarColumn;width:calendarSidebarScroll.availableWidth;spacing:6;onPositioningComplete:Qt.callLater(calendarSidebarContent.revealFocus)
                 PanelLabel {text:"Calendars";font.pixelSize:Theme.textRole("metadata");font.weight:Font.DemiBold;color:Theme.colors.muted;bottomPadding:8}
@@ -147,7 +147,7 @@ FloatingWindow {
         }
         }
         ScrollView {
-            id:calendarViewport;objectName:"calendar-content-viewport";x:root.sidebarWidth+20;y:root.toolbarHeight+12;width:Math.max(1,parent.width-x-20);height:Math.max(1,parent.height-y-16);clip:true
+            id:calendarViewport;objectName:"calendar-content-viewport";x:root.sidebarWidth+20;y:root.toolbarHeight+12;width:Math.max(1,parent.width-x-20);height:Math.max(1,parent.height-y-16-geometryStatus.height);clip:true
             contentWidth:main.width;contentHeight:main.height
             ScrollBar.horizontal:DesktopScrollBar {}
             ScrollBar.vertical:DesktopScrollBar {}
@@ -272,10 +272,11 @@ FloatingWindow {
         }
         }
         Rectangle {visible:root.inspector;anchors.fill:parent;color:"#30000000";MouseArea {anchors.fill:parent;onClicked:{root.inspector=false;calendar.editing=false;}}}
-        ScrollView {id:inspectorScroll;visible:root.inspector;anchors.right:parent.right;anchors.rightMargin:18;y:root.toolbarHeight+6;width:Math.min(350*Theme.textScale,parent.width-36);height:Math.min(parent.height-y-18,calendar.implicitHeight);clip:true
+        ScrollView {id:inspectorScroll;visible:root.inspector;anchors.right:parent.right;anchors.rightMargin:18;y:root.toolbarHeight+6;width:Math.min(350*Theme.textScale,parent.width-36);height:Math.min(parent.height-y-18-geometryStatus.height,calendar.implicitHeight);clip:true
             FocusFlickable {objectName:"calendar-inspector-content";width:inspectorScroll.availableWidth;height:inspectorScroll.availableHeight;contentWidth:width;contentHeight:calendar.implicitHeight
             CalendarCard {id:calendar;width:inspectorScroll.availableWidth;today:root.shell.currentDate;detailsOnly:true;active:root.visible;onOpenCalendar:root.inspector=false;onAccountsRequested:root.shell.openSettings("Internet Accounts")}
             }
         }
+        WindowGeometryStatus {id:geometryStatus;text:windowGeometry.persistenceStatus}
     }
 }

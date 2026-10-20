@@ -83,6 +83,8 @@
         };
         test-application-software-driver = pkgs.mesa;
         shell-runtime = quickshell;
+        test-owned-geometry-legacy-compositor = import ./packages/sway-window-controls.nix { inherit pkgs; ownedGeometryEvents = false; };
+        test-owned-geometry-legacy-effects = import ./packages/sway-window-controls.nix { inherit pkgs; effects = true; ownedGeometryEvents = false; };
         test-physical-keyboard = import ./tests/desktop/physical_keyboard_driver.nix { inherit pkgs; };
         test-application-font = pkgs.callPackage ./packages/interlude.nix {};
         test-pointer = import ./tests/desktop/pointer_driver.nix { inherit pkgs; };

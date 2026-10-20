@@ -88,6 +88,7 @@ let
       };
       windows = mkOption {
         type = types.submodule { options = {
+          rememberOwnedGeometry = mkOption { type = types.bool; default = false; };
           tileMargins = mkOption { type = types.bool; default = true; };
           tileGap = mkOption { type = types.ints.between 0 32; default = 8; };
           edgeTiling = mkOption { type = types.bool; default = true; };

@@ -9,6 +9,10 @@ import time
 
 from application_lifecycle import receive, send
 import sys
+import select
+import contextlib
+import signal
+import owned_geometry
 
 
 def walk(node,workspace=None,floating=False):
@@ -173,11 +177,150 @@ def watch(app,title,container):
             if kind not in (0x80000003,0x80000001) or not isinstance(event,dict):raise ValueError('Invalid native geometry event')
 
 
+@contextlib.contextmanager
+def owned_event_socket():
+    """Half-close and drain the owned subscription before retiring its socket."""
+    with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as events:
+        old_handler=signal.getsignal(signal.SIGTERM)
+        def terminate(signum,frame):
+            raise SystemExit(0)
+        signal.signal(signal.SIGTERM,terminate)
+        try:
+            yield events
+        finally:
+            # A close with unread native events can reset the IPC peer. Half
+            # close lets the server consume EOF and retire its subscription.
+            try:
+                events.shutdown(socket.SHUT_WR)
+                deadline=time.clock_gettime(time.CLOCK_BOOTTIME)+.2
+                received=0
+                while received<262144:
+                    remaining=deadline-time.clock_gettime(time.CLOCK_BOOTTIME)
+                    if remaining<=0:break
+                    events.settimeout(remaining)
+                    data=events.recv(min(65536,262144-received))
+                    if not data:break
+                    received+=len(data)
+            except OSError:
+                pass
+            finally:
+                signal.signal(signal.SIGTERM,old_handler)
+
+
+def owned_watch(app,title,container,registration,restore,min_width,min_height,margin_width,margin_height,observer_token):
+    """One existing geometry observer serializes owned fit, restore and capture.
+
+    A helper-authored fit is sampled before processing queued native events, so
+    its clamp cannot replace a preferred record after an output topology change.
+    There is no second geometry daemon and no persisted process authority.
+    """
+    owned_geometry.owner_key(registration)
+    integer(observer_token,'observer token',1)
+    def emit(value):
+        print(json.dumps(dict(value,observer=observer_token)),flush=True)
+    owner=os.getppid();start=process_start(owner);session=socket_identity(os.environ['SWAYSOCK'])
+    first=mapped_window(app,title,owner,container);captured=first[0]['id']
+    store=owned_geometry.Store();pending=b'';previous=None;armed=False;capture=None
+    version=json.loads(subprocess.check_output(['swaymsg','-r','-t','get_version'],timeout=4))
+    persistence_supported=isinstance(version,dict) and version.get('owned_geometry_events') is True
+    def current():
+        if process_start(owner)!=start or socket_identity(os.environ['SWAYSOCK'])!=session:
+            raise ValueError('Owned geometry session changed')
+        tree=read_tree();row=exact_window(tree,app,title,owner,captured)
+        return tree,row
+    def fingerprint(tree,row):
+        node,workspace,_=row
+        if not workspace:return None,None
+        output=owned_geometry.output_for(tree,workspace['id'])
+        geometry=(dict(node.get('rect') or {}),dict(node.get('window_rect') or {}),dict(node.get('deco_rect') or {}))
+        area=(workspace['id'],output,dict(workspace.get('rect') or {}))
+        return area,geometry
+    def dispatch(command):
+        # Recheck the captured process/session/native ID immediately before IPC.
+        _,fresh=current()
+        if not owned_geometry.enabled() or not owned_geometry.eligible(fresh):raise ValueError('Owned restoration is no longer permitted')
+        replies=json.loads(subprocess.check_output(['swaymsg','-r',command],timeout=4))
+        if not replies or not all(reply.get('success') for reply in replies):
+            raise ValueError('Owned geometry request rejected')
+    with owned_event_socket() as events:
+        events.connect(os.environ['SWAYSOCK']);send(events,2,'["window","output"]');kind,reply=receive(events)
+        if kind!=2 or not isinstance(reply,dict) or reply.get('success') is not True:raise ValueError('Native geometry subscription rejected')
+        restored=False;restore_error=''
+        if owned_geometry.enabled() and not persistence_supported:
+            restore_error='Remembered placement requires the updated compositor at next login'
+        if restore and persistence_supported and owned_geometry.enabled():
+            try:
+                saved=store.get(registration);tree,row=current()
+                if saved and owned_geometry.eligible(row):
+                    outputs=json.loads(subprocess.check_output(['swaymsg','-r','-t','get_outputs'],timeout=4))
+                    target=saved['output']
+                    # Native connector names are data, never command fragments.
+                    import re
+                    if re.fullmatch(r'[-_.:A-Za-z0-9]{1,128}',target) and any(o.get('name')==target and o.get('active') for o in outputs):
+                        dispatch('[con_id=%d] move container to output "%s"'%(captured,target))
+                        tree,row=current()
+                    plan=owned_geometry.restore_plan(row,saved,min_width,min_height,margin_width or 0,margin_height or 0)
+                    if plan:
+                        dispatch('[con_id=%d] resize set width %d px height %d px, move absolute position %d px %d px'%(captured,plan['outerWidth'],plan['outerHeight'],plan['x'],plan['y']))
+                        restored=True
+            except (OSError,ValueError,KeyError,subprocess.SubprocessError) as error:
+                restore_error=str(error)
+        tree,row=current();previous=fingerprint(tree,row)
+        emit(dict(ready=True,container=captured,restored=restored,persistenceSupported=persistence_supported,restorationError=restore_error))
+        while True:
+            clock=time.clock_gettime(time.CLOCK_BOOTTIME)
+            timeout=max(0,capture['until']-clock) if capture else None
+            readable,_,_=select.select([events,sys.stdin.buffer],[],[],timeout)
+            if capture and time.clock_gettime(time.CLOCK_BOOTTIME)>=capture['until']:
+                tree,row=current()
+                if owned_geometry.enabled() and owned_geometry.eligible(row) and fingerprint(tree,row)==capture['fingerprint']:
+                    try:
+                        store.put(registration,capture['placement'])
+                        emit(dict(remembered=True,container=captured))
+                    except (OSError,ValueError) as error:
+                        emit(dict(storageError=str(error)))
+                capture=None
+            if sys.stdin.buffer in readable:
+                chunk=os.read(sys.stdin.fileno(),65536)
+                if not chunk:return
+                pending+=chunk
+                if len(pending)>65536:raise ValueError('Owned geometry request exceeds supported size')
+                while b'\n' in pending:
+                    line,pending=pending.split(b'\n',1)
+                    try:
+                        request=json.loads(line)
+                        if not isinstance(request,dict) or request.get('action')!='fit':raise ValueError('Invalid owned geometry operation')
+                        fields=('width','height','minimumWidth','minimumHeight','preferredWidth','preferredHeight')
+                        for key in fields:integer(request.get(key),key,1)
+                        result=execute(app,title,captured,request['width'],request['height'],request['minimumWidth'],request['minimumHeight'],margin_width,margin_height,request['preferredWidth'],request['preferredHeight'])
+                        tree,row=current()
+                        if result.get('changed'):
+                            previous=fingerprint(tree,row);capture=None
+                        armed=True
+                        emit(dict(fitted=True,result=result))
+                    except (OSError,ValueError,KeyError,subprocess.SubprocessError) as error:
+                        emit(dict(fitted=True,error=str(error)))
+            if events in readable:
+                kind,event=receive(events)
+                if kind not in (0x80000003,0x80000001) or not isinstance(event,dict):raise ValueError('Invalid native geometry event')
+                tree,row=current();now=fingerprint(tree,row)
+                if now[0]!=previous[0]:
+                    previous=now;capture=None
+                    emit(dict(changed=True,container=captured,pid=owner,app=app,title=title))
+                elif now[1]!=previous[1]:
+                    previous=now
+                if armed and persistence_supported and owned_geometry.enabled() and now[0] and event.get('change')=='lumen_geometry' and (event.get('container') or {}).get('id')==captured:
+                    placement=owned_geometry.observed(row,now[0][1])
+                    if placement:
+                        capture=dict(placement=placement,fingerprint=now,until=time.clock_gettime(time.CLOCK_BOOTTIME)+.2)
+
+
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--app',required=True);parser.add_argument('--title',required=True)
     parser.add_argument('--container',type=int,default=0)
     parser.add_argument('--watch',action='store_true')
+    parser.add_argument('--owner-key');parser.add_argument('--restore-owned',action='store_true');parser.add_argument('--observer-token',type=int,default=0)
     parser.add_argument('--margin-width',type=int);parser.add_argument('--margin-height',type=int)
     parser.add_argument('--outer-width',type=int,default=1);parser.add_argument('--outer-height',type=int,default=1)
     parser.add_argument('--minimum-width',type=int,default=1);parser.add_argument('--minimum-height',type=int,default=1)
@@ -187,11 +330,15 @@ def main():
         if args.container<0:raise ValueError('Invalid captured container')
         if (args.margin_width is None)!=(args.margin_height is None):raise ValueError('Both native workspace margins are required')
         if (args.preferred_width is None)!=(args.preferred_height is None):raise ValueError('Both preferred dimensions are required')
+        if args.owner_key:
+            if not args.watch:raise ValueError('Owned registration requires the geometry observer')
+            owned_watch(args.app,args.title,args.container,args.owner_key,args.restore_owned,args.minimum_width,args.minimum_height,args.margin_width,args.margin_height,args.observer_token);return 0
+        if args.restore_owned:raise ValueError('Owned restoration requires an explicit registered owner')
         if args.watch:watch(args.app,args.title,args.container);return 0
         result=execute(args.app,args.title,args.container,args.outer_width,args.outer_height,args.minimum_width,args.minimum_height,args.margin_width,args.margin_height,args.preferred_width,args.preferred_height)
         print(json.dumps(result));return 0
     except (OSError,EOFError,KeyError,IndexError,ValueError,subprocess.SubprocessError) as error:
-        print(json.dumps(dict(error=str(error))));return 1
+        print(json.dumps(dict(error=str(error),**({"observer":args.observer_token} if args.owner_key else {}))));return 1
 
 
 if __name__=='__main__':sys.exit(main())

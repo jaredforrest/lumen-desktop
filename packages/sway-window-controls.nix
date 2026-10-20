@@ -1,4 +1,4 @@
-{ pkgs, effects ? false, displaySpaces ? true }:
+{ pkgs, effects ? false, displaySpaces ? true, ownedGeometryEvents ? true }:
 let
   alignedWlroots = pkgs.wlroots_0_20.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [ ../res/lumen-desktop/wlroots-udmabuf-raster-alignment.patch ../res/lumen-desktop/wlroots-xwayland-modal-state.patch ../res/lumen-desktop/wlroots-seat-capability-leave.patch ];
@@ -23,6 +23,7 @@ pkgs.sway.override {
            ../res/lumen-desktop/sway-layer-input-rebase.patch ../res/lumen-desktop/sway-xwayland-relationships.patch
            ../res/lumen-desktop/sway-preferred-zoom.patch ../res/lumen-desktop/sway-placement-restore-commit.patch ]
       ++ pkgs.lib.optional displaySpaces ../res/lumen-desktop/sway-display-spaces.patch
-      ++ [ ../res/lumen-desktop/sway-disabled-action-dispatch.patch ];
+      ++ [ ../res/lumen-desktop/sway-disabled-action-dispatch.patch ]
+      ++ pkgs.lib.optional ownedGeometryEvents ../res/lumen-desktop/sway-owned-geometry-events.patch;
   });
 }

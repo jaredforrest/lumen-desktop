@@ -1,0 +1,59 @@
+--- a/sway/input/seatop_move_floating.c
++++ b/sway/input/seatop_move_floating.c
+@@ -24,6 +24,7 @@
+  struct sway_container *con;
+  struct sway_seat *seat;
+  double dx, dy;
++ double initial_x,initial_y;
+  struct sway_lumen_placement *restore;
+  struct wl_event_source *timer;
+  struct wlr_scene_rect *preview;
+@@ -160,7 +161,10 @@
+   else container_lumen_tile(e->con,(target-3)%2,(target-3)/2,2,2);
+   drag_event(e,"commit");
+  } else container_floating_move_to(e->con,e->con->pending.x,e->con->pending.y);
+- transaction_commit_dirty();seatop_begin_default(seat);
++ transaction_commit_dirty();
++ if(e->con->pending.x!=e->initial_x || e->con->pending.y!=e->initial_y)
++  ipc_event_window(e->con,"lumen_geometry");
++ seatop_begin_default(seat);
+ }
+ 
+ static void handle_button(struct sway_seat *seat,uint32_t time_msec,
+@@ -214,7 +218,7 @@
+  struct seatop_move_floating_event *e=calloc(1,sizeof(*e));
+  if (!e) return;
+  drag_animation(con,true);
+- e->con=con;e->seat=seat;e->restore=container_lumen_snapshot(con);
++ e->con=con;e->initial_x=con->pending.x;e->initial_y=con->pending.y;e->seat=seat;e->restore=container_lumen_snapshot(con);
+  e->dx=cursor->cursor->x-con->pending.x;e->dy=cursor->cursor->y-con->pending.y;
+  e->timer=wl_event_loop_add_timer(server.wl_event_loop,drag_timer,e);
+  if (!e->timer) {container_lumen_placement_free(e->restore);free(e);return;}
+--- a/sway/input/seatop_resize_floating.c
++++ b/sway/input/seatop_resize_floating.c
+@@ -1,4 +1,5 @@
+ #include <limits.h>
++#include "sway/ipc-server.h"
+ #include <wlr/types/wlr_cursor.h>
+ #include <wlr/types/wlr_xcursor_manager.h>
+ #include "sway/desktop/transaction.h"
+@@ -28,6 +29,9 @@
+ 		container_set_resizing(con, false);
+ 		arrange_container(con); // Send configure w/o resizing hint
+ 		transaction_commit_dirty();
++		if (con->pending.width != e->ref_width || con->pending.height != e->ref_height) {
++			ipc_event_window(con, "lumen_geometry");
++		}
+ 		seatop_begin_default(seat);
+ 	}
+ }
+--- a/sway/ipc-json.c
++++ b/sway/ipc-json.c
+@@ -231,6 +231,7 @@
+ json_object *ipc_json_get_version(void) {
+ 	int major = 0, minor = 0, patch = 0;
+ 	json_object *version = json_object_new_object();
++	json_object_object_add(version, "owned_geometry_events", json_object_new_boolean(true));
+  json_object_object_add(version, "native_window_groups", json_object_new_boolean(true));
+  json_object_object_add(version, "native_window_group_selector", json_object_new_boolean(true));
+  json_object_object_add(version, "native_window_group_membership", json_object_new_boolean(true));

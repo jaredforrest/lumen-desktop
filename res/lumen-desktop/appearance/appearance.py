@@ -89,7 +89,7 @@ def placement_commands(preferences, preferred_zoom):
 
 
 def valid_windows(key,value):
-    return key in ('tileMargins','edgeTiling','optionTiling','topEdgeFill','topEdgeOverview') and type(value) is bool or key=='tileGap' and type(value) is int and 0<=value<=32 or key=='titlebarDoubleClick' and value in ('fill','zoom','minimize','none')
+    return key in ('tileMargins','edgeTiling','optionTiling','topEdgeFill','topEdgeOverview','rememberOwnedGeometry') and type(value) is bool or key=='tileGap' and type(value) is int and 0<=value<=32 or key=='titlebarDoubleClick' and value in ('fill','zoom','minimize','none')
 
 CONTROL_IDS=('wifi','bluetooth','sharing','media','displays','appearance','focus','brightness','sound')
 def valid_control(key,value):
@@ -152,7 +152,7 @@ def main():
             if not valid_desktop(key,value):raise ValueError('Unsupported desktop preference or value')
             from nix_settings import set_section
             desktop_prefs=set_section('desktop',{key:value},merge=True)['desktop']
-        window_prefs=dict(tileMargins=True,tileGap=8,titlebarDoubleClick='fill',edgeTiling=True,optionTiling=True,topEdgeFill=True,topEdgeOverview=True)
+        window_prefs=dict(rememberOwnedGeometry=False,tileMargins=True,tileGap=8,titlebarDoubleClick='fill',edgeTiling=True,optionTiling=True,topEdgeFill=True,topEdgeOverview=True)
         window_prefs.update(read_settings().get('windows',{}))
         if a.set_windows:
             key,raw=a.set_windows

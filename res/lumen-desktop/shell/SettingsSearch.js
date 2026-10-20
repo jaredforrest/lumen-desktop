@@ -59,6 +59,12 @@ const controls = [
         "target": "settings-control-tile-gap"
     },
     {
+        "id": "remember-owned-window-geometry",
+        "page": "Desktop & Dock",
+        "label": "Remember Settings and Calendar window placement",
+        "target": "settings-control-remember-owned-window-geometry"
+    },
+    {
         "id": "title-bar-double-click-action",
         "page": "Desktop & Dock",
         "label": "Title bar double-click action",
