@@ -5,6 +5,7 @@ import "FilesHistoryModel.js" as HistoryModel
 Item {
     id:root
     signal informationReady(var details)
+    signal batchRenameReady(var reply)
     property bool active:false
     property bool ready:false
     property var queued:[]
@@ -132,6 +133,7 @@ Item {
             try {
                 const data=JSON.parse(line);
                 if(data.action==="info"){root.informationReady(data.info || {error:data.error});return;}
+                if(["rename-preview","rename-confirm","rename-cancel"].includes(data.action)){root.batchRenameReady(data);if(data.action==="rename-confirm")root.refresh();return;}
                 if(data.action==="preferences"){const p=data.preferences || {};root.viewMode=p.view || "grid";root.sort=p.sort || "name";root.descending=!!p.descending;root.hidden=!!p.hidden;root.foldersFirst=p.foldersFirst!==false;root.groupBy=p.groupBy || "none";root.favorites=p.favorites===undefined?null:p.favorites;root.sidebarWidth=Number.isInteger(p.sidebarWidth)?Math.max(120,Math.min(360,p.sidebarWidth)):190;root.collapsedSidebarGroups=Array.isArray(p.collapsedSidebarGroups)?p.collapsedSidebarGroups.filter(group=>["favourites","locations"].includes(group)):[];root.preferencesLoaded=true;root.refresh();return;}
                 if(data.action==="save-preferences")return;
                 if(data.action==="column-list"){if(data.id in root.columnRequests){const columns=root.columns.slice();const i=root.columnRequests[data.id];columns[i]=Object.assign({},columns[i],{rows:data.rows || [],error:data.error || "",loaded:true});root.columns=columns;}return;}

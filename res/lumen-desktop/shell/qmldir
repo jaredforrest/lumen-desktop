@@ -139,3 +139,5 @@ PreviewResourceRetirement 1.0 PreviewResourceRetirement.qml
 PreviewResourceConsumer 1.0 PreviewResourceConsumer.qml
 
 WindowGeometry 1.0 WindowGeometry.qml
+
+BatchRenameDialog 1.0 BatchRenameDialog.qml

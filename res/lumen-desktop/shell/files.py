@@ -170,6 +170,11 @@ def handle(data):
         return dict(ok=True)
     if action=='list':return listing(data)
     if action=='preview':return preview(data['path'], data.get('page',1))
+    if action in ('rename-preview','rename-confirm','rename-cancel'):
+        from file_batch_rename import plans
+        if action=='rename-preview':return plans.preview(data.get('items'),data.get('rule'),data.get('policy','stop'))
+        if action=='rename-confirm':return plans.execute(data.get('token'),data.get('confirmed'))
+        return plans.cancel(data.get('token'))
     p=path(data['path'])
     if action=='set-tags':
         file_tags.write(p,data.get('tags'),data.get('identity'));return dict(ok=True,selected=str(p))
