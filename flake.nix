@@ -60,6 +60,7 @@
         test-constraint-client = import ./tests/desktop/constraint_client.nix { inherit pkgs; };
         test-typography = import ./tests/desktop/typography_probe.nix { inherit pkgs; };
         test-office-tools = pkgs.poppler-utils;
+        test-application-software-driver = pkgs.mesa;
         shell-runtime = quickshell;
         test-pointer = import ./tests/desktop/pointer_driver.nix { inherit pkgs; };
         inherit (office) wordcraft gridcraft deckcraft;

@@ -1,5 +1,5 @@
 """Package identity and independently parsed structured content never trust suffixes."""
-import io,sys,tempfile,unittest
+import ast,io,sys,tempfile,unittest
 from pathlib import Path
 from zipfile import ZipFile
 sys.path.insert(0,str(Path(__file__).parent))
@@ -31,6 +31,14 @@ class Formats(unittest.TestCase):
  def test_differences_include_typed_nested_losses(self):
   value=f.differences({'comments':[{'text':'Review'}],'count':1},{'comments':[],'count':True})
   self.assertEqual({row['field'] for row in value},{'comments','count'});self.assertEqual(value[0]['before'],[{'text':'Review'}])
+ def test_painted_comparison_detects_single_pixel_change_and_missing_page(self):
+  from PIL import Image
+  source=Path(__file__).with_name('office_workflows.py');tree=ast.parse(source.read_text());function=next(node for node in tree.body if isinstance(node,ast.FunctionDef) and node.name=='compare_rasters');scope={};exec(compile(ast.Module(body=[function],type_ignores=[]),str(source),'exec'),scope)
+  with tempfile.TemporaryDirectory() as temporary:
+   root=Path(temporary);a=root/'a.png';b=root/'b.png';image=Image.new('RGB',(2,2),'white');image.save(a);image.putpixel((1,1),(254,255,255));image.save(b)
+   self.assertEqual(scope['compare_rasters']([a],[a]),[])
+   result=scope['compare_rasters']([a],[b]);self.assertEqual(result,[dict(page=1,kind='painted_pixels',bounds=(1,1,2,2),changedPixels=1)])
+   self.assertEqual(scope['compare_rasters']([a],[]),[dict(page=1,kind='missing_page')])
  def test_corpus_image_and_action_payload_are_synthetic(self):
   from PIL import Image
   fixture=corpus.create()
