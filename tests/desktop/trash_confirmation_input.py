@@ -76,14 +76,15 @@ def window():return next(node for node in nodes(json.loads(call('swaymsg','-r','
 def key(*keys):call('wtype',*keys);time.sleep(.12)
 def click(name):
  geometry=json.loads(ipc('geometry',name));assert geometry,name;rect=window()['rect'];call('swaymsg','seat','seat0','cursor','set',str(round(rect['x']+geometry['x']+geometry['width']/2)),str(round(rect['y']+geometry['y']+geometry['height']/2)))
- pointer.stdin.write('m 0.5 0.5\np\nr\n');pointer.stdin.flush();time.sleep(.18)
+ for command in ('m 0.5 0.5','p','r'):
+  pointer.stdin.write(command+'\n');pointer.stdin.flush();time.sleep(.12)
 checks=[]
 try:
  config=out/'sway.conf';config.write_text('output HEADLESS-1 resolution 1000x760\nxwayland disable\nfor_window [all] floating enable, border pixel 0\n')
  launch([a.sway,'--unsupported-gpu','-c',str(config)],'sway.log');runtime=Path(env['XDG_RUNTIME_DIR']);env['SWAYSOCK']=str(wait(lambda:next(runtime.glob('sway-ipc*.sock'),None)));env['WAYLAND_DISPLAY']=wait(lambda:next((path.name for path in runtime.glob('wayland-*') if not path.name.endswith('.lock')),None))
  launch([sys.executable,str(assets/'shell/file_jobs.py')],'operations.log');wait(lambda:(runtime/'lumen-file-operations.sock').exists())
  shell=launch(['quickshell','-p',str(qml)],'shell.log');wait(lambda:state()['ready'] and state()['controller'] and len(state()['rows'])==2)
- launch(['wtype','-s','60000'],'keyboard.log');pointer=sp.Popen([a.pointer_tool,'pointer','move','0','0'],env=env,stdin=sp.PIPE,text=True,start_new_session=True);processes.append(pointer)
+ launch(['wtype','-s','60000'],'keyboard.log');pointer=sp.Popen([a.pointer_tool,'pointer','move','0','0'],env=env,stdin=sp.PIPE,text=True,start_new_session=True);processes.append(pointer);time.sleep(.2)
  ipc('prepare','selected',str(first));wait(lambda:state()['confirmation']);wait(lambda:state()['focus']=='trash-cancel');key('-k','Return');wait(lambda:not state()['confirmation']);assert first.exists();checks.append('Actual Return activates default Cancel without deleting captured item')
  ipc('prepare','selected',str(first));wait(lambda:state()['confirmation']);key('-k','Escape');wait(lambda:not state()['confirmation']);assert first.exists();checks.append('Actual Escape retires pending confirmation without deletion')
  ipc('prepare','empty','');wait(lambda:state()['confirmation']);late=item('Later.txt');call('grim',str(out/'confirmation-150-percent.png'));click('trash-confirm');wait(lambda:state()['operations'] and not state()['busy'] and state()['operations'][-1]['state']=='complete');assert not first.exists() and not second.exists() and late.exists();checks.append('Actual pointer confirms captured Empty Trash; later arrival excluded at enlarged text')
