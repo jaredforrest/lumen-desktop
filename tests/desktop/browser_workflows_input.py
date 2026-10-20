@@ -74,7 +74,7 @@ try:
  start_private_bus(env,out,processes)
  if a.workflow in ('permissions','library'):accessibility=start_accessibility(a.at_spi_prefix,env,launch,wait)
  config=runtime/'sway.conf';config.write_text('include /source/res/lumen-desktop/sway.conf\noutput HEADLESS-1 resolution 1400x1000\nxwayland disable\nseat seat0 fallback true\nfocus_follows_mouse no\n')
- launch([a.sway,'--unsupported-gpu','-c',config],'sway.log');env['SWAYSOCK']=str(wait(lambda:next(runtime.glob('sway-ipc*.sock'),None),'compositor IPC'));env['WAYLAND_DISPLAY']=wait(lambda:next((path.name for path in runtime.glob('wayland-*') if not path.name.endswith('.lock')),None),'private display')
+ launch([a.sway,'--unsupported-gpu','-d','-c',config],'sway.log');env['SWAYSOCK']=str(wait(lambda:next(runtime.glob('sway-ipc*.sock'),None),'compositor IPC'));env['WAYLAND_DISPLAY']=wait(lambda:next((path.name for path in runtime.glob('wayland-*') if not path.name.endswith('.lock')),None),'private display')
  profile=Path(env['HOME'])/'browser-profile';downloads=Path(env['HOME'])/'Downloads';downloads.mkdir()
  configdir=Path(env['XDG_CONFIG_HOME']);(configdir/'user-dirs.dirs').write_text('XDG_DOWNLOAD_DIR="'+str(downloads)+'"\n')
  with FixtureServer() as server:
@@ -85,7 +85,7 @@ try:
   def evaluate(expression):return read_session(expression,session)
   assert wait(lambda:evaluate('document.title')=='Fixture browser workflow','painted document title')
   main=wait(lambda:next((node for node in windows() if 'Fixture browser workflow' in (node.get('name') or '')),None),'actual browser native window')
-  (out/'main-tree.json').write_text(json.dumps(tree(),indent=2));call('grim',out/'main.png')
+  (out/'main-tree.json').write_text(json.dumps(tree(),indent=2))
   assert main.get('lumen_relationships',{}).get('parent') is None,main
   assert main.get('border')=='normal' and main.get('deco_rect',{}).get('height',0)>0,main
   preferences=json.loads((profile/'Default/Preferences').read_text());assert preferences['browser']['custom_chrome_frame'] is False,'Explicit private profile did not receive production native frame preference'
@@ -102,7 +102,9 @@ try:
    def ready():
     info=read_session('(()=>{const element='+expression+';if(!element)return null;let r=element.getBoundingClientRect();if(!element.childElementCount){const range=document.createRange();range.selectNodeContents(element);r=range.getBoundingClientRect();}return {x:r.x,y:r.y,width:r.width,height:r.height,text:element.innerText,innerWidth,innerHeight,dpr:devicePixelRatio};})()',session_id or session)
     if not info or info['width']<=0 or info['height']<=0:return False
-    native=current_main() if window is None else next(row for row in windows() if row['id']==window['id'] and row['pid']==window['pid']);client=native['window_rect'];scale=client['width']/info['innerWidth'];assert abs(scale-info['dpr'])<.000001,'This application fixture currently requires output scale one'
+    native=current_main() if window is None else next(row for row in windows() if row['id']==window['id'] and row['pid']==window['pid']);client=native['window_rect'];scale=client['width']/info['innerWidth']
+    if abs(scale-info['dpr'])>=.000001:
+     (out/(Path(name).stem+'-paint.json')).write_text(json.dumps(dict(painted=False,reason='Native configure and application viewport have not committed together',content=info,native=native),indent=2));return False
     reference=Image.open(io.BytesIO(base64.b64decode(browser.request('Page.captureScreenshot',dict(format='png',fromSurface=True,captureBeyondViewport=False,clip={key:info[key] for key in ('x','y','width','height')}|dict(scale=1)),session=session_id or session,timeout=3)['data']))).convert('RGB');reference.save(out/(Path(name).stem+'-reference.png'))
     call('grim',out/name)
     with Image.open(out/name) as screen:result=painted_match(reference,screen,(native['rect']['x']+client['x']+info['x']*scale,native['rect']['y']+client['y']+client['height']-info['innerHeight']*scale+info['y']*scale))
@@ -119,6 +121,7 @@ try:
    native=current_main() if window is None else next(row for row in windows() if row['id']==window['id'] and row['pid']==window['pid']);client=native['window_rect'];rect=native['rect'];scale=client['width']/geometry['innerWidth'];x=rect['x']+client['x']+geometry['x']*scale;y=rect['y']+client['y']+client['height']-geometry['innerHeight']*scale+geometry['y']*scale
    call(a.sway.parent/'swaymsg','seat','seat0','cursor','set',str(round(x)),str(round(y)))
    for operation in ('m 0.5 0.5','p','r'):pointer.stdin.write(operation+'\n');pointer.stdin.flush();time.sleep(.12)
+  outputs=json.loads(call(a.sway.parent/'swaymsg','-r','-t','get_outputs'));assert len(outputs)==1 and outputs[0]['scale']==1; (out/'outputs.json').write_text(json.dumps(outputs,indent=2));capture_presented("document.querySelector('#sample')",'main.png')
   navigate('brave://sandbox');sandbox=wait(lambda:evaluate('document.body.innerText') if 'sandbox' in str(evaluate('location.href')) else None,'actual browser sandbox status')
   (out/'sandbox-status.txt').write_text(sandbox);call('grim',out/'sandbox.png')
   assert re.search(r'Seccomp-BPF sandbox\s+Yes',sandbox,re.I),sandbox
@@ -207,8 +210,8 @@ try:
    key('-M','ctrl','-k','w','-m','ctrl');wait(lambda:all(row['targetId']!=reopened['targetId'] for row in browser.request('Target.getTargets')['targetInfos']),'close reopened tab')
    assert wait(lambda:evaluate('document.hasFocus()'),'original page input after tab lifecycle');checks.append('Native new, close and reopen affect captured tab identities and preserve original tab/input')
    ratio=evaluate('devicePixelRatio');key('-M','ctrl','-k','=','-m','ctrl');larger=wait(lambda:evaluate('devicePixelRatio') if evaluate('devicePixelRatio')>ratio else None,'native page zoom increase');key('-M','ctrl','-k','0','-m','ctrl');wait(lambda:evaluate('devicePixelRatio')==ratio,'native zoom reset');checks.append('Native zoom increases actual page pixel ratio and reset restores it')
-   key('-k','F11');wait(lambda:current_main()['fullscreen_mode']==1,'browser fullscreen');call('grim',out/'browser-fullscreen.png');key('-k','F11');wait(lambda:current_main()['fullscreen_mode']==0,'browser fullscreen return');assert wait(lambda:evaluate('document.hasFocus()'),'input restored after browser fullscreen');checks.append('Native browser fullscreen enters/exits actual compositor state and restores page input')
-   click_page('#fullscreen');wait(lambda:evaluate('!!document.fullscreenElement'),'page fullscreen request');wait(lambda:current_main()['fullscreen_mode']==1,'page fullscreen native state');call('grim',out/'page-fullscreen.png');key('-k','Escape');wait(lambda:not evaluate('!!document.fullscreenElement') and current_main()['fullscreen_mode']==0,'page fullscreen Escape');assert evaluate('document.hasFocus()');checks.append('Actual page gesture fullscreen and native Escape reconcile page/native state and input')
+   key('-k','F11');wait(lambda:current_main()['fullscreen_mode']==1,'browser fullscreen');capture_presented("document.querySelector('#sample')",'browser-fullscreen.png');key('-k','F11');wait(lambda:current_main()['fullscreen_mode']==0,'browser fullscreen return');assert wait(lambda:evaluate('document.hasFocus()'),'input restored after browser fullscreen');checks.append('Native browser fullscreen enters/exits actual compositor state and restores page input')
+   click_page('#fullscreen');wait(lambda:evaluate('!!document.fullscreenElement'),'page fullscreen request');wait(lambda:current_main()['fullscreen_mode']==1,'page fullscreen native state');capture_presented("document.querySelector('#sample')",'page-fullscreen.png');key('-k','Escape');wait(lambda:not evaluate('!!document.fullscreenElement') and current_main()['fullscreen_mode']==0,'page fullscreen Escape');assert evaluate('document.hasFocus()');checks.append('Actual page gesture fullscreen and native Escape reconcile page/native state and input')
    finish_result();raise SystemExit(0)
   fresh=downloads/'new-saved-page.html';assert not fresh.exists();chooser=open_save();choose_path(fresh,chooser)
   wait(lambda:all(node['id']!=chooser['id'] for node in windows()),'new-file Save provider completion')
