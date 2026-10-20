@@ -11,3 +11,5 @@ Default Return dispatch respects actual focus ancestry. A focused Cancel or anot
 `shared_control_typography_native.py` uses physical volume/date input, actual button ancestry and eight Return routes, constrained Calendar cancellation with zero provider mutations, and real pointer-hover tooltip paint. Private synthetic providers record audio arguments and reject calendar writes; no host devices, accounts or services are accessed. CI retains both compositor variants and all failure artifacts.
 
 Optional `--protocol-trace` records only the private application client, with phase offsets and a cooperative 8 MiB guard. Runtime warnings are collected after all children have been reaped. Protocol traces remain private artifacts; a passing functional result is not a warning-clean runtime claim.
+
+Private native acceptance also checks ordered keyboard and pointer enter/leave events through device teardown. Capability loss emits a leave only for the focused client; other connected clients must not duplicate that event. The native gate rejects duplicate or mismatched leaves and runtime warnings after all children are reaped.

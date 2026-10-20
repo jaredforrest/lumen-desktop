@@ -135,5 +135,10 @@ finally:
  if (out/'shell.log').exists():
   mark_phase('All private children reaped');text=(out/'shell.log').read_text();result=out/'result.json'
   if result.exists():
-   data=json.loads(result.read_text());data['runtimeWarnings']=[line for line in text.splitlines()if 'WARN'in line];data['protocolTrace']=dict(enabled=a.protocol_trace,bytes=(out/'shell.log').stat().st_size,cooperativeCapBytes=8*1024*1024);result.write_text(json.dumps(data,indent=2))
+   data=json.loads(result.read_text());data['runtimeWarnings']=[line for line in text.splitlines()if 'WARN'in line];data['protocolTrace']=dict(enabled=a.protocol_trace,bytes=(out/'shell.log').stat().st_size,cooperativeCapBytes=8*1024*1024)
+   if a.protocol_trace:
+    from application_fixture.seat_protocol import inspect
+    data['seatProtocol']=inspect(text)
+    data['passed']=data['passed'] and not data['seatProtocol']['errors'] and all(data['seatProtocol']['counts'][kind]['enter'] and data['seatProtocol']['counts'][kind]['leave'] for kind in ('keyboard','pointer'))
+   data['passed']=data['passed'] and not data['runtimeWarnings'];result.write_text(json.dumps(data,indent=2));assert data['passed'],'Private focus ordering or runtime warning failure; inspect retained result'
   if a.protocol_trace:assert (out/'shell.log').stat().st_size<=8*1024*1024,'Private protocol trace exceeded cooperative8MiB cap'
