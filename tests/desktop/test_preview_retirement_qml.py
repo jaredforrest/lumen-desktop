@@ -43,23 +43,29 @@ ShellRoot {
    second.source="";Qt.callLater(leaseRegistry.check);
   }else if(root.phase===3){
    root.check(JSON.stringify(root.retiredIds)==="[11,12,13]","Duplicated or stale retirement acknowledgement");root.phase=4;
-   root.dynamicItem=dynamicConsumer.createObject(null);leaseRegistry.retire([14],root.uri);root.dynamicItem.destroy();
+   second.source=root.uri;root.dynamicItem=dynamicAdapter.createObject(null);leaseRegistry.retire([14],root.uri);root.dynamicItem.destroy();adapterCheck.restart();
   }else if(root.phase===4){
-   root.check(JSON.stringify(root.retiredIds)==="[11,12,13,14]","Destroyed consumer left a stale lease or duplicated an acknowledgement");
+   root.check(second.source.toString()==="","Adapter-only destruction released a still-bound Image");root.phase=5;
+   root.dynamicItem=dynamicConsumer.createObject(null);leaseRegistry.retire([15],root.uri);root.dynamicItem.destroy();
+  }else if(root.phase===5){
+   root.check(JSON.stringify(root.retiredIds)==="[11,12,13,14,15]","Destroyed source owner left a stale lease or duplicated an acknowledgement");
+   root.check(!leaseRegistry.consumers.some(entry=>!entry.owner),"Retired source owner registry leaked");
    console.log("PASS cooperative preview retirement");Qt.quit();
   }
  }}
+ Timer {id:adapterCheck;interval:50;onTriggered:{leaseRegistry.check();root.check(leaseRegistry.busy,"Adapter-only destruction released a still-bound Image");second.source="";}}
+ Component {id:dynamicAdapter;D.PreviewResourceConsumer {manager:leaseRegistry;sourceObjects:[second]}}
  Component {id:dynamicConsumer;Item {
   Image {id:dynamicImage;source:root.uri;asynchronous:true}
-  D.PreviewResourceConsumer {manager:leaseRegistry;sources:[dynamicImage.source.toString()]}
+  D.PreviewResourceConsumer {manager:leaseRegistry;sourceObjects:[dynamicImage]}
  }}
  Item {
   Image {id:first;source:root.uri;asynchronous:true}
   Image {id:second;source:root.uri;asynchronous:true}
-  D.PreviewResourceConsumer {manager:leaseRegistry;sources:[first.source.toString()]}
-  D.PreviewResourceConsumer {id:secondConsumer;manager:leaseRegistry;sources:[second.source.toString()]}
-  QtObject {id:media;property string source:"";property bool stopped:true}
-  D.PreviewResourceConsumer {manager:leaseRegistry;sources:[media.source];mediaSources:[media.source];mediaStopped:media.stopped}
+  D.PreviewResourceConsumer {manager:leaseRegistry;sourceObjects:[first]}
+  D.PreviewResourceConsumer {id:secondConsumer;manager:leaseRegistry;sourceObjects:[second]}
+  QtObject {id:media;property string source:"";property bool stopped:true;property int playbackState:stopped?0:1}
+  D.PreviewResourceConsumer {manager:leaseRegistry;sourceObjects:[media];mediaObjects:[media]}
  }
  Timer {interval:20;repeat:true;running:root.phase===0;onTriggered:{
   if(first.status!==Image.Ready || second.status!==Image.Ready)return;

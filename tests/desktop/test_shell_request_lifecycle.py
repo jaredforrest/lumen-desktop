@@ -47,6 +47,8 @@ ShellRoot {
  Component.onCompleted: {
   search.active=true;search.search("first");search.searchId=10;
   search.requestPreview("/fixture/first");search.previewId=11;
+  search.requestPreview("/fixture/first");check(search.previewId===11,"Identical selection refresh retired pending preview");
+  search.requestPreview("");search.previewPath="/fixture/first";search.previewId=-1;search.preview={type:"generic",text:"unavailable"};search.requestPreview("/fixture/first");check(Object.keys(search.preview).length===0,"Terminal preview error blocked explicit refresh");search.previewId=11;
   search.search("second");
   search.receive({id:10,results:[{path:"wrong"}]});
   search.receive({id:11,type:"text",text:"wrong"});

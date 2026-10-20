@@ -13,7 +13,7 @@ private immutable resource URIs; rendered PDF cache images are retained too, so
 shared cache pruning cannot invalidate a published page. Displayed names and
 metadata describe the validated original source, not its temporary resource.
 Copy limits are 64 MiB per file and 128 MiB per worker; supported renderers retain
-their existing narrower limits, including32 MiB for inline image display; exhaustion is unavailable with
+their existing narrower limits, including 32 MiB for inline image display; exhaustion is unavailable with
 no original URI fallback. The budget now counts a working set rather than every
 past selection: source and result/page leases share references to immutable
 resources. Unchanged-source PDF paging retains its original input while replacing
@@ -30,7 +30,9 @@ execution path. The next preview waits for the previous retirement acknowledgeme
 The UI first clears its result. `PreviewResourceConsumer` observes each actual
 Image source and each MediaPlayer source/stopped state; Files registers both its
 gallery and sidebar consumers. `PreviewResourceRetirement` acknowledges only once
-all old sources are cleared and old media is stopped, or a consumer is destroyed.
+all old sources are cleared and old media is stopped, or the actual source owner
+is destroyed. Pending acknowledgements retain the exact Image/MediaPlayer QObject
+references: removing or rebinding a tracking adapter alone is not retirement.
 A later Qt turn schedules this observation and is not itself an acknowledgement.
 This is a cooperative source-retirement contract, not a claim that an internal
 decoder thread has completed. Unacknowledged sources remain leased and block new

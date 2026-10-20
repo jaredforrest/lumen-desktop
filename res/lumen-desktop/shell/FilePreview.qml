@@ -45,9 +45,8 @@ Item {
     }
     PreviewResourceConsumer {
         manager:root.resourceRetirement
-        sources:[previewImage.source.toString(),player.source.toString()]
-        mediaSources:[player.source.toString()]
-        mediaStopped:player.playbackState===MediaPlayer.StoppedState
+        sourceObjects:[previewImage,player]
+        mediaObjects:[player]
     }
     VideoOutput {
         id: video; visible: root.media && player.hasVideo

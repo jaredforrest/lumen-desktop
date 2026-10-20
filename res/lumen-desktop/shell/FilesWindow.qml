@@ -539,7 +539,7 @@ Accessible.name:modelData.name;Accessible.selected:root.isSelected(index);onClic
                 x:12;width:parent.width-12;spacing:10
                 PanelLabel {width:parent.width;text:root.current?root.current.name:"Select an item";textFormat:Text.PlainText;wrapMode:Text.WrapAnywhere;maximumLineCount:3;font.weight:Font.DemiBold}
                 PanelLabel {width:parent.width;text:root.current?(root.current.directory?"Folder":root.sizeText(root.current)):"";color:Theme.colors.muted;font.pixelSize:11}
-                PreviewResourceConsumer {manager:root.service.previewResourceRetirement;sources:[sidebarPreviewImage.source.toString()]}
+                PreviewResourceConsumer {manager:root.service.previewResourceRetirement;sourceObjects:[sidebarPreviewImage]}
                 Image {id:sidebarPreviewImage;visible:root.service.preview.type==="image";width:parent.width;height:visible?Math.max(80,previewPane.height-105):0;source:visible?root.service.preview.uri || "":"";sourceSize:Qt.size(800,800);fillMode:Image.PreserveAspectFit;asynchronous:true;PanelLabel {visible:parent.status===Image.Error;anchors.centerIn:parent;text:"Preview unavailable";color:Theme.colors.muted}}
                 Flickable {
                     visible:root.service.preview.type!=="image";width:parent.width;height:Math.max(40,previewPane.height-110);clip:true;contentHeight:previewText.height;contentWidth:width

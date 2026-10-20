@@ -79,7 +79,7 @@ ShellRoot {
  }
  function find(item,predicate){if(predicate(item))return item;for(const child of item.children || []){const match=find(child,predicate);if(match)return match;}return null;}
  IpcHandler {target:"fixture"
-  function status():string{return JSON.stringify({provider:launcher.provider,results:launcher.results,selected:launcher.selectedIndex,key:launcher.selectedKey,query:launcher.queryText,available:search.available,searching:search.searching,opening:search.opening,error:search.error,preview:search.preview,previewOpen:launcher.previewOpen,visible:stage.visible,browsed:root.browsed});}
+  function status():string{return JSON.stringify({provider:launcher.provider,results:launcher.results,selected:launcher.selectedIndex,key:launcher.selectedKey,query:launcher.queryText,available:search.available,searching:search.searching,opening:search.opening,error:search.error,preview:search.preview,previewId:search.previewId,searchId:search.searchId,previewOpen:launcher.previewOpen,visible:stage.visible,browsed:root.browsed});}
   function image():string{const b=root.find(launcher,item=>item.source!==undefined && item.fillMode!==undefined && String(item.source).indexOf("lumen-preview-snapshots-")>=0);if(!b)return "{}";const point=b.mapToItem(stage.contentItem,b.width/2,b.height/2);return JSON.stringify({x:point.x,y:point.y,status:b.status,source:String(b.source)});}
   function reopen():void{stage.visible=true;launcher.focusSearch();}
   function button(text:string):string{const b=root.find(launcher,item=>item.text===text && item.visible);if(!b)return "{}";const point=b.mapToItem(stage.contentItem,b.width/2,b.height/2);return JSON.stringify({x:point.x,y:point.y,enabled:b.enabled});}
@@ -117,7 +117,19 @@ ShellRoot {
   launch([a.sway,'--unsupported-gpu','-c',str(conf)],'sway.log');wait(lambda:list(home.glob('sway-ipc*.sock')),'compositor')
   env['SWAYSOCK']=str(next(home.glob('sway-ipc*.sock')));env['WAYLAND_DISPLAY']=next(f.name for f in home.glob('wayland-*') if not f.name.endswith('.lock'))
   launch(['wtype','-s','600000'],'keyboard.log');native_pointer=launch([a.pointer_tool,'pointer','move','0','0'],'pointer.log',stdin=sp.PIPE,text=True)
-  launch(['quickshell','-p',str(qml)],'shell.log');wait(lambda:state()['available'],'provider ready');call(str(Path(a.sway).parent/'swaymsg'),'-r','[title="^Search Lifecycle Fixture$"] focus');time.sleep(.2)
+  shell_process=launch(['quickshell','-p',str(qml)],'shell.log');wait(lambda:state()['available'],'provider ready')
+  def mapped_window():
+   tree=json.loads(call(str(Path(a.sway).parent/'swaymsg'),'-r','-t','get_tree'))
+   def find(node):
+    if node.get('name')=='Search Lifecycle Fixture' and node.get('pid')==shell_process.pid and node.get('app_id')=='org.quickshell' and node.get('rect',{}).get('width',0)>0 and node.get('rect',{}).get('height',0)>0:return node['id']
+    return next((value for child in node.get('nodes',[])+node.get('floating_nodes',[]) if (value:=find(child))),None)
+   return find(tree)
+  window_id=wait(mapped_window,'mapped launcher window');call(str(Path(a.sway).parent/'swaymsg'),'-r',f'[con_id={window_id}] focus')
+  def focused_window():
+   tree=json.loads(call(str(Path(a.sway).parent/'swaymsg'),'-r','-t','get_tree'))
+   def find(node):return (node.get('id')==window_id and node.get('focused')) or any(find(child) for child in node.get('nodes',[])+node.get('floating_nodes',[]))
+   return find(tree)
+  wait(focused_window,'captured launcher focus')
   pointer('Files');wait(lambda:state()['provider']=='Files','Files category');assert rows()==[];checks.append('empty file category')
   (out/'hold-search-alpha').touch();query('alpha');wait(lambda:response('alpha'),'delayed first query');query('beta');settled('beta');assert all('beta' in row['title'] for row in rows());(out/'hold-search-alpha').unlink();time.sleep(.3);assert all('beta' in row['title'] for row in rows());checks.append('late old query cannot replace current results')
   keys('-M','ctrl','-k','space','-m','ctrl');wait(lambda:state()['preview'].get('type')=='text','preview');assert state()['preview']['text']=='Preview beta two.txt';assert not opened();checks.append('preview selected identity without opening')
@@ -134,7 +146,14 @@ ShellRoot {
   pointer('Files');query('quoted');settled('quoted');(out/'hold-open-quoted ; café.txt').touch();(out/'defer-stop').touch();keys('-k','Return');wait(lambda:len(opened())==3 and state()['opening'],'pending open acknowledgement');keys('-k','Escape');wait(lambda:not state()['visible'],'dismiss pending action');ipc('reopen');time.sleep(.15);pointer('Files');query('neighbor');(out/'hold-open-quoted ; café.txt').unlink();wait(lambda:any(row['kind']=='released' and row['data'].get('action')=='open' for row in logs()),'retired action reply');(out/'defer-stop').unlink();settled('neighbor');assert state()['visible'] and len(opened())==3 and not state()['opening'];checks.append('retired open acknowledgement cannot dismiss new invocation or retry action');external=int((out/'external.pid').read_text());assert Path('/proc/'+str(external)+'/stat').read_text().rsplit(') ',1)[1][0]!='Z';checks.append('external launch observer survives exact provider retirement')
   pointer('Files');(out/'hold-preview-picture.png').touch();query('picture');settled('picture');
   if not state()['previewOpen']:keys('-M','ctrl','-k','space','-m','ctrl')
-  wait(lambda:any(row['kind']=='response' and row['data'].get('action')=='preview' and row['data'].get('name')=='picture.png' for row in logs()),'retained image response');(out/'hold-search-picture').touch();replacement=docs/'replacement.png';replacement.write_bytes(png((0,0,255)));os.replace(replacement,docs/'picture.png');(out/'hold-preview-picture.png').unlink();image=wait(lambda:(value if (value:=json.loads(ipc('image'))).get('status')==1 else None),'actual image loaded');snapshot=Path(image['source'].removeprefix('file://'));assert snapshot.read_bytes()==png((255,0,0)) and (docs/'picture.png').read_bytes()==png((0,0,255));
+  wait(lambda:any(row['kind']=='response' and row['data'].get('action')=='preview' and row['data'].get('name')=='picture.png' for row in logs()),'retained image response')
+  held_preview=state()['previewId'];assert held_preview>0;before=len(logs());keys('-M','ctrl','-k','r','-m','ctrl')
+  refresh_request=wait(lambda:next((row['data']['id'] for row in logs()[before:] if row['kind']=='request' and row['data'].get('action')=='search' and row['data'].get('query')=='picture'),None),'identical selection refresh request')
+  wait(lambda:any(row['kind']=='response' and row['data'].get('id')==refresh_request for row in logs()[before:]),'identical selection refresh response')
+  wait(lambda:not state()['searching'],'identical selection refresh applied');assert state()['previewId']==held_preview
+  assert not any(row['kind']=='request' and row['data'].get('action')=='retire-preview' and held_preview in row['data'].get('requests',[]) for row in logs()[before:])
+  (out/'same-selection-refresh.json').write_text(json.dumps(dict(previewId=held_preview,selection=rows()[state()['selected']],windowId=window_id)))
+  (out/'hold-search-picture').touch();replacement=docs/'replacement.png';replacement.write_bytes(png((0,0,255)));os.replace(replacement,docs/'picture.png');(out/'hold-preview-picture.png').unlink();image=wait(lambda:(value if (value:=json.loads(ipc('image'))).get('status')==1 else None),'actual image loaded');snapshot=Path(image['source'].removeprefix('file://'));assert snapshot.read_bytes()==png((255,0,0)) and (docs/'picture.png').read_bytes()==png((0,0,255));
   def rendered_original():
    call('grim','-o','HEADLESS-1',str(out/'retained-image.png'))
    pixel=call('magick',str(out/'retained-image.png'),'-format','%[pixel:p{'+str(round(image['x']))+','+str(round(image['y']))+'}]','info:')

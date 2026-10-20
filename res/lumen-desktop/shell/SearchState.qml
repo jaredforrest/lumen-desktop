@@ -53,6 +53,7 @@ Item {
         previewRequests=[];preview={};previewId=-1;
     }
     function requestPreview(path, token) {
+        if(path && path===previewPath && (token || "")===previewToken && (previewId>0 || previewDelay.running || preview.action==="preview"))return;
         retirePreview();previewToken=token || "";previewPath=path;
         if(active && path)previewDelay.restart();else previewDelay.stop();
     }

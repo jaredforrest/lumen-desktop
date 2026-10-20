@@ -26,7 +26,7 @@ preview=assets/'shell/FilePreview.qml';original=preview.read_text();modified=ori
     readonly property bool fixtureStopped:player.playbackState===MediaPlayer.StoppedState
     property var result:''',1)
 if 'id:previewImage' in modified:
-    modified=modified.replace('id:previewImage','id:fixtureImage',1).replace('previewImage.source','fixtureImage.source')
+    modified=modified.replace('id:previewImage','id:fixtureImage',1).replace('previewImage.source','fixtureImage.source').replace('sourceObjects:[previewImage,player]','sourceObjects:[fixtureImage,player]')
 else:modified=modified.replace('        Image {\n','        Image {\n            id:fixtureImage\n',1)
 modified=modified.replace('root.active && picture.visible','root.active && !root.fixtureHold && picture.visible').replace('root.active && root.media','root.active && !root.fixtureHold && root.media')
 for name,expression in [('Image','root.active && !root.fixtureHold && picture.visible ? root.result.uri || "" : ""'),('Media','root.active && !root.fixtureHold && root.media ? root.result.uri || "" : ""')]:
@@ -37,7 +37,7 @@ roundtrip=modified
 for name,expression in [('Image','root.active && !root.fixtureHold && picture.visible ? root.result.uri || "" : ""'),('Media','root.active && !root.fixtureHold && root.media ? root.result.uri || "" : ""')]:roundtrip=roundtrip.replace('source: root.fixturePinned'+name+' || ('+expression+')','source: '+expression,1)
 roundtrip=roundtrip.replace('root.active && !root.fixtureHold && picture.visible','root.active && picture.visible').replace('root.active && !root.fixtureHold && root.media','root.active && root.media')
 start=roundtrip.index('    property bool fixtureHold:true');end=roundtrip.index('    property var result:',start);roundtrip=roundtrip[:start]+roundtrip[end:]
-if 'id:previewImage' in original:roundtrip=roundtrip.replace('id:fixtureImage','id:previewImage',1).replace('fixtureImage.source','previewImage.source')
+if 'id:previewImage' in original:roundtrip=roundtrip.replace('id:fixtureImage','id:previewImage',1).replace('fixtureImage.source','previewImage.source').replace('sourceObjects:[fixtureImage,player]','sourceObjects:[previewImage,player]')
 else:roundtrip=roundtrip.replace('            id:fixtureImage\n','',1)
 assert roundtrip==original
 preview.chmod(0o600);preview.write_text(modified)
