@@ -77,8 +77,9 @@ PanelSurface {
     onCurrentChanged: if(visible && previewOpen)service.requestPreview(current && current.kind==="file"?current.path:"",current?current.token:"")
     onPreviewOpenChanged:if(visible)service.requestPreview(previewOpen && current && current.kind==="file"?current.path:"",current?current.token:"")
     onResultsChanged: {
-        const changedQuery=selectionQuery!==queryText;
-        selectionQuery=queryText;
+        // Read the same source as results; queryText can notify after this handler.
+        const changedQuery=selectionQuery!==search.text;
+        selectionQuery=search.text;
         const previous=changedQuery?"":selectedKey;
         const index=results.findIndex(item=>resultKey(item)===previous);
         selectedIndex=index>=0?index:previous?-1:changedQuery?0:selectedIndex<0?-1:0;

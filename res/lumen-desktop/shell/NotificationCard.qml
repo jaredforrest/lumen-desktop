@@ -16,6 +16,7 @@ PanelSurface {
     Accessible.role:Accessible.Button
     onNotificationChanged:timeLabel=stamp()
     Accessible.name:notification.app+", "+notification.summary+(expandStack?", "+stackCount+" notifications. Expand stack":expanded?", details expanded":"")
+    Accessible.description:notification.body
     Accessible.onPressAction:activate()
     Keys.onReturnPressed:activate()
     Keys.onSpacePressed:activate()

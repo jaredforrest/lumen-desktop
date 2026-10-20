@@ -1,0 +1,22 @@
+--- a/src/dasbus/server/handler.py
++++ b/src/dasbus/server/handler.py
+@@ -76,7 +76,7 @@
+             )
+ 
+         for interface_info in node_info.interfaces:
+-            registration_id = connection.register_object(
++            registration_id = connection.register_object_with_closures2(
+                 object_path,
+                 interface_info,
+                 method_call_closure,
+--- a/tests/test_server.py
++++ b/tests/test_server.py
+@@ -123,7 +123,7 @@
+             <interface name="Interface" />
+         </node>
+         """)
+-        self.message_bus.connection.register_object.assert_called()
++        self.message_bus.connection.register_object_with_closures2.assert_called()
+ 
+         self.handler.disconnect_object()
+         self.message_bus.connection.unregister_object.assert_called()

@@ -1,0 +1,64 @@
+--- a/src/orca/orca.py
++++ b/src/orca/orca.py
+@@ -32,11 +32,13 @@
+ 
+ gi.require_version("Atspi", "2.0")
+ gi.require_version("Gdk", "3.0")
++gi.require_version("GLibUnix", "2.0")
+ from gi.repository import (
+     Atspi,
+     Gdk,  # pylint: disable=no-name-in-module
+     Gio,
+     GLib,
++    GLibUnix,
+ )
+ 
+ from . import (
+@@ -190,9 +192,9 @@
+         systemd.get_manager().notify_ready()
+         return GLib.SOURCE_REMOVE
+ 
+-    GLib.unix_signal_add(GLib.PRIORITY_HIGH, signal.SIGTERM, _glib_shutdown_handler)
+-    GLib.unix_signal_add(GLib.PRIORITY_HIGH, signal.SIGINT, _glib_shutdown_handler)
+-    GLib.unix_signal_add(GLib.PRIORITY_HIGH, signal.SIGHUP, _glib_reload_handler)
++    GLibUnix.signal_add(GLib.PRIORITY_HIGH, signal.SIGTERM, _glib_shutdown_handler)
++    GLibUnix.signal_add(GLib.PRIORITY_HIGH, signal.SIGINT, _glib_shutdown_handler)
++    GLibUnix.signal_add(GLib.PRIORITY_HIGH, signal.SIGHUP, _glib_reload_handler)
+ 
+ 
+ def _ensure_accessibility_enabled() -> int | None:
+--- a/src/orca/keybindings.py
++++ b/src/orca/keybindings.py
+@@ -100,7 +100,7 @@
+         return (0, 0)
+ 
+     if keysym not in _keycode_cache:
+-        keymap = Gdk.Keymap.get_default()  # pylint: disable=no-value-for-parameter
++        keymap = Gdk.Keymap.get_for_display(Gdk.Display.get_default())  # pylint: disable=no-value-for-parameter
+ 
+         # Find the numerical value of the keysym
+         #
+--- a/src/orca/orca_modifier_manager.py
++++ b/src/orca/orca_modifier_manager.py
+@@ -71,7 +71,7 @@
+         # Event handlers for input devices being plugged in/unplugged.
+         display = Gdk.Display.get_default()  # pylint: disable=no-value-for-parameter
+         if display is not None:
+-            device_manager = display.get_device_manager()
++            device_manager = display.get_default_seat()
+             device_manager.connect("device-added", self._on_device_changed)
+             device_manager.connect("device-removed", self._on_device_changed)
+         else:
+--- a/src/orca/orca_bin.py.in
++++ b/src/orca/orca_bin.py.in
+@@ -370,4 +370,9 @@
+     return orca.main(args.import_dir, prefs_dir)
+ 
+ if __name__ == "__main__":
+-    sys.exit(main())
++    try:
++        sys.exit(main())
++    finally:
++        if debug.debugFile is not None:
++            debug.debugFile.close()
++            debug.debugFile = None

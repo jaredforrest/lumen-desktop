@@ -1,5 +1,23 @@
 import QtQuick
 PanelLabel {
+    id:root
+    property string announcedMessage:""
+    function announceMessage(){
+        if(!visible || !text.trim()){announcedMessage="";return;}
+        const capturedText=text,capturedSeverity=severity;
+        Qt.callLater(()=>{
+            if(!visible || text!==capturedText || severity!==capturedSeverity)return;
+            const message=Accessible.name;
+            if(announcedMessage!==message){
+                announcedMessage=message;
+                Accessible.announce(message,severity==="error"?Accessible.Assertive:Accessible.Polite);
+            }
+        });
+    }
+    onTextChanged:announceMessage()
+    onVisibleChanged:announceMessage()
+    onSeverityChanged:announceMessage()
+    Component.onCompleted:announceMessage()
     property string severity:"info"
     visible: text.length>0
     wrapMode: Text.WordWrap
