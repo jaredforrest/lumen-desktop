@@ -53,6 +53,13 @@ Popup {
             }
         }
     }
+    component RenameField:TextField {
+        color:Theme.colors.text;placeholderTextColor:Theme.colors.muted
+        selectionColor:Theme.colors.accent;selectedTextColor:Theme.colors.selectedText
+        font.family:Theme.font;font.pixelSize:Theme.textSize(13)
+        implicitHeight:Math.max(32,contentHeight+12);padding:6;selectByMouse:true
+        background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.outline;border.width:parent.activeFocus?2:1}
+    }
     contentItem:ScrollView {
         id:scroll;clip:true;Accessible.role:Accessible.Dialog;Accessible.name:"Rename selected items";ScrollBar.vertical:DesktopScrollBar {}
         Column {
@@ -60,8 +67,8 @@ Popup {
             PanelLabel {width:parent.width;text:"Rename "+root.captured.length+" Items";font.pixelSize:18;font.weight:Font.DemiBold}
             PanelLabel {width:parent.width;text:"Names include extensions. Preview does not change files. A changed selection is never substituted.";wrapMode:Text.Wrap}
             DesktopComboBox {id:renameMode;objectName:"batch-rename-mode";width:parent.width;model:["Replace text","Add prefix","Add suffix"];Accessible.name:"Rename transformation";enabled:!root.waiting && !root.completed;onActivated:root.changed()}
-            TextField {id:first;objectName:"batch-rename-first";width:parent.width;enabled:!root.waiting && !root.completed;placeholderText:renameMode.currentIndex===0?"Find text":"Text to add";Accessible.name:placeholderText;onTextEdited:root.changed()}
-            TextField {id:second;objectName:"batch-rename-second";width:parent.width;visible:renameMode.currentIndex===0;enabled:!root.waiting && !root.completed;placeholderText:"Replace with";Accessible.name:placeholderText;onTextEdited:root.changed()}
+            RenameField {id:first;objectName:"batch-rename-first";width:parent.width;enabled:!root.waiting && !root.completed;placeholderText:renameMode.currentIndex===0?"Find text":"Text to add";Accessible.name:placeholderText;onTextEdited:root.changed()}
+            RenameField {id:second;objectName:"batch-rename-second";width:parent.width;visible:renameMode.currentIndex===0;enabled:!root.waiting && !root.completed;placeholderText:"Replace with";Accessible.name:placeholderText;onTextEdited:root.changed()}
             DesktopComboBox {id:policy;objectName:"batch-rename-conflicts";width:parent.width;model:["Stop before changes if there are conflicts","Skip conflicting items"];Accessible.name:"Rename collision policy";enabled:!root.waiting && !root.completed;onActivated:root.changed()}
             PanelLabel {width:parent.width;text:root.message;textFormat:Text.PlainText;wrapMode:Text.WrapAnywhere;Accessible.name:text}
             ListView {
