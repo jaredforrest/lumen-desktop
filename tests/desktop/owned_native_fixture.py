@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 
 from application_fixture.isolation import run
 from application_fixture.offscreen import immutable_file
@@ -64,7 +65,16 @@ def main():
     code = ('import os,runpy,sys;os.environ.update(' + repr(environment) + ');'
             'sys.path.insert(0,"/source/tests/desktop");sys.argv=' + repr([a.fixture + '.py'] + args) + ';'
             'runpy.run_path("/source/tests/desktop/' + a.fixture + '.py",run_name="__main__")')
-    status = run(source, output, [str(python), '-c', code], software_graphics=a.effects)
+    # A managed worktree's .git points outside its checkout. Mount a real,
+    # self-contained repository so inner provenance uses genuine Git objects.
+    with tempfile.TemporaryDirectory(prefix='lumen-owned-native-source-') as private:
+        capsule = Path(private) / 'source'
+        subprocess.run(['git', 'clone', '--quiet', '--no-local', '--no-hardlinks', '--no-checkout',
+                        str(source), str(capsule)], check=True)
+        subprocess.run(['git', '-C', str(capsule), 'checkout', '--quiet', '--detach', before['revision']], check=True)
+        if not (capsule / '.git').is_dir() or (capsule / '.git/objects/info/alternates').exists():
+            raise ValueError('A self-contained source repository is required')
+        status = run(capsule, output, [str(python), '-c', code], software_graphics=a.effects)
     try:
         unchanged = snapshot(source, a.fixture) == before
     except (ValueError, OSError, subprocess.SubprocessError):

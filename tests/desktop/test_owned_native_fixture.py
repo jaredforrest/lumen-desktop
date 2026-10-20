@@ -32,7 +32,11 @@ class NativeRunner(unittest.TestCase):
                 (root / 'pending').write_text('pending')
             argv = ['runner', 'owned_preview_input', '--launcher', sys.executable, '--sway', sys.executable, '--output', str(out)]
             def boundary(source, output, command, **kwargs):
-                self.assertEqual(source, root); self.assertEqual(output, out)
+                self.assertNotEqual(source, root); self.assertEqual(output, out)
+                self.assertTrue((source / '.git').is_dir())
+                self.assertFalse((source / '.git/objects/info/alternates').exists())
+                self.assertEqual(subprocess.check_output(['git', '-C', str(source), 'rev-parse', 'HEAD']),
+                                 subprocess.check_output(['git', '-C', str(root), 'rev-parse', 'HEAD']))
                 self.assertEqual(kwargs, {'software_graphics': False})
                 self.assertIn('/artifacts/result', command[2]); self.assertIn('/source/tests/desktop/owned_preview_input.py', command[2])
                 if mutate:
