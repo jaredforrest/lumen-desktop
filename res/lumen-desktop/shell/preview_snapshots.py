@@ -87,4 +87,3 @@ class PreviewSnapshots:
         finally:
             if fd is not None:os.close(fd)
             os.close(path_fd)
-
