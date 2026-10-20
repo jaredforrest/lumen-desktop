@@ -1,0 +1,66 @@
+--- a/include/wlr/xwayland/xwayland.h
++++ b/include/wlr/xwayland/xwayland.h
+@@ -218,6 +218,7 @@
+ 		struct wl_signal set_class;
+ 		struct wl_signal set_role;
+ 		struct wl_signal set_parent;
++		struct wl_signal set_modal;
+ 		struct wl_signal set_startup_id;
+ 		struct wl_signal set_window_type;
+ 		struct wl_signal set_hints;
+--- a/xwayland/xwm.c
++++ b/xwayland/xwm.c
+@@ -237,6 +237,7 @@
+ 	wl_signal_init(&surface->events.set_role);
+ 	wl_signal_init(&surface->events.set_title);
+ 	wl_signal_init(&surface->events.set_parent);
++	wl_signal_init(&surface->events.set_modal);
+ 	wl_signal_init(&surface->events.set_startup_id);
+ 	wl_signal_init(&surface->events.set_window_type);
+ 	wl_signal_init(&surface->events.set_hints);
+@@ -600,6 +601,7 @@
+ 	assert(wl_list_empty(&xsurface->events.set_role.listener_list));
+ 	assert(wl_list_empty(&xsurface->events.set_title.listener_list));
+ 	assert(wl_list_empty(&xsurface->events.set_parent.listener_list));
++	assert(wl_list_empty(&xsurface->events.set_modal.listener_list));
+ 	assert(wl_list_empty(&xsurface->events.set_startup_id.listener_list));
+ 	assert(wl_list_empty(&xsurface->events.set_window_type.listener_list));
+ 	assert(wl_list_empty(&xsurface->events.set_hints.listener_list));
+@@ -1035,6 +1037,8 @@
+ static void read_surface_net_wm_state(struct wlr_xwm *xwm,
+ 		struct wlr_xwayland_surface *xsurface,
+ 		xcb_get_property_reply_t *reply) {
++	bool modal = xsurface->modal;
++	xsurface->modal = false;
+ 	xsurface->fullscreen = 0;
+ 	const xcb_atom_t *atoms = xcb_get_property_value(reply);
+ 	uint32_t atoms_len = xcb_get_property_value_length(reply) / sizeof(atoms[0]);
+@@ -1064,6 +1068,9 @@
+ 		} else if (atoms[i] == xwm->atoms[NET_WM_STATE_DEMANDS_ATTENTION]) {
+ 			xsurface->demands_attention = true;
+ 		}
++	}
++	if (modal != xsurface->modal) {
++		wl_signal_emit_mutable(&xsurface->events.set_modal, NULL);
+ 	}
+ }
+ 
+@@ -1636,6 +1643,7 @@
+ 		return;
+ 	}
+ 
++	bool modal = xsurface->modal;
+ 	bool fullscreen = xsurface->fullscreen;
+ 	bool maximized_vert = xsurface->maximized_vert;
+ 	bool maximized_horz = xsurface->maximized_horz;
+@@ -1690,6 +1698,10 @@
+ 	}
+ 	// client_message->data.data32[3] is the source indication
+ 	// all other values are set to 0
++
++	if (modal != xsurface->modal) {
++		wl_signal_emit_mutable(&xsurface->events.set_modal, NULL);
++	}
+ 
+ 	if (fullscreen != xsurface->fullscreen) {
+ 		wl_signal_emit_mutable(&xsurface->events.request_fullscreen, NULL);

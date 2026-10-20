@@ -57,6 +57,8 @@
         clipboard-observer = import ./packages/clipboard-observer.nix { inherit pkgs; };
         test-clipboard-producer = import ./tests/desktop/clipboard_producer.nix { inherit pkgs; };
         test-window-relationships = import ./tests/desktop/window_relationship_client.nix { inherit pkgs; };
+        test-xwayland-server = compositorPkgs.xwayland;
+        test-xwayland-relationships = import ./tests/desktop/xwayland_relationship_client.nix { inherit pkgs; };
         test-constraint-client = import ./tests/desktop/constraint_client.nix { inherit pkgs; };
         test-typography = import ./tests/desktop/typography_probe.nix { inherit pkgs; };
         test-office-tools = pkgs.poppler-utils;

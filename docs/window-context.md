@@ -7,7 +7,8 @@ The compositor advertises `native_window_relationships: true` and includes
 `lumen_relationships` version 1 in each window. `parent_supported` reports whether
 the native parent protocol can be observed. `parent` is the current mapped direct
 parent container ID, or null. `modal` is the actual xdg-dialog state, or null when
-that window has no dialog object. An absent extension is unknown, including for
+that native window has no dialog object; supported X11 windows expose their
+observed EWMH modal boolean. An absent extension is unknown, including for
 older backends. A null parent does not assert a document role.
 
 The standard xdg-dialog manager is instantiated on both supported backends.
@@ -57,9 +58,38 @@ CI runs native integration on both compositor backends.
 
 Unreported external application main documents remain unknown. Native parenthood
 does not supply document-command semantics, dirty state or an application menu.
-XWayland modal/parent adaptation and native popup surface introspection are not
-implemented by this extension. Toolkit popup surfaces are not separate managed
+Native popup surface introspection is not implemented by this extension. Toolkit popup surfaces are not separate managed
 toplevels and do not create a new application context here. The runtime remains a
 sequential read-only observation rather than an atomic focus broker. Owned app
 associations are in-memory and are rebuilt by actual owned window focus after a
 shell restart; no stale QObject or container identity is persisted.
+
+## X11 relationship capability
+
+Managed Xwayland windows use the current server-observed `WM_TRANSIENT_FOR` and
+`_NET_WM_STATE_MODAL` facts. Ancestry is supported only when each live mapped
+parent and child has the same positive XRes local-client PID. Unknown PID,
+cross-process parent, unmapped parent, cycles and excessive ancestry fail
+unavailable. A null supported parent means no current mapped parent, not a main
+document role. `_NET_WM_PID`, class and title hints never establish this policy.
+X11 clients share their server's trust domain; these observations do not
+authenticate an application, its executable, its documents or other clients'
+behavior. They authorize no process termination or document command.
+
+Both compositor variants and the effects renderer use the same aligned wlroots
+build. Its bounded extra `set_modal` signal reports actual modal transitions
+from EWMH messages and property replacement/deletion; it has the same signal
+initialization, observer teardown and empty-list destruction checks as the
+existing parent signal. Parent and modal listeners recompute branch focus and
+placement. Parentless modal windows and transient windows cannot be primary
+paired members. Pair dialog ownership uses the same live relationship policy
+rather than a mutable class or an unsupported cross-process hint.
+
+`xwayland_relationships_input.py` uses a fixed native libxcb client and actual
+private Xwayland server. It checks utility/document/other-process physical key
+recipients, live map/reparent/unmap/destroy and replacement, modal message and
+property transitions, cycle rejection, ambiguous modal siblings, parentless
+modal pair refusal, forged PID hints and clean exit with live modal clients.
+The separate `--without-xres` case really disables the server extension and
+checks unknown-PID behavior. Both cases run on both compositor variants. No host
+X server, input, applications or filesystem is involved.

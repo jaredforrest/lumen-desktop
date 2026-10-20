@@ -1,0 +1,294 @@
+diff --git a/include/sway/tree/view.h b/include/sway/tree/view.h
+index 6d13a85..9d3c728 100644
+--- a/include/sway/tree/view.h
++++ b/include/sway/tree/view.h
+@@ -166,6 +166,8 @@ struct sway_xwayland_view {
+ 	struct wl_listener set_title;
+ 	struct wl_listener set_class;
+ 	struct wl_listener set_role;
++	struct wl_listener lumen_set_parent;
++	struct wl_listener lumen_set_modal;
+ 	struct wl_listener set_startup_id;
+ 	struct wl_listener set_window_type;
+ 	struct wl_listener set_hints;
+@@ -320,6 +322,12 @@ void view_map(struct sway_view *view, struct wlr_surface *wlr_surface,
+ 
+ void view_unmap(struct sway_view *view);
+ 
++// Protocol observations only; no application/document authority is inferred.
++bool lumen_view_relationship(struct sway_view *view,
++	struct sway_view **parent, int *modal);
++bool lumen_view_transient_for(struct sway_view *view, struct sway_view *ancestor);
++void lumen_view_relationship_changed(struct sway_view *view);
++
+ void view_update_size(struct sway_view *view);
+ void view_center_and_clip_surface(struct sway_view *view);
+ 
+diff --git a/sway/desktop/xwayland.c b/sway/desktop/xwayland.c
+index 65016b3..4f1f328 100644
+--- a/sway/desktop/xwayland.c
++++ b/sway/desktop/xwayland.c
+@@ -475,6 +475,8 @@ static void handle_destroy(struct wl_listener *listener, void *data) {
+ 	wl_list_remove(&xwayland_view->set_title.link);
+ 	wl_list_remove(&xwayland_view->set_class.link);
+ 	wl_list_remove(&xwayland_view->set_role.link);
++	wl_list_remove(&xwayland_view->lumen_set_parent.link);
++	wl_list_remove(&xwayland_view->lumen_set_modal.link);
+ 	wl_list_remove(&xwayland_view->set_startup_id.link);
+ 	wl_list_remove(&xwayland_view->set_window_type.link);
+ 	wl_list_remove(&xwayland_view->set_hints.link);
+@@ -741,6 +743,18 @@ static void handle_set_startup_id(struct wl_listener *listener, void *data) {
+ 	view_assign_ctx(view, ctx);
+ }
+ 
++static void lumen_xwayland_parent(struct wl_listener *listener, void *data) {
++	(void)data;
++	struct sway_xwayland_view *view = wl_container_of(listener, view, lumen_set_parent);
++	lumen_view_relationship_changed(&view->view);
++}
++
++static void lumen_xwayland_modal(struct wl_listener *listener, void *data) {
++	(void)data;
++	struct sway_xwayland_view *view = wl_container_of(listener, view, lumen_set_modal);
++	lumen_view_relationship_changed(&view->view);
++}
++
+ static void handle_set_window_type(struct wl_listener *listener, void *data) {
+ 	struct sway_xwayland_view *xwayland_view =
+ 		wl_container_of(listener, xwayland_view, set_window_type);
+@@ -848,6 +862,11 @@ struct sway_xwayland_view *create_xwayland_view(struct wlr_xwayland_surface *xsu
+ 	wl_signal_add(&xsurface->events.set_role, &xwayland_view->set_role);
+ 	xwayland_view->set_role.notify = handle_set_role;
+ 
++	wl_signal_add(&xsurface->events.set_parent, &xwayland_view->lumen_set_parent);
++	xwayland_view->lumen_set_parent.notify = lumen_xwayland_parent;
++	wl_signal_add(&xsurface->events.set_modal, &xwayland_view->lumen_set_modal);
++	xwayland_view->lumen_set_modal.notify = lumen_xwayland_modal;
++
+ 	wl_signal_add(&xsurface->events.set_startup_id,
+ 			&xwayland_view->set_startup_id);
+ 	xwayland_view->set_startup_id.notify = handle_set_startup_id;
+diff --git a/sway/input/seat.c b/sway/input/seat.c
+index f54147d..b9de5c4 100644
+--- a/sway/input/seat.c
++++ b/sway/input/seat.c
+@@ -1164,18 +1164,17 @@ struct lumen_modal_search {
+ 
+ static void lumen_modal_child(struct sway_container *con, void *data) {
+ 	struct lumen_modal_search *search = data;
+-	if (!con->view || !con->view->surface || con->view->type != SWAY_VIEW_XDG_SHELL) return;
+-	struct wlr_xdg_toplevel *top = con->view->wlr_xdg_toplevel;
+-	if (top->parent != search->parent->view->wlr_xdg_toplevel) return;
+-	struct wlr_xdg_dialog_v1 *dialog = wlr_xdg_dialog_v1_try_from_wlr_xdg_toplevel(top);
+-	if (!dialog || !dialog->modal) return;
++	struct sway_view *parent = NULL;
++	int modal = -1;
++	if (!lumen_view_relationship(con->view, &parent, &modal) ||
++			parent != search->parent->view || modal != 1) return;
+ 	if (search->child) search->ambiguous = true;
+ 	search->child = con;
+ }
+ 
+ static void seat_set_workspace_focus(struct sway_seat *seat, struct sway_node *node) {
+ 	// Modal protocol scope is the parent branch, never every window of an app.
+-	if (node && node_is_view(node) && node->sway_container->view->type == SWAY_VIEW_XDG_SHELL) {
++	if (node && node_is_view(node) && node->sway_container->view) {
+ 		for (int depth = 0; depth < 64; ++depth) {
+ 			struct lumen_modal_search search = {.parent = node->sway_container};
+ 			root_for_each_container(lumen_modal_child, &search);
+diff --git a/sway/ipc-json.c b/sway/ipc-json.c
+index 5ff2324..4adcb77 100644
+--- a/sway/ipc-json.c
++++ b/sway/ipc-json.c
+@@ -604,18 +604,13 @@ static void ipc_json_describe_view(struct sway_container *c, json_object *object
+ 	json_object *relationships = json_object_new_object();
+ 	json_object_object_add(relationships, "version", json_object_new_int(1));
+ 	struct sway_view *parent = NULL;
+-	bool supported = c->view->type == SWAY_VIEW_XDG_SHELL;
+-	if (supported && c->view->wlr_xdg_toplevel->parent) {
+-		parent = view_from_wlr_xdg_surface(c->view->wlr_xdg_toplevel->parent->base);
+-	}
++	int modal = -1;
++	bool supported = lumen_view_relationship(c->view, &parent, &modal);
+ 	json_object_object_add(relationships, "parent_supported", json_object_new_boolean(supported));
+-	json_object_object_add(relationships, "parent",
+-		parent && parent->container && parent->surface ?
+-			json_object_new_int64(parent->container->node.id) : NULL);
+-	struct wlr_xdg_dialog_v1 *dialog = supported ?
+-		wlr_xdg_dialog_v1_try_from_wlr_xdg_toplevel(c->view->wlr_xdg_toplevel) : NULL;
+-	json_object_object_add(relationships, "modal",
+-		dialog ? json_object_new_boolean(dialog->modal) : NULL);
++	json_object_object_add(relationships, "parent", supported && parent && parent->container ?
++		json_object_new_int64(parent->container->node.id) : NULL);
++	json_object_object_add(relationships, "modal", supported && modal >= 0 ?
++		json_object_new_boolean(modal) : NULL);
+ 	json_object_object_add(object, "lumen_relationships", relationships);
+ 	json_object_object_add(object, "pid", json_object_new_int(c->view->pid));
+ 
+diff --git a/sway/tree/lumen_pair.c b/sway/tree/lumen_pair.c
+index 573f4f8..3e6719b 100644
+--- a/sway/tree/lumen_pair.c
++++ b/sway/tree/lumen_pair.c
+@@ -9,6 +9,10 @@
+ #include <wlr/types/wlr_cursor.h>
+ #include <wlr/types/wlr_xdg_shell.h>
+ #include <wlr/types/wlr_xdg_dialog_v1.h>
++#include <wlr/config.h>
++#if WLR_HAS_XWAYLAND
++#include <wlr/xwayland.h>
++#endif
+ #include "sway/commands.h"
+ #include "sway/config.h"
+ #include "sway/criteria.h"
+@@ -53,7 +57,7 @@ static void collect_dialogs(struct sway_container *con,void *data) {
+  if(con==search->owner || !con->view || con->node.destroying)return;
+  if(con->lumen_pair_dialog_owner==search->owner->node.id){
+   if(search->dialogs)list_add(search->dialogs,con);
+- } else if(search->owner->view && view_is_transient_for(con->view,search->owner->view))search->any=true;
++ } else if(search->owner->view && lumen_view_transient_for(con->view,search->owner->view))search->any=true;
+ }
+ static bool owns_untagged_dialog(struct sway_container *con) {
+  struct dialog_search search={.owner=con};root_for_each_container(collect_dialogs,&search);return search.any;
+@@ -75,7 +79,13 @@ static void follow_dialogs(struct sway_container *owner,struct sway_workspace *t
+ void lumen_pair_follow_dialogs(struct sway_container *con) {follow_dialogs(con,con->pending.workspace,false);}
+ static bool primary_candidate(struct sway_container *con) {
+  if(con->lumen_pair_dialog_owner)return false;
+- if(con->view->type!=SWAY_VIEW_XDG_SHELL)return true;
++#if WLR_HAS_XWAYLAND
++ if(con->view->type==SWAY_VIEW_XWAYLAND){
++  struct wlr_xwayland_surface *surface=con->view->wlr_xwayland_surface;
++  return surface && !surface->parent && !surface->modal;
++ }
++#endif
++ if(con->view->type!=SWAY_VIEW_XDG_SHELL)return false;
+  struct wlr_xdg_toplevel *top=con->view->wlr_xdg_toplevel;
+  if(!top)return false;
+  struct wlr_xdg_dialog_v1 *dialog=wlr_xdg_dialog_v1_try_from_wlr_xdg_toplevel(top);
+@@ -202,12 +212,10 @@ static void refresh_dialog_owner(struct sway_container *con) {
+  if(!con->lumen_pair_dialog_owner || !con->view || moving_dialogs)return;
+  struct sway_container *old=find(con->lumen_pair_dialog_owner);
+  if(!old || !old->view){con->lumen_pair_dialog_owner=0;return;}
+- if(old->node.destroying || view_is_transient_for(con->view,old->view))return;
++ if(old->node.destroying || lumen_view_transient_for(con->view,old->view))return;
+  struct sway_container *owner=NULL;
+- if(con->view->type==SWAY_VIEW_XDG_SHELL && con->view->wlr_xdg_toplevel && con->view->wlr_xdg_toplevel->parent){
+-  struct sway_view *view=view_from_wlr_surface(con->view->wlr_xdg_toplevel->parent->base->surface);
+-  if(view)owner=view->container;
+- }
++ struct sway_view *parent_view=NULL;int modal=-1;
++ if(lumen_view_relationship(con->view,&parent_view,&modal) && parent_view)owner=parent_view->container;
+  struct sway_workspace *target=owner?owner->pending.workspace:old->pending.workspace;
+  struct sway_lumen_placement *saved=old->lumen_pair_restore;
+  if(old->lumen_pair && old->lumen_pair->parent!=old){
+@@ -245,10 +253,10 @@ void lumen_pair_arrange(struct sway_container *con) {
+     con->pending.children->items[1]!=pair->members[1].con || !pair_ratio(pair,pair->ratio)) exit_all(pair);
+ }
+ bool lumen_pair_transient(struct sway_view *view,struct sway_container *parent) {
+- if(view && parent && parent->lumen_pair_restore && parent->view)return view_is_transient_for(view,parent->view);
++ if(view && parent && parent->lumen_pair_restore && parent->view)return lumen_view_transient_for(view,parent->view);
+  struct sway_lumen_pair *pair=parent?parent->lumen_pair:NULL;
+  if(!view || !pair || pair->parent!=parent)return false;
+- return view_is_transient_for(view,pair->members[0].con->view) || view_is_transient_for(view,pair->members[1].con->view);
++ return lumen_view_transient_for(view,pair->members[0].con->view) || lumen_view_transient_for(view,pair->members[1].con->view);
+ }
+ struct sway_workspace *lumen_pair_map_workspace(struct sway_view *view,struct sway_workspace *space) {
+  if(!space || !space->fullscreen)return space;
+@@ -258,7 +266,7 @@ struct sway_workspace *lumen_pair_map_workspace(struct sway_view *view,struct sw
+  if(!restore)return space;
+  if(config->popup_during_fullscreen==POPUP_SMART && lumen_pair_transient(view,fullscreen)){
+   struct sway_container *owner=fullscreen;
+-  if(pair)owner=view_is_transient_for(view,pair->members[0].con->view)?pair->members[0].con:pair->members[1].con;
++  if(pair)owner=lumen_view_transient_for(view,pair->members[0].con->view)?pair->members[0].con:pair->members[1].con;
+   view->container->lumen_pair_dialog_owner=owner->node.id;
+   return space;
+  }
+diff --git a/sway/tree/view.c b/sway/tree/view.c
+index 662c628..215d8c7 100644
+--- a/sway/tree/view.c
++++ b/sway/tree/view.c
+@@ -14,6 +14,7 @@
+ #include <wlr/types/wlr_server_decoration.h>
+ #include <wlr/types/wlr_subcompositor.h>
+ #include <wlr/types/wlr_xdg_decoration_v1.h>
++#include <wlr/types/wlr_xdg_dialog_v1.h>
+ #include <wlr/types/wlr_session_lock_v1.h>
+ #if WLR_HAS_XWAYLAND
+ #include <wlr/xwayland.h>
+@@ -70,6 +71,77 @@ static void handle_outputs_update(
+ 	}
+ }
+ 
++static bool lumen_relationship_one(struct sway_view *view,
++		struct sway_view **parent, int *modal) {
++	*parent = NULL;
++	*modal = -1;
++	if (!view || !view->surface || !view->surface->mapped ||
++			(view->container && view->container->node.destroying)) return false;
++	if (view->type == SWAY_VIEW_XDG_SHELL) {
++		struct wlr_xdg_toplevel *top = view->wlr_xdg_toplevel;
++		if (!top) return false;
++		if (top->parent) *parent = view_from_wlr_xdg_surface(top->parent->base);
++		struct wlr_xdg_dialog_v1 *dialog = wlr_xdg_dialog_v1_try_from_wlr_xdg_toplevel(top);
++		if (dialog) *modal = dialog->modal;
++		if (top->parent && !*parent) return false;
++	} else {
++#if WLR_HAS_XWAYLAND
++		if (view->type != SWAY_VIEW_XWAYLAND) return false;
++		struct wlr_xwayland_surface *surface = view->wlr_xwayland_surface;
++		// wlroots obtains this PID from XRes, never the client _NET_WM_PID hint.
++		if (!surface || surface->pid <= 0) return false;
++		*modal = surface->modal;
++		if (surface->parent) {
++			if (surface->parent->pid != surface->pid) return false;
++			*parent = view_from_wlr_xwayland_surface(surface->parent);
++			if (!*parent) return false;
++		}
++#else
++		return false;
++#endif
++	}
++	if (*parent && (!(*parent)->surface || !(*parent)->surface->mapped ||
++			!(*parent)->container || (*parent)->container->node.destroying)) return false;
++	return true;
++}
++
++bool lumen_view_relationship(struct sway_view *view,
++		struct sway_view **parent, int *modal) {
++	struct sway_view *seen[64], *current = view, *next = NULL;
++	int ignored = -1;
++	size_t count = 0;
++	while (current) {
++		if (count == 64) return false;
++		for (size_t i = 0; i < count; ++i) if (seen[i] == current) return false;
++		seen[count++] = current;
++		if (!lumen_relationship_one(current, &next, &ignored)) return false;
++		current = next;
++	}
++	return lumen_relationship_one(view, parent, modal);
++}
++
++bool lumen_view_transient_for(struct sway_view *view, struct sway_view *ancestor) {
++	struct sway_view *parent = NULL;
++	int modal;
++	for (size_t depth = 0; depth < 64; ++depth) {
++		if (!lumen_view_relationship(view, &parent, &modal) || !parent) return false;
++		if (parent == ancestor) return true;
++		view = parent;
++	}
++	return false;
++}
++
++void lumen_view_relationship_changed(struct sway_view *view) {
++	if (!view || !view->surface || !view->container || view->container->node.destroying) return;
++	if (view->container->pending.workspace) arrange_workspace(view->container->pending.workspace);
++	ipc_event_window(view->container, "lumen_relationships");
++	struct sway_seat *seat;
++	wl_list_for_each(seat, &server.input->seats, link) {
++		struct sway_node *focus = seat_get_focus(seat);
++		if (focus) seat_set_focus(seat, focus);
++	}
++}
++
+ static bool handle_point_accepts_input(
+ 		struct wlr_scene_buffer *buffer, double *x, double *y) {
+ 	return false;
