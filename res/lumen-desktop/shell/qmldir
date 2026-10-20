@@ -133,3 +133,5 @@ GroupMembershipStrip 1.0 GroupMembershipStrip.qml
 GroupDragHandle 1.0 GroupDragHandle.qml
 
 MenuVisibilityState 1.0 MenuVisibilityState.qml
+
+OwnedPreviewState 1.0 OwnedPreviewState.qml

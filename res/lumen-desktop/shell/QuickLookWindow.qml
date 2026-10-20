@@ -12,7 +12,9 @@ FloatingWindow {
     property string path:""
     property int page:1
     property alias preview:previewContent
-    property var result:({})
+    property var result:previewState.result
+    property var selectedIdentity:null
+    OwnedPreviewState {id:previewState;active:root.visible;onReceived:value=>{if(!value.error && root.recognizeOnLoad){root.recognizeOnLoad=false;Qt.callLater(root.recognize);}}}
     property string ocrText:""
     property bool recognizeOnLoad:false
     function recognize(){ocr.requestPath=root.path;ocr.request={action:"ocr",path:root.path,page:root.page};if(root.result.type==="media")ocr.request.seconds=previewContent.position/1000;ocr.running=true;}
@@ -24,9 +26,9 @@ FloatingWindow {
     onKeyActiveChanged:observeOwnedFocus()
     onReturnToChanged:if(keyActive)observeOwnedFocus()
     Component.onDestruction:if(returnTo && returnTo.shell.ownedContext)returnTo.shell.ownedContext.close(root)
-    function show(value,owner){if(owner && owner.shell.claimPopup)owner.shell.claimPopup("");path=value;subjectPath="";subjectMessage="";page=1;returnTo=owner;result={};visible=true;refresh();if(owner)owner.shell.focusOwnedWindow("Quick Look");Qt.callLater(()=>{content.forceActiveFocus();if(content.Window.window)content.Window.window.requestActivate();});}
+    function show(value,owner){if(owner && owner.shell.claimPopup)owner.shell.claimPopup("");path=value;subjectPath="";subjectMessage="";page=1;returnTo=owner;selectedIdentity=owner && owner.current && owner.current.path===value?owner.current.identity:null;visible=true;previewState.request(path,page,selectedIdentity,null);if(owner)owner.shell.focusOwnedWindow("Quick Look");Qt.callLater(()=>{content.forceActiveFocus();if(content.Window.window)content.Window.window.requestActivate();});}
     function saveSubject(){if(subjectPath)subjectSave.open();}
-    function refresh(){if(worker.running)return;worker.requestPath=path;worker.requestPage=page;worker.command=[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("file_preview.py").toString().replace("file://",""),path,String(page)];worker.running=true;}
+    function refresh(){previewState.request(path,page,selectedIdentity,result.sourcePath===path?result.sourceToken:null);}
     onVisibleChanged:if(visible)fit();else {if(returnTo && returnTo.shell.ownedContext)returnTo.shell.ownedContext.close(root);subjectSave.close();recognizeOnLoad=false;ocr.running=false;subject.running=false;if(returnTo)Qt.callLater(()=>returnTo.focusContents());}
     Rectangle {id:content;anchors.fill:parent;radius:Theme.nativeWindowFrame?0:12;color:Theme.colors.background;border.color:Theme.outline;focus:true
         Keys.onEscapePressed:root.visible=false
@@ -72,7 +74,7 @@ FloatingWindow {
                 }
             }
         }
-        FilePreview {id:previewContent;x:20;y:62;width:parent.width-40;height:parent.height-78;result:root.result;active:root.visible;loading:worker.running;onPageRequested:number=>{root.page=number;root.refresh();}}
+        FilePreview {id:previewContent;x:20;y:62;width:parent.width-40;height:parent.height-78;result:root.result;active:root.visible;loading:previewState.busy;onPageRequested:number=>{root.page=number;root.refresh();}}
 
     }
     FileDialog {id:subjectSave;title:"Save Extracted Subject";fileMode:FileDialog.SaveFile;nameFilters:["PNG image (*.png)"];defaultSuffix:"png"
@@ -87,9 +89,5 @@ FloatingWindow {
         command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("context_tools.py").toString().replace("file://","")]
         onStarted:write(JSON.stringify(request)+"\n")
         stdout:StdioCollector {onStreamFinished:{if(!root.visible || root.path!==ocr.requestPath)return;try{const data=JSON.parse(text);root.ocrText=data.error || data.text || data.message;recognized.open();}catch(e){root.ocrText="Text recognition failed";recognized.open();}}}
-    }
-    Process {id:worker;property string requestPath;property int requestPage
-        stdout:StdioCollector {onStreamFinished:{if(worker.requestPath!==root.path || worker.requestPage!==root.page)return;try{root.result=JSON.parse(text);}catch(e){root.result={error:"Preview unavailable"};}}}
-        onExited:if(root.visible){if(requestPath!==root.path || requestPage!==root.page)Qt.callLater(root.refresh);else if(root.recognizeOnLoad){root.recognizeOnLoad=false;Qt.callLater(root.recognize);}}
     }
 }

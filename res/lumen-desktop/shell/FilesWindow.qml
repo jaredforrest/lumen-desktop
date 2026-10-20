@@ -107,7 +107,7 @@ FloatingWindow {
     function selectedUris(){return selectedPaths.map(p=>"file://"+p.split("/").map(encodeURIComponent).join("/"));}
     function isSelected(index){return service.rows[index] && selectedPaths.includes(service.rows[index].path);}
     function selectAll(){selectedPaths=service.rows.map(r=>r.path);selected=service.rows.length?0:-1;}
-    onVisibleChanged:{service.active=visible;if(!visible && shell.ownedContext)shell.ownedContext.close(root)}
+    onVisibleChanged:{service.active=visible;if(!visible){previewDelay.stop();service.requestPreview("");}else if(previewOpen || galleryMode)schedulePreview();if(!visible && shell.ownedContext)shell.ownedContext.close(root)}
 
     readonly property var defaultFavorites:[{name:"Home",path:Quickshell.env("HOME")},{name:"Desktop",path:Quickshell.env("HOME")+"/Desktop"},{name:"Documents",path:Quickshell.env("HOME")+"/Documents"},{name:"Downloads",path:Quickshell.env("HOME")+"/Downloads"},{name:"Pictures",path:Quickshell.env("HOME")+"/Pictures"},{name:"Music",path:Quickshell.env("HOME")+"/Music"},{name:"Videos",path:Quickshell.env("HOME")+"/Videos"},{name:"Data",path:Quickshell.env("HOME")+"/data"}]
     readonly property var sidebarFavorites:service.favorites===null?defaultFavorites:service.favorites
@@ -201,9 +201,10 @@ FloatingWindow {
         for(let n=1;n<=actionRows.count;n++){const index=(current+n*delta+actionRows.count*2)%actionRows.count,item=actionRows.itemAt(index);if(item.enabled){item.forceActiveFocus();actions.contentItem.contentY=Math.max(0,Math.min(actions.contentItem.contentHeight-actions.contentItem.height,item.y-actions.contentItem.height/2));return;}}
     }
     function sortBy(key){if(service.sort===key)service.descending=!service.descending;else {service.sort=key;service.descending=key==="modified";}service.refresh();}
-    onCurrentChanged:if(previewOpen || galleryMode)previewDelay.restart()
-    onGalleryModeChanged:if(galleryMode)previewDelay.restart()
-    onPreviewOpenChanged:{if(previewOpen)previewDelay.restart();else service.requestPreview("");}
+    function schedulePreview(){service.requestPreview("");previewDelay.stop();if(visible && current && (previewOpen || galleryMode))previewDelay.restart();}
+    onCurrentChanged:if(previewOpen || galleryMode)schedulePreview()
+    onGalleryModeChanged:schedulePreview()
+    onPreviewOpenChanged:schedulePreview()
     Timer {id:previewDelay;interval:140;onTriggered:root.service.requestPreview(root.current?root.current.path:"")}
     Connections {target:root.service
         function onCapturePresentation(){root.captureHistory();}
@@ -516,7 +517,7 @@ FloatingWindow {
             }
             ColumnView {id:columnView;selectionActive:root.selectionActive;dropCoordinator:fileDrop;visible:root.columnsMode;anchors.fill:parent;columns:root.service.columns;currentPath:root.current?root.current.path:"";onChosen:(path,directory)=>{if(directory)root.navigate(path);else {const index=root.service.rows.findIndex(r=>r.path===path);if(index>=0)root.choose(index,0);else {root.service.nextSelection=path;root.navigate(path.slice(0,path.lastIndexOf("/")) || "/");}}}}
             Item {visible:root.galleryMode;anchors.fill:parent
-                FilePreview {x:12;y:0;width:parent.width-24;height:Math.max(60,parent.height-118);result:root.current?root.service.preview:{text:"Select an item"};active:root.visible && root.galleryMode;onPageRequested:number=>root.service.requestPreview(root.current.path,number)}
+                FilePreview {x:12;y:0;width:parent.width-24;height:Math.max(60,parent.height-118);result:root.current?root.service.preview:{text:"Select an item"};active:root.visible && root.galleryMode;loading:root.service.previewBusy;onPageRequested:number=>root.service.requestPreview(root.current.path,number)}
                 ListView {id:galleryStrip;objectName:"files-gallery-view";anchors.bottom:parent.bottom;width:parent.width;height:104;orientation:ListView.Horizontal;clip:true;spacing:5;model:root.service.rows;ScrollBar.horizontal:DesktopScrollBar {}
                     delegate:AbstractButton {required property var modelData;required property int index;width:92;height:92;
                         FolderDropTarget {anchors.fill:parent;enabled:modelData.directory && root.service.path!=="trash:";folder:modelData.path;coordinator:fileDrop}
@@ -541,7 +542,7 @@ Accessible.name:modelData.name;Accessible.selected:root.isSelected(index);onClic
                 Image {visible:root.service.preview.type==="image";width:parent.width;height:visible?Math.max(80,previewPane.height-105):0;source:visible?root.service.preview.uri || "":"";sourceSize:Qt.size(800,800);fillMode:Image.PreserveAspectFit;asynchronous:true;PanelLabel {visible:parent.status===Image.Error;anchors.centerIn:parent;text:"Preview unavailable";color:Theme.colors.muted}}
                 Flickable {
                     visible:root.service.preview.type!=="image";width:parent.width;height:Math.max(40,previewPane.height-110);clip:true;contentHeight:previewText.height;contentWidth:width
-                    PanelLabel {id:previewText;width:parent.width;text:root.current?root.service.preview.text || "Loading preview…":"";textFormat:Text.PlainText;wrapMode:Text.WrapAnywhere;elide:Text.ElideNone;font.pixelSize:12}
+                    PanelLabel {id:previewText;width:parent.width;text:root.current?root.service.preview.text || root.service.preview.error || (root.service.previewBusy?"Loading preview…":"Preview unavailable"):"";textFormat:Text.PlainText;wrapMode:Text.WrapAnywhere;elide:Text.ElideNone;font.pixelSize:12}
                 }
                 PanelLabel {visible:!!root.service.preview.truncated;text:"Preview shortened";font.pixelSize:10;color:Theme.colors.muted}
             }

@@ -52,11 +52,12 @@ Item {
     property string query:""
     property var history:[]
     property int historyIndex:-1
-    property var preview:({})
+    property var preview:ownedPreview.result
+    readonly property bool previewBusy:ownedPreview.busy
+    OwnedPreviewState {id:ownedPreview;active:root.active && root.ready}
     property int sequence:0
     readonly property string requestSession: Date.now().toString(36)+"-"+Math.random().toString(36).slice(2)
     property int currentId:0
-    property int previewId:0
     property string nextSelection:""
     property string stagedPath:""
     property string stagedAction:"copy"
@@ -101,7 +102,7 @@ Item {
         busy=true;currentId=send(action,data);
     }
     function startJob(operation,paths,destination,conflict){error="";send("job-start",{operation:operation,paths:paths || [],destination:destination || path,conflict:conflict || "skip"});}
-    function requestPreview(value,page) {if(!page)preview={};previewId=value?send("preview",{path:value,page:page || 1}):0;}
+    function requestPreview(value,page) {const row=rows.find(item=>item.path===value);const token=page!==undefined && preview.sourcePath===value?preview.sourceToken:null;ownedPreview.request(value,page,row?row.identity:null,token);}
     function stage(paths,action){stagedPaths=paths;stagedPath=paths[0] || "";stagedAction=action;error="";send("clipboard-write",{paths:paths,operation:action});}
     function paste(conflict){error="";send("clipboard-paste",{destination:path,conflict:conflict || "skip"});}
     function drop(urls,destination){error="";send("drop",{uris:urls.join("\n"),destination:destination || path});}
@@ -137,7 +138,6 @@ Item {
                 if(data.jobs){root.acceptJobs(data);return;}
                 if(data.action==="volumes"){root.volumes=data.volumes || [];return;}
                 if(data.action==="applications"){if(data.id!==root.applicationRequestId)return;root.applicationRequestId=0;if(data.error)root.error=data.error;else root.applicationsReady(data.applications,root.applicationRequestPath);return;}
-                if(data.id===root.previewId){root.preview=data.error?{type:"generic",text:data.error}:data;return;}
                 if(data.id!==root.currentId){if(data.action!=="list" && data.error)root.error=data.error;return;}
                 root.busy=false;
                 if(data.error){root.error=data.error;if(data.action==="list"){const saved=(root.history[root.historyIndex] || {}).presentation;if(saved && root.rowsPath===root.path){root.query=saved.query;root.historyReady(saved);root.selectedPath("@history");}}return;}
