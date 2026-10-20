@@ -1,8 +1,17 @@
-# Fullscreen menu visibility
+# Menu visibility
 
-`menuBar.fullscreenVisibility` is a presentation preference with the closed values `automatic` (the project default) and `always`. It is part of the public desktop settings schema and the existing settings-package contract, not a second machine-policy option in the NixOS module. Consumers can include `menuBar.fullscreenVisibility = "always";` in their settings source. The Menu bar and clock pane edits the same value through the existing typed settings transaction. Older preference snapshots without the field use automatic behavior.
+`menuBar.visibility` is the sole typed presentation setting. It is part of the public settings-package contract and the Menu bar and clock pane has one control for it. It does not introduce machine policy in the NixOS module.
 
-On a desktop, the menu remains visible and reserves its normal work area. An actual fullscreen container causes the menu on that output to use the overlay layer with zero reserved area. Automatic mode reveals it at the top edge, keeps it while its menu is open and hides it after the pointer leaves. The reveal sensor has no keyboard focus. A keyboard-opened menu also remains reachable; Escape closes it without leaving fullscreen. Always mode retains the visible menu. A live preference change does not change the client's fullscreen state.
+| Value | Ordinary desktop | Fullscreen output |
+| --- | --- | --- |
+| `always` | Visible | Visible |
+| `desktop` (default) | Visible | Top-edge reveal |
+| `fullscreen` | Top-edge reveal | Visible |
+| `auto_hide` | Top-edge reveal | Top-edge reveal |
+
+Consumers can set `menuBar.visibility = "auto_hide";`. A persistently visible desktop bar reserves its normal work area. Autohiding bars and all fullscreen bars use the overlay layer and reserve no work area. Reveal is local to the pointer's output, retains an open menu, and hides after leave. The sensor takes no keyboard focus. Keyboard invocation reveals hidden menus; Escape returns input to the native client without changing fullscreen state. Presentation updates do not resize or change a client's fullscreen mode.
+
+The published `fullscreenVisibility` input is migrated explicitly: `automatic` becomes `visibility = "desktop"`; `always` becomes `visibility = "always"`. This occurs in the Nix evaluator, settings command input and old runtime-snapshot readers. Canonical outputs omit the alias and the next successful settings transaction serializes only the canonical field, preserving unrelated preferences. Inputs containing both fields are rejected, even if they would agree; invalid legacy values are rejected. No second authority or hidden compatibility control remains. Missing values retain the previous default behavior.
 
 A single read-only observer obtains visible workspace and fullscreen-container state through compositor IPC. Workspace structural markers do not count as fullscreen apps. Workspace fullscreen affects its current output; global fullscreen affects all active outputs. No active-title inference, window resizing, host policy change or simulated app-owned interface is involved. Disconnecting an output drops its state; surviving outputs follow the migrated container. Observation failure clears cached state and retries, retaining the ordinary menu route rather than a stale overlay.
 
@@ -12,4 +21,4 @@ The 500 ms leave delay and one-pixel trigger are explicit project interaction po
 nix develop --command desktop-test-python tests/desktop/fullscreen_menu_native.py --launcher /absolute/path/to/lumen-desktop-shell --sway /absolute/path/to/sway --pointer-tool /absolute/path/to/wlrctl --output /absolute/new/evidence-directory
 ```
 
-The fixture uses two private outputs, a real native client and actual pointer/keyboard input. It checks presented pixels, app input, keyboard invocation, menu interaction, live preference updates, workspace/global modes and removal of the fullscreen output. Use `--effects` for the effects compositor; it explicitly requests genuine software GLES. Evidence includes captures, native state and pointer measurements. Unit tests additionally cover inactive workspaces and structural markers; settings tests use the real Nix evaluator and disposable sources.
+The fixture uses two private outputs, a real native client and actual pointer/keyboard input. It checks old-snapshot startup, all four desktop/fullscreen policies, presented pixels, app input, keyboard invocation, menu interaction, live preference updates, workspace/global modes and removal of the fullscreen output. Use `--effects` for the effects compositor; it explicitly requests genuine software GLES. Evidence includes captures, native state and pointer measurements. Unit tests additionally cover inactive workspaces and structural markers; settings tests use the real Nix evaluator and disposable sources.

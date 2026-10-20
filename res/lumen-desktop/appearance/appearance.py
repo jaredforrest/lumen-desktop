@@ -87,9 +87,10 @@ def valid_control(key,value):
     return key in ('order','hidden') and isinstance(value,list) and all(isinstance(item,str) and item in CONTROL_IDS for item in value) and len(value)==len(set(value)) and (key=='hidden' or len(value)==len(CONTROL_IDS))
 
 MENU_IDS=('battery','sound','focus','search','controls')
-MENU_DEFAULTS=dict(order=list(MENU_IDS),hourCycle='locale',locale='',fullscreenVisibility='automatic',showDate=True,showWeekday=True,showSeconds=False)
+MENU_DEFAULTS=dict(order=list(MENU_IDS),hourCycle='locale',locale='',visibility='desktop',showDate=True,showWeekday=True,showSeconds=False)
 def valid_menu(key,value):
     if key=='order':return isinstance(value,list) and len(value)==len(MENU_IDS) and all(isinstance(item,str) for item in value) and set(value)==set(MENU_IDS)
+    if key=='visibility':return value in ('always','desktop','fullscreen','auto_hide')
     if key=='fullscreenVisibility':return value in ('automatic','always')
     if key=='hourCycle':return value in ('locale','12','24')
     if key=='locale':return isinstance(value,str) and (value=='' or re.fullmatch(r'[a-z]{2,3}(_[A-Z]{2})?',value) is not None)

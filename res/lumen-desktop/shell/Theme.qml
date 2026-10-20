@@ -1,5 +1,6 @@
 pragma Singleton
 import QtQuick
+import "MenuVisibilityPolicy.js" as MenuVisibilityPolicy
 import Quickshell
 import Quickshell.Io
 Singleton {
@@ -7,7 +8,7 @@ Singleton {
     property var preferences: ({mode:"auto",accent:"blue",iconAppearance:"auto",switchToAppSpace:true,dockMagnification:true,reduceMotion:false})
     property var desktopPreferences: ({showFiles:false,fileSort:"name",fileDescending:false})
     property var windowsPreferences: ({tileMargins:true,tileGap:8,titlebarDoubleClick:"fill",edgeTiling:true,optionTiling:true,topEdgeFill:true,topEdgeOverview:true})
-    property var menuBarPreferences: ({order:["battery","sound","focus","search","controls"],hourCycle:"locale",locale:"",fullscreenVisibility:"automatic",showDate:true,showWeekday:true,showSeconds:false})
+    property var menuBarPreferences: ({order:["battery","sound","focus","search","controls"],hourCycle:"locale",locale:"",visibility:"desktop",showDate:true,showWeekday:true,showSeconds:false})
     property var controlCentrePreferences: ({order:["wifi","bluetooth","sharing","media","displays","appearance","focus","brightness","sound"],hidden:[]})
     property var notificationsPreferences: ({preview:"when_unlocked"})
     property var searchPreferences: ({disabledProviders:[]})
@@ -44,6 +45,6 @@ Singleton {
         path: Quickshell.env("LUMEN_APPEARANCE_STATE") || ((Quickshell.env("XDG_STATE_HOME") || Quickshell.env("HOME")+"/.local/state")+"/lumen-desktop/appearance.json")
         watchChanges: true
         onFileChanged: reload()
-        onLoaded: {try {const data=JSON.parse(text());root.colors=data.palette;root.font=data.font;root.preferences=data.preferences || root.preferences;root.searchPreferences=data.searchPreferences || ({disabledProviders:[]});root.notificationsPreferences=data.notificationsPreferences || ({preview:"when_unlocked"});if(data.menuBarPreferences)root.menuBarPreferences=data.menuBarPreferences;if(data.controlCentrePreferences)root.controlCentrePreferences=data.controlCentrePreferences;if(data.windowsPreferences)root.windowsPreferences=data.windowsPreferences;if(data.desktopPreferences)root.desktopPreferences=data.desktopPreferences;}catch(e){console.warn("Appearance file:",e);}}
+        onLoaded: {try {const data=JSON.parse(text());root.colors=data.palette;root.font=data.font;root.preferences=data.preferences || root.preferences;root.searchPreferences=data.searchPreferences || ({disabledProviders:[]});root.notificationsPreferences=data.notificationsPreferences || ({preview:"when_unlocked"});if(data.menuBarPreferences)root.menuBarPreferences=MenuVisibilityPolicy.normalize(data.menuBarPreferences);if(data.controlCentrePreferences)root.controlCentrePreferences=data.controlCentrePreferences;if(data.windowsPreferences)root.windowsPreferences=data.windowsPreferences;if(data.desktopPreferences)root.desktopPreferences=data.desktopPreferences;}catch(e){console.warn("Appearance file:",e);}}
     }
 }

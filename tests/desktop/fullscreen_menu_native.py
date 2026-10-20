@@ -15,7 +15,7 @@ prefix=re.split(r'\n[ \t]*exec quickshell ',a.launcher.read_text(),maxsplit=1)[0
 exported=sp.check_output(['bash','-c',prefix+'\nexec env -0']);env=dict(value.decode().split('=',1) for value in exported.split(b'\0') if b'=' in value)
 env.update(WLR_BACKENDS='headless',WLR_RENDERER='gles2' if a.effects else 'pixman',WLR_RENDERER_ALLOW_SOFTWARE='1',LIBGL_ALWAYS_SOFTWARE='1',WLR_LIBINPUT_NO_DEVICES='1',QT_QPA_PLATFORM='wayland',QT_QPA_PLATFORMTHEME='generic',QT_QUICK_BACKEND='software',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none',LUMEN_FILE_SERVICE='0',LUMEN_LAUNCH_SCOPES='0',LUMEN_NATIVE_WINDOW_CONTROLS='0',LUMEN_NATIVE_WINDOW_ACTIONS='0',LUMEN_UNIFIED_OWNED_HEADERS='1')
 for key in ('DISPLAY','WAYLAND_DISPLAY','SWAYSOCK','AT_SPI_BUS_ADDRESS'):env.pop(key,None)
-palettes=json.loads((repo/'res/lumen-desktop/appearance/palette.json').read_text());appearance=out/'appearance.json';appearance.write_text(json.dumps(dict(font=palettes['font'],palette=palettes['dark'],preferences={})));env['LUMEN_APPEARANCE_STATE']=str(appearance)
+palettes=json.loads((repo/'res/lumen-desktop/appearance/palette.json').read_text());appearance=out/'appearance.json';appearance.write_text(json.dumps(dict(font=palettes['font'],palette=palettes['dark'],preferences={},menuBarPreferences={"fullscreenVisibility":"automatic"})));env['LUMEN_APPEARANCE_STATE']=str(appearance)
 shutil.copytree(repo/'res/lumen-desktop',out/'assets')
 from PIL import Image,ImageStat
 env['LUMEN_COMPOSITOR_EFFECTS']='1' if a.effects else '0'
@@ -24,7 +24,7 @@ env['GLOBAL_MENU_ENABLED']='0';env['WLR_HEADLESS_OUTPUTS']='2'
 fixture=out/'assets/shell';qml=fixture/'shell.qml';original=qml.read_text()
 addition='''
  IpcHandler {target:"fullscreenMenuAudit"
-  function state():string {return JSON.stringify({owner:root.popupOwner,available:menuVisibilityState.available,outputs:menuVisibilityState.outputs,error:menuVisibilityState.error,bars:Object.keys(root.bars).map(name=>{const bar=root.bars[name];return {pointer:bar.pointerAudit(),output:name,x:bar.screen.x,y:bar.screen.y,width:bar.width,visible:bar.visible,fullscreen:bar.outputFullscreen,automatic:bar.automaticFullscreen,revealed:bar.edgeRevealed,menu:bar.menu,zone:bar.exclusiveZone,layer:bar.WlrLayershell.layer};})});}
+  function state():string {return JSON.stringify({owner:root.popupOwner,available:menuVisibilityState.available,outputs:menuVisibilityState.outputs,error:menuVisibilityState.error,bars:Object.keys(root.bars).map(name=>{const bar=root.bars[name];return {pointer:bar.pointerAudit(),output:name,x:bar.screen.x,y:bar.screen.y,width:bar.width,visible:bar.visible,fullscreen:bar.outputFullscreen,automatic:bar.automaticFullscreen,autoHide:bar.automaticHide,revealed:bar.edgeRevealed,menu:bar.menu,zone:bar.exclusiveZone,layer:bar.WlrLayershell.layer};})});}
   function keyboardMenu():void {root.requestMenu("Desktop","HEADLESS-1");}
   function close():void {root.claimPopup("");}
  }
@@ -76,8 +76,8 @@ def move(x,y):
     call('swaymsg','seat','seat0','cursor','set',str(round(x-min(value['x'] for value in outputs))),str(round(y-min(value['y'] for value in outputs))));command('m 0.5 0.5')
 def click(x,y):move(x,y);command('p');command('r')
 def key(*keys):call('wtype',*keys);time.sleep(.12)
-def preference(value):
-    data=json.loads(appearance.read_text());data['menuBarPreferences']=dict(fullscreenVisibility=value,order=['battery','sound','focus','search','controls'],hourCycle='24',showDate=True);pending=appearance.with_suffix('.new');pending.write_text(json.dumps(data));pending.replace(appearance)
+def preference(value,legacy=False):
+    data=json.loads(appearance.read_text());data['menuBarPreferences']=dict(**({'fullscreenVisibility':value} if value=='automatic' or legacy else {'visibility':value}),order=['battery','sound','focus','search','controls'],hourCycle='24',showDate=True);pending=appearance.with_suffix('.new');pending.write_text(json.dumps(data));pending.replace(appearance)
 def painted(name,first,second=True):
     def capture():
         call('grim',str(out/name))
@@ -94,12 +94,32 @@ try:
     launch([a.sway,'--unsupported-gpu','-c',str(config)],'sway.log');runtime=Path(env['XDG_RUNTIME_DIR']);env['SWAYSOCK']=str(wait(lambda:next(runtime.glob('sway-ipc*.sock'),None)));env['WAYLAND_DISPLAY']=wait(lambda:next((path.name for path in runtime.glob('wayland-*') if not path.name.endswith('.lock')),None))
     launch(['wtype','-s','120000'],'keyboard.log');pointer=sp.Popen([a.pointer_tool,'pointer','move','0','0'],env=env,stdin=sp.PIPE,text=True,start_new_session=True);processes.append(pointer);command('m 0.5 0.5');launch(['quickshell','-p',str(fixture)],'shell.log');wait(lambda:state()['available'] and len(state()['bars'])==2);launch(['quickshell','-p',str(client)],'client.log');wait(native)
     move(500,300);(out/'desktop-state.json').write_text(json.dumps(dict(state=state(),tree=json.loads(call('swaymsg','-r','-t','get_tree')),outputs=json.loads(call('swaymsg','-r','-t','get_outputs'))),indent=2));assert all(row['visible'] and row['zone']==28 for row in state()['bars']);painted('desktop.png',True);checks=['Desktop retains its menu and reserved work area on both outputs']
+    preference('always',legacy=True);wait(lambda:all(value['visible'] and value['zone']==28 for value in state()['bars']));checks.append('Legacy automatic startup and always live snapshots migrate without warnings or competing fields')
+    preference('fullscreen');move(500,300);wait(lambda:all(not value['visible'] and value['zone']==0 for value in state()['bars']))
+    def desktop_painted(name,first,second):
+        def capture():
+            call('grim',str(out/name))
+            with Image.open(out/name) as source:image=source.convert('RGB')
+            return all((min(image.getpixel((x,10)))>20 if shown else max(image.getpixel((x,10)))<10) for x,shown in [(300,first),(1100,second)])
+        wait(capture)
+    desktop_painted('desktop-hidden.png',False,False)
+    move(300,0);wait(lambda:row('HEADLESS-1')['visible'] and not row('HEADLESS-2')['visible']);desktop_painted('desktop-local-reveal.png',True,False)
+    click(34,14);wait(lambda:row('HEADLESS-1')['menu']=='Desktop');key('-k','Escape');move(500,300);wait(lambda:all(not value['visible'] for value in state()['bars']))
+    key('-M','logo','-k','m','-m','logo');wait(lambda:row('HEADLESS-1')['menu']=='Desktop');key('-k','Escape');wait(lambda:not row('HEADLESS-1')['visible'])
+    call('swaymsg','[con_id='+str(native()['id'])+']','focus');call('quickshell','-p',str(client),'ipc','call','client','focus');rect=native()['rect'];before=observed();click(rect['x']+rect['width']/2,rect['y']+rect['height']/2);key('-k','k');wait(lambda:observed()['keys']==before['keys']+1);assert observed()['clicks']==before['clicks']+1
+    checks.append('Desktop autohide removes reserved space; output-local pointer and keyboard menus return exact client input')
+    preference('auto_hide');move(500,300);wait(lambda:all(value['autoHide'] and not value['visible'] for value in state()['bars']))
+    preference('always');wait(lambda:all(value['visible'] and value['zone']==28 for value in state()['bars']));desktop_painted('desktop-live-always.png',True,True)
+    preference('desktop');wait(lambda:all(value['visible'] and value['zone']==28 for value in state()['bars']));checks.append('Live canonical desktop/always/auto_hide choices have one visibility authority on both outputs')
     identity=native()['id'];call('swaymsg','[con_id='+str(identity)+']','focus');call('quickshell','-p',str(client),'ipc','call','client','focus');call('swaymsg','[con_id='+str(identity)+']','fullscreen','enable');wait(lambda:row('HEADLESS-1')['automatic'] and not row('HEADLESS-1')['visible']);assert row('HEADLESS-2')['visible'] and not row('HEADLESS-2')['fullscreen'];assert native()['fullscreen_mode']==1;painted('automatic-hidden.png',False)
     before=observed();key('-k','k');wait(lambda:observed()['keys']==before['keys']+1);click(400,200);assert observed()['clicks']==before['clicks']+1
     move(300,0);wait(lambda:row('HEADLESS-1')['visible']);painted('automatic-revealed.png',True);assert native()['fullscreen_mode']==1
     click(34,14);wait(lambda:row('HEADLESS-1')['menu']=='Desktop');key('-k','Escape');wait(lambda:row('HEADLESS-1')['menu']=='');move(400,200);wait(lambda:not row('HEADLESS-1')['visible']);painted('automatic-left.png',False);assert native()['fullscreen_mode']==1
     before=observed();click(400,200);key('-k','k');wait(lambda:observed()['keys']==before['keys']+1);assert observed()['clicks']==before['clicks']+1;checks.append('Automatic top-edge reveal, menu click, Escape and leave preserve fullscreen and restore exact app input')
     key('-M','logo','-k','m','-m','logo');wait(lambda:row('HEADLESS-1')['menu']=='Desktop' and row('HEADLESS-1')['visible']);key('-k','Escape');wait(lambda:not row('HEADLESS-1')['visible']);assert native()['fullscreen_mode']==1;checks.append('Physical keyboard route opens a hidden menu and Escape returns to the fullscreen client')
+    preference('fullscreen');move(400,200);wait(lambda:row('HEADLESS-1')['visible'] and not row('HEADLESS-1')['autoHide'] and not row('HEADLESS-2')['visible']);desktop_painted('fullscreen-only-visible.png',True,False);assert native()['fullscreen_mode']==1
+    preference('auto_hide');wait(lambda:all(value['autoHide'] and not value['visible'] for value in state()['bars']));assert native()['fullscreen_mode']==1
+    preference('desktop');wait(lambda:row('HEADLESS-1')['automatic'] and not row('HEADLESS-1')['visible'] and row('HEADLESS-2')['visible']);checks.append('Fullscreen-only and everywhere-autohide modes independently respect the other desktop output')
     preference('always');wait(lambda:not row('HEADLESS-1')['automatic'] and row('HEADLESS-1')['visible']);assert row('HEADLESS-1')['zone']==0;painted('always.png',True);move(400,200);time.sleep(.7);assert row('HEADLESS-1')['visible'];assert native()['fullscreen_mode']==1
     preference('automatic');wait(lambda:row('HEADLESS-1')['automatic'] and not row('HEADLESS-1')['visible']);painted('live-automatic.png',False);checks.append('Live always/automatic presentation changes preserve fullscreen; fullscreen reserves no desktop work area')
     call('swaymsg','[con_id='+str(identity)+']','fullscreen','enable','global');wait(lambda:native()['fullscreen_mode']==2 and all(value is True for value in state()['outputs'].values()));move(500,200);wait(lambda:all(not value['visible'] for value in state()['bars']));painted('global-hidden.png',False,False)

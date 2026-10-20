@@ -6,7 +6,7 @@ Column {
     width:parent ? parent.width : 400;spacing:10
     PanelLabel {text:"Menu bar and clock";font.weight:Font.DemiBold}
     PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:"Hold Super and drag a status item to move it. Keyboard: focus an item and press Control Shift Left or Right. The clock stays at the right edge.";color:Theme.colors.muted}
-    DesktopComboBox {objectName:"fullscreen-menu-visibility";width:parent.width;model:["Automatically reveal in full screen","Always show in full screen"];currentIndex:root.service.menuBarPreferences.fullscreenVisibility==="always"?1:0;Accessible.name:"Menu bar in full screen";enabled:root.service.available && !root.service.busy;onActivated:index=>root.service.setMenuBarPreference("fullscreenVisibility",index===1?"always":"automatic")}
+    DesktopComboBox {objectName:"menu-visibility";width:parent.width;model:["Always visible","Visible on desktop","Visible in full screen","Automatically hide everywhere"];currentIndex:["always","desktop","fullscreen","auto_hide"].indexOf(root.service.menuBarPreferences.visibility || "desktop");Accessible.name:"Menu bar visibility";enabled:root.service.available && !root.service.busy;onActivated:index=>root.service.setMenuBarPreference("visibility",["always","desktop","fullscreen","auto_hide"][index])}
     Repeater {model:StatusModel.normalize(root.service.menuBarPreferences.order)
         Row {required property string modelData;required property int index;width:root.width;spacing:8
             PanelLabel {width:Math.max(60,parent.width-160);text:modelData.charAt(0).toUpperCase()+modelData.slice(1);anchors.verticalCenter:parent.verticalCenter}

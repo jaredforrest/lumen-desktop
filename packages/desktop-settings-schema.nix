@@ -11,6 +11,12 @@ let
       options = lib.mapAttrs (_: item: mkOption { type = valueType item; default = item; }) value;
     }
     else types.anything;
+  normalizedValues = if values ? menuBar.fullscreenVisibility then
+    if values.menuBar ? visibility then throw "Use only menuBar.visibility; remove the legacy fullscreenVisibility alias"
+    else if !(builtins.elem values.menuBar.fullscreenVisibility [ "automatic" "always" ]) then throw "Invalid legacy menu visibility"
+    else values // { menuBar = builtins.removeAttrs values.menuBar [ "fullscreenVisibility" ] // {
+      visibility = if values.menuBar.fullscreenVisibility == "always" then "always" else "desktop";
+    }; } else values;
   schema = {
     options = {
       applicationPreferences = mkOption { type = valueType defaults; default = defaults; };
@@ -77,7 +83,7 @@ let
           ids = [ "battery" "sound" "focus" "search" "controls" ];
         in {
           order = mkOption { type = types.addCheck (types.listOf (types.enum ids)) (items: lib.length items == lib.length ids && lib.length items == lib.length (lib.unique items)); default = ids; };
-          fullscreenVisibility = mkOption { type = types.enum [ "automatic" "always" ]; default = "automatic"; description = "Menu bar visibility in fullscreen; desktop visibility is unchanged."; };
+          visibility = mkOption { type = types.enum [ "always" "desktop" "fullscreen" "auto_hide" ]; default = "desktop"; description = "Contexts where the menu remains visible; auto_hide reveals at the top edge everywhere."; };
           hourCycle = mkOption { type = types.enum [ "locale" "12" "24" ]; default = "locale"; };
           locale = mkOption { type = types.strMatching "^$|[a-z]{2,3}(_[A-Z]{2})?"; default = ""; };
           showDate = mkOption { type = types.bool; default = true; };
@@ -196,7 +202,7 @@ let
     };
   };
 in let
-  result = (lib.evalModules { modules = [ schema { config = values; } ]; }).config;
+  result = (lib.evalModules { modules = [ schema { config = normalizedValues; } ]; }).config;
   folders = result.appearance.dockFolders;
   # Submodule list merges validate their members individually. Enforce the
   # collection invariant on the fully evaluated result as well.

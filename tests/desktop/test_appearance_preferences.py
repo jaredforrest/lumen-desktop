@@ -13,7 +13,8 @@ def ratio(first,second):
     return (b+.05)/(a+.05)
 class AppearancePreferences(unittest.TestCase):
     def test_fullscreen_menu_choices(self):
-        self.assertEqual(module.MENU_DEFAULTS['fullscreenVisibility'],'automatic')
+        self.assertEqual(module.MENU_DEFAULTS['visibility'],'desktop')
+        for value in ('always','desktop','fullscreen','auto_hide'):self.assertTrue(module.valid_menu('visibility',value))
         for value in ('automatic','always'):self.assertTrue(module.valid_menu('fullscreenVisibility',value))
         for value in ('hidden','never',True,None,1):self.assertFalse(module.valid_menu('fullscreenVisibility',value))
     def test_text_scale_is_closed_and_rejects_booleans(self):

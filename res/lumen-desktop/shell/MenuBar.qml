@@ -4,22 +4,24 @@ import Quickshell
 import Quickshell.Wayland
 import "MenuLayout.js" as MenuLayout
 import "ClockFormat.js" as ClockFormat
+import "MenuVisibilityPolicy.js" as MenuVisibilityPolicy
 
 PanelWindow {
     id: bar
     property var exported: shell.exportedMenu
     property string outputName:""
     readonly property bool outputFullscreen:!!shell.menuVisibility && shell.menuVisibility.available && shell.menuVisibility.outputs[outputName]===true
-    readonly property bool automaticFullscreen:outputFullscreen && Theme.menuBarPreferences.fullscreenVisibility!=="always"
+    readonly property bool automaticHide:MenuVisibilityPolicy.automatic(Theme.menuBarPreferences,outputFullscreen)
+    readonly property bool automaticFullscreen:outputFullscreen && automaticHide
     property bool edgeRevealed:false
-    readonly property bool chromeShown:!automaticFullscreen || edgeRevealed || menu!==""
+    readonly property bool chromeShown:!automaticHide || edgeRevealed || menu!==""
     visible:chromeShown
-    onAutomaticFullscreenChanged:{edgeRevealed=false;revealHide.stop();}
+    onAutomaticHideChanged:{edgeRevealed=false;revealHide.stop();}
     HoverHandler {id:barHover;onHoveredChanged:{if(hovered)revealHide.stop();else revealHide.restart();}}
-    Timer {id:revealHide;interval:500;onTriggered:if(bar.automaticFullscreen && !barHover.hovered && bar.menu==="")bar.edgeRevealed=false}
-    Connections {target:bar;function onMenuChanged(){if(bar.menu!=="")revealHide.stop();else if(bar.automaticFullscreen && !barHover.hovered)revealHide.restart();}}
+    Timer {id:revealHide;interval:500;onTriggered:if(bar.automaticHide && !barHover.hovered && bar.menu==="")bar.edgeRevealed=false}
+    Connections {target:bar;function onMenuChanged(){if(bar.menu!=="")revealHide.stop();else if(bar.automaticHide && !barHover.hovered)revealHide.restart();}}
     PanelWindow {
-        id:revealEdge;screen:bar.screen;visible:bar.automaticFullscreen && !bar.chromeShown
+        id:revealEdge;screen:bar.screen;visible:bar.automaticHide && !bar.chromeShown
         anchors {top:true;left:true;right:true}implicitHeight:1;exclusiveZone:0;color:"transparent"
         WlrLayershell.namespace:"lumen-menu-reveal";WlrLayershell.layer:WlrLayer.Overlay;WlrLayershell.keyboardFocus:WlrKeyboardFocus.None
         MouseArea {anchors.fill:parent;hoverEnabled:true;acceptedButtons:Qt.NoButton;onEntered:{bar.edgeRevealed=true;revealHide.restart();}}
@@ -150,8 +152,8 @@ PanelWindow {
     Connections { target: shell; function onRequestMenu(name, outputName) { if(outputName!==bar.outputName)return; bar.toggle(name,["Date","Calendar","Sound","Controls"].includes(name)?bar.width-380:16); } }
     anchors { top: true; left: true; right: true }
     implicitHeight: Theme.barHeight
-    exclusiveZone:bar.outputFullscreen?0:Theme.barHeight
-    WlrLayershell.layer:bar.outputFullscreen?WlrLayer.Overlay:WlrLayer.Top
+    exclusiveZone:bar.outputFullscreen || bar.automaticHide?0:Theme.barHeight
+    WlrLayershell.layer:bar.outputFullscreen || bar.automaticHide?WlrLayer.Overlay:WlrLayer.Top
     WlrLayershell.keyboardFocus:WlrKeyboardFocus.None
     color: Theme.compositorEffects && !Theme.preferences.reduceTransparency ? (Theme.dark ? "#d028282b" : "#d8f2f2f4") : Theme.colors.background
     WlrLayershell.namespace: "lumen-menu"

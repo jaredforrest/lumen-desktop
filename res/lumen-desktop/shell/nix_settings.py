@@ -17,7 +17,7 @@ def runtime():
     return directory
 
 
-def read_settings():
+def _read_settings():
     active=os.environ.get('LUMEN_NIX_SETTINGS_ACTIVE')
     if not active and Path('/etc/nix/desktop-settings.json').exists():active='/etc/nix/desktop-settings.json'
     if active:return json.loads(Path(active).read_text())
@@ -27,7 +27,26 @@ def read_settings():
     return json.loads(file.read_text())
 
 
+def read_settings():
+    return normalize_settings(_read_settings())
+
+
+def normalize_menu(values):
+    result=dict(values)
+    if 'fullscreenVisibility' in result:
+        if 'visibility' in result:raise ValueError('Use only menuBar.visibility; remove the legacy fullscreenVisibility alias')
+        legacy=result.pop('fullscreenVisibility')
+        if legacy not in ('automatic','always'):raise ValueError('Invalid legacy menu visibility')
+        result['visibility']='always' if legacy=='always' else 'desktop'
+    return result
+
+
+def normalize_settings(values):
+    return {**values,'menuBar':normalize_menu(values['menuBar'])} if 'menuBar' in values else values
+
+
 def set_section(section, value, *, merge=False):
+    if section=="menuBar":value=normalize_menu(value)
     result = subprocess.run(['lumen-nix-settings', 'patch' if merge else 'set', section, json.dumps(value, ensure_ascii=False)],
                             capture_output=True, text=True, timeout=3600)
     if result.returncode:
@@ -159,6 +178,7 @@ def git_transaction(section, value, application, merge=False):
 
 
 def transaction(section=None, value=None, application=None, *, merge=False):
+    if section=="menuBar":value=normalize_menu(value)
     if os.environ.get("LUMEN_NIX_SETTINGS_DEPLOY"):
         return git_transaction(section,value,application,merge)
     source = Path(os.environ['LUMEN_NIX_SETTINGS_SOURCE'])
@@ -169,7 +189,7 @@ def transaction(section=None, value=None, application=None, *, merge=False):
             if active:
                 # Applied settings come from the NixOS generation, never from
                 # an unactivated source edit or a remembered preference cache.
-                return json.loads(Path(active).read_text())
+                return normalize_settings(json.loads(Path(active).read_text()))
             bundle = build(source)
             activate(bundle)
             return json.loads((bundle / 'settings.json').read_text())

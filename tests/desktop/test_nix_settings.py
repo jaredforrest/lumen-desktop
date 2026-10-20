@@ -30,11 +30,28 @@ class NixSettingsTest(unittest.TestCase):
     def test_menu_bar_typed_presentation(self):
         values=settings.transaction('menuBar', {'hourCycle':'24','locale':'fr_FR','showSeconds':True,'fullscreenVisibility':'always'},merge=True)
         self.assertEqual(values['menuBar']['hourCycle'],'24')
-        self.assertEqual(values['menuBar']['fullscreenVisibility'],'always')
+        self.assertEqual(values['menuBar']['visibility'],'always')
         self.assertEqual(values['menuBar']['order'],['battery','sound','focus','search','controls'])
         for invalid in ({'fullscreenVisibility':'hidden'},{'fullscreenVisibility':True},{'hourCycle':'25'},{'locale':'../bad'},{'showSeconds':1},{'order':['sound','sound']}):
             with self.assertRaises(ValueError):settings.transaction('menuBar',invalid,merge=True)
         self.assertEqual(settings.transaction('menuBar',{'showDate':False},merge=True)['menuBar']['locale'],'fr_FR')
+
+    def test_menu_visibility_migration_has_one_authority(self):
+        for legacy,canonical in [('automatic','desktop'),('always','always')]:
+            self.source.write_text(settings.serialize({'menuBar':{'fullscreenVisibility':legacy,'locale':'fr_FR'}}))
+            result=settings.transaction()['menuBar']
+            self.assertEqual(result['visibility'],canonical);self.assertNotIn('fullscreenVisibility',result)
+            result=settings.transaction('menuBar',{'showSeconds':True},merge=True)['menuBar']
+            self.assertEqual(result['visibility'],canonical);self.assertEqual(result['locale'],'fr_FR')
+            self.assertNotIn('fullscreenVisibility',self.source.read_text())
+        for mode in ('always','desktop','fullscreen','auto_hide'):
+            self.assertEqual(settings.transaction('menuBar',{'visibility':mode},merge=True)['menuBar']['visibility'],mode)
+        original=self.source.read_bytes()
+        for invalid in ({'visibility':'automatic'},{'visibility':True},{'visibility':'desktop','fullscreenVisibility':'automatic'}):
+            with self.assertRaises(ValueError):settings.transaction('menuBar',invalid,merge=True)
+            self.assertEqual(self.source.read_bytes(),original)
+        self.source.write_text(settings.serialize({'menuBar':{'visibility':'desktop','fullscreenVisibility':'automatic'}}))
+        with self.assertRaises(ValueError):settings.transaction()
 
     def test_text_scale_is_typed_and_persistent(self):
         values=settings.transaction('appearance',{'textScale':1.5},merge=True)
