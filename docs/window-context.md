@@ -95,3 +95,31 @@ parent through manageability transitions, and clean exit with live modal clients
 The separate `--without-xres` case really disables the server extension and
 checks unknown-PID behavior. Both cases run on both compositor variants. No host
 X server, input, applications or filesystem is involved.
+
+## Preferred-size zoom
+
+The desktop's window-geometry adapter can explicitly register a preferred client
+width and height with `lumen_window preferred-size W H`. Desktop-owned
+`WindowGeometry` instances supply their declared implicit dimensions. The helper
+captures its real parent PID and start time, compositor socket identity and one
+mapped container ID; it rechecks them before dispatch with exact native criteria.
+This is a trusted same-user integration contract, not an authenticated IPC channel
+or a guarantee that arbitrary clients advertise useful preferred content sizes.
+The compositor never guesses preferred dimensions from titles or initial map size.
+
+`lumen_window zoom` and the `zoom` title-bar double-click preference toggle between
+that explicit preferred size and the original native placement snapshot. The
+native work area and client minimum/maximum constraints bound the result. Fill
+and directional tiling replace zoom mode while retaining the original restore
+snapshot. Minimise, hide and full screen keep their existing placement lifecycle.
+Zoom is unavailable for unregistered, transient/modal, full-screen, paired,
+unmapped and hidden windows, or when client constraints cannot fit the work area.
+An independently visible member of a window group can zoom itself.
+
+Native `lumen_state.zoomed` identifies the mode; `preferred_zoom` reports current
+eligibility. The title-free runtime reports these explicit facts and rejects
+inconsistent zoom state without a native restore snapshot. Older compositors do
+not advertise `native_preferred_zoom`; the geometry adapter continues fitting
+windows without registering unsupported metadata. Newly installed native actions
+require the new compositor to be running; package activation alone does not
+replace the existing compositor process.
