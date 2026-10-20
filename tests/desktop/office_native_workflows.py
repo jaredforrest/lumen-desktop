@@ -6,7 +6,7 @@ from application_fixture.keyboard import PhysicalKeyboard
 from fixture_resources import close_reaped_pipes
 from office_fixture import corpus,formats,live
 from office_fixture.control import Control
-p=argparse.ArgumentParser();p.add_argument('--writer',required=True);p.add_argument('--sheet',required=True);p.add_argument('--slides',required=True);p.add_argument('--software-driver',required=True);p.add_argument('--sway',required=True);p.add_argument('--keyboard-tool',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--writer-close-outcome',choices=['cancel','discard','save'],default='cancel');p.add_argument('--app',choices=['writer','sheet','slides'],default='writer');p.add_argument('--output',type=Path,required=True);p.add_argument('--inside',action='store_true');p.add_argument('--profiles-json',default='');p.add_argument('--source-sha',default='');a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--writer',required=True);p.add_argument('--sheet',required=True);p.add_argument('--slides',required=True);p.add_argument('--software-driver',required=True);p.add_argument('--sway',required=True);p.add_argument('--keyboard-tool',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--effects',action='store_true');p.add_argument('--writer-close-outcome',choices=['cancel','discard','save'],default='cancel');p.add_argument('--app',choices=['writer','sheet','slides'],default='writer');p.add_argument('--output',type=Path,required=True);p.add_argument('--inside',action='store_true');p.add_argument('--profiles-json',default='');p.add_argument('--source-sha',default='');a=p.parse_args()
 if not a.inside:
  source=Path(__file__).resolve().parents[2];out=a.output.resolve();out.mkdir(mode=0o700,parents=True,exist_ok=False)
  for binary in [a.writer,a.sheet,a.slides,a.sway,a.pointer_tool,a.keyboard_tool]:
@@ -14,14 +14,18 @@ if not a.inside:
  policies=subprocess.check_output(['nix','eval','--json','--file',str(source/'config/application-profiles.nix')],text=True)
  sha=subprocess.check_output(['git','-C',str(source),'rev-parse','HEAD'],text=True).strip()
  args=[sys.executable,'/source/tests/desktop/office_native_workflows.py','--inside','--writer',a.writer,'--sheet',a.sheet,'--slides',a.slides,'--software-driver',a.software_driver,'--sway',a.sway,'--keyboard-tool',a.keyboard_tool,'--pointer-tool',a.pointer_tool,'--writer-close-outcome',a.writer_close_outcome,'--app',a.app,'--profiles-json',policies,'--source-sha',sha,'--output','/artifacts']
- raise SystemExit(isolate(source,out,args))
+ if a.effects:args.append('--effects')
+ raise SystemExit(isolate(source,out,args,software_graphics=a.effects))
 assert os.getpid()==1 and os.getuid()!=0 and os.uname().nodename=='fixture' and Path.home()==Path('/home/fixture')
+assert not any((Path('/dev')/name).exists() for name in ('dri','snd','video0')) and Path('/dev/udmabuf').exists()==a.effects
 out=Path('/artifacts');processes=[];control=None;keyboard=None;checks=[];facts={};env=dict(os.environ)
 facts['testSources']={str(path.relative_to('/source')):hashlib.sha256(path.read_bytes()).hexdigest() for path in [Path('/source/tests/desktop/office_native_workflows.py'),*sorted(Path('/source/tests/desktop/office_fixture').glob('*.py')),*sorted(Path('/source/tests/desktop/application_fixture').glob('*'))] if path.is_file()}
 facts['installedBinaries']={binary:hashlib.sha256(Path(binary).read_bytes()).hexdigest() for binary in [a.writer,a.sheet,a.slides,a.sway,a.pointer_tool,a.keyboard_tool]}
 settings=Path('/etc/nix');settings.mkdir();(settings/'desktop-settings.json').write_text(json.dumps(dict(applicationPreferences=json.loads(a.profiles_json))))
 mesa=Path(a.software_driver);vulkan=mesa/'share/vulkan/icd.d/lvp_icd.x86_64.json';egl=mesa/'share/glvnd/egl_vendor.d/50_mesa.json';assert vulkan.is_file() and egl.is_file()
 env.update(WLR_BACKENDS='headless',WLR_RENDERER='pixman',WLR_LIBINPUT_NO_DEVICES='1',LIBGL_ALWAYS_SOFTWARE='1',MESA_LOADER_DRIVER_OVERRIDE='llvmpipe',VK_DRIVER_FILES=str(vulkan),VK_ICD_FILENAMES=str(vulkan),__EGL_VENDOR_LIBRARY_FILENAMES=str(egl),LIBGL_DRIVERS_PATH=str(mesa/'lib/dri'),WGPU_BACKEND='vulkan',SWAYSOCK='/run/fixture/sway.sock',DECKCRAFT_WAYLAND='1',DECKCRAFT_NO_AUDIO='1')
+if a.effects:env.update(WLR_RENDERER='gles2',WLR_RENDERER_ALLOW_SOFTWARE='1',WLR_RENDERER_FORCE_SOFTWARE='1')
+facts['boundary']=dict(uid=os.getuid(),gid=os.getgid(),pid=os.getpid(),hostname=os.uname().nodename,home=str(Path.home()),hardwarePathsAbsent=True,softwareAllocatorExposed=a.effects,renderer=env['WLR_RENDERER'])
 app={'writer':a.writer,'sheet':a.sheet,'slides':a.slides}[a.app];name={'writer':'wordcraft','sheet':'gridcraft','slides':'deckcraft'}[a.app];cli=str(Path(app).with_name(name+'-cli'));port=34217;env[name.upper()+'_CONTROL_PORT']=str(port)
 fixture=corpus.create();extension={'writer':'docx','sheet':'xlsx','slides':'pptx'}[a.app];source=out/(a.app+'-working.'+extension)
 def launch(command,label,**options):
@@ -88,7 +92,7 @@ try:
  with (out/'create.log').open('w') as log:subprocess.run([cli,*args],env=env,stdout=log,stderr=subprocess.STDOUT,check=True,timeout=60)
  assert formats.package_kind(source)==extension;before=formats.digest(source);facts['originalSha256']=before
  config=out/'sway.conf';config.write_text('output HEADLESS-1 resolution 1440x1000\nxwayland disable\nfor_window [all] floating enable, border pixel 0\n')
- compositor=launch([a.sway,'--unsupported-gpu','-c',str(config)],'sway');wait(lambda:Path(env['SWAYSOCK']).is_socket(),'private compositor IPC',compositor)
+ compositor=launch([a.sway,'-d','--unsupported-gpu','-c',str(config)],'sway');wait(lambda:Path(env['SWAYSOCK']).is_socket(),'private compositor IPC',compositor)
  env['WAYLAND_DISPLAY']=wait(lambda:next((p.name for p in Path('/run/fixture').glob('wayland-*') if p.is_socket()),None),'private display',compositor)
  with (out/'keyboard.log').open('w') as log:keyboard=PhysicalKeyboard(a.keyboard_tool,env,log)
  processes.append(keyboard.process)
@@ -180,7 +184,17 @@ try:
   facts['savedSha256']=formats.digest(source);facts['savedDocument']=saved
   checks.append('Physical presentation text edit is acknowledged live and independently parsed after explicit Save')
   reopen_saved()
- command(['grim',str(out/'opened.png')]);(out/'tree-opened.json').write_text(json.dumps(tree(),indent=2));(out/'result.json').write_text(json.dumps(dict(passed=True,phase='native_partial' if len(checks)>1 else 'startup_only',app=a.app,workflowComplete=False,checks=checks,facts=facts,source=a.source_sha),indent=2))
+ if a.effects:
+  renderer_log=(out/'sway.log').read_text()
+  required=('Creating scenefx FX renderer','Using OpenGL ES','GL renderer: llvmpipe','FX RENDERER: Shaders Initialized Successfully','Trying udmabuf allocator','Created GL FBO for buffer')
+  assert all(value in renderer_log for value in required),'Software effects renderer proof missing'
+  facts['softwareEffectsProof']=list(required)
+  checks.append('No-DRI software effects compositor initializes shaders, udmabuf and real rendered framebuffers')
+ command(['grim',str(out/'opened.png')]);
+ from PIL import Image
+ with Image.open(out/'opened.png') as painted:
+  colors=painted.convert('RGB').getcolors(painted.width*painted.height);nonblack=sum(count for count,color in colors if color!=(0,0,0));assert nonblack>painted.width*painted.height//4,'Native application paint is blank';facts['paintedNonBlackPixels']=nonblack
+ (out/'tree-opened.json').write_text(json.dumps(tree(),indent=2));(out/'result.json').write_text(json.dumps(dict(passed=True,phase='native_partial' if len(checks)>1 else 'startup_only',app=a.app,workflowComplete=False,checks=checks,facts=facts,source=a.source_sha),indent=2))
 finally:
  if keyboard is not None:keyboard.close()
  if control is not None:control.close()
