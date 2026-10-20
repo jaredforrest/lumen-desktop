@@ -1,9 +1,11 @@
 import importlib.util
+import io
 import json
 import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 spec=importlib.util.spec_from_file_location('clipboard_history',Path(__file__).resolve().parents[2]/'res/lumen-desktop/runtime/clipboard_history.py')
 m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
@@ -19,6 +21,14 @@ class ClipboardPrivacy(unittest.TestCase):
         self.history.set_enabled(True)
         self.assertFalse(self.history.ingest('marked secret',sensitive=True)['recorded'])
         self.assertEqual(self.history.list()['entries'],[])
+    def test_disabled_legacy_ingest_never_reads_input_or_probes_selection(self):
+        class UnreadableInput:
+            @property
+            def buffer(self):raise AssertionError('Disabled ingestion read input')
+        output=io.StringIO()
+        with mock.patch.object(m,'history',return_value=self.history), mock.patch.object(m.sys,'argv',['clipboard-history','ingest']), mock.patch.object(m.sys,'stdin',UnreadableInput()), mock.patch.object(m.sys,'stdout',output), mock.patch.object(m.subprocess,'run',side_effect=AssertionError('Disabled ingestion probed selection')):
+            m.main()
+        self.assertEqual(json.loads(output.getvalue()),{'recorded':False})
     def test_copy_requires_deliberate_action_and_original_text(self):
         self.history.set_enabled(True);text='Ü'*5000;self.history.ingest(text)
         entry=self.history.list()['entries'][0];self.assertTrue(entry['truncated']);copied=[]

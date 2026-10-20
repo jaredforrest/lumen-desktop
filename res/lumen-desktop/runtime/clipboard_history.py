@@ -293,6 +293,8 @@ def main():
     elif args.action=='copy':
         result=store.copy(args.id,lambda text:subprocess.run(['wl-copy','--type','text/plain;charset=utf-8'],input=text.encode('utf-8'),check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=5))
     elif args.action=='ingest':
+        if not store.enabled():
+            print(json.dumps(dict(recorded=False)));return
         # Offer state and password-manager MIME markers are best-effort protection.
         text=sys.stdin.buffer.read(MAX_BYTES+1)
         types=subprocess.run(['wl-paste','--list-types'],capture_output=True,text=True,timeout=3)
