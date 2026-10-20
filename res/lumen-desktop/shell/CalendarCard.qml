@@ -16,7 +16,7 @@ PanelSurface {
     property bool reduceTransparency:false
     readonly property bool opaqueMaterial:reduceTransparency || !!Theme.preferences.reduceTransparency || Theme.increaseContrast
     property bool monochrome:false
-    function textSize(base){return compact || editing?Theme.textSize(base):base;}
+    function textSize(base){return Theme.textSize(base);}
     readonly property int dayDiameter:Math.max(26,textSize(12)+12)
     property bool followingToday:true
     property int firstDayOfWeek:Qt.locale().firstDayOfWeek
