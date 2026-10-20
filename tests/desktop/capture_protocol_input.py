@@ -3,7 +3,14 @@ import argparse,json,os,signal,subprocess,sys,time
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[2]/'res/lumen-desktop/shell'))
 import capture_observation as capture
-p=argparse.ArgumentParser();p.add_argument('--pipewire',type=Path,required=True);p.add_argument('--parent-net',required=True);a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--pipewire',type=Path,required=True);p.add_argument('--parent-net');p.add_argument('--output',type=Path);p.add_argument('--inside',action='store_true');a=p.parse_args()
+if not a.inside:
+ if a.output is None:p.error('--output is required')
+ from application_fixture.isolation import run as isolated_run
+ output=a.output.resolve();output.mkdir(mode=0o700,parents=True,exist_ok=False)
+ binary=a.pipewire.resolve()
+ if not str(binary).startswith('/nix/store/') or not all((binary/name).is_file() for name in ['pipewire','pw-dump','pw-cli','pw-link']):raise ValueError('Pinned immutable PipeWire tools required')
+ raise SystemExit(isolated_run(Path(__file__).resolve().parents[2],output,[str(Path(sys.executable).resolve()),'/source/tests/desktop/capture_protocol_input.py','--inside','--pipewire',str(binary),'--parent-net',os.readlink('/proc/self/ns/net')]))
 assert os.getuid()!=0 and os.readlink('/proc/self/ns/net')!=a.parent_net
 assert not Path('/dev/snd').exists() and list(Path('/home').iterdir())==[Path.home()]
 out=Path('/artifacts');runtime=Path(os.environ['XDG_RUNTIME_DIR']);env=dict(os.environ,PIPEWIRE_REMOTE='capture-fixture',PIPEWIRE_RUNTIME_DIR=str(runtime))
