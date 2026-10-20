@@ -48,6 +48,7 @@ jobs:
           nix build .#app-launcher --out-link artifacts/app-launcher --option abort-on-warn true
           nix build .#desktop-action --out-link artifacts/desktop-action --option abort-on-warn true
           nix build .#test-pointer --out-link artifacts/pointer --option abort-on-warn true
+          bash tests/ci/run-native.sh application_isolation_native nix develop --command desktop-test-python tests/desktop/application_isolation_native.py --output artifacts/application-isolation
           bash tests/ci/run-native.sh live_transparency_native nix develop --command desktop-test-python tests/desktop/live_transparency_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/live-transparency-basic
           bash tests/ci/run-native.sh live_transparency_native nix develop --command desktop-test-python tests/desktop/live_transparency_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --effects --output artifacts/live-transparency-effects
           nix build .#reader-command --out-link artifacts/reader-command-package --option abort-on-warn true
@@ -201,6 +202,7 @@ jobs:
             artifacts/screen-reader-transport
             artifacts/screen-reader-action-metadata
             artifacts/reader-command-provider
+            artifacts/application-isolation
             artifacts/hot-corners
             artifacts/edge-layouts
             artifacts/paired-layouts
