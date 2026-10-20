@@ -140,3 +140,5 @@ PreviewResourceConsumer 1.0 PreviewResourceConsumer.qml
 
 WindowGeometry 1.0 WindowGeometry.qml
 CapturedActionButton 1.0 CapturedActionButton.qml
+
+BatchRenameDialog 1.0 BatchRenameDialog.qml
