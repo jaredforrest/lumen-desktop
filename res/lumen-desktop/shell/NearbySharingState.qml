@@ -4,8 +4,8 @@ import Quickshell
 import Quickshell.Io
 Singleton {
     id:root
-    readonly property string label:Quickshell.env("LUMEN_NEARBY_SHARING_LABEL").trim() || "Nearby Sharing"
-    readonly property bool configured:Quickshell.env("LUMEN_NEARBY_SHARING_PROVIDER")!==""
+    readonly property string label:(Quickshell.env("LUMEN_NEARBY_SHARING_LABEL") || "").trim() || "Nearby Sharing"
+    readonly property bool configured:!!(Quickshell.env("LUMEN_NEARBY_SHARING_PROVIDER") || "")
     property var state:({available:false,active:false,canSend:false,detail:""})
     property real observedAt:0
     property real now:Date.now()
