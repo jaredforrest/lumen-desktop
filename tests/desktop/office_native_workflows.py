@@ -6,14 +6,14 @@ from application_fixture.keyboard import PhysicalKeyboard
 from fixture_resources import close_reaped_pipes
 from office_fixture import corpus,formats
 from office_fixture.control import Control
-p=argparse.ArgumentParser();p.add_argument('--writer',required=True);p.add_argument('--sheet',required=True);p.add_argument('--slides',required=True);p.add_argument('--software-driver',required=True);p.add_argument('--sway',required=True);p.add_argument('--keyboard-tool',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--app',choices=['writer','sheet','slides'],default='writer');p.add_argument('--output',type=Path,required=True);p.add_argument('--inside',action='store_true');p.add_argument('--profiles-json',default='');p.add_argument('--source-sha',default='');a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--writer',required=True);p.add_argument('--sheet',required=True);p.add_argument('--slides',required=True);p.add_argument('--software-driver',required=True);p.add_argument('--sway',required=True);p.add_argument('--keyboard-tool',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--writer-close-outcome',choices=['cancel','discard','save'],default='cancel');p.add_argument('--app',choices=['writer','sheet','slides'],default='writer');p.add_argument('--output',type=Path,required=True);p.add_argument('--inside',action='store_true');p.add_argument('--profiles-json',default='');p.add_argument('--source-sha',default='');a=p.parse_args()
 if not a.inside:
  source=Path(__file__).resolve().parents[2];out=a.output.resolve();out.mkdir(mode=0o700,parents=True,exist_ok=False)
  for binary in [a.writer,a.sheet,a.slides,a.sway,a.pointer_tool,a.keyboard_tool]:
   path=Path(binary).resolve();assert str(path).startswith('/nix/store/') and path.is_file() and os.access(path,os.X_OK),'Exact installed application/test binaries required'
  policies=subprocess.check_output(['nix','eval','--json','--file',str(source/'config/application-profiles.nix')],text=True)
  sha=subprocess.check_output(['git','-C',str(source),'rev-parse','HEAD'],text=True).strip()
- args=[sys.executable,'/source/tests/desktop/office_native_workflows.py','--inside','--writer',a.writer,'--sheet',a.sheet,'--slides',a.slides,'--software-driver',a.software_driver,'--sway',a.sway,'--keyboard-tool',a.keyboard_tool,'--pointer-tool',a.pointer_tool,'--app',a.app,'--profiles-json',policies,'--source-sha',sha,'--output','/artifacts']
+ args=[sys.executable,'/source/tests/desktop/office_native_workflows.py','--inside','--writer',a.writer,'--sheet',a.sheet,'--slides',a.slides,'--software-driver',a.software_driver,'--sway',a.sway,'--keyboard-tool',a.keyboard_tool,'--pointer-tool',a.pointer_tool,'--writer-close-outcome',a.writer_close_outcome,'--app',a.app,'--profiles-json',policies,'--source-sha',sha,'--output','/artifacts']
  raise SystemExit(isolate(source,out,args))
 assert os.getpid()==1 and os.getuid()!=0 and os.uname().nodename=='fixture' and Path.home()==Path('/home/fixture')
 out=Path('/artifacts');processes=[];control=None;keyboard=None;checks=[];facts={};env=dict(os.environ)
@@ -113,12 +113,24 @@ try:
   command(['swaymsg','[con_id='+str(window['id'])+'] kill'])
   wait(lambda:control.tool('ui_inspect').get('dialog'),'second captured native close prompts',provider)
   pointer=launch([a.pointer_tool,'pointer','move','0','0'],'pointer',stdin=subprocess.PIPE,text=True)
-  command(['swaymsg','seat','seat0','cursor','set','861','511'])
+  command(['swaymsg','seat','seat0','cursor','set',str({'cancel':861,'discard':787,'save':719}[a.writer_close_outcome]),'511'])
   for event in ['m 0.5 0.5','p','r']:
    pointer.stdin.write(event+'\n');pointer.stdin.flush();time.sleep(.15)
-  wait(lambda:not control.tool('ui_inspect').get('dialog'),'physical Cancel button cancels dirty close',provider)
-  assert native() and 'Unsaved close fixture' in json.dumps(control.tool('get_text')) and formats.digest(source)==saved_hash
-  checks.append('Dirty native close presents Save/Discard/Cancel and physical Cancel preserves document and saved source')
+  if a.writer_close_outcome=='cancel':
+   wait(lambda:not control.tool('ui_inspect').get('dialog'),'physical Cancel button cancels dirty close',provider)
+   assert native() and 'Unsaved close fixture' in json.dumps(control.tool('get_text')) and formats.digest(source)==saved_hash
+   checks.append('Dirty native close presents Save/Discard/Cancel and physical Cancel preserves document and saved source')
+  else:
+   def released_document():
+    if provider.poll() is not None or not any(node.get('id')==window['id'] for node in walk(tree())):return True
+    info=control.command('writer','file.info')
+    return info.get('path')!=str(source)
+   wait(released_document,'captured native close releases its document')
+   persisted=formats.writer(source)
+   if a.writer_close_outcome=='discard':assert formats.digest(source)==saved_hash and 'Unsaved close fixture' not in json.dumps(persisted)
+   else:assert formats.digest(source)!=saved_hash and 'Unsaved close fixture' in json.dumps(persisted)
+   facts['closeOutcome']=dict(choice=a.writer_close_outcome,savedSha256=formats.digest(source),tree=tree())
+   checks.append('Physical '+a.writer_close_outcome+' close releases document with independently validated saved-file outcome')
  if a.app=='sheet':
   marker='Native sheet edit'
   pointer=launch([a.pointer_tool,'pointer','move','0','0'],'pointer',stdin=subprocess.PIPE,text=True)
