@@ -59,7 +59,7 @@
         test-window-relationships = import ./tests/desktop/window_relationship_client.nix { inherit pkgs; };
         test-constraint-client = import ./tests/desktop/constraint_client.nix { inherit pkgs; };
         test-typography = import ./tests/desktop/typography_probe.nix { inherit pkgs; };
-        test-office-tools = pkgs.poppler_utils;
+        test-office-tools = pkgs.poppler-utils;
         shell-runtime = quickshell;
         test-pointer = import ./tests/desktop/pointer_driver.nix { inherit pkgs; };
         inherit (office) wordcraft gridcraft deckcraft;
