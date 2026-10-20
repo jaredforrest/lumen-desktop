@@ -32,6 +32,8 @@ try:
  run('pw-cli','create-node','adapter','{ factory.name = audiotestsrc node.name = synthetic-source media.class = Audio/Source audio.position = [ MONO ] adapter.auto-port-config = { mode = dsp monitor = false position = preserve } object.linger = true }')
  run('pw-cli','create-node','adapter','{ factory.name = support.null-audio-sink node.name = synthetic-capture media.class = Stream/Input/Audio audio.position = [ MONO ] adapter.auto-port-config = { mode = dsp monitor = false position = preserve } object.linger = true }')
  nodes=graph();(out/'created.json').write_text(json.dumps(nodes,indent=2)+'\n')
+ source_id=next(x['id'] for x in nodes if x.get('info',{}).get('props',{}).get('node.name')=='synthetic-source')
+ run('pw-cli','set-param',str(source_id),'PortConfig','{ direction = Output mode = dsp format = { mediaType = audio mediaSubtype = raw format = F32 rate = 48000 channels = 1 position = [ MONO ] } }')
  outputs=run('pw-link','-o').splitlines();inputs=run('pw-link','-i').splitlines()
  source=next(v for v in outputs if v.startswith('synthetic-source:'));target=next(v for v in inputs if v.startswith('synthetic-capture:'))
  run('pw-link',source,target)
