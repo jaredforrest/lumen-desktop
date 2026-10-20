@@ -243,3 +243,4 @@ finally:
     for proc in reversed(processes):
         try:proc.wait(timeout=3)
         except sp.TimeoutExpired:os.killpg(proc.pid,signal.SIGKILL);proc.wait(timeout=3)
+    if 'pointer' in globals() and pointer.stdin:pointer.stdin.close()

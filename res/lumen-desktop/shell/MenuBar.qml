@@ -204,12 +204,12 @@ PanelWindow {
         MouseArea { anchors.fill: parent; onClicked: shell.claimPopup("") }
         Item { id:popupContents;anchors.fill:parent;focus:true
             Keys.onEscapePressed:bar.menu=""
-            Keys.onDownPressed:if(!bar.special)bar.stepBuiltin(1)
-            Keys.onUpPressed:if(!bar.special)bar.stepBuiltin(-1)
-            Keys.onReturnPressed:if(!bar.special)bar.activateSelection()
-            Keys.onSpacePressed:if(!bar.special)bar.activateSelection()
-            Keys.onTabPressed:if(!bar.special)bar.stepBuiltin(1)
-            Keys.onBacktabPressed:if(!bar.special)bar.stepBuiltin(-1)
+            Keys.onDownPressed:event=>{if(!bar.special){bar.stepBuiltin(1);event.accepted=true;}else event.accepted=false;}
+            Keys.onUpPressed:event=>{if(!bar.special){bar.stepBuiltin(-1);event.accepted=true;}else event.accepted=false;}
+            Keys.onReturnPressed:event=>{if(!bar.special){bar.activateSelection();event.accepted=true;}else event.accepted=false;}
+            Keys.onSpacePressed:event=>{if(!bar.special){bar.activateSelection();event.accepted=true;}else event.accepted=false;}
+            Keys.onTabPressed:event=>{if(!bar.special){bar.stepBuiltin(1);event.accepted=true;}else event.accepted=false;}
+            Keys.onBacktabPressed:event=>{if(!bar.special){bar.stepBuiltin(-1);event.accepted=true;}else event.accepted=false;}
             Keys.onPressed:event=>{if(!bar.special && (event.key===Qt.Key_Home || event.key===Qt.Key_End)){bar.edgeBuiltin(event.key===Qt.Key_End);event.accepted=true;}else event.accepted=false;}
         FocusFlickable {
             id:systemViewport
