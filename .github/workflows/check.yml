@@ -75,6 +75,8 @@ jobs:
           nix develop --command desktop-test-python tests/desktop/fullscreen_menu_native.py --effects --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/fullscreen-menu-effects
           nix develop --command desktop-test-python tests/desktop/media_control_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/media-controls
           nix develop --command desktop-test-python tests/desktop/media_control_native.py --effects --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/media-controls-effects
+          PYTHONWARNINGS=error nix develop --command desktop-test-python tests/desktop/dock_drag_out_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/dock-drag-out
+          PYTHONWARNINGS=error nix develop --command desktop-test-python tests/desktop/dock_drag_out_native.py --effects --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/dock-drag-out-effects
           nix develop --command desktop-test-python tests/desktop/system_popover_reflow_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/system-popover-reflow
           nix develop --command desktop-test-python tests/desktop/system_popover_reflow_native.py --effects --theme light --native-frame on --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --output artifacts/system-popover-reflow-effects
           nix develop --command desktop-test-python tests/desktop/text_sizing_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/text-sizing
@@ -152,6 +154,7 @@ jobs:
             artifacts/menubar-*
             artifacts/status-clock
             artifacts/portal-permissions
+            artifacts/dock-drag-out*
             artifacts/fullscreen-menu*
             artifacts/media-controls*
             artifacts/system-popover-reflow*

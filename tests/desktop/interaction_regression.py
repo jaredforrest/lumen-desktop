@@ -49,6 +49,7 @@ import Quickshell.Io
 ShellRoot {
  QtObject {id:stub
   property var referenceDock: Array.from({length:8},(_,i)=>({key:"item"+i,image:"files.svg",canvas:68,entry:null}))
+  property bool dockPreferencesBusy:false
   property string popupOwner:""
   property date currentDate:new Date()
   signal requestDockFocus(string name)

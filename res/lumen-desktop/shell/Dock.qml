@@ -27,6 +27,12 @@ PanelWindow {
     property real pointerSlot: -1
     property string pressedKey: ""
     property real pressX:0
+    property real pressY:0
+    property var pressIntent:null
+    function cancelDrag(){pressedKey="";pressIntent=null;dragging=false;dragCompleted=true;}
+    function removableDrag(){const item=dragIntentValid()?pressIntent.item:null;return item && (["file","folder"].includes(item.action) || (item.entry && shell.canConfigureDockEntry(item.entry) && shell.isDockPinned(item.entry)));}
+    function dragIntentValid(){return pressIntent && pressIntent.items===shell.referenceDock && !shell.dockPreferencesBusy && shell.referenceDock.includes(pressIntent.item);}
+    Connections {target:shell;function onDockPreferencesBusyChanged(){if(shell.dockPreferencesBusy && dock.pressIntent)dock.cancelDrag();}function onReferenceDockChanged(){if(dock.pressIntent && !dock.dragIntentValid())dock.cancelDrag();}}
     property bool dragging:false
     property bool dragCompleted:false
     property string dropError:""
@@ -128,7 +134,7 @@ PanelWindow {
     Item {id:keyboard;focus:dock.keyboardMode || dock.dragging
         Keys.onPressed:event=>{
             if(dock.dragging){
-                if(event.key===Qt.Key_Escape){dock.dragging=false;dock.pressedKey="";dock.dragCompleted=true;}
+                if(event.key===Qt.Key_Escape){dock.cancelDrag();}
                 event.accepted=true;return;
             }
             if(!dock.keyboardMode)return;
@@ -205,6 +211,9 @@ PanelWindow {
             }
         }
     }
+    Rectangle {visible:dock.dragging && dock.hovered<0 && dock.removableDrag();anchors.horizontalCenter:parent.horizontalCenter;y:0;width:removeLabel.implicitWidth+20;height:removeLabel.implicitHeight+8;radius:10;color:Theme.colors.background;border.color:Theme.outline;border.width:1
+        PanelLabel {id:removeLabel;anchors.centerIn:parent;text:"Remove from Dock";font.pixelSize:Theme.textSize(12);color:Theme.colors.text}
+    }
     Rectangle {visible:dock.dragging && dock.hovered>=0;x:12+(dock.position==="right"?shell.referenceDock.length-1-dock.hovered:dock.hovered)*dock.slot;y:54;width:2;height:60;radius:1;color:Theme.colors.accent}
     PanelSurface {visible:!!(dock.dropError || shell.aliasError || shell.applicationCommandError);x:Math.max(0,(dock.width-width)/2);y:0;width:Math.min(420,dock.width);height:44
         PanelLabel {anchors.fill:parent;anchors.margins:8;text:shell.applicationCommandError || dock.dropError || shell.aliasError || "";wrapMode:Text.WordWrap;font.pixelSize:11;color:Theme.colors.text}
@@ -217,25 +226,29 @@ PanelWindow {
         onEntered:{dock.revealed=true;hideTimer.stop();dock.trackPointer(mouseX, mouseY);}
         onPositionChanged: mouse => {
             dock.trackPointer(mouse.x, mouse.y);
-            if((mouse.buttons & Qt.LeftButton) && dock.pressedKey && Math.abs(mouse.x-dock.pressX)>12 && !shell.dockPreferencesBusy){
-                const item=shell.referenceDock.find(item=>item.key===dock.pressedKey);
-                if(item && item.entry && !["files","applications","downloads","trash"].includes(item.key)){dock.dragging=true;keyboard.forceActiveFocus();}
+            if((mouse.buttons & Qt.LeftButton) && dock.pressedKey && Math.hypot(mouse.x-dock.pressX,mouse.y-dock.pressY)>12 && !shell.dockPreferencesBusy){
+                const item=dock.dragIntentValid()?dock.pressIntent.item:null;
+                if(item && ((item.entry && shell.canConfigureDockEntry(item.entry)) || ["file","folder"].includes(item.action)) && !["files","applications","downloads","trash"].includes(item.key)){dock.dragging=true;keyboard.forceActiveFocus();}
             }
         }
         onExited:{dock.clearPointer();hideTimer.restart();}
-        onCanceled: { dock.pressedKey="";dock.dragging=false;dock.dragCompleted=true; dock.clearPointer(); }
+        onCanceled: { dock.cancelDrag(); dock.clearPointer(); }
         onPressed: mouse => {
-            dock.trackPointer(mouse.x,mouse.y);dock.pressX=mouse.x;dock.dragCompleted=false;
+            dock.trackPointer(mouse.x,mouse.y);dock.pressX=mouse.x;dock.pressY=mouse.y;dock.dragCompleted=false;
             dock.pressedKey=dock.hovered>=0?shell.referenceDock[dock.hovered].key:"";
+            dock.pressIntent=mouse.button===Qt.LeftButton && dock.hovered>=0 && !shell.dockPreferencesBusy?{items:shell.referenceDock,item:shell.referenceDock[dock.hovered]}:null;
         }
         onReleased: mouse => {
             if(dock.dragging){
-                const source=shell.referenceDock.find(item=>item.key===dock.pressedKey);
+                const source=dock.dragIntentValid()?dock.pressIntent.item:null;
                 const target=shell.referenceDock[dock.hovered];
-                if(containsMouse && source && target && source.entry && target.entry && shell.isDockPinned(target.entry))shell.reorderDockPin(source.entry,target.entry);
-                dock.dragging=false;dock.dragCompleted=true;dock.pressedKey="";
+                if(source && !containsMouse){
+                    if(["file","folder"].includes(source.action))shell.removeDockAlias(source);
+                    else if(source.entry && shell.canConfigureDockEntry(source.entry) && shell.isDockPinned(source.entry))shell.updateDockPin(source.entry,"remove");
+                }else if(containsMouse && source && target && source.entry && target.entry && shell.isDockPinned(target.entry))shell.reorderDockPin(source.entry,target.entry);
+                dock.cancelDrag();
             }
-            if(!containsMouse)dock.clearPointer();
+            if(!containsMouse){dock.pressIntent=null;dock.pressedKey="";dock.clearPointer();}
         }
         onClicked: mouse => {
             if(dock.dragCompleted){dock.dragCompleted=false;return;}
@@ -243,7 +256,7 @@ PanelWindow {
             if (dock.hovered < 0) return;
             const index = dock.hovered;
             const item = DockInteraction.releaseTarget(shell.referenceDock,dock.pressedKey,index);
-            dock.pressedKey="";
+            dock.pressedKey="";dock.pressIntent=null;
             if (!item) return;
             if ((mouse.button === Qt.RightButton || (mouse.modifiers & Qt.ControlModifier)) && (item.entry || ["file","folder"].includes(item.action))) {
                 dock.openContext(item,index);
