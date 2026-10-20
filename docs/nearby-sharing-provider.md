@@ -36,3 +36,19 @@ The shared QML state expires after 7.5 seconds, rejects backwards-clock freshnes
 and clears failed responses. Control Centre polls while visible; opening the
 Files menu requests a fresh observation. Unconfigured, stale and receiving-only
 states cannot enable sending. Consumer branding stays in consumer configuration.
+
+Opening the Files menu captures the folder, tab, ordered selection and displayed
+file identities. Sending rechecks those presentation facts and current provider
+capability, then passes the captured literal paths. A changed selection or row
+requires reopening the menu; it cannot silently substitute another file. This
+does not pin external file reads: the provider still owns filesystem validation
+and its explicit confirmation flow.
+
+`test_file_share_intent.py` verifies lossless native identities, captured literal
+arguments and stale/invalid selection refusal. `files_share_menu_qml.py` opens
+the actual Files menu in the private offscreen boundary and activates its real
+row signal. It proves unchanged selection dispatch, replacement refusal and a
+fresh explicit menu dispatch. Only volume discovery, sharing status and external
+launch are replaced by hashed private observers; no transfer is attempted.
+The optional `--window-source` accepts an immutable earlier Files window for
+reproducing the pre-fix substitution, adding only observer object names.

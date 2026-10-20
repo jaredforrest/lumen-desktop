@@ -7,6 +7,7 @@ import "FilesTabModel.js" as TabModel
 import "FilesHistoryModel.js" as HistoryModel
 import "FileLayoutModel.js" as LayoutModel
 import "FileLinks.js" as FileLinks
+import "FileShareIntent.js" as FileShareIntent
 
 FloatingWindow {
     id:root
@@ -587,7 +588,12 @@ Accessible.name:FileLinks.accessible(modelData);Accessible.selected:root.isSelec
         TrashResults {id:trashResults;state:trashActions}
         Connections {target:trashActions;function onErrorChanged(){if(trashActions.error)trashResults.open();}function onBusyChanged(){if(trashActions.busy)trashResults.open();}}
         Popup {
-            id:actions;onOpened:NearbySharingState.refresh();focus:true;width:220;height:Math.min(550,root.height-70);padding:6;clip:true
+            id:actions
+            objectName:"files-actions-menu"
+            property var sharingIntent:null
+            onOpened:{sharingIntent=FileShareIntent.capture({path:root.service.path,tab:root.activeTabId},root.selectedPaths,root.service.rows);NearbySharingState.refresh();}
+            onClosed:sharingIntent=null
+            focus:true;width:220;height:Math.min(550,root.height-70);padding:6;clip:true
             background:Rectangle {radius:10;color:Theme.colors.background;border.color:Theme.outline}
             contentItem:Flickable {contentHeight:actionColumn.height;clip:true;focus:true
               Keys.onDownPressed:root.stepAction(1)
@@ -597,8 +603,11 @@ Accessible.name:FileLinks.accessible(modelData);Accessible.selected:root.isSelec
                 Repeater {id:actionRows
                     model:[{label:"Open",action:"open",enabled:!!root.current},{label:"Open With…",action:"open-with",enabled:!!root.current && !root.current.directory},{label:NearbySharingState.label+"…",action:"nearby-send",enabled:NearbySharingState.canSend && root.selectedPaths.length>0 && root.selectedPaths.every(p=>root.service.rows.some(r=>r.path===p && !r.directory)) && root.service.path!=="trash:"},{label:NearbySharingState.label+" Receiving…",action:"nearby-open",enabled:NearbySharingState.available},{separator:true,label:""},{label:"New Tab",action:"new-tab",enabled:true},{label:"New Window",action:"new-window",enabled:true},{label:"New Folder…",action:"mkdir",enabled:root.service.writable},{label:"Rename…",action:"rename",enabled:root.selectedPaths.length>0 && root.service.path!=="trash:" && !root.service.working},{separator:true,label:""},{label:"Copy",action:"copy",enabled:!!root.current},{label:"Cut",action:"move",enabled:!!root.current},{label:"View Options…",action:"view-options",enabled:true},{label:"Colour Tags…",action:"tags",enabled:root.selectedPaths.length===1 && root.service.path!=="trash:"},{label:"Make Symbolic Link",action:"make-link",enabled:root.selectedPaths.length===1 && root.service.path!=="trash:" && root.service.writable},{label:"Duplicate",action:"duplicate",enabled:root.selectedPaths.length>0 && root.service.writable && root.service.path!=="trash:" && !root.service.working},{label:"Paste",action:"paste",enabled:root.service.writable},{label:"Paste Keeping Both",action:"paste-both",enabled:root.service.writable},{label:"Undo Last Move",action:"undo",enabled:root.service.canUndo},{separator:true,label:""},{label:"Put Back",action:"restore",enabled:root.service.path==="trash:" && !!root.current},{label:"Delete Permanently…",action:"permanent-delete",enabled:root.service.path==="trash:" && root.selectedPaths.length>0 && !trashActions.busy},{label:"Empty Trash…",action:"empty-trash",enabled:root.service.path==="trash:" && !trashActions.busy},{label:"Trash Results…",action:"trash-results",enabled:root.service.path==="trash:"},{label:"Move to Trash…",action:"trash",enabled:root.service.path!=="trash:" && !!root.current},{separator:true,label:""},{label:"Go to Folder…",action:"goto",enabled:true},{label:root.service.hidden?"Hide Hidden Files":"Show Hidden Files",action:"hidden",enabled:true},{label:"Refresh",action:"refresh",enabled:true}]
                     ControlRow {
+                        objectName:"files-action-"+modelData.action
                         required property var modelData;width:208;height:modelData.separator?9:30;text:modelData.label;Rectangle {visible:!!modelData.separator;x:8;width:parent.width-16;height:1;anchors.verticalCenter:parent.verticalCenter;color:Theme.hairline}enabled:!modelData.separator && modelData.enabled && !root.service.busy
                         onClicked:{
+                            const sharing=actions.sharingIntent;
+                            const sharingCurrent=FileShareIntent.current(sharing,{path:root.service.path,tab:root.activeTabId},root.selectedPaths,root.service.rows);
                             actions.close();const a=modelData.action;
                             if(a==="open")root.openCurrent();else if(a==="copy" || a==="move")root.stage(a);else if(a==="paste")root.service.paste();
                             else if(a==="paste-both")root.service.paste("keep-both");
@@ -610,7 +619,10 @@ Accessible.name:FileLinks.accessible(modelData);Accessible.selected:root.isSelec
                             else if(a==="empty-trash")root.prepareDeletion("empty");
                             else if(a==="trash-results"){trashActions.refresh();trashResults.open();}
                             else if(a==="open-with")root.service.act("applications",{path:root.current.path});
-                            else if(a==="nearby-send" && NearbySharingState.canSend)AppLaunch.run(["lumen-nearby-sharing","send"].concat(root.selectedPaths));
+                            else if(a==="nearby-send"){
+                                if(sharingCurrent && NearbySharingState.canSend)AppLaunch.run(FileShareIntent.argumentsFor(sharing));
+                                else root.service.error="The sharing selection or provider changed. Select the files and open the menu again.";
+                            }
                             else if(a==="nearby-open" && NearbySharingState.available)AppLaunch.run(["lumen-nearby-sharing","open"]);
                             else if(a==="duplicate")root.duplicateSelected();
                             else if(a==="make-link")root.service.act("make-link",{path:root.current.path});
