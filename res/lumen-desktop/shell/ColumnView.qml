@@ -48,7 +48,7 @@ Flickable {
                 PanelLabel {x:10;y:3;width:parent.width-20;height:24;text:modelData.name;textFormat:Text.PlainText;font.weight:Font.DemiBold;font.pixelSize:11;color:Theme.colors.muted}
                 FilesBandSelection {
                     objectName:"files-column-band-"+columnList.parent.modelData.path
-                    parent:columnList;anchors.fill:parent;view:columnList;rows:columnList.model
+                    parent:columnList;anchors.fill:parent;view:columnList;rows:root.bandRows
                     selectedPaths:root.bandBasePaths;currentIndex:root.bandCurrent;anchorIndex:root.bandAnchor
                     contextKey:root.bandContext+"|"+root.contentX
                     permitted:root.bandPermitted && columnList.parent.modelData.path===root.selectionFolder && columnList.parent.modelData.loaded!==false && SelectionModel.revision(root.bandRows)===SelectionModel.revision(columnList.model)

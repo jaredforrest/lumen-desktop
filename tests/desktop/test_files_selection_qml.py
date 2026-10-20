@@ -56,7 +56,7 @@ ShellRoot {
   if(phase===9){if(service.rows.length!==160 || !gutter("files-list-band-selection",false))return;service.viewMode="grid";phase=10;return;}
   if(phase===10){if(!gutter("files-grid-band-selection",false))return;service.viewMode="gallery";phase=11;return;}
   if(phase===11){if(!gutter("files-gallery-band-selection",true))return;service.viewMode="columns";phase=12;return;}
-  if(phase===12){if(!gutter("files-column-band-"+service.path,false))return;console.log("FILES_SELECTION_QT_PASS");Qt.quit();}
+  if(phase===12){if(!gutter("files-column-band-"+service.path,false))return;const leaf=find("files-column-band-"+service.path,files.contentItem);check(!!Selection.begin(leaf.rows,files.selectedPaths,files.selected,files.selectionAnchor,leaf.contextKey,"replace"),"Active leaf must expose a captured JS row sequence, not a QAbstractItemModel adapter");console.log("FILES_SELECTION_QT_PASS");Qt.quit();}
  }catch(error){console.error("FILES_SELECTION_QT_FAIL "+error);Qt.quit();}}}
 }''')
    result=subprocess.run(['dbus-run-session','--','quickshell','-p',str(qml)],env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,timeout=20)
