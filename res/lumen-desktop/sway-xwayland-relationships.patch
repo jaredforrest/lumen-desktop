@@ -157,7 +157,7 @@ index 573f4f8..3e6719b 100644
 +#if WLR_HAS_XWAYLAND
 + if(con->view->type==SWAY_VIEW_XWAYLAND){
 +  struct wlr_xwayland_surface *surface=con->view->wlr_xwayland_surface;
-+  return surface && !surface->parent && !surface->modal;
++  return surface && !surface->override_redirect && !surface->parent && !surface->modal;
 + }
 +#endif
 + if(con->view->type!=SWAY_VIEW_XDG_SHELL)return false;
@@ -236,10 +236,10 @@ index 662c628..215d8c7 100644
 +		if (view->type != SWAY_VIEW_XWAYLAND) return false;
 +		struct wlr_xwayland_surface *surface = view->wlr_xwayland_surface;
 +		// wlroots obtains this PID from XRes, never the client _NET_WM_PID hint.
-+		if (!surface || surface->pid <= 0) return false;
++		if (!surface || surface->override_redirect || surface->pid <= 0) return false;
 +		*modal = surface->modal;
 +		if (surface->parent) {
-+			if (surface->parent->pid != surface->pid) return false;
++			if (surface->parent->override_redirect || surface->parent->pid != surface->pid) return false;
 +			*parent = view_from_wlr_xwayland_surface(surface->parent);
 +			if (!*parent) return false;
 +		}

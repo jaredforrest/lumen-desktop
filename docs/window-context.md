@@ -69,7 +69,8 @@ shell restart; no stale QObject or container identity is persisted.
 Managed Xwayland windows use the current server-observed `WM_TRANSIENT_FOR` and
 `_NET_WM_STATE_MODAL` facts. Ancestry is supported only when each live mapped
 parent and child has the same positive XRes local-client PID. Unknown PID,
-cross-process parent, unmapped parent, cycles and excessive ancestry fail
+cross-process parent, override-redirect/unmanaged surface, unmapped parent,
+cycles and excessive ancestry fail
 unavailable. A null supported parent means no current mapped parent, not a main
 document role. `_NET_WM_PID`, class and title hints never establish this policy.
 X11 clients share their server's trust domain; these observations do not
@@ -89,7 +90,8 @@ rather than a mutable class or an unsupported cross-process hint.
 private Xwayland server. It checks utility/document/other-process physical key
 recipients, live map/reparent/unmap/destroy and replacement, modal message and
 property transitions, cycle rejection, ambiguous modal siblings, parentless
-modal pair refusal, forged PID hints and clean exit with live modal clients.
+modal pair refusal, forged PID hints, a managed child referencing an unmanaged
+parent through manageability transitions, and clean exit with live modal clients.
 The separate `--without-xres` case really disables the server extension and
 checks unknown-PID behavior. Both cases run on both compositor variants. No host
 X server, input, applications or filesystem is involved.

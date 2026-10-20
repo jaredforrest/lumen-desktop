@@ -23,7 +23,10 @@ static xcb_atom_t atom(const char *name) {
 }
 static void status(void) {
  printf("{\"serial\":%u,\"pid\":%ld,\"xres\":%s,\"windows\":[",serial,(long)getpid(),xres?"true":"false");
- for(int i=0;i<WINDOWS;i++)printf("%s{\"id\":%u,\"keys\":%u}",i?",":"",windows[i],keys[i]);
+ for(int i=0;i<WINDOWS;i++) {
+  xcb_get_window_attributes_reply_t *reply=windows[i]?xcb_get_window_attributes_reply(connection,xcb_get_window_attributes(connection,windows[i]),NULL):NULL;
+  printf("%s{\"id\":%u,\"keys\":%u,\"mapState\":%d,\"overrideRedirect\":%d}",i?",":"",windows[i],keys[i],reply?reply->map_state:-1,reply?reply->override_redirect:-1);free(reply);
+ }
  puts("]}");fflush(stdout);
 }
 static void create(int index,const char *label) {
@@ -83,6 +86,11 @@ int main(int argc,char **argv) {
    if(value)xcb_change_property(connection,XCB_PROP_MODE_REPLACE,windows[index],transient,XCB_ATOM_WINDOW,32,1,&value);
    else xcb_delete_property(connection,windows[index],transient);
   } else if(strcmp(command,"pid")==0)xcb_change_property(connection,XCB_PROP_MODE_REPLACE,windows[index],pid_hint,XCB_ATOM_CARDINAL,32,1,&value);
+  else if(strcmp(command,"override")==0) {
+   xcb_change_window_attributes(connection,windows[index],XCB_CW_OVERRIDE_REDIRECT,&value);
+   /* XWM observes the override flag through an actual ConfigureNotify. */
+   uint32_t x=80+index*40+(value?1:0);xcb_configure_window(connection,windows[index],XCB_CONFIG_WINDOW_X,&x);
+  }
   else if(strcmp(command,"property")==0) {
    if(value)xcb_change_property(connection,XCB_PROP_MODE_REPLACE,windows[index],state,XCB_ATOM_ATOM,32,1,&modal);
    else xcb_delete_property(connection,windows[index],state);
