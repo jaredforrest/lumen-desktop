@@ -12,6 +12,13 @@ def ratio(first,second):
     a,b=sorted((luminance(first),luminance(second)))
     return (b+.05)/(a+.05)
 class AppearancePreferences(unittest.TestCase):
+    def test_previous_compositor_never_receives_unsupported_zoom_command(self):
+        preferences=dict(tileMargins=True,titlebarDoubleClick='zoom')
+        self.assertEqual(module.placement_commands(preferences,False), ['lumen_window margins enable'])
+        self.assertEqual(module.placement_commands(preferences,True), ['lumen_window margins enable','lumen_window titlebar-action zoom'])
+        preferences['titlebarDoubleClick']='minimize'
+        self.assertEqual(module.placement_commands(preferences,False)[1], 'lumen_window titlebar-action minimize')
+
     def test_fullscreen_menu_choices(self):
         self.assertEqual(module.MENU_DEFAULTS['visibility'],'desktop')
         for value in ('always','desktop','fullscreen','auto_hide'):self.assertTrue(module.valid_menu('visibility',value))

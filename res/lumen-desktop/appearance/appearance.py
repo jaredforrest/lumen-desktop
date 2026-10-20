@@ -79,6 +79,14 @@ def resolve_palette(palettes,mode,prefs):
 def valid_desktop(key,value):
     return key in ('showFiles','fileDescending') and type(value) is bool or key=='fileSort' and value in ('name','modified','size','kind')
 
+def placement_commands(preferences, preferred_zoom):
+    commands = ['lumen_window margins ' + ('enable' if preferences['tileMargins'] else 'disable')]
+    action = preferences['titlebarDoubleClick']
+    if action != 'zoom' or preferred_zoom:
+        commands.append('lumen_window titlebar-action ' + action)
+    return commands
+
+
 def valid_windows(key,value):
     return key in ('tileMargins','edgeTiling','optionTiling','topEdgeFill','topEdgeOverview') and type(value) is bool or key=='tileGap' and type(value) is int and 0<=value<=32 or key=='titlebarDoubleClick' and value in ('fill','zoom','minimize','none')
 
@@ -204,6 +212,7 @@ def main():
             unified_headers=False
             placement_preferences=False
             edge_preferences=False
+            preferred_zoom=False
             if os.environ.get('SWAYSOCK'):
                 try:
                     version=subprocess.run(['swaymsg','-t','get_version','-r'],capture_output=True,text=True,timeout=3,check=True)
@@ -213,6 +222,7 @@ def main():
                     unified_headers=capabilities.get('native_window_actions',False)
                     placement_preferences=capabilities.get('window_placement_preferences',False)
                     edge_preferences=capabilities.get('native_edge_tiling') is True
+                    preferred_zoom=capabilities.get('native_preferred_zoom') is True
                 except (OSError,ValueError,subprocess.SubprocessError):pass
             layout=':' if native_frame else 'close,minimize,maximize:'
             if run('gsettings','set','org.gnome.desktop.wm.preferences','button-layout',layout):
@@ -224,7 +234,9 @@ def main():
                         warnings.append('Could not update window-frame colours')
             if a.set_windows and not placement_preferences:warnings.append('Window placement preferences require the updated compositor at next login')
             if placement_preferences:
-                for command in ('lumen_window margins '+('enable' if window_prefs['tileMargins'] else 'disable'), 'lumen_window titlebar-action '+window_prefs['titlebarDoubleClick']):
+                if window_prefs['titlebarDoubleClick']=='zoom' and not preferred_zoom:
+                    warnings.append('Preferred-size zoom requires the updated compositor at next login')
+                for command in placement_commands(window_prefs,preferred_zoom):
                     if run('swaymsg',command):warnings.append('Could not apply window placement preference')
             if edge_preferences:
                 commands=['lumen_window tile-gap '+str(window_prefs.get('tileGap',8))]
