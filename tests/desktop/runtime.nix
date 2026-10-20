@@ -10,6 +10,7 @@ in pkgs.writeShellScriptBin "desktop-test-python" ''
   export GI_TYPELIB_PATH=${typelibs}
   export XDG_DATA_DIRS=${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:"''${XDG_DATA_DIRS:-}"
   export DESKTOP_TEST_PINNED_RUNTIME=1
+  export PYTHONWARNINGS=error
   export TZDIR=${pkgs.tzdata}/share/zoneinfo
   export LUMEN_TEST_AT_SPI=${pkgs.at-spi2-core}
   exec ${python}/bin/python3 "$@"
