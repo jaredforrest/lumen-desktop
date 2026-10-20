@@ -37,10 +37,9 @@ proves canonical calls and distinct deprecated-alias behavior. Original/correcte
 GIR hashes are retained. No deprecation flags or Python warning filters are removed.
 
 This does not establish braille, audible pronunciation, other toolkit usability,
-or global reader modifier-key grabs. Orca's supported command bus can be used by a
-separate optional typed shortcut adapter, but that is not implemented here. Such
-an adapter needs a fixed command allowlist, exact reader owner/lifecycle checks,
-and fail-closed lock/unknown-session handling before it can be enabled.
+or global reader modifier-key grabs. The optional adapter below supplies separate
+compositor command routing with owner and lock gates; it does not implement the
+reader's own modifier-grab protocol.
 
 ## Optional typed command adapter
 
@@ -61,13 +60,13 @@ bindings cannot replace the desktop's own bindings; the existing effective
 shortcut registry also checks physical aliases and consumer reservations. A
 compatible reader must already own `org.gnome.Orca.Service` on the existing Unix
 session bus. The adapter does not activate that name or change accessibility
-settings. The tested provider is Orca50.2.
+settings. The tested provider is Orca 50.2.
 
 `lumen-reader-command` accepts exactly one of `where-am-i`, `read-all`, or `stop`.
 Fixed server-side module/action pairs are checked against the provider's supported
 command list. The adapter captures its unique bus owner, same-user credentials,
 PID/start identity, and checks them before and after a single dispatch. Every
-D-Bus call has a remaining budget from a2.5-second deadline; a separate pinned
+D-Bus call has a remaining budget from a 2.5-second deadline; a separate pinned
 4-second process guard also bounds connection/authentication stalls.
 
 Reading commands require the native compositor's known-unlocked authority and
