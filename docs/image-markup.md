@@ -46,3 +46,16 @@ pointer controls, a private accessibility bus for read-only chooser field bounds
 and the shared acknowledged physical keyboard. It never sets text or dispatches
 an accessibility action. Fixtures use synthetic images and private HOME/XDG/bus
 state; no account, live clipboard or host document is used.
+
+The scoped pinned Qt runtime also retires its retained pointer-button state when
+the actual focused surface is destroyed. Ordinary pointer leave and drag paths
+are unchanged. The native fixture holds Save while the selected preview changes,
+then checks fresh hover, drawing and button controls after physical release.
+
+`qt_pointer_retirement_input.py` separately exercises two simultaneous buttons,
+last-button retirement, ordinary held movement, old-surface teardown after a new
+press, and actual pointer-device teardown in a private compositor. The replacement
+Wayland client library is built against the exact pinned Qt private headers with
+compiler warnings treated as errors; its SONAME, exported symbols and generated
+feature headers must match the pinned module. Only the shell executable RPATH
+selects it; no Qt library or plugin environment override is exported.

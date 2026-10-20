@@ -1,0 +1,60 @@
+--- a/src/plugins/platforms/wayland/qwaylandinputdevice.cpp
++++ b/src/plugins/platforms/wayland/qwaylandinputdevice.cpp
+@@ -42,6 +42,8 @@
+ #include <qpa/qplatforminputcontext.h>
+ #include <qpa/qplatformtheme.h>
+ #include <QDebug>
++#include <QtCore/QVariant>
++#include <QtGui/QWindow>
+ 
+ #include <unistd.h>
+ #include <fcntl.h>
+@@ -175,6 +177,10 @@
+ 
+ QWaylandInputDevice::Pointer::~Pointer()
+ {
++    if (QObject *guard = property("_q_lumenPressedSurfaceGuard").value<QObject *>()) {
++        setProperty("_q_lumenPressedSurfaceGuard", QVariant());
++        delete guard;
++    }
+     if (version() >= 3)
+         wl_pointer_release(object());
+     else
+@@ -867,6 +873,37 @@
+         window = grab;
+     }
+ 
++    // Focus invalidation disconnects the ordinary focus-destroy listener. Keep
++    // the exact surface that owns this press observed until its last release,
++    // so retiring a pressed popup cannot strand the application's button state.
++    QObject *guard = property("_q_lumenPressedSurfaceGuard").value<QObject *>();
++    if (state && guard && guard->property("surface").value<QObject *>() != window->waylandSurface()) {
++        setProperty("_q_lumenPressedSurfaceGuard", QVariant());
++        delete guard;
++        guard = nullptr;
++    }
++    if (state && !guard) {
++        guard = new QObject(this);
++        guard->setProperty("surface", QVariant::fromValue<QObject *>(window->waylandSurface()));
++        setProperty("_q_lumenPressedSurfaceGuard", QVariant::fromValue(guard));
++        auto retirePress = [this, guard] {
++            if (property("_q_lumenPressedSurfaceGuard").value<QObject *>() != guard)
++                return;
++            setProperty("_q_lumenPressedSurfaceGuard", QVariant());
++            mButtons = Qt::NoButton;
++            releaseButtons();
++            guard->deleteLater();
++        };
++        connect(window->waylandSurface(), &QObject::destroyed, guard, retirePress);
++        connect(window->window(), &QWindow::visibleChanged, guard, [retirePress](bool visible) {
++            if (!visible)
++                retirePress();
++        });
++    } else if (!state && mButtons == Qt::NoButton && guard) {
++        setProperty("_q_lumenPressedSurfaceGuard", QVariant());
++        delete guard;
++    }
++
+     if (state)
+         setFrameEvent(new PressEvent(window, time, pos, global, mButtons, qt_button, mParent->modifiers()));
+     else

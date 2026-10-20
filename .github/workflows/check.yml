@@ -84,6 +84,7 @@ jobs:
             compositor_flags=()
             if [[ "$compositor" == compositor-effects ]]; then compositor_flags=(--effects); fi
             bash tests/ci/run-native.sh owned_preview_input nix develop --command desktop-test-python tests/desktop/owned_preview_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --output "artifacts/owned-preview-$compositor"
+            bash tests/ci/run-native.sh qt_pointer_retirement_input nix develop --command desktop-test-python tests/desktop/qt_pointer_retirement_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/qt-pointer-retirement-$compositor"
             bash tests/ci/run-native.sh image_markup_input nix develop --command desktop-test-python tests/desktop/image_markup_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --output "artifacts/image-markup-$compositor"
             bash tests/ci/run-native.sh preview_actions_input nix develop --command desktop-test-python tests/desktop/preview_actions_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/preview-actions-$compositor"
             bash tests/ci/run-native.sh files_history_input nix develop --command desktop-test-python tests/desktop/files_history_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/files-history-$compositor"
@@ -205,6 +206,7 @@ jobs:
             artifacts/owned-preview-*
             artifacts/preview-actions-*
             artifacts/image-markup-*
+            artifacts/qt-pointer-retirement-*
             artifacts/files-history-*
             artifacts/batch-rename-*
             artifacts/trash-confirmation-*
