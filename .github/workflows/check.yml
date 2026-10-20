@@ -41,6 +41,7 @@ jobs:
           nix develop --command desktop-test-python tests/desktop/window_overview_lifecycle.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/overview-lifecycle
           nix develop --command desktop-test-python tests/desktop/smoke_installed.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/shell
       - run: |
+          nix build .#desktop-action --out-link artifacts/desktop-action --option abort-on-warn true
           nix build .#test-pointer --out-link artifacts/pointer --option abort-on-warn true
           nix build .#test-session-lock --out-link artifacts/session-lock --option abort-on-warn true
           nix build .#test-constraint-client --out-link artifacts/constraint-client --option abort-on-warn true
@@ -48,6 +49,7 @@ jobs:
           for compositor in compositor compositor-effects; do
             compositor_flags=()
             if [[ "$compositor" == compositor-effects ]]; then compositor_flags=(--effects); fi
+            nix develop --command desktop-test-python tests/desktop/installed_switcher_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --action "$PWD/artifacts/desktop-action/bin/lumen-desktop-action" --sway "$PWD/artifacts/$compositor/bin/sway" --output "artifacts/installed-switcher-$compositor"
             nix develop --command desktop-test-python tests/desktop/group_membership_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --client "$PWD/artifacts/window-relationships-client/bin/lumen-test-window-relationships" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --locker "$PWD/artifacts/session-lock/bin/lumen-test-session-lock" --output "artifacts/group-membership-$compositor"
             nix develop --command desktop-test-python tests/desktop/group_selector_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --client "$PWD/artifacts/window-relationships-client/bin/lumen-test-window-relationships" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --locker "$PWD/artifacts/session-lock/bin/lumen-test-session-lock" --output "artifacts/group-selector-$compositor"
             nix develop --command desktop-test-python tests/desktop/window_groups_native.py "${compositor_flags[@]}" --sway "$PWD/artifacts/$compositor/bin/sway" --client "$PWD/artifacts/window-relationships-client/bin/lumen-test-window-relationships" --keyboard wtype --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --locker "$PWD/artifacts/session-lock/bin/lumen-test-session-lock" --output "artifacts/window-groups-$compositor"
@@ -114,6 +116,7 @@ jobs:
             artifacts/force-quit
             artifacts/software-effects-kernel
             artifacts/effects-software-render
+            artifacts/installed-switcher-*
             artifacts/group-membership-*
             artifacts/group-selector-*
             artifacts/window-groups-*

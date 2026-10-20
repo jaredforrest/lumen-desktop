@@ -155,6 +155,7 @@ ShellRoot {
     property var activationHistory: []
     property var applicationActivationHistory:[]
     onActiveChanged: {
+        if(active && focusFallback.running && (active===focusFallback.targetWindow || active!==focusFallback.initialWindow))focusFallback.stop();
         ownedAssociationTimer.restart();
         if (active) {activationHistory=[active].concat(activationHistory.filter(w=>w!==active && windows.includes(w)));const recent=entryFor(active);const identity=recent?recent.id:active.appId;if(identity)applicationActivationHistory=[identity].concat(applicationActivationHistory.filter(id=>id!==identity)).slice(0,512);if(recent)recentAppIds=[recent.id].concat(recentAppIds.filter(id=>!DockModel.sameEntry(id,recent.id))).slice(0,12);}
     }
@@ -278,9 +279,9 @@ ShellRoot {
     function focusWindow(window) {
         if (!window) return;
         window.activate();
-        focusFallback.targetWindow=window;focusFallback.epoch=focusEpoch;focusFallback.restart();
+        focusFallback.targetWindow=window;focusFallback.initialWindow=active || activationHistory[0] || null;focusFallback.epoch=focusEpoch;focusFallback.restart();
     }
-    Timer {id:focusFallback;property var targetWindow;property int epoch;interval:160;onTriggered:if(epoch===root.focusEpoch && targetWindow && !targetWindow.activated && Quickshell.env("SWAYSOCK"))Quickshell.execDetached(["lumen-focus-window",targetWindow.appId,targetWindow.title])}
+    Timer {id:focusFallback;property var targetWindow;property var initialWindow;property int epoch;interval:160;onTriggered:if(epoch===root.focusEpoch && targetWindow && root.windows.includes(targetWindow) && !targetWindow.activated && Quickshell.env("SWAYSOCK"))Quickshell.execDetached(["lumen-focus-window",targetWindow.appId,targetWindow.title])}
     function activate(entry, newWindow) {
         const matches = windowsFor(entry);
         if (newWindow || !matches.length) {
