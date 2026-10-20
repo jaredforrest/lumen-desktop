@@ -1,0 +1,115 @@
+--- a/include/sway/tree/container.h
++++ b/include/sway/tree/container.h
+@@ -149,6 +149,8 @@
+  struct sway_lumen_placement *lumen_minimized, *lumen_filled, *lumen_hidden, *lumen_desktop_hidden;
+  bool lumen_app_hidden;
+  bool lumen_zoomed;
++ bool lumen_restoring, lumen_restore_serial_valid;
++ uint32_t lumen_restore_serial;
+  int lumen_preferred_width, lumen_preferred_height;
+  uint64_t lumen_pair_dialog_owner;
+  struct sway_lumen_pair *lumen_pair;
+--- a/sway/tree/root.c
++++ b/sway/tree/root.c
+@@ -392,6 +392,11 @@
+ 
+ void container_lumen_restore_snapshot(struct sway_container *con,struct sway_lumen_placement *placement,bool focus) { lumen_restore(con,placement,focus); }
+ 
++static void lumen_mark_restoring(struct sway_container *con) {
++ con->lumen_restoring = con->view && con->view->type == SWAY_VIEW_XDG_SHELL;
++ con->lumen_restore_serial_valid = false;
++}
++
+ void container_lumen_restore(struct sway_container *con) {
+  lumen_pair_prepare_action(con);
+  if (!con || !con->lumen_filled) return;
+@@ -400,6 +405,7 @@
+  con->lumen_zoomed = false;
+  if (con->pending.fullscreen_mode != FULLSCREEN_NONE) container_fullscreen_disable(con);
+  lumen_restore(con, p, true);
++ lumen_mark_restoring(con);
+  container_lumen_placement_free(p);
+ }
+ 
+@@ -490,7 +496,7 @@
+  if (con->pending.fullscreen_mode != FULLSCREEN_NONE) { container_fullscreen_disable(con); return; }
+  if (con->lumen_filled && !con->lumen_zoomed) {
+   struct sway_lumen_placement *p = con->lumen_filled; con->lumen_filled = NULL;
+-  lumen_restore(con, p, true); container_lumen_placement_free(p); return;
++  lumen_restore(con, p, true); lumen_mark_restoring(con); container_lumen_placement_free(p); return;
+  }
+  if (!con->lumen_filled) con->lumen_filled = lumen_save(con);
+  if (!con->lumen_filled) return;
+--- a/sway/desktop/transaction.c
++++ b/sway/desktop/transaction.c
+@@ -830,19 +830,33 @@
+ 		struct sway_node *node = instruction->node;
+ 		bool hidden = node_is_view(node) && !node->destroying &&
+ 			!view_is_visible(node->sway_container->view);
+-		if (should_configure(node, instruction)) {
++        bool restoring = node_is_view(node) && !node->destroying &&
++            node->sway_container->lumen_restoring &&
++            (int)instruction->container_state.content_width == (int)node->sway_container->pending.content_width &&
++            (int)instruction->container_state.content_height == (int)node->sway_container->pending.content_height;
++        bool restore_differs = restoring &&
++            (node->sway_container->view->geometry.width != (int)instruction->container_state.content_width ||
++             node->sway_container->view->geometry.height != (int)instruction->container_state.content_height);
++        if (should_configure(node, instruction) || restore_differs) {
+ 			instruction->serial = view_configure(node->sway_container->view,
+ 					instruction->container_state.content_x,
+ 					instruction->container_state.content_y,
+ 					instruction->container_state.content_width,
+ 					instruction->container_state.content_height);
++            if (restoring) {
++                node->sway_container->lumen_restore_serial = instruction->serial;
++                node->sway_container->lumen_restore_serial_valid = true;
++            }
+ 			if (!hidden) {
+ 				instruction->waiting = true;
+ 				++transaction->num_waiting;
+ 			}
+ 
+ 			view_send_frame_done(node->sway_container->view);
+-		}
++        } else if (restoring) {
++            node->sway_container->lumen_restoring = false;
++            node->sway_container->lumen_restore_serial_valid = false;
++        }
+ 		if (!hidden && node_is_view(node) &&
+ 				!node->sway_container->view->saved_surface_tree) {
+ 			view_save_buffer(node->sway_container->view);
+@@ -917,6 +931,13 @@
+ 
+ bool transaction_notify_view_ready_by_serial(struct sway_view *view,
+ 		uint32_t serial) {
++    struct sway_container *con = view->container;
++    // Wayland serials wrap; a later acknowledgement covers earlier configures.
++    if (con->lumen_restoring && con->lumen_restore_serial_valid &&
++            (int32_t)(serial - con->lumen_restore_serial) >= 0) {
++        con->lumen_restoring = false;
++        con->lumen_restore_serial_valid = false;
++    }
+ 	struct sway_transaction_instruction *instruction =
+ 		view->container->node.instruction;
+ 	if (instruction != NULL && instruction->serial == serial) {
+--- a/sway/desktop/xdg_shell.c
++++ b/sway/desktop/xdg_shell.c
+@@ -394,7 +394,7 @@
+ 		// containers, we resize the container to match. For tiling containers,
+ 		// we only recenter the surface.
+ 		memcpy(&view->geometry, new_geo, sizeof(struct wlr_box));
+-		if (container_is_floating(view->container)) {
++		if (container_is_floating(view->container) && !view->container->lumen_restoring) {
+ 			view_update_size(view);
+ 			// Only set the toplevel size the current container actually has a size.
+ 			if (view->container->current.width) {
+@@ -407,7 +407,8 @@
+ 		view_center_and_clip_surface(view);
+ 	}
+ 
+-	if (view->container->node.instruction) {
++	if (view->container->node.instruction ||
++			(view->container->lumen_restoring && view->container->lumen_restore_serial_valid)) {
+ 		bool successful = transaction_notify_view_ready_by_serial(view,
+ 				xdg_surface->current.configure_serial);
+ 
