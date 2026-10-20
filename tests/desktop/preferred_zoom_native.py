@@ -1,9 +1,27 @@
 """Private native preferred-client Zoom, placement restore and titlebar gestures."""
-import argparse,hashlib,json,os,re,shutil,signal,subprocess as sp,tempfile,time
+import argparse,hashlib,json,os,re,shutil,signal,socket,subprocess as sp,sys,tempfile,time
+from application_fixture.isolation import run as isolated_run
 from pathlib import Path
 from fixture_resources import close_reaped_pipes
 from private_native_bus import start_private_bus
-p=argparse.ArgumentParser();p.add_argument('--launcher',type=Path,required=True);p.add_argument('--sway',required=True);p.add_argument('--pointer',required=True);p.add_argument('--effects',action='store_true');p.add_argument('--rapid',action='store_true');p.add_argument('--output',type=Path,required=True);a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--launcher',type=Path,required=True);p.add_argument('--sway',required=True);p.add_argument('--pointer',required=True);p.add_argument('--effects',action='store_true');p.add_argument('--rapid',action='store_true');p.add_argument('--output',type=Path,required=True);p.add_argument('--inside',action='store_true');p.add_argument('--source-revision');p.add_argument('--parent-net');p.add_argument('--python-runtime',default=shutil.which('desktop-test-python'));p.add_argument('--egl-vendor',type=Path,default=os.environ.get('__EGL_VENDOR_LIBRARY_FILENAMES'));a=p.parse_args()
+if not a.inside:
+ outer=a.output.resolve();outer.mkdir(mode=0o700,parents=True,exist_ok=False)
+ pinned=[a.launcher,Path(a.sway),Path(a.pointer),Path(a.python_runtime)]
+ for tool in pinned:
+  if not str(tool.resolve()).startswith('/nix/store/') or not tool.is_file():raise ValueError('Pinned immutable fixture tools required')
+ revision=sp.check_output(['git','-C',str(Path(__file__).resolve().parents[2]),'rev-parse','HEAD'],text=True).strip()
+ argv=[str(pinned[3].resolve()),'/source/tests/desktop/preferred_zoom_native.py','--inside','--launcher',str(pinned[0].resolve()),'--sway',str(pinned[1].resolve()),'--pointer',str(pinned[2].resolve()),'--output','/artifacts/result','--source-revision',revision,'--parent-net',os.readlink('/proc/self/ns/net')]
+ if a.rapid:argv.append('--rapid')
+ if a.effects:
+  if not a.egl_vendor or not a.egl_vendor.is_file() or not str(a.egl_vendor.resolve()).startswith('/nix/store/'):raise ValueError('Pinned software EGL vendor required')
+  argv.extend(['--effects','--egl-vendor',str(a.egl_vendor.resolve())])
+ raise SystemExit(isolated_run(Path(__file__).resolve().parents[2],outer,argv,software_graphics=a.effects,private_pty=True))
+assert os.getuid()!=0 and os.readlink('/proc/self/ns/net')!=a.parent_net
+assert [name for _,name in socket.if_nameindex()]==['lo'] and not Path('/.old-root').exists()
+assert all(not (Path('/dev')/name).exists() for name in ('dri','snd','video0','tty'))
+assert Path('/dev/pts/ptmx').is_char_device() and Path('/dev/udmabuf').exists()==a.effects
+if a.effects:os.environ['__EGL_VENDOR_LIBRARY_FILENAMES']=str(a.egl_vendor)
 out=a.output.resolve();out.mkdir(parents=True,exist_ok=False);processes=[];records=[]
 private=tempfile.TemporaryDirectory(prefix='lumen-preferred-zoom-');env=dict(os.environ,HOME=private.name,XDG_RUNTIME_DIR=private.name)
 for key in ('CONFIG','STATE','CACHE','DATA'):env['XDG_'+key+'_HOME']=str(Path(private.name)/key.lower())
@@ -142,7 +160,7 @@ try:
  invoke('minSize',1500,1000);wait(lambda:not subject()['lumen_state'].get('preferred_zoom'),'minimum exceeds usable workspace capability');failure=raw(identity+'lumen_window zoom');assert not all(row.get('success') for row in failure),failure;records.append(dict(case='minimum beyond workspace truthfully disables Zoom',response=failure));invoke('minSize',1,1)
  if a.effects:
   log=(out/'compositor.log').read_text();assert all(text in log for text in ('Creating scenefx FX renderer','GL renderer: llvmpipe','FX RENDERER: Shaders Initialized Successfully','Trying udmabuf allocator','Created GL FBO for buffer'))
- (out/'result.json').write_text(json.dumps(dict(passed=True,source=call('git','-C',str(Path(__file__).resolve().parents[2]),'rev-parse','HEAD'),helper=str(Path(shutil.which('lumen-window-geometry',path=env['PATH'])).resolve()),checks=records,launcher=str(a.launcher),compositor=a.sway,effects=a.effects,fixtureSha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),limitations=['Same-user preferred-size registration is a presentation contract, not a security boundary','Physical titlebar gestures cover each preference once; no third-party preferred-size inference']),indent=2))
+ (out/'result.json').write_text(json.dumps(dict(passed=True,source=a.source_revision,isolation=dict(nonRoot=True,privateNetwork=True,privateTerminal=True,hardwareAbsent=True,oldRootDetached=True),helper=str(Path(shutil.which('lumen-window-geometry',path=env['PATH'])).resolve()),checks=records,launcher=str(a.launcher),compositor=a.sway,effects=a.effects,fixtureSha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),limitations=['Same-user preferred-size registration is a presentation contract, not a security boundary','Physical titlebar gestures cover each preference once; no third-party preferred-size inference']),indent=2))
 finally:
  for proc in reversed(processes):
   if proc.poll() is None:
