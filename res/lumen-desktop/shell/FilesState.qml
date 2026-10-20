@@ -75,9 +75,10 @@ Item {
     signal capturePresentation()
     signal historyReady(var presentation)
     signal selectedPath(string path)
-    signal applicationsReady(var applications,string path)
+    signal applicationsReady(var applications,string path,var selection)
     property int applicationRequestId:0
     property string applicationRequestPath:""
+    property var applicationRequestFacts:[]
     function send(action,data) {
         const id=++sequence;
         if(["job-start","clipboard-paste","drop"].includes(action))data=Object.assign({requestId:requestSession+"-"+id},data || {});
@@ -95,11 +96,12 @@ Item {
     }
     function refresh(){if(busy){pendingRefresh=true;return;}navigate(path,historyIndex,true);}
     function back(delta){const i=historyIndex+delta;if(i>=0 && i<history.length){navigate(HistoryModel.path(history[i]),i);}}
+    function cancelApplications(){applicationRequestId=0;applicationRequestPath="";applicationRequestFacts=[];}
     function act(action,data) {
         error="";
         if(["copy","move","trash","restore"].includes(action)){startJob(action,data.paths || [data.path],data.destination);return;}
-        if(action==="applications"){applicationRequestPath=data.path;applicationRequestId=send(action,data);return;}
-        if(["open-with","set-default","eject","open"].includes(action)){send(action,data);return;}
+        if(action==="applications"){const row=rows.find(item=>item.path===data.path);if(!row || !row.actionFacts){error="Refresh the selected file before choosing an application";return;}applicationRequestPath=data.path;applicationRequestFacts=row.actionFacts.slice();applicationRequestId=send(action,Object.assign({},data,{facts:row.actionFacts}));return;}
+        if(["retire-actions","open-with","set-default","eject","open"].includes(action)){send(action,data);return;}
         busy=true;currentId=send(action,data);
     }
     function startJob(operation,paths,destination,conflict){error="";send("job-start",{operation:operation,paths:paths || [],destination:destination || path,conflict:conflict || "skip"});}
@@ -138,7 +140,7 @@ Item {
                 if(data.event==="changed"){watchRefresh.restart();return;}
                 if(data.jobs){root.acceptJobs(data);return;}
                 if(data.action==="volumes"){root.volumes=data.volumes || [];return;}
-                if(data.action==="applications"){if(data.id!==root.applicationRequestId)return;root.applicationRequestId=0;if(data.error)root.error=data.error;else root.applicationsReady(data.applications,root.applicationRequestPath);return;}
+                if(data.action==="applications"){if(data.id!==root.applicationRequestId){if(data.capability)root.send("retire-actions",{capabilities:[data.capability]});return;}root.applicationRequestId=0;if(data.error)root.error=data.error;else root.applicationsReady(data.applications,root.applicationRequestPath,{capability:data.capability,session:data.generation,choice:data.choice,facts:root.applicationRequestFacts.slice()});return;}
                 if(data.id!==root.currentId){if(data.action!=="list" && data.error)root.error=data.error;return;}
                 root.busy=false;
                 if(data.error){root.error=data.error;if(data.action==="list"){const saved=(root.history[root.historyIndex] || {}).presentation;if(saved && root.rowsPath===root.path){root.query=saved.query;root.historyReady(saved);root.selectedPath("@history");}}return;}
@@ -157,6 +159,6 @@ Item {
                 }
             }catch(e){root.busy=false;root.error="Unable to read Files results: "+e;}
         }}
-        onExited:(code,status)=>{root.ready=false;root.queued=[];root.busy=false;root.error="Files disconnected. Refresh to reconnect.";}
+        onExited:(code,status)=>{root.cancelApplications();root.ready=false;root.queued=[];root.busy=false;root.error="Files disconnected. Refresh to reconnect.";}
     }
 }

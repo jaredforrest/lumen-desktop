@@ -26,7 +26,7 @@ def preview(value, page=1, resolution=1400):
     p = Path(value).absolute()
     info = p.stat()
     result = dict(path=str(p), name=p.name, title=p.name, size=info.st_size,
-                  mtime=info.st_mtime, type='generic', text='No preview available')
+                  mtime=info.st_mtime, type='generic', text='This format has no supported preview',reason='unsupported')
     if stat.S_ISDIR(info.st_mode):
         with os.scandir(p) as entries:
             children = []
@@ -35,13 +35,14 @@ def preview(value, page=1, resolution=1400):
                     children.append(entry.name + ('/' if entry.is_dir(follow_symlinks=False) else ''))
                 if len(children) >= 21:
                     break
-        return dict(result, type='folder', text='\n'.join(sorted(children[:20], key=str.casefold)) or 'Empty folder', truncated=len(children)>20)
+        return dict(result, reason=None, type='folder', text='\n'.join(sorted(children[:20], key=str.casefold)) or 'Empty folder', truncated=len(children)>20)
     if not stat.S_ISREG(info.st_mode):
         return result
     mime = mimetypes.guess_type(p.name)[0] or ''
     result['mime'] = mime
+    if mime.startswith('image/') and info.st_size>32*1024*1024:return dict(result,reason='policy_limit',text='Inline image previews support files up to32 MiB')
     if mime in ('image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/bmp') and info.st_size <= 32*1024*1024:
-        return dict(result, type='image', uri=p.as_uri(), text='')
+        return dict(result, reason=None, type='image', uri=p.as_uri(), text='')
     if mime == 'application/pdf' and info.st_size <= 64*1024*1024:
         cache = Path(os.environ.get('XDG_CACHE_HOME', str(Path.home()/'.cache')))/'lumen-desktop/previews'
         cache.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -65,9 +66,11 @@ def preview(value, page=1, resolution=1400):
                     except FileNotFoundError:pass
                 for _, old in sorted(candidates, reverse=True)[100:]:
                     old.unlink(missing_ok=True)
-            return dict(result, type='image', uri=target.as_uri(), text=f'Page {page} of {pages}', page=page, pages=pages, truncated=False)
+            return dict(result, reason=None, type='image', uri=target.as_uri(), text=f'Page {page} of {pages}', page=page, pages=pages, truncated=False)
+        except subprocess.TimeoutExpired:
+            return dict(result,reason='provider_timeout',text='PDF preview timed out')
         except (OSError, ValueError, subprocess.SubprocessError):
-            return dict(result, text='PDF preview unavailable (encrypted, damaged, too complex, or renderer unavailable)')
+            return dict(result, reason='provider_failure', text='PDF preview unavailable (encrypted, damaged, too complex, or renderer unavailable)')
     if mime.startswith(('audio/', 'video/')):
         try:
             data = json.loads(limited_command(['ffprobe', '-v', 'error', '-show_entries',
@@ -80,21 +83,23 @@ def preview(value, page=1, resolution=1400):
                 if stream.get('width'):label += f" · {stream['width']} × {stream['height']}"
                 if stream.get('channels'):label += f" · {stream['channels']} channels"
                 lines.append(label)
-            return dict(result, type='media', uri=p.as_uri(), duration=seconds, text='\n'.join(lines))
+            return dict(result, reason=None, type='media', uri=p.as_uri(), duration=seconds, text='\n'.join(lines))
+        except subprocess.TimeoutExpired:
+            return dict(result,reason='provider_timeout',text='Media preview timed out')
         except (ValueError, OSError, subprocess.SubprocessError):
-            return dict(result, text='Media information unavailable')
+            return dict(result, reason='provider_failure', text='Media information unavailable')
     if p.suffix.lower() in ('.docx', '.odt') and info.st_size <= 64*1024*1024:
         try:
             with zipfile.ZipFile(p) as archive:
                 entry = archive.getinfo('word/document.xml' if p.suffix.lower()=='.docx' else 'content.xml')
                 if entry.file_size > 4*1024*1024:
-                    return dict(result, text='Document is too large for a quick preview')
+                    return dict(result, reason='policy_limit', text='Document is too large for a quick preview')
                 xml = ET.fromstring(archive.read(entry))
                 paragraphs = [''.join(node.itertext()) for node in xml.iter() if node.tag.rsplit('}',1)[-1] in ('p','h')]
                 text = '\n'.join(paragraphs)
-                return dict(result, type='text', text=text[:8192] or 'No document text', truncated=len(text)>8192)
+                return dict(result, reason=None, type='text', text=text[:8192] or 'No document text', truncated=len(text)>8192)
         except (OSError, KeyError, zipfile.BadZipFile, ET.ParseError, RuntimeError):
-            return dict(result, text='Document preview unavailable')
+            return dict(result, reason='provider_failure', text='Document preview unavailable')
     fd = os.open(p, os.O_RDONLY | os.O_NONBLOCK)
     with os.fdopen(fd, 'rb') as stream:
         if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
@@ -109,7 +114,7 @@ def preview(value, page=1, resolution=1400):
     if any(ord(c)<32 and c not in '\n\r\t' for c in text):
         return result
     lines = text.splitlines()
-    return dict(result, type='text', text='\n'.join(lines[:80]), truncated=len(raw)>8192 or len(lines)>80)
+    return dict(result, reason=None, type='text', text='\n'.join(lines[:80]), truncated=len(raw)>8192 or len(lines)>80)
 
 
 if __name__=='__main__':

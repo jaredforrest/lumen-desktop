@@ -21,17 +21,38 @@ Item {
     property bool stopRequested:false
     property int stopSignal:0
     property alias resourceRetirement:retirement
+    property bool cancelingAction:false
+    property int actionId:-1
+    property string actionCapability:""
+    property string actionOperation:""
+    property bool actionBusy:actionId>0
+    readonly property var actionSelection:result.actionCapability && providerReady?{capability:result.actionCapability,session:providerGeneration}:null
+    signal actionReceived(var value)
     signal received(var value)
+    function invoke(captured,operation,parameters,application){
+        if(!active || !providerReady || actionBusy || !captured || !actionSelection || captured.capability!==actionSelection.capability || captured.session!==providerGeneration)return false;
+        actionId=++sequence;actionCapability=captured.capability;actionOperation=operation;
+        provider.write(JSON.stringify({id:actionId,action:"resource-action",generation:providerGeneration,capability:captured.capability,operation:operation,parameters:parameters || {},application:application || null,choice:captured.choice || null})+"\n");actionDeadline.restart();return true;
+    }
+    function cancelContent(){
+        if(!active || !providerReady || actionId<0 || !["ocr","cutout"].includes(actionOperation))return;
+        provider.write(JSON.stringify({id:++sequence,action:"cancel-action",generation:providerGeneration,target:actionId,capability:actionCapability})+"\n");
+    }
+    function cancelAction(){
+        if(actionId>0 && provider.running){cancelingAction=true;stopRequested=true;stopSignal=15;}
+        actionId=-1;actionCapability="";actionOperation="";actionDeadline.stop();
+    }
     function retireCurrent(){
         if(outstanding.length)retirement.retire(outstanding,result.uri || "");
         outstanding=[];result={};
     }
     function request(path,page,identity,token){
-        retireCurrent();
+        cancelAction();retireCurrent();
         const id=++sequence;currentId=path?id:-1;busy=false;deadline.stop();
         currentPath=path || "";currentPage=page || 1;
         pending=path?{id:id,action:"preview",path:path,page:currentPage,identity:identity || null,token:token || null}:null;
         if(!pending || !active){if(!retirement.busy)dispatchReleases();return;}
+        if(cancelingAction){stopRequested=true;stopSignal=15;busy=true;deadline.restart();Qt.callLater(root.tryStop);return;}
         stopRequested=false;busy=true;deadline.restart();startOrSend();
     }
     function dispatchReleases(){
@@ -45,7 +66,7 @@ Item {
         }else startOrSend();
     }
     function startOrSend(){
-        if(!active || !pending || retiring || retirement.busy || releaseId>0)return;
+        if(!active || !pending || retiring || cancelingAction || retirement.busy || releaseId>0)return;
         if(releases.length){dispatchReleases();return;}
         if(!provider.running){provider.running=true;return;}
         if(providerReady){
@@ -59,15 +80,16 @@ Item {
         if(provider.running){retiring=true;if(stopSignal)provider.signal(stopSignal);else provider.running=false;}
     }
     function fail(message){
-        deadline.stop();currentId=-1;pending=null;retireCurrent();result={error:message};busy=false;stopRequested=true;stopSignal=9;tryStop();
+        const signal=actionId>0 || cancelingAction?15:9;actionId=-1;actionCapability="";actionOperation="";actionDeadline.stop();deadline.stop();currentId=-1;pending=null;retireCurrent();result={error:message};busy=false;stopRequested=true;stopSignal=signal;tryStop();
     }
     function retire(){
-        ++sequence;currentId=-1;currentPath="";pending=null;retireCurrent();busy=false;deadline.stop();stopRequested=true;stopSignal=0;
+        cancelAction();++sequence;currentId=-1;currentPath="";pending=null;retireCurrent();busy=false;deadline.stop();stopRequested=true;stopSignal=0;
         Qt.callLater(root.tryStop);
     }
     onActiveChanged:if(!active)retire();else if(pending){stopRequested=false;busy=true;deadline.restart();startOrSend();}
     PreviewResourceRetirement {id:retirement;onRetired:ids=>{root.releases=[...new Set(root.releases.concat(ids))];root.dispatchReleases();}}
     Timer {id:deadline;interval:10000;onTriggered:{root.fail("Preview timed out. Select the item again.");}}
+    Timer {id:actionDeadline;interval:80000;onTriggered:root.fail("The preview action timed out") }
     Process {
         id:provider;stdinEnabled:true
         command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("owned_preview.py").toString().replace(/^file:\/\//,"")]
@@ -82,6 +104,10 @@ Item {
                     return;
                 }
                 if(data.generation!==root.providerGeneration)return;
+                if(data.action==="resource-action"){
+                    if(root.active && data.id===root.actionId && data.capability===root.actionCapability && root.actionSelection && data.capability===root.actionSelection.capability){root.actionId=-1;root.actionCapability="";root.actionOperation="";actionDeadline.stop();root.actionReceived(data);}
+                    return;
+                }
                 if(data.action==="retire-preview" && data.id===root.releaseId){
                     if(data.error || data.retired!==true){root.fail("Preview resources could not be retired");return;}
                     root.releaseId=-1;root.dispatchReleases();return;
@@ -91,7 +117,7 @@ Item {
             }catch(e){root.fail("Preview returned an unreadable response");}
         }}
         onExited:{
-            deadline.stop();root.providerReady=false;root.providerGeneration="";root.releaseId=-1;root.releases=[];
+            root.cancelingAction=false;root.actionId=-1;root.actionCapability="";root.actionOperation="";actionDeadline.stop();deadline.stop();root.providerReady=false;root.providerGeneration="";root.releaseId=-1;root.releases=[];
             const restart=root.active && root.pending;const failure=root.result.error;
             root.retireCurrent();root.retiring=false;root.busy=false;
             if(restart){root.stopRequested=false;root.busy=true;deadline.restart();Qt.callLater(root.startOrSend);}

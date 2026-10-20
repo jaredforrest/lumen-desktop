@@ -37,17 +37,23 @@ class FileViewActions(unittest.TestCase):
             first.unlink();self.assertEqual((root/'moved.txt').read_text(),'source')
     def test_default_association_requires_explicit_registered_app(self):
         class App:
-            def __init__(self,id):self.id=id;self.defaults=[]
+            def __init__(self,id):self.id=id;self.defaults=[];self.filename=None
             def get_id(self):return self.id
+            def get_filename(self):return self.filename
             def should_show(self):return True
             def get_display_name(self):return self.id
             def set_as_default_for_type(self,mime):self.defaults.append(mime);return True
         first,second=App('first.desktop'),App('second.desktop')
         api=SimpleNamespace(get_all_for_type=lambda mime:[first,second],get_default_for_type=lambda mime,uris:first)
-        with patch.object(files,'Gio',SimpleNamespace(AppInfo=api)),patch.object(files.subprocess,'run') as run:
-            result=files.handle({'action':'applications','path':'/fixture/file.pdf'})
-            self.assertTrue(result['applications'][0]['default']);self.assertFalse(result['applications'][1]['default'])
-            files.handle({'action':'set-default','path':'/fixture/file.pdf','application':'second.desktop'})
-            self.assertEqual(second.defaults,['application/pdf']);self.assertEqual(first.defaults,[]);run.assert_not_called()
-            with self.assertRaises(ValueError):files.handle({'action':'set-default','path':'/fixture/file.pdf','application':'unregistered.desktop'})
+        with tempfile.TemporaryDirectory() as directory:
+            source=Path(directory)/'file.pdf';source.write_text('pdf')
+            for app in (first,second):
+                desktop=Path(directory)/app.id;desktop.write_text(app.id);app.filename=str(desktop)
+            with patch('gi.repository.Gio.AppInfo',api),patch.object(files.subprocess,'run') as run:
+                request={'action':'applications','path':str(source),'facts':files.wire_facts(files.facts(source))}
+                result=files.handle(request)
+                self.assertTrue(result['applications'][0]['default']);self.assertFalse(result['applications'][1]['default'])
+                files.handle({'action':'set-default','capability':result['capability'],'choice':result['choice'],'application':'second.desktop'})
+                self.assertEqual(second.defaults,['application/pdf']);self.assertEqual(first.defaults,[]);run.assert_not_called()
+                with self.assertRaises(ValueError):files.handle({'action':'set-default','capability':result['capability'],'choice':result['choice'],'application':'unregistered.desktop'})
 if __name__=='__main__':unittest.main()

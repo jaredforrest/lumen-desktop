@@ -1,4 +1,6 @@
 """Explicit local text/image actions. Never monitor typing or dispatch detected links."""
+import contextlib
+import stat
 import datetime
 import json
 import os
@@ -112,8 +114,32 @@ def subject_source(value):
     return p
 
 
-def save_subject(source,destination,overwrite=False):
-    src=subject_source(source);dst=Path(destination).expanduser().absolute()
+@contextlib.contextmanager
+def subject_stream(value,expected=None):
+    from captured_resource_actions import parse_facts
+    if expected is not None and any(isinstance(value,str) for value in expected):expected=parse_facts(expected)
+    source=subject_source(value);metadata=os.open(source,os.O_PATH|os.O_NOFOLLOW);descriptor=None
+    try:
+        info=os.fstat(metadata);actual=(info.st_dev,info.st_ino,info.st_mode,info.st_size,info.st_mtime_ns,info.st_ctime_ns)
+        if not stat.S_ISREG(info.st_mode) or (expected is not None and tuple(expected)!=actual):raise ValueError('The captured subject changed')
+        if info.st_size>64*1024*1024:raise ValueError('Subject exports support files up to64 MiB')
+        descriptor=os.open('/proc/self/fd/'+str(metadata),os.O_RDONLY|os.O_NONBLOCK)
+        with os.fdopen(descriptor,'rb') as stream,tempfile.TemporaryFile() as retained:
+            descriptor=None;remaining=info.st_size
+            while remaining:
+                block=stream.read(min(1024*1024,remaining))
+                if not block:raise ValueError('The captured subject changed')
+                retained.write(block);remaining-=len(block)
+            after=os.fstat(stream.fileno());after_facts=(after.st_dev,after.st_ino,after.st_mode,after.st_size,after.st_mtime_ns,after.st_ctime_ns)
+            if after_facts!=actual:raise ValueError('The captured subject changed')
+            retained.seek(0);yield retained
+    finally:
+        if descriptor is not None:os.close(descriptor)
+        os.close(metadata)
+
+
+def save_subject(source,destination,overwrite=False,expected=None):
+    dst=Path(destination).expanduser().absolute()
     if dst.suffix.lower()!='.png':raise ValueError('Save the transparent image as PNG')
     # Copy privately before publishing. A failed export must not truncate the
     # existing destination merely because overwrite was confirmed.
@@ -122,7 +148,7 @@ def save_subject(source,destination,overwrite=False):
     staged=Path(name)
     try:
         with os.fdopen(fd,'wb') as stream:
-            with src.open('rb') as original:
+            with subject_stream(source,expected) as original:
                 import shutil
                 shutil.copyfileobj(original,stream)
             stream.flush();os.fsync(stream.fileno())
@@ -142,9 +168,9 @@ def save_subject(source,destination,overwrite=False):
 def handle(data):
     action=data.get('action')
     if action=='cutout':return cutout(data['path'])
-    if action=='save-subject':return save_subject(data['source'],data['destination'],data.get('overwrite') is True)
+    if action=='save-subject':return save_subject(data['source'],data['destination'],data.get('overwrite') is True,data.get('sourceFacts'))
     if action=='copy-subject':
-        with subject_source(data['source']).open('rb') as stream:subprocess.run(['wl-copy','--type','image/png'],stdin=stream,check=True,timeout=5)
+        with subject_stream(data['source'],data.get('sourceFacts')) as stream:subprocess.run(['wl-copy','--type','image/png'],stdin=stream,check=True,timeout=5)
         return dict(message='Transparent image copied')
     if action=='ocr':return ocr(data['path'],data.get('page',1),data.get('seconds'))
     text=str(data.get('text',''))

@@ -59,6 +59,7 @@ jobs:
             compositor_flags=()
             if [[ "$compositor" == compositor-effects ]]; then compositor_flags=(--effects); fi
             bash tests/ci/run-native.sh owned_preview_input nix develop --command desktop-test-python tests/desktop/owned_preview_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --output "artifacts/owned-preview-$compositor"
+            bash tests/ci/run-native.sh preview_actions_input nix develop --command desktop-test-python tests/desktop/preview_actions_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/preview-actions-$compositor"
             bash tests/ci/run-native.sh files_history_input nix develop --command desktop-test-python tests/desktop/files_history_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/files-history-$compositor"
             bash tests/ci/run-native.sh installed_switcher_input nix develop --command desktop-test-python tests/desktop/installed_switcher_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --action "$PWD/artifacts/desktop-action/bin/lumen-desktop-action" --sway "$PWD/artifacts/$compositor/bin/sway" --output "artifacts/installed-switcher-$compositor"
             bash tests/ci/run-native.sh clipboard_native_input nix develop --command desktop-test-python tests/desktop/clipboard_native_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --producer "$PWD/artifacts/clipboard-producer/bin/lumen-test-clipboard-producer" --observer "$PWD/artifacts/clipboard-observer/bin/lumen-clipboard-observer" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/clipboard-native-$compositor"
@@ -155,6 +156,7 @@ jobs:
             artifacts/software-effects-kernel
             artifacts/effects-software-render
             artifacts/owned-preview-*
+            artifacts/preview-actions-*
             artifacts/files-history-*
             artifacts/installed-switcher-*
             artifacts/group-membership-*

@@ -16,6 +16,7 @@ import unicodedata
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from file_preview import preview as shared_preview
 from preview_snapshots import PreviewSnapshots,PreviewRequests
+from captured_resource_actions import ResourceUnavailable,unavailable
 from urllib.parse import unquote,urlparse
 from file_watch import Watcher
 import file_tags
@@ -348,7 +349,9 @@ class Index:
         if parent:
             path = path.parent
         # URI encoding prevents shell/option interpretation, including unusual filenames.
-        subprocess.run((['lumen-launch-app', '--'] if os.environ.get('LUMEN_LAUNCH_SCOPES') == '1' else []) + ['xdg-open', path.as_uri()], check=True, timeout=8, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:subprocess.run((['lumen-launch-app', '--'] if os.environ.get('LUMEN_LAUNCH_SCOPES') == '1' else []) + ['xdg-open', path.as_uri()], check=True, timeout=8, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except FileNotFoundError as exc:raise ResourceUnavailable('provider_failure','The application launcher is unavailable') from exc
+        except subprocess.TimeoutExpired as exc:raise ResourceUnavailable('dispatch_unknown','The launcher did not acknowledge Open; check whether the application opened before trying again') from exc
         return {'opened': True}
 
 def main():
@@ -383,9 +386,9 @@ def main():
             elif action=='refresh':index.refresh(force=True);result={}
             else:raise ValueError('Unknown search command')
             emit({'id':request.get('id'),'action':action,**result})
-        except (ValueError,KeyError,OSError,sqlite3.Error,subprocess.SubprocessError):
+        except (ValueError,KeyError,OSError,sqlite3.Error,subprocess.SubprocessError) as exc:
             if request.get('action')=='preview':index.preview_requests.retire([request.get('id')])
-            emit({'id':request.get('id'),'action':request.get('action'),'previewGeneration':index.preview_requests.generation,'error':'The file is unavailable, the query is incomplete, or its application could not be opened'})
+            emit({'id':request.get('id'),'action':request.get('action'),'previewGeneration':index.preview_requests.generation,**unavailable(exc)})
     try:
         with ThreadPoolExecutor(max_workers=3) as pool,ThreadPoolExecutor(max_workers=1) as previews:
             for line in sys.stdin:

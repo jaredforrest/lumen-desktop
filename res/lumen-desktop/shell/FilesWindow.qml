@@ -41,6 +41,7 @@ FloatingWindow {
     property bool tagsSupported:false
     property string tagsError:""
     property string applicationsPath:""
+    property var applicationsSelection:null
     property var selectedTags:[]
     readonly property var colourTags:[{id:"red",label:"Red",color:"#e54b4b"},{id:"orange",label:"Orange",color:"#e79735"},{id:"yellow",label:"Yellow",color:"#d6b82f"},{id:"green",label:"Green",color:"#50a86b"},{id:"blue",label:"Blue",color:"#438ed6"},{id:"purple",label:"Purple",color:"#9b6ac6"},{id:"grey",label:"Grey",color:"#929298"}]
     function editTags(){if(!current)return;tagsTarget=current.path;tagsIdentity=current.identity;tagsSupported=current.tagsSupported;tagsError=current.tagsError;selectedTags=(current.tags || []).map(tag=>tag.id);tagsEditor.open();}
@@ -201,7 +202,12 @@ FloatingWindow {
     }
     function sortBy(key){if(service.sort===key)service.descending=!service.descending;else {service.sort=key;service.descending=key==="modified";}service.refresh();}
     function schedulePreview(){service.requestPreview("");previewDelay.stop();if(visible && current && (previewOpen || galleryMode))previewDelay.restart();}
-    onCurrentChanged:if(previewOpen || galleryMode)schedulePreview()
+    onCurrentChanged:{
+        const item=root.current;
+        if(root.service.applicationRequestId>0 && (!item || item.path!==root.service.applicationRequestPath || JSON.stringify(item.actionFacts)!==JSON.stringify(root.service.applicationRequestFacts)))root.service.cancelApplications();
+        if(root.applicationsSelection && (!item || item.path!==root.applicationsPath || JSON.stringify(item.actionFacts)!==JSON.stringify(root.applicationsSelection.facts)))openWith.close();
+        if(previewOpen || galleryMode)schedulePreview();
+    }
     onGalleryModeChanged:schedulePreview()
     onPreviewOpenChanged:schedulePreview()
     Timer {id:previewDelay;interval:140;onTriggered:root.service.requestPreview(root.current?root.current.path:"")}
@@ -209,7 +215,7 @@ FloatingWindow {
         function onCapturePresentation(){root.captureHistory();}
         function onHistoryReady(saved){root.restorePresentation(saved);}
         function onInformationReady(details){root.information=details;infoWindow.show(details);}
-        function onApplicationsReady(apps,path){root.applications=apps;root.applicationsPath=path;openWith.open();}
+        function onApplicationsReady(apps,path,selection){if(!root.current || root.current.path!==path || JSON.stringify(root.current.actionFacts)!==JSON.stringify(selection.facts)){root.service.act("retire-actions",{capabilities:[selection.capability]});return;}root.applications=apps;root.applicationsPath=path;root.applicationsSelection=selection;openWith.open();}
         function onSelectedPath(path){
             if(path==="@history"){root.restoringTabId="";}
             else if(root.restoringTabId===root.activeTabId){
@@ -421,12 +427,12 @@ FloatingWindow {
                 DialogButton {width:100;text:"Done";onClicked:viewOptions.close()}
             } }
         }
-        Popup {id:openWith;width:Math.min(360,root.width-40);height:Math.min(380,root.height-80);x:(root.width-width)/2;y:(root.height-height)/2;modal:true;focus:true;padding:12
+        Popup {id:openWith;onClosed:{if(root.applicationsSelection)root.service.act("retire-actions",{capabilities:[root.applicationsSelection.capability]});root.applicationsSelection=null;}width:Math.min(360,root.width-40);height:Math.min(380,root.height-80);x:(root.width-width)/2;y:(root.height-height)/2;modal:true;focus:true;padding:12
             background:Rectangle {radius:12;color:Theme.colors.background;border.color:Theme.outline}
             contentItem:ListView {clip:true;model:root.applications;ScrollBar.vertical:DesktopScrollBar {}
                 delegate:Row {required property var modelData;width:ListView.view.width;height:38
-                    ControlRow {width:parent.width-100;text:modelData.name+(modelData.default?" (default)":"");onClicked:{openWith.close();if(root.applicationsPath)root.service.act("open-with",{path:root.applicationsPath,application:modelData.id});}}
-                    DialogButton {width:100;height:30;text:"Set Default";enabled:!modelData.default;Accessible.name:"Use "+modelData.name+" for this file type";onClicked:{openWith.close();if(root.applicationsPath)root.service.act("set-default",{path:root.applicationsPath,application:modelData.id});}}
+                    CapturedActionButton {width:parent.width-100;text:modelData.name+(modelData.default?" (default)":"");selection:root.applicationsSelection?Object.assign({},root.applicationsSelection,{application:modelData.id}):null;onActivatedIntent:captured=>{root.applicationsSelection=null;openWith.close();root.service.act("open-with",{capability:captured.capability,choice:captured.choice,application:captured.application});}}
+                    CapturedActionButton {width:100;height:30;text:"Set Default";selection:root.applicationsSelection?Object.assign({},root.applicationsSelection,{application:modelData.id}):null;enabled:!modelData.default;Accessible.name:"Use "+modelData.name+" for this file type";onActivatedIntent:captured=>{root.applicationsSelection=null;openWith.close();root.service.act("set-default",{capability:captured.capability,choice:captured.choice,application:captured.application});}}
                 }
                 PanelLabel {visible:root.applications.length===0;text:"No applications registered for this file";width:parent.width;wrapMode:Text.WordWrap}
             }

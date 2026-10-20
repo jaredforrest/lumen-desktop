@@ -7,6 +7,7 @@ is not inferred. Exhaustion returns unavailable rather than evicting a lease.
 """
 import atexit,contextlib,os,re,secrets,shutil,stat,tempfile,threading,time
 from pathlib import Path
+from captured_resource_actions import ResourceUnavailable
 def parse_process_start(value):
     start=value.rsplit(') ',1)[1].split()[19]
     if not start.isdigit():raise ValueError('Invalid process start identity')
@@ -96,13 +97,14 @@ class PreviewSnapshots:
         fd=None;temporary=None
         try:
             info=os.fstat(path_fd)
-            if not stat.S_ISREG(info.st_mode) or info.st_size>limit or self.identity(path,info)!=token:
-                raise ValueError('The selected preview is unavailable or too large')
+            if not stat.S_ISREG(info.st_mode):raise ResourceUnavailable('unsupported','This resource has no supported preview')
+            if info.st_size>limit:raise ResourceUnavailable('policy_limit','This preview supports files up to64 MiB')
+            if self.identity(path,info)!=token:raise ResourceUnavailable('source_changed','The selected preview changed')
             # Only this retained, proven regular descriptor is reopened for data.
             fd=os.open('/proc/self/fd/'+str(path_fd),os.O_RDONLY|os.O_NONBLOCK)
-            if self.identity(path,os.fstat(fd))!=token:raise ValueError('The selected preview changed')
+            if self.identity(path,os.fstat(fd))!=token:raise ResourceUnavailable('source_changed','The selected preview changed')
             if self.preview_bytes+info.st_size>128*1024*1024:
-                raise ValueError('The private preview working set is full')
+                raise ResourceUnavailable('policy_limit','The private preview working set is full')
             if self.preview_directory is None:
                 runtime_value=os.environ.get('XDG_RUNTIME_DIR')
                 if not runtime_value:raise ValueError('A private session runtime directory is required')
@@ -137,7 +139,7 @@ class PreviewSnapshots:
                     destination.write(chunk);remaining-=len(chunk)
                 size=destination.tell()
                 if size>limit or size!=info.st_size or self.identity(path,os.fstat(fd))!=token:
-                    raise ValueError('The selected preview changed')
+                    raise ResourceUnavailable('source_changed','The selected preview changed')
             self.validate(str(path),token)
             temporary.chmod(0o400)
             self.preview_snapshots[token]=temporary;self.preview_bytes+=size

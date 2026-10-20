@@ -7,6 +7,8 @@ from file_jobs import remote as job_request, trash_items
 import file_clipboard
 import file_tags
 import file_identity
+from captured_resource_actions import CapturedResourceActions,facts,wire_facts,parse_facts
+file_actions=CapturedResourceActions()
 
 LIMIT = 5000
 
@@ -46,7 +48,7 @@ def listing(data):
                 directory = entry.is_dir()
                 tags=file_tags.read(entry.path)
                 if not all(tag in [t["id"] for t in tags["tags"]] for tag in tag_terms):continue
-                rows.append(dict(identity=file_identity.wire(info),tags=tags["tags"],tagsSupported=tags["supported"],tagsError=tags["error"],name=entry.name, path=entry.path, uri=Path(entry.path).as_uri(), directory=directory,
+                rows.append(dict(actionFacts=wire_facts((info.st_dev,info.st_ino,info.st_mode,info.st_size,info.st_mtime_ns,info.st_ctime_ns)),identity=file_identity.wire(info),tags=tags["tags"],tagsSupported=tags["supported"],tagsError=tags["error"],name=entry.name, path=entry.path, uri=Path(entry.path).as_uri(), directory=directory,
                                  link=entry.is_symlink(), size=info.st_size, mtime=info.st_mtime,
                                  kind="Folder" if directory else mimetypes.guess_type(entry.name)[0] or "Document"))
             except OSError:
@@ -155,19 +157,17 @@ def handle(data):
         device=mount.get_volume().get_identifier('unix-device')
         subprocess.run(['udisksctl','unmount','--block-device',device,'--no-user-interaction'],check=True,capture_output=True,timeout=20)
         return dict(ok=True)
-    if action in ('applications','open-with','set-default'):
-        p=path(data['path']);mime=mimetypes.guess_type(p.name)[0] or 'application/octet-stream'
-        applications=[a for a in Gio.AppInfo.get_all_for_type(mime) if a.should_show() and a.get_id()]
-        default=Gio.AppInfo.get_default_for_type(mime,False)
-        if action=='applications':return dict(applications=[dict(id=a.get_id(),name=a.get_display_name(),default=bool(default and default.get_id()==a.get_id())) for a in applications])
-        app=next((a for a in applications if a.get_id()==data.get('application')),None)
-        if app is None:raise ValueError('This application is no longer available')
-        if action=='set-default':
-            if not app.set_as_default_for_type(mime):raise ValueError('The application could not become the default for this file type')
-            return dict(ok=True)
-        filename=app.get_filename()
-        subprocess.run((['lumen-launch-app','--'] if os.environ.get('LUMEN_LAUNCH_SCOPES')=='1' else []) + ['gio','launch',filename,p.as_uri()],check=True,timeout=12,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
-        return dict(ok=True)
+    if action=='retire-actions':
+        file_actions.retire(data.get('capabilities',[]));return dict(ok=True)
+    if action=='applications':
+        expected=parse_facts(data.get('facts'))
+        capability=file_actions.capture(path(data['path']),expected)
+        try:return dict(file_actions.applications(capability),capability=capability,generation=file_actions.generation)
+        except BaseException:file_actions.retire([capability]);raise
+    if action in ('open-with','set-default'):
+        capability=data.get('capability')
+        try:return file_actions.dispatch(capability,action,data.get('application'),choice=data.get('choice'))
+        finally:file_actions.retire([capability])
     if action=='list':return listing(data)
     if action=='preview':return preview(data['path'], data.get('page',1))
     p=path(data['path'])

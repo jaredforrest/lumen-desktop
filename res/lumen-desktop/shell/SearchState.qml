@@ -107,7 +107,7 @@ Item {
                 } else if(root.active && root.searchId>0 && data.id===root.searchId) {
                     root.searchId=-1;root.searching=false;root.error=data.error || "";root.files=data.results || [];root.more=data.more || false;
                 } else if(root.active && root.previewId>0 && data.id===root.previewId) {
-                    root.previewId=-1;root.preview=data.error?{type:"generic",text:data.error}:data;
+                    root.previewId=-1;root.preview=data.error?{type:"generic",text:data.error,reason:data.reason || "provider_failure"}:data;
                 } else if(root.active && root.openId>0 && data.id===root.openId) {
                     root.openId=-1;root.opening=false;root.error=data.error || "";if(data.opened)root.opened();else if(data.browse)root.browseRequested(data.browse);
                 }

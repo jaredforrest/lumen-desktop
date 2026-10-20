@@ -69,3 +69,51 @@ image/playing-media sources across selection changes. Existing original-path
 replacement refusal on a later PDF page remains conservative: unchanged-source
 paging reuses the immutable input, but replacement makes the next page request
 unavailable. Continuing old-source paging after replacement is a separate follow-up.
+
+## Captured content and application actions
+
+The preview provider issues an opaque action capability for the selected source
+version. It is valid only in that provider generation and retires with its
+preview request. Quick Look deliberately permits repeated explicit Open or
+content actions while that capability remains current; it never retries an
+external Open automatically. A failed action has a separate response and does
+not replace a successful preview. Unsupported or oversized preview content can
+still have a captured Open/Open With capability.
+
+Application enumeration returns a separate chooser generation and captures the
+application registration's pathname, resolved target and version facts. Choosing
+an application requires that generation, application ID and selected source to
+remain current. Files consumes its chooser capability after an attempted action;
+closing its chooser retires it. Buttons capture resource, provider, chooser and
+application identity on press, so delegate reuse cannot select another app.
+Quick Look clears its chooser intent when the chooser closes.
+
+These are predispatch checks. External file handlers and `gio launch` may reopen
+source or application-registration pathnames after the handoff. The broker does
+not claim to preserve those external reads through an immutable descriptor.
+
+OCR and extraction instead consume the retained immutable source, never the
+original mutable pathname. One owned action worker pins a dedicated source lease
+until the fixed helper completes or is canceled and reaped. Exact action ID,
+capability and provider generation scope cancellation. Explicit Cancel keeps the
+visible preview and its lease; replacing/dismissing the preview waits for actual
+consumer retirement before stopping the whole provider. Teardown signals the
+worker and joins it before removing snapshots. The content supervisor gives the
+existing helpers 75 seconds total and the UI waits 80 seconds; these are separate
+from the unchanged 8-second renderer guard and 9-second renderer supervisor.
+OS-uninterruptible I/O can delay process termination.
+
+Extracted-subject export captures the output's version facts. The helper opens
+only a proven regular descriptor and creates a bounded anonymous copy before
+clipboard/export use; a replaced or mutated output is refused. The Save dialog
+retains its own output and originating preview identity, and late feedback cannot
+attach to another selection.
+
+Unavailable responses distinguish `unsupported`, `policy_limit`,
+`source_changed`, `permission_denied`, `application_unavailable`,
+`provider_timeout`, `provider_failure`, `dispatch_failed`, `dispatch_unknown`, `canceled`, `busy` and invalid requests.
+An Open acknowledgement timeout is unknown and is never retried automatically. A known content/preview Python timeout has the timeout reason; an ambiguous child termination,
+including status 137, remains a provider failure. Neither policy limits nor
+unsupported formats imply that the original was opened. The 64 MiB source bound,
+32 MiB inline-image bound and conservative changed-original PDF paging refusal
+remain in place.
