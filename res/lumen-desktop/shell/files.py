@@ -200,6 +200,8 @@ def handle(data):
         try:info=p.lstat()
         except (FileNotFoundError,NotADirectoryError):raise FileNotFoundError('This item is no longer available') from None
         link_state=file_link_state.describe(p,info)
+        if link_state['linkStatus']=='broken':raise FileNotFoundError(link_state['linkError'])
+        if link_state['linkStatus']=='permission-denied':raise PermissionError(link_state['linkError'])
         if link_state['linkError']:raise OSError(link_state['linkError'])
         if not p.exists():raise FileNotFoundError("This item is no longer available")
         subprocess.run((['lumen-launch-app','--'] if os.environ.get('LUMEN_LAUNCH_SCOPES') == '1' else []) + ['xdg-open',p.as_uri()],check=True,timeout=12,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
