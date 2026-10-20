@@ -1,11 +1,12 @@
 --- a/include/sway/tree/container.h
 +++ b/include/sway/tree/container.h
-@@ -149,6 +149,8 @@
+@@ -149,6 +149,9 @@
   struct sway_lumen_placement *lumen_minimized, *lumen_filled, *lumen_hidden, *lumen_desktop_hidden;
   bool lumen_app_hidden;
   bool lumen_zoomed;
 + bool lumen_restoring, lumen_restore_serial_valid;
 + uint32_t lumen_restore_serial;
++ int lumen_restore_width, lumen_restore_height;
   int lumen_preferred_width, lumen_preferred_height;
   uint64_t lumen_pair_dialog_owner;
   struct sway_lumen_pair *lumen_pair;
@@ -42,7 +43,7 @@
   if (!con->lumen_filled) return;
 --- a/sway/desktop/transaction.c
 +++ b/sway/desktop/transaction.c
-@@ -830,19 +830,33 @@
+@@ -830,19 +830,35 @@
  		struct sway_node *node = instruction->node;
  		bool hidden = node_is_view(node) && !node->destroying &&
  			!view_is_visible(node->sway_container->view);
@@ -63,6 +64,8 @@
 +            if (restoring) {
 +                node->sway_container->lumen_restore_serial = instruction->serial;
 +                node->sway_container->lumen_restore_serial_valid = true;
++                node->sway_container->lumen_restore_width = (int)instruction->container_state.content_width;
++                node->sway_container->lumen_restore_height = (int)instruction->container_state.content_height;
 +            }
  			if (!hidden) {
  				instruction->waiting = true;
@@ -78,11 +81,15 @@
  		if (!hidden && node_is_view(node) &&
  				!node->sway_container->view->saved_surface_tree) {
  			view_save_buffer(node->sway_container->view);
-@@ -917,6 +931,13 @@
+@@ -917,6 +931,17 @@
  
  bool transaction_notify_view_ready_by_serial(struct sway_view *view,
  		uint32_t serial) {
 +    struct sway_container *con = view->container;
++    if (con->lumen_restoring && con->lumen_restore_serial_valid &&
++            (con->lumen_restore_width != (int)con->pending.content_width ||
++             con->lumen_restore_height != (int)con->pending.content_height))
++        con->lumen_restore_serial_valid = false;
 +    // Wayland serials wrap; a later acknowledgement covers earlier configures.
 +    if (con->lumen_restoring && con->lumen_restore_serial_valid &&
 +            (int32_t)(serial - con->lumen_restore_serial) >= 0) {
