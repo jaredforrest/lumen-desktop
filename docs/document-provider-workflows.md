@@ -117,3 +117,29 @@ establish protection from a hostile process running as the same user, directory
 synchronization across power loss, persistent version history, or format fidelity.
 Asynchronous chooser ownership is a separate UI contract: a safe file publication
 cannot itself decide whether a delayed chooser still belongs to the open document.
+
+
+## Native chooser ownership
+
+The word processor captures the requesting document identity, revision, dirty state, protected encryption state and saved
+path before starting its native chooser. Before accepting an Open, Save As or
+Export result, it rechecks that capture. Picture requests also capture the
+selection and pending replacement target; recipient-list requests capture their
+existing merge state. A late result refuses with an actionable message before
+any write, document replacement or recipient/picture mutation. Refused results
+and failed saves return from Backstage so the existing status message is visible.
+Canceling a stale
+request does not clear a newer operation's state. Ordinary same-owner Save As
+and cancellation retain their existing behavior.
+
+`office_native_workflows.py --app writer --picker-ownership --dialog-tools ...`
+uses the actual installed provider, native chooser and physical keyboard in the
+disposable namespace. Supported provider commands replace or edit the document
+while the chooser is open. The test waits for the provider's read-only
+`fileDialogOpen` acknowledgement before assessing the result; it checks complete
+content, saved path, dirty state, original-file hashes and independently parsed
+successful output. Source-level asynchronous tests separately cover Export,
+picture selection/target, recipient replacement and stale Save Changes
+continuations. This does not add cancellation to a foreign host's legacy
+`open_async` callback interface; the selected native host uses the owned
+`Services::file_dialog` response channel.

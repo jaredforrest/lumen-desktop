@@ -1,0 +1,315 @@
+diff --git a/crates/ui-egui/src/control.rs b/crates/ui-egui/src/control.rs
+index a9c171b..98d8401 100644
+--- a/crates/ui-egui/src/control.rs
++++ b/crates/ui-egui/src/control.rs
+@@ -59,6 +59,8 @@ pub fn inspect(app: &mut WordApp, ctx: &egui::Context) -> Value {
+         "focused": app.canvas.focused,
+         "title": app.title_stem(),
+         "dirty": app.session.dirty,
++        "fileDialogOpen": app.file_dialog_open(),
++        "status": app.status_msg.as_ref().map(|(message, _)| message),
+         "perf": {"frameMs": app.frame_ms, "renderMs": app.canvas.render_ms, "layoutMs": app.session.layout().ms},
+     })
+ }
+diff --git a/crates/ui-egui/src/file_dialogs.rs b/crates/ui-egui/src/file_dialogs.rs
+index ade1776..f4c9071 100644
+--- a/crates/ui-egui/src/file_dialogs.rs
++++ b/crates/ui-egui/src/file_dialogs.rs
+@@ -55,6 +55,74 @@ pub(crate) enum AfterSave {
+ pub(crate) struct PendingDialog {
+     rx: Receiver<Option<String>>,
+     after: AfterPick,
++    owner: DialogOwner,
++}
++
++/// The document and operation context that requested a native chooser.
++/// A late host answer must never act on whichever document is current later.
++struct DialogOwner {
++    document: u64,
++    revision: u64,
++    dirty: bool,
++    password: Option<wordcraft_engine::Password>,
++    path: Option<std::path::PathBuf>,
++    picture: Option<PictureOwner>,
++    recipients: Option<Value>,
++}
++
++#[derive(PartialEq)]
++struct PictureOwner {
++    selection: wordcraft_engine::Selection,
++    additional: Vec<wordcraft_doc::Pos>,
++    column: Option<wordcraft_engine::ColumnBlock>,
++    column_mode: bool,
++    pending: Option<wordcraft_doc::props::CharProps>,
++    target: Option<String>,
++}
++impl PictureOwner {
++    fn capture(app: &WordApp) -> Self {
++        Self {
++            selection: app.session.sel.clone(),
++            additional: app.session.also_selected.clone(),
++            column: app.session.column.clone(),
++            column_mode: app.session.column_mode,
++            pending: app.session.pending.clone(),
++            target: app.change_picture_target.clone(),
++        }
++    }
++}
++
++impl DialogOwner {
++    fn recipients(app: &WordApp) -> Value {
++        let m = &app.session.merge;
++        json!([m.kind, m.headers, m.rows, m.preview, m.record, m.highlight])
++    }
++
++    fn capture(app: &WordApp, after: &AfterPick) -> Self {
++        Self {
++            document: app.session.document_id(),
++            revision: app.session.rev(),
++            dirty: app.session.dirty,
++            password: app.session.password.clone(),
++            path: app.session.path.clone(),
++            picture: matches!(after, AfterPick::Picture).then(|| PictureOwner::capture(app)),
++            recipients: matches!(after, AfterPick::Recipients).then(|| Self::recipients(app)),
++        }
++    }
++
++    fn matches(&self, app: &WordApp, after: &AfterPick) -> bool {
++        self.document == app.session.document_id()
++            && self.revision == app.session.rev()
++            && self.dirty == app.session.dirty
++            && self.password == app.session.password
++            && self.path == app.session.path
++            && self.picture.as_ref().is_none_or(|state| state == &PictureOwner::capture(app))
++            && self.recipients.as_ref().is_none_or(|state| state == &Self::recipients(app))
++            && match after {
++                AfterPick::SaveAs(AfterSave::Continue { document, .. }) => *document == self.document,
++                _ => true,
++            }
++    }
+ }
+ 
+ /// How asking for a file went.
+@@ -81,9 +149,10 @@ impl WordApp {
+             self.status(tl!("A file dialog is already open."));
+             return Asked::Busy;
+         }
++        let owner = DialogOwner::capture(self, &after);
+         if let Some(show) = &self.services.file_dialog {
+             let rx = show(req);
+-            self.file_dialog = Some(PendingDialog { rx, after });
++            self.file_dialog = Some(PendingDialog { rx, after, owner });
+             // A host that answered at once (or failed to show anything) is handled right away.
+             return self.poll_file_dialog().map_or(Asked::Pending, Asked::Done);
+         }
+@@ -91,7 +160,7 @@ impl WordApp {
+             FileDialogRequest::Open { purpose } => self.services.pick_open.as_ref().and_then(|f| f(purpose)),
+             FileDialogRequest::Save { name } => self.services.pick_save.as_ref().and_then(|f| f(name)),
+         };
+-        Asked::Done(self.finish_pick(after, picked))
++        Asked::Done(self.finish_owned_pick(owner, after, picked))
+     }
+ 
+     /// Pick up the answer of an open file dialog, if it has arrived (every frame, from `logic`),
+@@ -104,7 +173,25 @@ impl WordApp {
+             Some(Err(TryRecvError::Disconnected)) => None,
+         };
+         let d = self.file_dialog.take()?;
+-        Some(self.finish_pick(d.after, picked))
++        Some(self.finish_owned_pick(d.owner, d.after, picked))
++    }
++
++    fn finish_owned_pick(&mut self, owner: DialogOwner, after: AfterPick, picked: Option<String>) -> Result<Value, String> {
++        if !owner.matches(self, &after) {
++            // Do not even clear operation-local state: it may now belong to a newer intent.
++            if picked.is_none() {
++                return Ok(json!({"cancelled": true}));
++            }
++            let message = "The document changed while choosing a file. Please reopen the operation.";
++            self.status(message.to_string());
++            self.ui.backstage = false;
++            return Err(message.to_string());
++        }
++        let result = self.finish_pick(after, picked);
++        if result.is_err() {
++            self.ui.backstage = false;
++        }
++        result
+     }
+ 
+     /// Do what the dialog was for with the picked path (`None`: the user cancelled).
+@@ -137,7 +224,8 @@ impl WordApp {
+             }
+             AfterPick::SaveAs(after) => {
+                 let saved = picked.is_some_and(|path| {
+-                    self.run("file.save", json!({"path": path})).is_ok_and(|v| v.get("saved").and_then(Value::as_bool) == Some(true))
++                    self.run("file.save", json!({"path": path})).inspect_err(|_| self.ui.backstage = false)
++                        .is_ok_and(|v| v.get("saved").and_then(Value::as_bool) == Some(true))
+                 });
+                 match after {
+                     AfterSave::Nothing => Ok(json!({"saved": saved})),
+@@ -339,4 +427,164 @@ mod tests {
+         assert_eq!(a.session.merge.rows.len(), 2);
+         let _ = std::fs::remove_dir_all(&dir);
+     }
++
++    #[test]
++    fn chooser_owner_rejects_replaced_document_before_save() {
++        let dir = scratch("owner-replaced");
++        let path = dir.join("refused.docx");
++        let (mut a, shown) = async_app();
++        typed(&mut a);
++        a.save_as_dialog();
++        a.execute("file.new", json!({})).unwrap();
++        a.execute("text.insert", json!({"text": "replacement remains unsaved"})).unwrap();
++        let before = body_text(&a);
++        let identity = a.session.document_id();
++        answer(&shown, Some(&path.to_string_lossy()));
++        assert!(a.poll_file_dialog().unwrap().unwrap_err().contains("document changed"));
++        assert_eq!(body_text(&a), before);
++        assert_eq!(a.session.document_id(), identity);
++        assert!(a.session.dirty);
++        assert!(a.session.path.is_none());
++        assert!(!path.exists());
++        assert!(!a.file_dialog_open());
++        std::fs::remove_dir_all(dir).unwrap();
++    }
++
++    #[test]
++    fn chooser_owner_rejects_same_document_edits_and_exports() {
++        let dir = scratch("owner-revision");
++        for export in [false, true] {
++            let path = dir.join(if export { "refused-export.docx" } else { "refused-save.docx" });
++            let (mut a, shown) = async_app();
++            typed(&mut a);
++            a.ui.backstage = true;
++            if export { a.export_dialog("docx"); } else { a.save_as_dialog(); }
++            a.execute("text.insert", json!({"text": "newer edits"})).unwrap();
++            let before = body_text(&a);
++            answer(&shown, Some(&path.to_string_lossy()));
++            assert!(a.poll_file_dialog().unwrap().is_err());
++            assert!(!a.ui.backstage, "the refusal status is visible outside Backstage");
++            assert_eq!(body_text(&a), before);
++            assert!(a.session.dirty);
++            assert!(a.session.path.is_none());
++            assert!(!path.exists());
++        }
++        std::fs::remove_dir_all(dir).unwrap();
++    }
++
++    #[test]
++    fn chooser_owner_rejects_open_without_prompting_replacement() {
++        let (mut a, shown) = async_app();
++        a.open_dialog();
++        a.execute("file.new", json!({})).unwrap();
++        typed(&mut a);
++        let before = body_text(&a);
++        answer(&shown, Some("/not-opened.docx"));
++        assert!(a.poll_file_dialog().unwrap().is_err());
++        assert!(a.dialog.is_none(), "no save-changes prompt for a different document");
++        assert_eq!(body_text(&a), before);
++        assert!(a.session.dirty);
++    }
++
++    #[test]
++    fn chooser_owner_checks_picture_selection_and_preserves_new_cancel_intent() {
++        let dir = scratch("owner-picture");
++        let image_path = dir.join("valid.png");
++        image::RgbaImage::from_pixel(2, 2, image::Rgba([200, 30, 60, 255])).save(&image_path).unwrap();
++        let (mut a, shown) = async_app();
++        typed(&mut a);
++        a.pick_picture();
++        a.session.sel.focus.off = 0;
++        answer(&shown, Some(&image_path.to_string_lossy()));
++        assert!(a.poll_file_dialog().unwrap().unwrap_err().contains("document changed"));
++        assert!(body_text(&a).contains(UNSAVED));
++        assert_eq!(a.session.run("arrange.selectionPane", &json!({})).unwrap().as_array().unwrap().len(), 0);
++        a.pick_picture();
++        let revision = a.session.rev();
++        a.session.column_mode = true;
++        assert_eq!(a.session.rev(), revision);
++        answer(&shown, Some(&image_path.to_string_lossy()));
++        assert!(a.poll_file_dialog().unwrap().unwrap_err().contains("document changed"));
++        assert_eq!(a.session.run("arrange.selectionPane", &json!({})).unwrap().as_array().unwrap().len(), 0);
++        a.change_picture_target = Some("old-target".into());
++        a.pick_picture();
++        a.change_picture_target = Some("new-target".into());
++        answer(&shown, None);
++        assert_eq!(a.poll_file_dialog().unwrap().unwrap(), json!({"cancelled": true}));
++        assert_eq!(a.change_picture_target.as_deref(), Some("new-target"));
++        std::fs::remove_dir_all(dir).unwrap();
++    }
++
++    #[test]
++    fn chooser_owner_rejects_replaced_recipients_without_document_edit() {
++        let dir = scratch("owner-recipient");
++        let csv = dir.join("valid.csv");
++        std::fs::write(&csv, "Old\nobsolete recipients\n").unwrap();
++        let (mut a, shown) = async_app();
++        a.run("ui.openRecipientList", json!({})).unwrap();
++        let rev = a.session.rev();
++        a.session.merge.headers = vec!["New".into()];
++        a.session.merge.rows = vec![vec!["newer recipients".into()]];
++        assert_eq!(a.session.rev(), rev);
++        answer(&shown, Some(&csv.to_string_lossy()));
++        assert!(a.poll_file_dialog().unwrap().unwrap_err().contains("document changed"));
++        assert_eq!(a.session.merge.rows, vec![vec!["newer recipients".to_string()]]);
++        std::fs::remove_dir_all(dir).unwrap();
++    }
++
++    #[test]
++    fn chooser_owner_checks_continuation_identity_before_any_write() {
++        let dir = scratch("owner-continuation");
++        let path = dir.join("refused.docx");
++        let (mut a, shown) = async_app();
++        typed(&mut a);
++        let old = a.session.document_id();
++        a.execute("file.new", json!({})).unwrap();
++        typed(&mut a);
++        a.save_as(AfterSave::Continue { then: "file.close".into(), params: json!({}), document: old });
++        answer(&shown, Some(&path.to_string_lossy()));
++        assert!(a.poll_file_dialog().unwrap().is_err());
++        assert!(!path.exists());
++        assert!(!a.quit_requested);
++        assert!(a.session.dirty);
++        std::fs::remove_dir_all(dir).unwrap();
++    }
++
++    #[test]
++    fn chooser_owner_rejects_changed_encryption_without_document_revision() {
++        let dir = scratch("owner-encryption");
++        let path = dir.join("refused.docx");
++        let (mut a, shown) = async_app();
++        typed(&mut a);
++        a.save_as_dialog();
++        let revision = a.session.rev();
++        a.execute("file.encrypt", json!({"password": "Synthetic test fixture only"})).unwrap();
++        assert_eq!(a.session.rev(), revision);
++        answer(&shown, Some(&path.to_string_lossy()));
++        assert!(a.poll_file_dialog().unwrap().unwrap_err().contains("document changed"));
++        assert!(!path.exists());
++        assert!(a.session.password.is_some());
++        assert!(a.session.dirty);
++        assert!(body_text(&a).contains(UNSAVED));
++        std::fs::remove_dir_all(dir).unwrap();
++    }
++
++    #[test]
++    fn chooser_owner_save_failure_exposes_status_and_keeps_document_unsaved() {
++        let dir = scratch("owner-save-failure");
++        let path = dir.join("missing-parent").join("not-saved.docx");
++        let (mut a, shown) = async_app();
++        typed(&mut a);
++        a.ui.backstage = true;
++        a.save_as_dialog();
++        answer(&shown, Some(&path.to_string_lossy()));
++        assert_eq!(a.poll_file_dialog().unwrap().unwrap(), json!({"saved": false}));
++        assert!(!a.ui.backstage);
++        assert!(a.status_msg.as_ref().is_some_and(|(message, _)| !message.is_empty()));
++        assert!(!path.exists());
++        assert!(a.session.path.is_none());
++        assert!(a.session.dirty);
++        assert!(body_text(&a).contains(UNSAVED));
++        std::fs::remove_dir_all(dir).unwrap();
++    }
+ }
