@@ -77,6 +77,7 @@ jobs:
             bash tests/ci/run-native.sh menu_keyboard_input nix develop --command desktop-test-python tests/desktop/menu_keyboard_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/menu-keyboard-$compositor"
           done
           bash tests/ci/run-native.sh widget_catalogue_input nix develop --command desktop-test-python tests/desktop/widget_catalogue_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --theme light --output artifacts/widget-catalogue-light
+          bash tests/ci/run-native.sh network_connectivity_provider nix develop --command desktop-test-python tests/desktop/network_connectivity_provider.py --output artifacts/network-connectivity-provider
           bash tests/ci/run-native.sh battery_provider nix develop --command desktop-test-python tests/desktop/battery_provider.py --output artifacts/power-provider
           bash tests/ci/run-native.sh status_clock_input nix develop --command desktop-test-python tests/desktop/status_clock_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/status-clock
           bash tests/ci/run-native.sh input_settings_native nix develop --command desktop-test-python tests/desktop/input_settings_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/input-settings
@@ -194,6 +195,7 @@ jobs:
             artifacts/live-transparency-*
             artifacts/spaces
             artifacts/application-desktops-*
+            artifacts/network-connectivity-provider
             artifacts/power-provider
             artifacts/overview-lifecycle
             artifacts/window-relationships-*

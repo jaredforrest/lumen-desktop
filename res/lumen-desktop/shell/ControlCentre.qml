@@ -3,6 +3,7 @@ import QtQuick.Controls
 import Quickshell.Io
 import Quickshell.Bluetooth
 import "BatteryModel.js" as BatteryModel
+import "NetworkState.js" as NetworkState
 Column {
     id:root
     required property var shell
@@ -54,7 +55,7 @@ Column {
         DialogButton {width:parent.width-parent.children[0].width-8;text:"System Settings…";onClicked:root.settingsRequested()}
     }
     PanelLabel {visible:root.error!=="";width:parent.width;wrapMode:Text.WordWrap;text:root.error;color:Theme.colors.muted}
-    Component {id:componentWifi;ControlTile {label:"Wi-Fi";symbol:"wifi";unavailable:!root.shell.systemState.wifi.available;active:root.shell.systemState.wifi.state==="COMPLETED";subtitle:active?"Connected":"Disconnected";onClicked:root.panelRequested("Wi-Fi")}}
+    Component {id:componentWifi;ControlTile {label:"Wi-Fi";symbol:"wifi";unavailable:NetworkState.state(root.shell.systemState.wifi).unavailable;active:NetworkState.state(root.shell.systemState.wifi).active;subtitle:NetworkState.state(root.shell.systemState.wifi).label;onClicked:root.panelRequested("Wi-Fi")}}
     Component {id:componentBluetooth;ControlTile {label:"Bluetooth";symbol:"bluetooth";unavailable:!Bluetooth.defaultAdapter;active:!!Bluetooth.defaultAdapter && Bluetooth.defaultAdapter.enabled;subtitle:active?"On":"Off";onClicked:root.panelRequested("Bluetooth")}}
     Component {id:componentSharing;ControlTile {label:"Sharing";subtitle:"LocalSend";symbol:"share";unavailable:false;accessibleLabel:"Open LocalSend nearby sharing";onClicked:{root.shell.claimPopup("");AppLaunch.run(["localsend_app"]);}}}
     Component {id:componentMedia;MediaControl {onExpandRequested:root.panelRequested("Now Playing")}}

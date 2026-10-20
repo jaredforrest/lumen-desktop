@@ -4,6 +4,7 @@ import dbus
 from pathlib import Path
 import bluetooth_power
 import battery_power
+import network_connectivity
 
 class Wireless:
     def __init__(self):
@@ -102,6 +103,7 @@ def main():
             wireless = wifi.status()
         except (OSError, RuntimeError):
             wireless = {"available": False, "networks": []}
+        wireless=network_connectivity.merge(wireless,network_connectivity.status(wifi.path.name if wifi.path else None))
         return {"wifi": wireless, "bluetoothRadios": bluetooth_power.status(), "power": battery_power.status()}
     if action == "wifi-connect":
         ident = sys.argv[2]

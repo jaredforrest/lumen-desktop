@@ -3,6 +3,7 @@ import Quickshell
 import Quickshell.Bluetooth
 import Quickshell.Io
 import QtQuick.Controls
+import "NetworkState.js" as NetworkState
 PanelSurface {
     id: root
     required property string kind
@@ -31,13 +32,13 @@ PanelSurface {
         PanelLabel {text:root.kind;font.pixelSize:14;font.weight:Font.DemiBold}
         Column {
             visible:root.kind==="Wi-Fi";width:parent.width;spacing:4
-            PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:!root.controls.wifi.available?"Wi-Fi unavailable":root.controls.wifi.state==="COMPLETED"?"Connected to "+root.controls.wifi.name:root.controls.wifi.state==="DISCONNECTED"?"Disconnected":"Connecting…";color:Theme.colors.muted}
+            PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:NetworkState.state(root.controls.wifi).detail;color:Theme.colors.muted}
             Repeater {
                 model:root.controls.wifi.networks
                 ControlRow {required property var modelData;width:content.width;text:modelData.name;selected:modelData.connected;enabled:!root.controls.busy && !modelData.connected;onClicked:root.controls.act("wifi-connect",modelData.id)}
             }
             ControlRow {width:parent.width;visible:root.controls.wifi.available;text:root.controls.wifi.state==="DISCONNECTED"?"Reconnect":"Disconnect";enabled:!root.controls.busy;onClicked:root.controls.act(root.controls.wifi.state==="DISCONNECTED"?"wifi-reconnect":"wifi-disconnect")}
-            PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:root.controls.wifi.available?"Choose a saved network to connect.":"No Wi-Fi adapter is available. Connect an adapter or use Ethernet.";font.pixelSize:11;color:Theme.colors.muted}
+            PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:root.controls.wifi.available?"Choose a saved network to connect.":"Wi-Fi controls are unavailable. Check network settings or use Ethernet.";font.pixelSize:11;color:Theme.colors.muted}
         }
         Column {
             visible:root.kind==="Bluetooth";width:parent.width;spacing:4

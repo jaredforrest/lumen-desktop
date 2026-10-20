@@ -23,7 +23,8 @@ Item {
         id: reader
         property int requestRevision:0
         command:[root.python,root.helper,"status"]
-        stdout: StdioCollector {onStreamFinished:{if(reader.requestRevision!==root.revision)return;try{const s=JSON.parse(text);powerState.publish(s.power);if(s.wifi)root.wifi=s.wifi;if(s.bluetoothRadios)root.bluetoothRadios=s.bluetoothRadios;}catch(e){powerState.clear();root.error="Unable to read system controls";}}}
+        onExited:(code,status)=>{if(code!==0 && reader.requestRevision===root.revision)root.wifi=({available:false,networks:[],phase:"service-unavailable",connectivity:"unknown"});}
+        stdout: StdioCollector {onStreamFinished:{if(reader.requestRevision!==root.revision)return;try{const s=JSON.parse(text);powerState.publish(s.power);root.wifi=s.wifi || ({available:false,networks:[],phase:"service-unavailable",connectivity:"unknown"});if(s.bluetoothRadios)root.bluetoothRadios=s.bluetoothRadios;}catch(e){powerState.clear();root.wifi=({available:false,networks:[],phase:"service-unavailable",connectivity:"unknown"});root.error="Unable to read system controls";}}}
     }
     Process {
         id: writer
