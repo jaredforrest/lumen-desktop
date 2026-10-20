@@ -16,6 +16,7 @@ Popup {
     property int changeCount:0
     property string message:""
     property bool completed:false
+    property bool acceptingReplies:false
     modal:true;focus:true
     Accessible.role:Accessible.Dialog
     Accessible.name:"Rename selected items"
@@ -25,7 +26,7 @@ Popup {
     background:Rectangle {radius:14;color:Theme.colors.background;border.color:Theme.outline}
     function begin(selection){
         if(executing)return;
-        requestId=0;waiting=false;invalidate();captured=selection.map(row=>({path:row.path,identity:JSON.parse(JSON.stringify(row.identity))}));rows=[];message="";completed=false;
+        requestId=0;waiting=false;invalidate();acceptingReplies=true;captured=selection.map(row=>({path:row.path,identity:JSON.parse(JSON.stringify(row.identity))}));rows=[];message="";completed=false;
         renameMode.currentIndex=0;first.text="";second.text="";policy.currentIndex=0;open();Qt.callLater(()=>first.forceActiveFocus());
     }
     function invalidate(){if(token && service.ready)service.send("rename-cancel",{token:token});token="";executable=false;changeCount=0;}
@@ -39,11 +40,11 @@ Popup {
         const capturedToken=token;token="";executable=false;executing=true;waiting=true;message="Renaming the captured items…";
         requestId=service.send("rename-confirm",{token:capturedToken,confirmed:true});
     }
-    onClosed:if(!executing){invalidate();requestId=0;waiting=false;}
+    onAboutToHide:{acceptingReplies=false;if(!executing){invalidate();requestId=0;waiting=false;}}
     Connections {target:root.service
         function onReadyChanged(){if(!root.service.ready){root.invalidate();root.requestId=0;root.waiting=false;root.executing=false;root.message="Files disconnected. Close this dialog and select the items again.";}}
         function onBatchRenameReady(reply){
-            if(reply.id!==root.requestId || (!root.opened && reply.action!=="rename-confirm")){if(reply.action==="rename-preview" && reply.token)root.service.send("rename-cancel",{token:reply.token});return;}
+            if(reply.id!==root.requestId || (!root.acceptingReplies && reply.action!=="rename-confirm")){if(reply.action==="rename-preview" && reply.token)root.service.send("rename-cancel",{token:reply.token});return;}
             root.waiting=false;root.requestId=0;
             if(reply.action==="rename-preview"){
                 root.rows=reply.rows || [];root.token=reply.token || "";root.executable=reply.executable===true;root.changeCount=reply.count || 0;
