@@ -31,6 +31,13 @@ FloatingWindow {
     readonly property bool columnsMode:service.viewMode==="columns"
     property int selected:-1
     property var selectedPaths:[]
+    property var bandPreviewPaths:null
+    readonly property real selectionGutter:12
+    readonly property bool bandPermitted:visible && selectionActive && !service.busy && (!shell.screenSaverPreferences || shell.screenSaverPreferences.permitted)
+    readonly property string bandContext:JSON.stringify([service.path,activeTabId,service.viewMode,service.query,service.sort,service.descending,service.hidden,service.groupBy,service.foldersFirst,screen?screen.name:""])
+    function cancelPendingPresentation(){if(restoringPresentationState){++presentationRevision;restoringPresentationState=false;pendingPresentation=null;}}
+    function commitBand(value){if(!value)return;cancelPendingPresentation();bandPreviewPaths=null;selectedPaths=value.paths;selected=value.current;selectionAnchor=value.anchor;content.forceActiveFocus();saveTab();}
+    function cancelBand(reason){bandPreviewPaths=null;if(reason==="escape" && selectionActive)content.forceActiveFocus();}
     property int selectionAnchor:-1
     property int tabSerial:1
     property var tabs:[TabModel.create("tab-1",Quickshell.env("HOME"))]
@@ -81,7 +88,7 @@ FloatingWindow {
     }
     function restorePresentation(saved){
         pendingPresentation=saved;restoringPresentationState=true;const revision=++presentationRevision;
-        if(saved){if(saved.selectionOverflow)service.warning="The previous selection exceeded the navigation history limit and was cleared. Select the items again.";service.restoreView(saved.view);filter.text=service.query;const selectedState=HistoryModel.reconcile(saved,service.rows);selectedPaths=selectedState.paths;selected=selectedState.selected;selectionAnchor=selectedState.anchor;}
+        if(saved){if(saved.selectionOverflow)service.warning="The previous selection exceeded the navigation history limit and was cleared. Select the items again.";service.restoreView(saved.view);filter.text=service.query;const selectedState=HistoryModel.reconcile(saved,service.rows);if(!saved.selectionOverflow && ((saved.selection || []).length>selectedState.paths.length || (saved.current && selectedState.selected<0)))service.warning="Some selected or focused items changed or could not be followed. Select them again.";selectedPaths=selectedState.paths;selected=selectedState.selected;selectionAnchor=selectedState.anchor;}
         else {selectedPaths=[];selected=-1;selectionAnchor=-1;}
         Qt.callLater(()=>{if(revision!==presentationRevision)return;if(service.busy){restoringPresentationState=false;return;}const scroll=(saved || {}).scroll || {};restoreScroll(list,scroll.list,false);restoreScroll(grid,scroll.grid,false);restoreScroll(galleryStrip,scroll.gallery,true);columnView.restoreSnapshot(scroll.columns || {});restoringPresentationState=false;saveTab();});
     }
@@ -108,8 +115,8 @@ FloatingWindow {
     function closeTab(){closeTabId(activeTabId);}
     function duplicateSelected(){if(service.writable && service.path!=="trash:" && selectedPaths.length && !service.working)service.startJob("copy",selectedPaths,service.path,"keep-both");}
     function selectedUris(){return selectedPaths.map(p=>"file://"+p.split("/").map(encodeURIComponent).join("/"));}
-    function isSelected(index){return service.rows[index] && selectedPaths.includes(service.rows[index].path);}
-    function selectAll(){selectedPaths=service.rows.map(r=>r.path);selected=service.rows.length?0:-1;}
+    function isSelected(index){const paths=bandPreviewPaths===null?selectedPaths:bandPreviewPaths;return service.rows[index] && paths.includes(service.rows[index].path);}
+    function selectAll(){cancelPendingPresentation();selectedPaths=service.rows.map(r=>r.path);selected=service.rows.length?0:-1;}
     onVisibleChanged:{service.active=visible;if(!visible){previewDelay.stop();service.requestPreview("");}else if(previewOpen || galleryMode)schedulePreview();if(!visible && shell.ownedContext)shell.ownedContext.close(root)}
 
     readonly property var defaultFavorites:[{name:"Home",path:Quickshell.env("HOME")},{name:"Desktop",path:Quickshell.env("HOME")+"/Desktop"},{name:"Documents",path:Quickshell.env("HOME")+"/Documents"},{name:"Downloads",path:Quickshell.env("HOME")+"/Downloads"},{name:"Pictures",path:Quickshell.env("HOME")+"/Pictures"},{name:"Music",path:Quickshell.env("HOME")+"/Music"},{name:"Videos",path:Quickshell.env("HOME")+"/Videos"},{name:"Data",path:Quickshell.env("HOME")+"/data"}]
@@ -174,7 +181,7 @@ FloatingWindow {
     function quickLookStep(delta){step(delta,false);if(current)shell.quickLookWindow.show(current.path,root);}
     function openCurrent(){if(!current || service.busy)return;if(current.directory)navigate(current.path);else service.act("open",{path:current.path});}
     function choose(index,modifiers){
-        const row=service.rows[index];if(!row)return;
+        const row=service.rows[index];if(!row)return;cancelPendingPresentation();
         if((modifiers || 0)&Qt.ShiftModifier){const from=selectionAnchor<0?index:selectionAnchor;selectedPaths=service.rows.slice(Math.min(from,index),Math.max(from,index)+1).map(r=>r.path);}
         else if((modifiers || 0)&Qt.ControlModifier){selectedPaths=selectedPaths.includes(row.path)?selectedPaths.filter(p=>p!==row.path):selectedPaths.concat([row.path]);selectionAnchor=index;}
         else {selectedPaths=[row.path];selectionAnchor=index;}
@@ -233,7 +240,7 @@ FloatingWindow {
                 if(root.selected<0)root.selected=root.service.rows.findIndex(row=>root.selectedPaths.includes(row.path));
                 root.selectionAnchor=root.selected;
             }
-            else if(path==="@preserve"){root.selectedPaths=root.selectedPaths.filter(p=>root.service.rows.some(r=>r.path===p));root.selected=root.service.rows.findIndex(r=>root.selectedPaths.includes(r.path));}
+            else if(path==="@preserve"){root.selectedPaths=root.selectedPaths.filter(p=>root.service.rows.some(r=>r.path===p));}
             else {root.selectedPaths=path?[path]:[];root.selected=root.service.rows.findIndex(r=>r.path===path);}
             root.saveTab();
         }
@@ -481,7 +488,7 @@ FloatingWindow {
             height:parent.height-y-64-(root.service.currentJob?40:0)
             enabled:!root.service.busy
             Row {
-                id:headings;visible:root.listMode;width:parent.width;height:26
+                id:headings;visible:root.listMode;width:Math.max(0,parent.width-root.selectionGutter-(listScrollBar.visible?listScrollBar.width:0));height:26
                 Repeater {
                     model:[{key:"name",label:"Name",fraction:0.55},{key:"modified",label:"Modified",fraction:0.27},{key:"size",label:"Size",fraction:0.18}]
                     ControlRow {required property var modelData;width:headings.width*modelData.fraction;height:26;topPadding:3;bottomPadding:3;text:modelData.label+(root.service.sort===modelData.key?(root.service.descending?" ↓":" ↑"):"");onClicked:root.sortBy(modelData.key)}
@@ -491,10 +498,10 @@ FloatingWindow {
                 section.property:root.service.groupBy==="kind"?"modelData.group":""
                 section.delegate:PanelLabel {required property string section;width:list.width;height:30;text:section;font.weight:Font.DemiBold;topPadding:8;leftPadding:8}
                 id:list;objectName:"files-list-view";visible:root.listMode;anchors.top:headings.bottom;anchors.bottom:parent.bottom;width:parent.width;clip:true;model:root.service.rows
-                ScrollBar.vertical:DesktopScrollBar {}
+                ScrollBar.vertical:DesktopScrollBar {id:listScrollBar}
                 delegate:Rectangle {
                     required property var modelData;required property int index
-                    width:list.width;height:31;radius:5;color:root.isSelected(index)?root.selectionFill:index%2?Theme.colors.background:"transparent"
+                    width:Math.max(0,list.width-root.selectionGutter-(listScrollBar.visible?listScrollBar.width:0));height:31;radius:5;color:root.isSelected(index)?root.selectionFill:index%2?Theme.colors.background:"transparent"
                     SystemGlyph {x:8;anchors.verticalCenter:parent.verticalCenter;name:modelData.directory?"folder":"document";width:18;height:18;ink:root.isSelected(index)?root.selectionText:Theme.colors.accent}
                     PanelLabel {x:34;anchors.verticalCenter:parent.verticalCenter;width:parent.width*.55-40;text:FileLinks.markedLabel(modelData);textFormat:Text.PlainText;color:root.isSelected(index)?root.selectionText:Theme.colors.text;font.pixelSize:12}
                     PanelLabel {x:parent.width*.55+8;anchors.verticalCenter:parent.verticalCenter;width:parent.width*.27-10;text:Qt.formatDateTime(new Date(modelData.mtime*1000),"dd MMM yyyy");font.pixelSize:11;color:root.isSelected(index)?root.selectionText:Theme.colors.muted}
@@ -509,18 +516,18 @@ FloatingWindow {
             }
             GridView {
                 id:grid;objectName:"files-grid-view";visible:root.service.viewMode==="grid";anchors.fill:parent;cellWidth:108;cellHeight:108;clip:true;model:root.service.rows
-                ScrollBar.vertical:DesktopScrollBar {}
+                ScrollBar.vertical:DesktopScrollBar {id:gridScrollBar}
                 delegate:Item {
                     required property var modelData;required property int index
-                    width:108;height:108
+                    width:Math.max(1,grid.cellWidth-root.selectionGutter-(gridScrollBar.visible?gridScrollBar.width:0));height:grid.cellHeight
                     Accessible.name:FileLinks.accessible(modelData);Accessible.role:Accessible.ListItem;Accessible.selected:root.isSelected(index);Accessible.onPressAction:root.choose(index,0)
-                    Rectangle {x:20;y:4;width:68;height:62;radius:8;color:root.isSelected(index)?Theme.selection:"transparent"}
-                    Image {visible:modelData.directory;x:25;y:9;width:58;height:48;source:"icons/folder.svg";sourceSize:Qt.size(116,96)}
-                    Image {id:thumbnail;property bool failed:false;onStatusChanged:if(status===Image.Error)failed=true;visible:!modelData.directory && ["image/png","image/jpeg","image/webp","image/gif","image/bmp"].includes(modelData.kind) && modelData.size<=33554432 && !failed;x:24;y:8;width:60;height:54;source:visible?modelData.uri:"";sourceSize:Qt.size(120,108);fillMode:Image.PreserveAspectFit;asynchronous:true}
-                    SystemGlyph {visible:!modelData.directory && !thumbnail.visible;x:36;y:14;width:36;height:40;name:"document";ink:Theme.colors.muted}
+                    Rectangle {x:(parent.width-68)/2;y:4;width:68;height:62;radius:8;color:root.isSelected(index)?Theme.selection:"transparent"}
+                    Image {visible:modelData.directory;x:(parent.width-58)/2;y:9;width:58;height:48;source:"icons/folder.svg";sourceSize:Qt.size(116,96)}
+                    Image {id:thumbnail;property bool failed:false;onStatusChanged:if(status===Image.Error)failed=true;visible:!modelData.directory && ["image/png","image/jpeg","image/webp","image/gif","image/bmp"].includes(modelData.kind) && modelData.size<=33554432 && !failed;x:(parent.width-60)/2;y:8;width:60;height:54;source:visible?modelData.uri:"";sourceSize:Qt.size(120,108);fillMode:Image.PreserveAspectFit;asynchronous:true}
+                    SystemGlyph {visible:!modelData.directory && !thumbnail.visible;x:(parent.width-36)/2;y:14;width:36;height:40;name:"document";ink:Theme.colors.muted}
                     PanelLabel {visible:modelData.link;x:22;y:45;text:FileLinks.badge(modelData);font.pixelSize:16}
-                    Rectangle {x:3;y:70;width:102;height:30;radius:4;color:root.isSelected(index)?root.selectionFill:"transparent"}
-                    PanelLabel {x:5;y:70;width:98;height:30;text:FileLinks.label(modelData);textFormat:Text.PlainText;horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter;wrapMode:Text.Wrap;maximumLineCount:2;font.pixelSize:12;color:root.isSelected(index)?root.selectionText:Theme.colors.text}
+                    Rectangle {x:3;y:70;width:parent.width-6;height:30;radius:4;color:root.isSelected(index)?root.selectionFill:"transparent"}
+                    PanelLabel {x:5;y:70;width:parent.width-10;height:30;text:FileLinks.label(modelData);textFormat:Text.PlainText;horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter;wrapMode:Text.Wrap;maximumLineCount:2;font.pixelSize:12;color:root.isSelected(index)?root.selectionText:Theme.colors.text}
                     FolderDropTarget {anchors.fill:parent;enabled:modelData.directory && root.service.path!=="trash:";folder:modelData.path;coordinator:fileDrop}
                     MouseArea {anchors.fill:parent;acceptedButtons:Qt.LeftButton|Qt.RightButton;drag.target:dragGhost
                         onPressed:event=>{if(event.button===Qt.LeftButton && !event.modifiers && !root.isSelected(index))root.choose(index,event.modifiers);}
@@ -528,21 +535,24 @@ FloatingWindow {
                         onClicked:event=>{if(event.button!==Qt.RightButton || !root.isSelected(index))root.choose(index,event.modifiers);if(event.button===Qt.RightButton){actions.x=Math.min(root.width-actions.width-8,mapToItem(content,event.x,event.y).x);actions.y=Math.min(root.height-actions.height-8,mapToItem(content,event.x,event.y).y);actions.open();}} onDoubleClicked:root.openCurrent()}
                 }
             }
-            ColumnView {id:columnView;selectionActive:root.selectionActive;dropCoordinator:fileDrop;visible:root.columnsMode;anchors.fill:parent;columns:root.service.columns;currentPath:root.current?root.current.path:"";onChosen:(path,directory)=>{if(directory)root.navigate(path);else {const index=root.service.rows.findIndex(r=>r.path===path);if(index>=0)root.choose(index,0);else {root.service.nextSelection=path;root.navigate(path.slice(0,path.lastIndexOf("/")) || "/");}}}}
+            FilesBandSelection {objectName:"files-list-band-selection";parent:list;anchors.fill:parent;view:list;rows:root.service.rows;selectedPaths:root.selectedPaths;currentIndex:root.selected;anchorIndex:root.selectionAnchor;contextKey:root.bandContext;permitted:root.bandPermitted && list.visible;rightInset:listScrollBar.visible?listScrollBar.width:0;onBegan:root.cancelPendingPresentation();onPreviewed:paths=>root.bandPreviewPaths=paths;onCommitted:value=>root.commitBand(value);onCanceled:reason=>root.cancelBand(reason)}
+            FilesBandSelection {objectName:"files-grid-band-selection";parent:grid;anchors.fill:parent;view:grid;rows:root.service.rows;selectedPaths:root.selectedPaths;currentIndex:root.selected;anchorIndex:root.selectionAnchor;contextKey:root.bandContext;permitted:root.bandPermitted && grid.visible;rightInset:gridScrollBar.visible?gridScrollBar.width:0;onBegan:root.cancelPendingPresentation();onPreviewed:paths=>root.bandPreviewPaths=paths;onCommitted:value=>root.commitBand(value);onCanceled:reason=>root.cancelBand(reason)}
+            ColumnView {id:columnView;selectedPaths:root.bandPreviewPaths===null?root.selectedPaths:root.bandPreviewPaths;bandBasePaths:root.selectedPaths;bandRows:root.service.rows;bandPermitted:root.bandPermitted;bandContext:root.bandContext;bandCurrent:root.selected;bandAnchor:root.selectionAnchor;selectionFolder:root.service.path;onBandBegan:root.cancelPendingPresentation();onBandPreviewed:paths=>root.bandPreviewPaths=paths;onBandCommitted:value=>root.commitBand(value);onBandCanceled:reason=>root.cancelBand(reason);selectionActive:root.selectionActive;dropCoordinator:fileDrop;visible:root.columnsMode;anchors.fill:parent;columns:root.service.columns;currentPath:root.current?root.current.path:"";onChosen:(path,directory)=>{if(directory)root.navigate(path);else {const index=root.service.rows.findIndex(r=>r.path===path);if(index>=0)root.choose(index,0);else {root.service.nextSelection=path;root.navigate(path.slice(0,path.lastIndexOf("/")) || "/");}}}}
             Item {visible:root.galleryMode;anchors.fill:parent
                 FilePreview {resourceRetirement:root.service.previewResourceRetirement;x:12;y:0;width:parent.width-24;height:Math.max(60,parent.height-118);result:root.current?root.service.preview:{text:"Select an item"};active:root.visible && root.galleryMode;loading:root.service.previewBusy;onPageRequested:number=>root.service.requestPreview(root.current.path,number)}
-                ListView {id:galleryStrip;objectName:"files-gallery-view";anchors.bottom:parent.bottom;width:parent.width;height:104;orientation:ListView.Horizontal;clip:true;spacing:5;model:root.service.rows;ScrollBar.horizontal:DesktopScrollBar {}
-                    delegate:AbstractButton {required property var modelData;required property int index;width:92;height:92;
+                ListView {id:galleryStrip;objectName:"files-gallery-view";anchors.bottom:parent.bottom;width:parent.width;height:104;orientation:ListView.Horizontal;clip:true;spacing:5;model:root.service.rows;ScrollBar.horizontal:DesktopScrollBar {id:galleryScrollBar}
+                    delegate:AbstractButton {required property var modelData;required property int index;width:92;height:Math.max(1,galleryStrip.height-root.selectionGutter-(galleryScrollBar.visible?galleryScrollBar.height:0));
                         FolderDropTarget {anchors.fill:parent;enabled:modelData.directory && root.service.path!=="trash:";folder:modelData.path;coordinator:fileDrop}
 Accessible.name:FileLinks.accessible(modelData);Accessible.selected:root.isSelected(index);onClicked:root.choose(index,0);onDoubleClicked:root.openCurrent()
                         background:Rectangle {radius:7;color:root.isSelected(index)?Theme.selection:parent.hovered?Theme.colors.hover:"transparent";border.color:parent.activeFocus?Theme.colors.accent:"transparent"}
                         contentItem:Item {
                             Image {id:galleryThumb;anchors.horizontalCenter:parent.horizontalCenter;y:4;width:72;height:46;source:modelData.directory?"icons/folder.svg":(["image/png","image/jpeg","image/webp","image/gif","image/bmp"].includes(modelData.kind) && modelData.size<=33554432?modelData.uri:"");sourceSize:Qt.size(144,92);fillMode:Image.PreserveAspectFit;asynchronous:true}
                             SystemGlyph {visible:!galleryThumb.source || galleryThumb.status===Image.Error;anchors.horizontalCenter:parent.horizontalCenter;y:5;width:36;height:42;name:"document";ink:Theme.colors.muted}
-                            PanelLabel {y:52;width:parent.width;height:36;text:FileLinks.markedLabel(modelData);textFormat:Text.PlainText;wrapMode:Text.Wrap;maximumLineCount:2;horizontalAlignment:Text.AlignHCenter;font.pixelSize:11}}
+                            PanelLabel {y:52;width:parent.width;height:Math.max(0,parent.height-52);text:FileLinks.markedLabel(modelData);textFormat:Text.PlainText;wrapMode:Text.Wrap;maximumLineCount:2;horizontalAlignment:Text.AlignHCenter;font.pixelSize:11}}
                     }
                 }
             }
+            FilesBandSelection {objectName:"files-gallery-band-selection";parent:galleryStrip;anchors.fill:parent;view:galleryStrip;rows:root.service.rows;selectedPaths:root.selectedPaths;currentIndex:root.selected;anchorIndex:root.selectionAnchor;contextKey:root.bandContext;permitted:root.bandPermitted && root.galleryMode;bottomInset:galleryScrollBar.visible?galleryScrollBar.height:0;onBegan:root.cancelPendingPresentation();onPreviewed:paths=>root.bandPreviewPaths=paths;onCommitted:value=>root.commitBand(value);onCanceled:reason=>root.cancelBand(reason)}
             PanelLabel {anchors.centerIn:parent;visible:root.service.rows.length===0;text:root.service.busy?"Loading…":root.service.query?"No matching items":"This folder is empty";color:Theme.colors.muted}
         }
         Item {

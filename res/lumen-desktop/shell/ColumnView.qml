@@ -2,12 +2,25 @@ import QtQuick
 import QtQuick.Controls
 import "FilesHistoryModel.js" as HistoryModel
 import "FileLinks.js" as FileLinks
+import "FilesSelectionModel.js" as SelectionModel
 Flickable {
     id: root
     property bool selectionActive:true
     property var columns: []
     required property var dropCoordinator
     property string currentPath: ""
+    property var selectedPaths:[]
+    property var bandBasePaths:[]
+    property var bandRows:[]
+    property bool bandPermitted:false
+    property string bandContext:""
+    property int bandCurrent:-1
+    property int bandAnchor:-1
+    property string selectionFolder:""
+    signal bandBegan()
+    signal bandPreviewed(var paths)
+    signal bandCommitted(var selection)
+    signal bandCanceled(string reason)
     signal chosen(string path, bool directory)
     clip: true; contentWidth: columnRow.width; contentHeight: height
     property var pendingSnapshot:null
@@ -34,14 +47,26 @@ Flickable {
                 width: Math.max(200,Math.min(260,root.width/2)); height: columnRow.height
                 Rectangle {anchors.right:parent.right;width:1;height:parent.height;color:Theme.hairline}
                 PanelLabel {x:10;y:3;width:parent.width-20;height:24;text:modelData.name;textFormat:Text.PlainText;font.weight:Font.DemiBold;font.pixelSize:11;color:Theme.colors.muted}
+                FilesBandSelection {
+                    objectName:"files-column-band-"+columnList.parent.modelData.path
+                    parent:columnList;anchors.fill:parent;view:columnList;rows:root.bandRows
+                    selectedPaths:root.bandBasePaths;currentIndex:root.bandCurrent;anchorIndex:root.bandAnchor
+                    contextKey:root.bandContext+"|"+root.contentX
+                    permitted:root.bandPermitted && columnList.parent.modelData.path===root.selectionFolder && columnList.parent.modelData.loaded!==false && SelectionModel.revision(root.bandRows)===SelectionModel.revision(columnList.model)
+                    rightInset:columnScrollBar.visible?columnScrollBar.width:0
+                    onBegan:root.bandBegan()
+                    onPreviewed:paths=>root.bandPreviewed(paths)
+                    onCommitted:value=>root.bandCommitted(value)
+                    onCanceled:reason=>root.bandCanceled(reason)
+                }
                 ListView {
                     id:columnList;objectName:"files-column-"+parent.modelData.path
                     anchors {top:parent.top;topMargin:30;left:parent.left;right:parent.right;bottom:parent.bottom;bottomMargin:12}
-                    clip:true; model:parent.modelData.rows; ScrollBar.vertical:DesktopScrollBar {}
+                    clip:true; model:parent.modelData.rows; ScrollBar.vertical:DesktopScrollBar {id:columnScrollBar}
                     delegate:AbstractButton {
                         required property var modelData
-                        readonly property bool selected:modelData.path===root.currentPath || root.columns.some(c=>c.path===modelData.path)
-                        width:ListView.view.width-6;height:28
+                        readonly property bool selected:ListView.view.parent.modelData.path===root.selectionFolder?root.selectedPaths.includes(modelData.path):modelData.path===root.currentPath || root.columns.some(c=>c.path===modelData.path)
+                        width:Math.max(0,ListView.view.width-12-(columnScrollBar.visible?columnScrollBar.width:0));height:28
                         Accessible.name:FileLinks.accessible(modelData)+(modelData.directory?", folder":"");Accessible.selected:selected
                         background:Rectangle {radius:5;color:parent.selected?(root.selectionActive?Theme.colors.accent:Theme.selection):parent.hovered?Theme.colors.hover:"transparent";border.color:parent.activeFocus?Theme.colors.accent:"transparent"}
                         contentItem:Item {

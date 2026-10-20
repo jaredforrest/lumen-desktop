@@ -145,3 +145,5 @@ BatchRenameDialog 1.0 BatchRenameDialog.qml
 TrashActionsState 1.0 TrashActionsState.qml
 TrashConfirmation 1.0 TrashConfirmation.qml
 TrashResults 1.0 TrashResults.qml
+
+FilesBandSelection 1.0 FilesBandSelection.qml
