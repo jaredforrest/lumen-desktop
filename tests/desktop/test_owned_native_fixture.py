@@ -54,6 +54,8 @@ class NativeRunner(unittest.TestCase):
                         record = json.loads((out / 'namespace-provenance.json').read_text())
                         self.assertEqual(record['sourceUnchanged'], not mutate)
                         self.assertEqual(len(record['source']['hashes']), 3)
+                        self.assertTrue(record['toolHashes'])
+                        self.assertTrue(all(len(value) == 64 for value in record['toolHashes'].values()))
             finally:
                 if out.exists(): __import__('shutil').rmtree(out)
 

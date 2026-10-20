@@ -56,6 +56,10 @@ def main():
     before = snapshot(source, a.fixture)
     python = immutable_file(sys.executable)
     args = command(a.fixture, a.launcher, a.sway, a.pointer_tool, a.keyboard, a.at_spi_prefix, a.effects)
+    tools = [python, immutable_file(a.launcher), immutable_file(a.sway)]
+    if a.fixture != 'owned_preview_input': tools.append(immutable_file(a.pointer_tool))
+    if a.fixture == 'image_markup_input': tools.append(immutable_file(a.keyboard))
+    tool_hashes = {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in tools}
     environment = {}
     if a.effects:
         environment['__EGL_VENDOR_LIBRARY_FILENAMES'] = str(immutable_file(os.environ['__EGL_VENDOR_LIBRARY_FILENAMES']))
@@ -76,10 +80,12 @@ def main():
             raise ValueError('A self-contained source repository is required')
         status = run(capsule, output, [str(python), '-c', code], software_graphics=a.effects)
     try:
-        unchanged = snapshot(source, a.fixture) == before
+        unchanged = snapshot(source, a.fixture) == before and all(
+            hashlib.sha256(Path(path).read_bytes()).hexdigest() == digest for path, digest in tool_hashes.items())
     except (ValueError, OSError, subprocess.SubprocessError):
         unchanged = False
     record = dict(source=before, fixture=a.fixture, sourceUnchanged=unchanged,
+                  toolHashes=tool_hashes, accessibilityRuntime=a.at_spi_prefix if a.fixture == 'image_markup_input' else None,
                   launcher=str(Path(a.launcher).resolve()), compositor=str(Path(a.sway).resolve()),
                   command=[str(python), '-c', code], softwareGraphics=a.effects, exitCode=status)
     (output / 'namespace-provenance.json').write_text(json.dumps(record, indent=2) + '\n')
