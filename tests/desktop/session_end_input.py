@@ -2,27 +2,53 @@
 import argparse,json,os,re,shutil,signal,subprocess as sp,sys,tempfile,time
 from pathlib import Path
 from private_native_bus import start_private_bus
-p=argparse.ArgumentParser();p.add_argument('--sway',required=True);p.add_argument('--effects',action='store_true');p.add_argument('--launcher',type=Path,required=True);p.add_argument('--output',type=Path,required=True);a=p.parse_args();a.output.mkdir(parents=True,exist_ok=False)
+from fixture_resources import close_reaped_pipes
+from application_fixture.isolation import run
+from application_fixture.provenance import FrozenSource
+from application_fixture.offscreen import immutable_file
+p=argparse.ArgumentParser();p.add_argument('--sway',type=Path,required=True);p.add_argument('--effects',action='store_true');p.add_argument('--launcher',type=Path,required=True);p.add_argument('--capture-tool',type=Path);p.add_argument('--bus',type=Path,required=True);p.add_argument('--font-config',type=Path,required=True);p.add_argument('--software-driver',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--inside',action='store_true');a=p.parse_args()
+for name in ('sway','launcher','bus','font_config'):setattr(a,name,immutable_file(getattr(a,name)))
+a.capture_tool=immutable_file(a.capture_tool or shutil.which('grim'))
+a.software_driver=a.software_driver.resolve();assert str(a.software_driver).startswith('/nix/store/') and a.software_driver.is_dir()
+shell=immutable_file(a.launcher.read_text().splitlines()[0].removeprefix('#!').strip())
+repo=Path(__file__).resolve().parents[2]
+if not a.inside:
+ a.output=a.output.resolve();a.output.mkdir(mode=0o700,parents=True,exist_ok=False)
+ frozen=FrozenSource(repo,__file__,[a.sway,a.launcher,a.bus,shell,a.capture_tool,a.font_config,immutable_file(sys.executable)])
+ prefix=re.split(r'\n[ \t]*exec quickshell ',a.launcher.read_text(),maxsplit=1)[0]
+ environment=dict(v.decode().split('=',1)for v in sp.check_output([str(shell),'-c',prefix+'\nexec env -0']).split(b'\0')if b'='in v)
+ environment['PATH']=str(a.bus.parent)+':'+str(shell.parent)+':'+environment['PATH']
+ command=[str(immutable_file(sys.executable)),'/source/tests/desktop/session_end_input.py','--inside','--output','/artifacts/result']+sum((['--'+name.replace('_','-'),str(getattr(a,name))]for name in ('sway','launcher','bus','capture_tool','font_config','software_driver')),[])+(['--effects']if a.effects else [])
+ code=1
+ try:code=run(repo,a.output,command,environment,software_graphics=a.effects)
+ finally:frozen.finish(a.output,code)
+ raise SystemExit(code)
+assert repo==Path('/source') and Path.home()==Path('/home/fixture') and not Path('/.old-root').exists()
+a.output.mkdir(mode=0o700,parents=True,exist_ok=False)
 processes=[]
 with tempfile.TemporaryDirectory(prefix='lumen-end-') as private:
  root=Path(private);env=dict(os.environ,HOME=private,XDG_RUNTIME_DIR=private)
  for key in ('WAYLAND_DISPLAY','DISPLAY','SWAYSOCK','DBUS_SESSION_BUS_ADDRESS','AT_SPI_BUS_ADDRESS'):env.pop(key,None)
  for key in ('CONFIG','STATE','CACHE','DATA'):env['XDG_'+key+'_HOME']=str(root/key.lower())
  prefix=re.split(r'\n[ \t]*exec quickshell ',a.launcher.read_text(),maxsplit=1)[0]
- installed=dict(v.decode().split('=',1) for v in sp.check_output(['bash','-c',prefix+'\nexec env -0'],env=env,stderr=sp.DEVNULL).split(b'\0') if b'=' in v)
+ installed=dict(v.decode().split('=',1) for v in sp.check_output([str(shell),'-c',prefix+'\nexec env -0'],env=env,stderr=sp.DEVNULL).split(b'\0') if b'=' in v)
  for key in ('PATH','GLOBAL_MENU_PYTHON','QT_PLUGIN_PATH','QML_IMPORT_PATH'):
   if key in installed:env[key]=installed[key]
  source=Path(installed['LUMEN_NOTIFICATION_HELPER']).parent.parent
  assert (source/'runtime/session_end.py').is_file(), 'Build a shell containing cooperative session preflight first'
+ for name in ('shell/ApplicationLifecycleState.qml','shell/SessionOptions.qml','runtime/session_end.py','runtime/application_lifecycle.py'):
+  assert (source/name).read_bytes()==(repo/'res/lumen-desktop'/name).read_bytes(),name
+ shutil.copytree(source,root/'assets');source=root/'assets'
+ env.update(FONTCONFIG_FILE=str(a.font_config),LIBGL_DRIVERS_PATH=str(a.software_driver/'lib/dri'),__EGL_VENDOR_LIBRARY_FILENAMES=str(a.software_driver/'share/glvnd/egl_vendor.d/50_mesa.json'),MESA_LOADER_DRIVER_OVERRIDE='llvmpipe')
  env.update(WLR_BACKENDS='headless',WLR_RENDERER='gles2' if a.effects else 'pixman',WLR_RENDERER_FORCE_SOFTWARE='1' if a.effects else '0',WLR_RENDERER_ALLOW_SOFTWARE='1',LIBGL_ALWAYS_SOFTWARE='1',WLR_LIBINPUT_NO_DEVICES='1',QT_QPA_PLATFORM='wayland',QT_QUICK_BACKEND='software',QT_QPA_PLATFORMTHEME='generic',QT_ACCESSIBILITY='0',QT_LINUX_ACCESSIBILITY_ALWAYS_ON='0',NO_AT_BRIDGE='1',GTK_A11Y='none',GDK_BACKEND='wayland')
  binary=root/'bin';binary.mkdir();env['PATH']=str(binary)+':'+env['PATH']
  # The final host command is intercepted inside this disposable fixture only.
- marker=a.output/'host-actions';stub=binary/'systemctl';stub.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "'+str(marker)+'"\n');stub.chmod(0o700)
+ marker=a.output/'host-actions';stub=binary/'systemctl';stub.write_text('#!'+str(shell)+'\nprintf "%s\\n" "$*" >> "'+str(marker)+'"\n');stub.chmod(0o700)
  palette=json.loads((source/'appearance/palette.json').read_text());appearance=Path(env['XDG_STATE_HOME'])/'lumen-desktop/appearance.json';appearance.parent.mkdir(parents=True);appearance.write_text(json.dumps({'font':palette['font'],'palette':palette['light'],'preferences':{}}))
  fixture=root/'fixture.qml';fixture.write_text('''import QtQuick
 import Quickshell
 import Quickshell.Io
-import "'''+(source/'shell').as_uri()+'''" as D
+import "'''+'assets/shell'+'''" as D
 ShellRoot {
  D.ApplicationLifecycleState {id:lifecycle}
  D.SessionOptions {id:options;lifecycle:lifecycle}
@@ -95,7 +121,7 @@ app.connect('startup',startup);app.connect('activate',activate);app.run([])
   app=launch([env['GLOBAL_MENU_PYTHON'],str(client),str(a.output)],'client.log');wait(lambda:(a.output/'client-state.json').exists());wait(lambda:any(app['appId']=='org.example.SessionDocument' for app in state()['applications']))
   ipc('begin');wait(lambda:state()['session']['phase'] in ('waiting','blocked'));assert state()['session']['phase']=='waiting',state();wait(lambda:app_state()['prompt'])
   dialog=next(n for n in nodes(json.loads(call('swaymsg','-r','-t','get_tree'))) if n.get('name')=='Save session document?');assert dialog['lumen_relationships']['parent'] is not None
-  call('grim',str(a.output/'app-prompt.png'));focus_prompt();call('wtype','-s','200','-k','Escape');wait(lambda:app_state()['choice']=='cancel');time.sleep(1.2);assert state()['session']['phase']=='waiting' and not marker.exists();ipc('cancel');wait(lambda:state()['session']['phase']=='idle');assert app.poll() is None and not marker.exists()
+  call(str(a.capture_tool),str(a.output/'app-prompt.png'));focus_prompt();call('wtype','-s','200','-k','Escape');wait(lambda:app_state()['choice']=='cancel');time.sleep(1.2);assert state()['session']['phase']=='waiting' and not marker.exists();ipc('cancel');wait(lambda:state()['session']['phase']=='idle');assert app.poll() is None and not marker.exists()
   # Re-request and save from the application's actual modal controls.
   ipc('begin');wait(lambda:app_state()['prompt']);choose('s');app.wait(timeout=5);wait(lambda:state()['session']['phase']=='ready');assert (a.output/'saved.txt').read_text()=='Private unsaved fixture text';assert not marker.exists()
   ipc('cancel');wait(lambda:state()['session']['phase']=='idle');time.sleep(1.2);assert not marker.exists()
@@ -105,6 +131,6 @@ app.connect('startup',startup);app.connect('activate',activate);app.run([])
  finally:
   for proc in reversed(processes):
    if proc.poll() is None:os.killpg(proc.pid,signal.SIGTERM)
-  for proc in reversed(processes):
    try:proc.wait(timeout=5)
-   except sp.TimeoutExpired:os.killpg(proc.pid,signal.SIGKILL);proc.wait()
+   except sp.TimeoutExpired:os.killpg(proc.pid,signal.SIGKILL);proc.wait(timeout=5)
+  close_reaped_pipes(processes)
