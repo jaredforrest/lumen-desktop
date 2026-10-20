@@ -34,7 +34,7 @@ PanelWindow {
     property string displayName: ownedFilesContext ? "Files" : usesBridge ? shell.nameForAppId(exported.state.contextAppName || exported.state.appName,exported.state.title) : shell.activeName
     property bool filesFocused:ownedFilesContext || (usesBridge ? exported.state.appName==="org.quickshell" && exported.state.title.startsWith("Files") : !!shell.active && shell.active.title.startsWith("Files"))
     property bool desktopFocused: usesBridge ? exported.state.windowId === 0 : !shell.active
-    property bool special: ["Wi-Fi","Bluetooth","VPN","Sound","Controls","Focus","Date","Calendar","Now Playing","Files","Settings","Launcher","Capture"].includes(menu)
+    property bool special: ["Internet","Wi-Fi","Bluetooth","VPN","Sound","Controls","Focus","Date","Calendar","Now Playing","Files","Settings","Launcher","Capture"].includes(menu)
     FontMetrics {id:headingMetrics;font.family:Theme.font;font.pixelSize:13}
     readonly property var menuHeadings: {
         if(exported.state.supported && exported.state.menu)return exported.state.menu.children.filter(n=>n.visible).map(n=>({label:exported.label(n.label),exportId:n.id,enabled:n.enabled}));
@@ -163,7 +163,7 @@ PanelWindow {
         menuFocusEpoch=shell.focusEpoch || 0;
         menuX=x; menu=closing?"":name;
     }
-    onMenuChanged: {builtinSession++;builtinSelection=null;if(["Wi-Fi","Bluetooth","VPN","Sound","Controls","Focus","Date","Calendar","Now Playing","Capture"].includes(menu)){menuFade.stop();systemMenu=menu;systemViewport.contentY=0;}else menuFade.restart();builtinIndex=-1;Qt.callLater(()=>{if(bar && popupContents && bar.menu && bar.menu!=="Launcher")popupContents.forceActiveFocus();});if(menu==="" && shell.popupOwner==="bar:"+bar.outputName)shell.popupOwner="";}
+    onMenuChanged: {builtinSession++;builtinSelection=null;if(["Internet","Wi-Fi","Bluetooth","VPN","Sound","Controls","Focus","Date","Calendar","Now Playing","Capture"].includes(menu)){menuFade.stop();systemMenu=menu;systemViewport.contentY=0;}else menuFade.restart();builtinIndex=-1;Qt.callLater(()=>{if(bar && popupContents && bar.menu && bar.menu!=="Launcher")popupContents.forceActiveFocus();});if(menu==="" && shell.popupOwner==="bar:"+bar.outputName)shell.popupOwner="";}
     Connections {target:shell; function onDismissPopups(owner) {if(owner!=="bar:"+bar.outputName)bar.menu="";} }
     Connections { target: shell; function onRequestMenu(name, outputName) { if(outputName!==bar.outputName)return; bar.toggle(name,["Date","Calendar","Sound","Controls"].includes(name)?bar.width-380:16); } }
     anchors { top: true; left: true; right: true }
@@ -198,6 +198,7 @@ PanelWindow {
         id:statusIcons
         anchors.right:parent.right;anchors.rightMargin:clockButton.width+12;anchors.verticalCenter:parent.verticalCenter
         order:Theme.menuBarPreferences.order
+        internet:shell.systemState.internet
         budget:Math.max(38,Math.min(222,bar.width-clockButton.width-220-(captureIndicator.visible?28:0)))
         power:shell.systemState && shell.systemState.power ? shell.systemState.power : null
         soundIcon:shell.volume.includes("MUTED")?"muted":"sound"
@@ -239,7 +240,7 @@ PanelWindow {
             Keys.onPressed:event=>{if(!bar.special && (event.key===Qt.Key_Home || event.key===Qt.Key_End)){bar.edgeBuiltin(event.key===Qt.Key_End);event.accepted=true;}else event.accepted=false;}
         FocusFlickable {
             id:systemViewport
-            visible:["Wi-Fi","Bluetooth","VPN","Sound","Controls","Focus","Date","Calendar","Now Playing","Capture"].includes(bar.systemMenu)
+            visible:["Internet","Wi-Fi","Bluetooth","VPN","Sound","Controls","Focus","Date","Calendar","Now Playing","Capture"].includes(bar.systemMenu)
             width:systemPanel.width;height:Math.min(systemPanel.height,Math.max(1,parent.height-Theme.barHeight-24))
             x:Math.max(8,parent.width-width-12);y:Theme.barHeight+10
             contentWidth:width;contentHeight:systemPanel.height;clip:true;boundsBehavior:Flickable.StopAtBounds

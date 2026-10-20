@@ -21,6 +21,27 @@ Item {
     PanelSurface {anchors.fill:parent;visible:root.enclosingMaterial}
     Column {id:panelContents;x:root.enclosingMaterial?12:0;y:x;width:parent.width-x*2;spacing:12
     ControlCentre {visible:root.kind==="Controls";width:parent.width;shell:root.shell;onSettingsRequested:root.settingsRequested();onPanelRequested:name=>root.panelRequested(name)}
+    PanelSurface {visible:root.kind==="Internet";width:parent.width;height:internetBody.height+28
+      Column {id:internetBody;x:14;y:14;width:parent.width-28;spacing:8
+        ControlRow {width:parent.width;text:"‹  Control Centre";onClicked:root.panelRequested("Controls")}
+        PanelLabel {text:"Internet";font.weight:Font.DemiBold;font.pixelSize:15}
+        PanelLabel {width:parent.width;wrapMode:Text.WordWrap;elide:Text.ElideNone;
+          color:root.shell.systemState.internet.status==="online"?Theme.colors.text:root.shell.systemState.internet.status==="offline"?Theme.errorText:Theme.warningText;
+          text:root.shell.systemState.internet.message || "Checking internet connection…"}
+        PanelLabel {width:parent.width;wrapMode:Text.WordWrap;elide:Text.ElideNone;color:Theme.colors.muted;
+          text:{const s=root.shell.systemState.internet,r=s.routes || ({}),v4=r["4"] || ({}),v6=r["6"] || ({});
+            return "IPv4: "+(v4.available?(v4.interface || "route found"):"no route")+" · IPv6: "+(v6.available?(v6.interface || "route found"):"no route");}}
+        PanelLabel {width:parent.width;wrapMode:Text.WordWrap;elide:Text.ElideNone;color:Theme.colors.muted;
+          text:{const s=root.shell.systemState.internet,d=s.dns || ({}),v=s.vpn || ({});
+            return "DNS: "+(d.status || "not checked")+" · Mullvad: "+(v.state || "unavailable")+(v.selected_route?" (selected route)":"")+(v.locked_down?" (lockdown on)":"");}}
+        PanelLabel {width:parent.width;wrapMode:Text.WordWrap;elide:Text.ElideNone;color:Theme.colors.muted;
+          text:{const s=root.shell.systemState.internet,c=s.checks || [],ok=c.filter(x=>x.ok).length;
+            return c.length?"Secure reachability: "+ok+" of "+c.length+" checks passed":"Secure reachability: no route to test";}}
+        ControlRow {width:parent.width;text:"Check again";onClicked:root.shell.systemState.refreshInternet(true)}
+        ControlRow {width:parent.width;text:"Network settings…";onClicked:root.shell.openSettings("Network")}
+        ControlRow {width:parent.width;text:"VPN controls…";onClicked:root.panelRequested("VPN")}
+      }
+    }
     PanelSurface {visible:root.kind==="Focus" && root.editingFocus==="";width:parent.width;height:focusBody.height+32
       Column {id:focusBody;x:16;y:16;width:parent.width-32;spacing:8
         ControlRow {width:parent.width;text:"‹  Control Centre";onClicked:root.panelRequested("Controls")}
