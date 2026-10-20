@@ -55,6 +55,11 @@ class TrashOperations(unittest.TestCase):
   self.item();self.engine.persist();recovery=self.engine.journal.parent;recovery.rename(self.root/'retired-recovery');recovery.mkdir(mode=0o700);plan=self.engine.prepare('empty')
   with self.assertRaises(ValueError):self.engine.confirm(plan['token'])
   self.assertFalse(self.engine.busy);self.assertTrue((self.root/'files/one').exists());self.assertEqual(list(recovery.iterdir()),[])
+ def test_relative_root_and_oversized_journal_are_rejected(self):
+  with self.assertRaises(ValueError):trash.TrashOperations(Path('relative/Trash'))
+  self.engine.persist();self.engine.journal.write_bytes(b' ' * 128)
+  with patch.object(trash,'MAX_JOURNAL_BYTES',64):
+   with self.assertRaises(ValueError):trash.TrashOperations(self.root)
  def test_actual_listing_emits_lossless_selected_identity(self):
   from file_jobs import trash_items
   from types import SimpleNamespace

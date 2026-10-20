@@ -69,6 +69,7 @@ def bounded_names(fd,limit,deadline):
 class TrashOperations:
     def __init__(self,root,journal=None):
         self.root=Path(root);self.journal=self.root/'.lumen-deletion/journal.json'
+        if not self.root.is_absolute():raise ValueError('Personal Trash must be an absolute location')
         if journal is not None and Path(journal)!=self.journal:raise ValueError('Trash recovery journal must remain within personal Trash')
         self.root_identity=None;self.recovery_identity=None;self.lock=threading.RLock();self.pending={};self.history={};self.active=None;self.stop_event=threading.Event();self.thread=None
         try:
@@ -76,10 +77,12 @@ class TrashOperations:
                 self.root_identity=identity(root)
                 with self.recovery(root) as recovery:
                     descriptor=os.open('journal.json',os.O_RDONLY|os.O_NOFOLLOW|os.O_CLOEXEC,dir_fd=recovery)
-                    with os.fdopen(descriptor,'r') as stream:
+                    with os.fdopen(descriptor,'rb') as stream:
                         info=os.fstat(stream.fileno())
                         if not stat.S_ISREG(info.st_mode) or info.st_uid!=os.getuid() or info.st_mode&0o077 or info.st_size>MAX_JOURNAL_BYTES:raise ValueError('Unsupported Trash recovery journal')
-                        saved=json.loads(stream.read(MAX_JOURNAL_BYTES+1))
+                        raw=stream.read(MAX_JOURNAL_BYTES+1)
+                        if len(raw)>MAX_JOURNAL_BYTES or facts(os.fstat(stream.fileno()))!=facts(info):raise ValueError('Trash recovery journal changed while it was read')
+                        saved=json.loads(raw)
         except FileNotFoundError:saved=None
         if saved is not None:
             if not isinstance(saved,dict) or saved.get('version')!=1 or not isinstance(saved.get('operations'),dict):raise ValueError('Unsupported Trash journal')
