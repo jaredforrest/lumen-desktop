@@ -22,6 +22,7 @@ pkgs.sway.override {
            ../res/lumen-desktop/sway-window-groups.patch ../res/lumen-desktop/sway-group-selector.patch ../res/lumen-desktop/sway-group-membership.patch
            ../res/lumen-desktop/sway-layer-input-rebase.patch ../res/lumen-desktop/sway-xwayland-relationships.patch
            ../res/lumen-desktop/sway-preferred-zoom.patch ../res/lumen-desktop/sway-placement-restore-commit.patch ]
-      ++ pkgs.lib.optional displaySpaces ../res/lumen-desktop/sway-display-spaces.patch;
+      ++ pkgs.lib.optional displaySpaces ../res/lumen-desktop/sway-display-spaces.patch
+      ++ [ ../res/lumen-desktop/sway-disabled-action-dispatch.patch ];
   });
 }

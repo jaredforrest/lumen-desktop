@@ -65,7 +65,7 @@ with tempfile.TemporaryDirectory(prefix='lumen-pair-') as private:
   ipc('lumen_window show-desktop-on');ipc(f'[con_id={aa}] scratchpad show');assert full_parent(aa)['id']==parent_id and workspace(aa).startswith('paired-')
   ipc('lumen_window show-desktop-on');ipc(f'lumen_pair ratio {aa} 0.5');assert full_parent(aa)['id']==parent_id and abs(ratio(aa)-.5)<.01
   # Full-screen yellow controls cannot create an un-restorable half-window snapshot.
-  ipc(f'[con_id={aa}] lumen_window minimize');assert full_parent(aa)['id']==parent_id and not find(aa)['lumen_state']['minimised']
+  ipc(f'[con_id={aa}] lumen_window minimize',False);assert full_parent(aa)['id']==parent_id and not find(aa)['lumen_state']['minimised']
   # A new unrelated app gets an ordinary desktop, never a third paired child.
   paired_space=workspace(aa);launch(['foot','-o','resize-by-cells=no','--app-id=pair-new','sleep','180'],'new-app.log');wait(lambda:app('pair-new'));new_id=app('pair-new')['id'];assert workspace(new_id)!=paired_space and len(full_parent(aa)['nodes'])==2
   assert app('pair-new')['focused'];ipc(f'[con_id={new_id}] kill');ipc('workspace '+json.dumps(paired_space))

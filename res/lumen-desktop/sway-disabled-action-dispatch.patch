@@ -1,0 +1,20 @@
+--- a/sway/commands/scratchpad.c
++++ b/sway/commands/scratchpad.c
+@@ -165,4 +165,17 @@ struct cmd_results *cmd_lumen_window(int argc, char **argv) {
+  }
+  struct sway_container *con = config->handler_context.container;
+  if (!con || !con->view) return cmd_results_new(CMD_INVALID, "Select an application window");
++ bool minimize = strcmp(argv[0], "minimize") == 0;
++ bool placement = strcmp(argv[0], "fill") == 0 ||
++  strcmp(argv[0], "zoom") == 0 || strcmp(argv[0], "fullscreen") == 0 ||
++  strcmp(argv[0], "left") == 0 || strcmp(argv[0], "right") == 0 ||
++  strcmp(argv[0], "top") == 0 || strcmp(argv[0], "bottom") == 0 ||
++  strcmp(argv[0], "top-left") == 0 || strcmp(argv[0], "top-right") == 0 ||
++  strcmp(argv[0], "bottom-left") == 0 || strcmp(argv[0], "bottom-right") == 0;
++ bool fullscreen_exit = strcmp(argv[0], "fullscreen") == 0 &&
++  con->pending.fullscreen_mode != FULLSCREEN_NONE;
++ if ((minimize && !container_lumen_action_enabled(con, 1)) ||
++   (placement && !fullscreen_exit && !container_lumen_action_enabled(con, 2))) {
++  return cmd_results_new(CMD_INVALID, "Window action is unavailable");
++ }
+  if (strcmp(argv[0], "close") == 0) view_close(con->view);
