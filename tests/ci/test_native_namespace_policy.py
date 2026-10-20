@@ -27,7 +27,7 @@ class Policy(unittest.TestCase):
             self.assertEqual(policy.parameters(root),{name:'1' for name in policy.PARAMETERS});self.assertEqual([p.read_text() for p in root.rglob('*') if p.is_file()],['1\n']*4)
     def test_privileged_parser_receives_fixed_stdin_not_mutable_artifact_path(self):
         with patch.object(policy.subprocess,'run') as run:
-            run.return_value=SimpleNamespace(stdout='',stderr='')
+            run.return_value=SimpleNamespace(stdout='',stderr='',returncode=0)
             policy.execute('/usr/sbin/apparmor_parser','--add','synthetic reconstructed profile')
             args,kwargs=run.call_args;self.assertEqual(args[0],['sudo','--non-interactive','/usr/sbin/apparmor_parser','--add']);self.assertEqual(kwargs['input'],'synthetic reconstructed profile');self.assertTrue(kwargs['text'])
     def test_cleanup_reconciles_kernel_presence_after_interrupted_load(self):
@@ -42,7 +42,10 @@ class Policy(unittest.TestCase):
                 with self.assertRaises(OSError):policy.save_record(root,dict(record,loaded=True))
             self.assertEqual(json.loads((root/'result.json').read_text()),record);self.assertEqual([p.name for p in root.iterdir()],['result.json'])
     def test_policy_parser_warning_is_a_failure(self):
-        with patch.object(policy.subprocess,'run',return_value=SimpleNamespace(stdout='',stderr='Synthetic parser warning')):
+        with patch.object(policy.subprocess,'run',return_value=SimpleNamespace(stdout='',stderr='Synthetic parser warning',returncode=0)):
             with self.assertRaises(RuntimeError):policy.execute('parser','--add','fixed text')
+    def test_failed_parser_retains_actionable_diagnostic(self):
+        with patch.object(policy.subprocess,'run',return_value=SimpleNamespace(stdout='',stderr='Synthetic syntax rejection',returncode=1)):
+            with self.assertRaisesRegex(RuntimeError,'Synthetic syntax rejection'):policy.execute('parser','--add','fixed text')
 
 if __name__=='__main__':unittest.main()

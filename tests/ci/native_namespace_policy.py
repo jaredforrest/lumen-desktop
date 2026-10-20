@@ -31,8 +31,9 @@ def parameters(root=Path('/proc/sys')):
 
 def execute(parser, operation, text):
     # The privileged parser receives reconstructed bytes, never a mutable path.
-    result=subprocess.run(['sudo','--non-interactive',str(parser),operation], input=text, text=True, capture_output=True, check=True, timeout=20)
+    result=subprocess.run(['sudo','--non-interactive',str(parser),operation], input=text, text=True, capture_output=True, check=False, timeout=20)
     if result.stdout:print(result.stdout,end='')
+    if result.returncode:raise RuntimeError('Namespace policy '+operation+' failed ('+str(result.returncode)+'): '+result.stderr)
     if result.stderr:raise RuntimeError('Namespace policy parser emitted a diagnostic: '+result.stderr)
 
 def profile_loaded(name):
