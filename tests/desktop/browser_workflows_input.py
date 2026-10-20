@@ -14,7 +14,7 @@ from capabilities import Inventory
 from profile import download_rows,COMPLETE
 from paint import match as painted_match
 from private_native_bus import start_private_bus
-p=argparse.ArgumentParser();p.add_argument('--browser',required=True,type=Path);p.add_argument('--launcher',required=True,type=Path);p.add_argument('--sway',required=True,type=Path);p.add_argument('--pointer-tool',required=True,type=Path);p.add_argument('--keyboard-tool',required=True,type=Path);p.add_argument('--font-directory',required=True,type=Path);p.add_argument('--at-spi-prefix',required=True,type=Path);p.add_argument('--software-driver',required=True,type=Path);p.add_argument('--output',required=True,type=Path);p.add_argument('--effects',action='store_true');p.add_argument('--trace-wayland',action='store_true');p.add_argument('--workflow',choices=('new-save','basic','downloads','permissions','library'),default='basic');p.add_argument('--inside',action='store_true');a=p.parse_args()
+p=argparse.ArgumentParser();p.add_argument('--browser',required=True,type=Path);p.add_argument('--launcher',required=True,type=Path);p.add_argument('--sway',required=True,type=Path);p.add_argument('--pointer-tool',required=True,type=Path);p.add_argument('--keyboard-tool',required=True,type=Path);p.add_argument('--font-directory',required=True,type=Path);p.add_argument('--at-spi-prefix',required=True,type=Path);p.add_argument('--software-driver',required=True,type=Path);p.add_argument('--output',required=True,type=Path);p.add_argument('--effects',action='store_true');p.add_argument('--trace-wayland',action='store_true');p.add_argument('--workflow',choices=('new-save','basic','downloads','permissions','library','page-fullscreen'),default='basic');p.add_argument('--inside',action='store_true');a=p.parse_args()
 repo=Path(__file__).resolve().parents[2]
 for name in ('browser','launcher','sway','pointer_tool','keyboard_tool','font_directory','at_spi_prefix','software_driver'):
  value=getattr(a,name).resolve()
@@ -201,6 +201,9 @@ try:
    from types import SimpleNamespace
    from downloads import run
    run(SimpleNamespace(click_page=click_page,navigate=navigate,wait=wait,evaluate=evaluate,capture_presented=capture_presented,ui_downloads=ui_downloads,downloads=downloads,server=server,checks=checks,click_expression=click_expression,windows=windows,main=main,choose_path=choose_path,capture=lambda name:call('grim',out/name),out=out))
+   finish_result();raise SystemExit(0)
+  if a.workflow=='page-fullscreen':
+   click_page('#fullscreen');wait(lambda:evaluate('!!document.fullscreenElement'),'page fullscreen request');wait(lambda:current_main()['fullscreen_mode']==1,'page fullscreen native state');capture_presented("document.querySelector('#sample')",'page-fullscreen.png');key('-k','Escape');wait(lambda:not evaluate('!!document.fullscreenElement') and current_main()['fullscreen_mode']==0,'page fullscreen Escape');assert evaluate('document.hasFocus()');checks.append('Actual page gesture fullscreen and native Escape reconcile page/native state and input')
    finish_result();raise SystemExit(0)
   if a.workflow=='basic':
    initial={row['targetId'] for row in browser.request('Target.getTargets')['targetInfos'] if row['type']=='page'}
