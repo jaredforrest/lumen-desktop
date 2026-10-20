@@ -205,7 +205,21 @@ try:
     assert events()==[];checks.append('Real same-ID unchanged-label revision invalidates keyboard and stale accessibility actions')
     checked,row=wait(lambda:named('Checked Command'),'fresh row');point(checked);pointer_command('p');revision=state()['bridge']['revision'];control.Change('disable',timeout=2);wait(lambda:state()['bridge']['revision']==revision+1,'held row disabled');pointer_command('r');assert events()==[]
     checks.append('Real pointer press followed by exporter update cannot activate a replaced disabled row')
-    key('-k','Escape');exported_open();key('-k','Down');wait(lambda:state()['selection'] and state()['selection']['id']==14,'disabled command skipped');key('-k','Right');wait(lambda:state()['exportPath']==[10,14],'deep semantic menu')
+    key('-k','Escape');exported_open()
+    nested,_=wait(lambda:named('Nested'),'pointer submenu parent')
+    point(nested);wait(lambda:state()['exportPath']==[10,14],'physical hover opens child')
+    deep_pointer,_=wait(lambda:named('Deep Command'),'pointer child row')
+    point(deep_pointer);wait(lambda:any(r['id']==141 and r['hover'] for c in json.loads(call('quickshell','-p',str(fixture),'ipc','call','globalmenu','layout')) for r in c['rows']),'pointer enters actual child card')
+    assert state()['exportPath']==[10,14] and events()==[]
+    nested,_=wait(lambda:named('Nested'),'current parent delegate after child expansion')
+    point(nested);wait(lambda:any(r['id']==14 and r['hover'] for c in json.loads(call('quickshell','-p',str(fixture),'ipc','call','globalmenu','layout')) for r in c['rows']),'pointer returns to parent row')
+    assert state()['exportPath']==[10,14] and events()==[]
+    key('-k','Escape');wait(lambda:state()['exportPath']==[10],'pointer child dismisses one level')
+    key('-k','Escape');wait(lambda:not state()['exportPath'],'pointer parent dismisses')
+    before=len(exporter_state()['keys']);key('-k','k');wait(lambda:len(exporter_state()['keys'])==before+1,'pointer submenu returns original native focus')
+    checks.append('Physical submenu hover, child entry and parent return preserve hierarchy without dispatch and restore native focus')
+    call('swaymsg','seat','seat0','cursor','set','1100','700');pointer_command('m 0.5 0.5')
+    exported_open();key('-k','Down');wait(lambda:state()['selection'] and state()['selection']['id']==14,'disabled command skipped');key('-k','Right');wait(lambda:state()['exportPath']==[10,14],'deep semantic menu')
     deep,info=wait(lambda:named('Deep Command'),'actual deep semantic action');assert info['role']=='menu item'
     from PIL import Image,ImageStat
     def presented():
