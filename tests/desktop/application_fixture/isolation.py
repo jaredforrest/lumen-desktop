@@ -60,7 +60,11 @@ def setup(root,source,output,environment,command):
     env['PATH']=':'.join(value for value in env.get('PATH','').split(':') if value.startswith('/nix/store/'))
     env.update(HOME='/home/fixture',USER='fixture',LOGNAME='fixture',XDG_RUNTIME_DIR='/run/fixture',XDG_CONFIG_HOME='/home/fixture/.config',XDG_DATA_HOME='/home/fixture/.local/share',XDG_STATE_HOME='/home/fixture/.local/state',XDG_CACHE_HOME='/home/fixture/.cache',XDG_DATA_DIRS='/nonexistent',DBUS_SESSION_BUS_ADDRESS='unix:path=/run/fixture/inert-session',DBUS_SYSTEM_BUS_ADDRESS='unix:path=/run/fixture/inert-system',PULSE_SERVER='unix:/run/fixture/inert-audio',PIPEWIRE_REMOTE='inert-pipewire',GTK_A11Y='none',NO_AT_BRIDGE='1',PYTHONWARNINGS='error')
     for key in ('HOME','XDG_RUNTIME_DIR','XDG_CONFIG_HOME','XDG_DATA_HOME','XDG_STATE_HOME','XDG_CACHE_HOME'):(root/env[key].lstrip('/')).mkdir(parents=True,exist_ok=True,mode=0o700)
-    os.chroot(root);os.chdir('/source');drop_capabilities()
+    old=root/'.old-root';old.mkdir()
+    if libc.pivot_root(os.fsencode(root),os.fsencode(old)):raise OSError(ctypes.get_errno(),'Could not pivot disposable filesystem root')
+    os.chdir('/')
+    if libc.umount2(b'/.old-root',2):raise OSError(ctypes.get_errno(),'Could not detach original filesystem root')
+    os.rmdir('/.old-root');os.chdir('/source');drop_capabilities()
     os.execve(command[0],command,env)
 
 def run(source,output,command,environment=None):

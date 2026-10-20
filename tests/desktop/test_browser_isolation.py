@@ -8,7 +8,7 @@ class Isolation(unittest.TestCase):
  def test_actual_nonroot_private_filesystem_process_and_loopback_only(self):
   with tempfile.TemporaryDirectory(prefix='lumen-browser-probe-') as temporary:
    root=Path(temporary);out=root/'output';out.mkdir();sentinel=root/'must-not-be-visible';sentinel.write_text('synthetic outside boundary')
-   code='''import json,os,socket,threading
+   code='''import json,os,socket,threading,subprocess,sys
 from pathlib import Path
 assert os.getuid()!=0
 assert "FIXTURE_SECRET" not in os.environ and "LD_PRELOAD" not in os.environ
@@ -22,6 +22,9 @@ try:
 except OSError:pass
 status=Path('/proc/self/status').read_text()
 assert 'CapEff:\\t0000000000000000' in status and 'CapBnd:\\t0000000000000000' in status
+nested=subprocess.run([sys.executable,'-c',"import ctypes; library=ctypes.CDLL(None,use_errno=True); result=library.unshare(0x10000000); assert result==0,(result,ctypes.get_errno())"],text=True,capture_output=True,timeout=2)
+assert nested.returncode==0,nested.stderr
+assert not Path('/.old-root').exists()
 assert all(line.split()[1]!='00000000' for line in Path('/proc/net/route').read_text().splitlines()[1:])
 with socket.socket() as listener:
  listener.bind(('127.0.0.1',0));listener.listen(1)
