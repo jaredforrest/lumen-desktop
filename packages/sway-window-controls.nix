@@ -24,6 +24,7 @@ pkgs.sway.override {
            ../res/lumen-desktop/sway-preferred-zoom.patch ../res/lumen-desktop/sway-placement-restore-commit.patch ]
       ++ pkgs.lib.optional displaySpaces ../res/lumen-desktop/sway-display-spaces.patch
       ++ [ ../res/lumen-desktop/sway-disabled-action-dispatch.patch ]
-      ++ pkgs.lib.optional ownedGeometryEvents ../res/lumen-desktop/sway-owned-geometry-events.patch;
+      ++ pkgs.lib.optional ownedGeometryEvents ../res/lumen-desktop/sway-owned-geometry-events.patch
+      ++ [ ../res/lumen-desktop/sway-interactive-resize-sync.patch ];
   });
 }

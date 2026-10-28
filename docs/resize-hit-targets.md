@@ -15,8 +15,21 @@ All clients, input, output configuration and screenshots stay in a private
 filesystem/PID/network/session-bus namespace. Source and immutable tools are
 checked before and after execution; logs are scanned after owned children exit.
 
-The 33 checks per backend use one physical motion followed by release. An
-independent two-motion rapid-release baseline exposed a stale floating-client
-configure overwriting the latest width while retaining the newer origin. That
-race remains open after this hit-target-only batch; these passes do not establish
-general rapid-resize stability or whole geometry-family completion.
+The initial 33 checks per backend use one physical motion followed by release.
+An independent two-motion rapid-release baseline exposed a stale floating-client
+configure overwriting the latest width while retaining the newer origin.
+
+The appended interactive-resize patch reuses the existing compositor-owned
+placement transaction guard for native XDG views. Each pointer motion invalidates
+the earlier expected acknowledgement; the transaction records the latest pending
+size and configure serial. Older commits cannot overwrite that size, and the
+guard ends on the matching or later serial, not merely on button release. The
+existing serial-wrap and pending-dimension checks remain in one implementation.
+
+`--rapid` sends two half-motions then release without waiting for the client
+between motions. Its 34 checks retain the original hard geometry/ownership
+assertions and add a later client-authored resize to prove the guard releases.
+Both variants run in CI; existing rapid Fill/Zoom restoration checks remain
+separate regression coverage. These cases establish the reproduced XDG race fix,
+not every client protocol, arbitrary acknowledgement schedule or whole geometry
+family completion. No extra outside-frame target width is introduced.

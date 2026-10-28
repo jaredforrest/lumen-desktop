@@ -1,0 +1,17 @@
+--- a/sway/input/seatop_resize_floating.c
++++ b/sway/input/seatop_resize_floating.c
+@@ -140,6 +140,14 @@
+ 	con->pending.content_width += relative_grow_width;
+ 	con->pending.content_height += relative_grow_height;
+ 
++	// An earlier floating configure must not overwrite this later pointer size.
++	// Reuse the transaction's exact-serial compositor-owned placement guard;
++	// release it on acknowledgement, not on pointer-button release.
++	if (con->view && con->view->type == SWAY_VIEW_XDG_SHELL) {
++		con->lumen_restoring = true;
++		con->lumen_restore_serial_valid = false;
++	}
++
+ 	arrange_container(con);
+ 	transaction_commit_dirty();
+ }

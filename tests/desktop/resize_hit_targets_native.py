@@ -8,13 +8,14 @@ from fixture_resources import close_reaped_pipes
 
 p=argparse.ArgumentParser()
 for name in ('launcher','sway','pointer','font-config','output'):p.add_argument('--'+name,type=Path,required=True)
-p.add_argument('--effects',action='store_true');p.add_argument('--egl-vendor',type=Path,default=os.environ.get('__EGL_VENDOR_LIBRARY_FILENAMES'));p.add_argument('--python-runtime',default=shutil.which('desktop-test-python'));p.add_argument('--inside',action='store_true');p.add_argument('--parent-net');a=p.parse_args();repo=Path(__file__).resolve().parents[2]
+p.add_argument('--rapid',action='store_true');p.add_argument('--effects',action='store_true');p.add_argument('--egl-vendor',type=Path,default=os.environ.get('__EGL_VENDOR_LIBRARY_FILENAMES'));p.add_argument('--python-runtime',default=shutil.which('desktop-test-python'));p.add_argument('--inside',action='store_true');p.add_argument('--parent-net');a=p.parse_args();repo=Path(__file__).resolve().parents[2]
 if not a.inside:
  a.output=a.output.resolve();a.output.mkdir(mode=0o700,parents=True,exist_ok=False)
  tools=[a.launcher.resolve(),a.sway.resolve(),a.pointer.resolve(),a.font_config.resolve(),Path(a.python_runtime).resolve()]
  if a.effects:tools.append(a.egl_vendor.resolve())
  frozen=FrozenSource(repo,__file__,tools)
  argv=[str(tools[4]),'/source/tests/desktop/resize_hit_targets_native.py','--inside','--launcher',str(tools[0]),'--sway',str(tools[1]),'--pointer',str(tools[2]),'--font-config',str(tools[3]),'--output','/artifacts/result','--parent-net',os.readlink('/proc/self/ns/net')]
+ if a.rapid:argv+=['--rapid']
  if a.effects:argv+=['--effects','--egl-vendor',str(tools[5])]
  code=1
  try:code=run(repo,a.output,argv,software_graphics=a.effects)
@@ -38,9 +39,14 @@ from pathlib import Path
 gi.require_version('Gtk','3.0')
 from gi.repository import Gtk,Gio,GLib,Gdk
 appid,title,path=sys.argv[1:];path=Path(path);GLib.set_prgname(appid);app=Gtk.Application(application_id=appid,flags=Gio.ApplicationFlags.FLAGS_NONE)
-window=None;presses=0;releases=0;motions=0;ticks=0
+window=None;presses=0;releases=0;motions=0;ticks=0;last_request=None
 def publish():
- global ticks
+ global ticks,last_request
+ request=path.with_suffix('.resize')
+ if window and request.exists():
+  wanted=request.read_text()
+  if wanted!=last_request:
+   last_request=wanted;width,height=json.loads(wanted);window.resize(width,height)
  ticks+=1;value=dict(pid=os.getpid(),ticks=ticks,presses=presses,releases=releases,motions=motions,width=window.get_allocated_width()if window else 0,height=window.get_allocated_height()if window else 0)
  temporary=path.with_suffix('.tmp');temporary.write_text(json.dumps(value));temporary.replace(path);return True
 def pressed(widget,event):
@@ -95,7 +101,9 @@ app.connect('activate',activate);app.run([])
  def send(commands):pointer.stdin.write(commands);pointer.stdin.flush()
  def position(x,y):checked('seat seat0 cursor set %.3f %.3f'%(x,y));send('m 0 0\n')
  def drag(x,y,dx,dy):
-  position(x,y);send('p\nm %.3f %.3f\n'%(dx,dy));send('r\n')
+  position(x,y)
+  if a.rapid:send('p\nm %.3f %.3f\nm %.3f %.3f\nr\n'%(dx/2,dy/2,dx/2,dy/2))
+  else:send('p\nm %.3f %.3f\nr\n'%(dx,dy))
  def counts(path):v=state(path);return(v['presses'],v['releases'])
  def sample(node,horizontal,vertical):
   f=frame(node);e=edges(f);half=node['current_border_width']/2
@@ -118,6 +126,7 @@ app.connect('activate',activate);app.run([])
     nx=tf['x']-nf['width']-8 if h<0 else tf['x']+tf['width']+8 if h>0 else tf['x']
     ny=tf['y']-nf['height']-8 if v<0 else tf['y']+tf['height']+8 if v>0 else tf['y']
     move(nid,nx,ny,184,154);nn=ack(nid,neighbor_path);focus(tid);tn=ack(tid,target_path);before=edges(frame(tn));neighbor_before=frame(nn);target_count=counts(target_path);neighbor_count=counts(neighbor_path);x,y=sample(tn,h,v)
+    (out/'active-case.json').write_text(json.dumps(dict(output=output,scale=scale,direction=label,point=dict(x=x,y=y),before=captured(tn),neighbor=captured(nn),inputMode='two-motion-rapid-release'if a.rapid else'single-motion'),indent=2)+'\n')
     drag(x,y,h*32,v*24)
     stationary=['right']if h<0 else['left']if h>0 else['left','right'];stationary+=['bottom']if v<0 else['top']if v>0 else['top','bottom']
     def resized():
@@ -134,7 +143,11 @@ app.connect('activate',activate);app.run([])
    # Place the neighbor's content over the target's old right-border point.
    x,y=sample(tn,1,0);move(nid,int(x)-40,int(y)-65,184,154);nn=ack(nid,neighbor_path);focus(nid);nb=frame(nn);tb=frame(native(tid));c=counts(neighbor_path);drag(x,y,16,0);wait(lambda:counts(neighbor_path)==(c[0]+1,c[1]+1),'Topmost neighbor content owns covered border');assert frame(native(tid))==tb and frame(native(nid))==nb and native(nid)['focused'];checks.append('%s scale%s: topmost neighbor owns covered target edge without underlying resize'%(output,scale))
    move(nid,ox+10,oy+20,184,154);ack(nid,neighbor_path);focus(tid);tn=ack(tid,target_path);x,y=sample(tn,1,1);drag(x,y,-200,-180);small=wait(lambda:(n if(n:=configured(tid,target_path))and n['window_rect']['width']<=200 and n['window_rect']['height']<=140 else None),'Client minimum clamp');assert small['window_rect']['width']>=180 and small['window_rect']['height']>=120;checks.append('%s scale%s: corner shrinking preserves actual client minimum constraints'%(output,scale));call('grim',out/('scale-'+str(scale)+'.png'))
-  generated(private,out);(out/'client-source.py').write_text(client.read_text());(out/'receipts.json').write_text(json.dumps(receipts,indent=2)+'\n');(out/'result.json').write_text(json.dumps(dict(passed=True,checks=checks,effects=a.effects,scope='Observed native two-logical-pixel border centres at3 actual output scales; not an unmeasured outside-border target-size or reference parity claim'),indent=2)+'\n')
+  if a.rapid:
+   before=frame(ack(tid,target_path));target_path.with_suffix('.resize').write_text(json.dumps([400,260]))
+   grown=wait(lambda:(n if(n:=configured(tid,target_path))and n['window_rect']['width']==400 and n['window_rect']['height']==260 else None),'Client-authored resize after completed interactive acknowledgement')
+   assert frame(grown)['x']==before['x']and frame(grown)['y']==before['y'];checks.append('Later client-authored resize remains operable after exact interactive configure acknowledgement')
+  generated(private,out);(out/'client-source.py').write_text(client.read_text());(out/'receipts.json').write_text(json.dumps(receipts,indent=2)+'\n');(out/'result.json').write_text(json.dumps(dict(passed=True,checks=checks,effects=a.effects,inputMode='two-motion-rapid-release'if a.rapid else'single-motion',scope='Observed native two-logical-pixel border centres at3 actual output scales; not an unmeasured outside-border target-size or reference parity claim'),indent=2)+'\n')
  finally:
   (out/'completed-checks.json').write_text(json.dumps(checks,indent=2)+'\n');(out/'receipts.json').write_text(json.dumps(receipts,indent=2)+'\n')
   for proc in reversed(processes):
