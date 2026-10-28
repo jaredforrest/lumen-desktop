@@ -1,7 +1,7 @@
 # Retained office workflow acceptance
 
-`tests/desktop/office_workflows.py` runs the installed headless providers inside
-`application_fixture.isolation`. The disposable mount, process and network
+`lumen-office-workflows` (Rust 2024) runs the installed headless providers inside
+the packaged application isolation boundary. The disposable mount, process and network
 namespaces retain the invoking non-root identity, remove capabilities, expose
 only immutable store/source files and a fresh owned artifact directory, and use
 private profiles. No GUI, account, live document, printer or external server is
@@ -9,8 +9,9 @@ used by this phase.
 
 Pass the exact `wordcraft-cli`, `gridcraft-cli` and `deckcraft-cli` executables and
 the pinned `.#test-office-tools` output with `--writer`, `--sheet`, `--slides`,
-`--pdf-tools` and a new `--output` directory. The development shell supplies the
-pinned Python runtime. This suite is separate from ordinary backend unit tests;
+`--pdf-tools` and a new `--output` directory. Build
+`.#test-office-workflows-fixture` and invoke its binary with `--source .` and
+those exact provider paths. This suite is separate from ordinary backend unit tests;
 optional office applications must be built explicitly.
 
 The corpus contains styled document paragraphs, two sections, a table, a generated
@@ -47,9 +48,9 @@ same-format checks start from the explicitly measured converted fixture and do
 not erase its earlier losses. No application replacement or proprietary reference
 implementation is implied by these tests.
 
-The historical CLI report's `capabilities` array contains scoped action observations. It is not a complete per-capability conformance record. Generate a separate record set with `tests/desktop/office_capability_records.py --cli REPORT --gui NATIVE_REPORT --output NEW_FILE` (repeat `--gui` as needed). Each provider/capability record includes the normative identity, permission, offline, scenario, difference and status fields. A partial successful fixture remains `implemented_unverified`; unassessed actions remain explicit, and no record is promoted to full compatibility or reference verification. The generator hashes evidence and never rewrites the input report.
+The historical CLI report's `capabilities` array contains scoped action observations. It is not a complete per-capability conformance record. Generate a separate record set with `nix develop --command lumen-office-capability-records --cli REPORT --gui NATIVE_REPORT --output NEW_FILE` (repeat `--gui` as needed). Each provider/capability record includes the normative identity, permission, offline, scenario, difference and status fields. A partial successful fixture remains `implemented_unverified`; unassessed actions remain explicit, and no record is promoted to full compatibility or reference verification. The generator hashes evidence and never rewrites the input report.
 
-The installed-window prototype uses the shared persistent full-US physical keyboard. Per-command virtual keymaps are unsuitable for these providers' physical-key handling. Text is paced at 40 ms per character, then read-only live provider acknowledgement is required before Save. This is a fixture delivery policy, not a reference latency measurement. The prototype currently proves physical edit/save for three providers and Writer dirty-close Escape/pointer Cancel in its fixed private viewport; other close and recovery paths remain outstanding. It does not measure desktop appearance parity.
+The Rust 2024 installed-window fixture `office-native-workflows` uses the shared persistent full-US physical keyboard. Per-command virtual keymaps are unsuitable for these providers' physical-key handling. Text is paced at 40 ms per character, then read-only live provider acknowledgement is required before Save. This is a fixture delivery policy, not a reference latency measurement. The fixture proves physical edit/save and reopen for all three providers, new Save As through the private chooser, and the supported dirty-close choices including spreadsheet save failure. Recovery remains outstanding. It does not measure desktop appearance parity.
 
 Reopen acceptance creates a new empty document in the actual installed window, confirms the previous saved path is detached, then opens that exact saved file through the provider's native command dispatcher. It compares Writer full text and document-inspector blocks/runs/styles/tables/sections/parts; every bounded synthetic spreadsheet cell's native details plus computed/formula/formatted ranges and sheet metadata; and every slide inspector's text/geometry/style. Opaque `id` fields are not stable document identity. Writer selection and undo/redo availability are transient session state and are excluded; other document fields remain compared. Reopen must preserve the independently parsed file and its hash. Retained painted output supports inspection but does not establish reference geometry or full visual fidelity by itself.
 

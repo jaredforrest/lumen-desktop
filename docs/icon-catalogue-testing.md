@@ -1,11 +1,13 @@
 # Icon catalogue acceptance
 
-Run the standalone entry, which creates its own disposable HOME, XDG state,
+Run the Rust 2024 standalone entry, which creates its own disposable HOME, XDG state,
 activation-free session bus and inert system/audio addresses:
 
 ```sh
-bash tests/ci/run-native.sh icon_render \
-  nix develop --command desktop-test-python tests/desktop/icon_render.py \
+nix build .#test-icon-render-fixture -o artifacts/icon-render-fixture
+nix develop --command nu tests/ci/run-native.nu icon_render_bootstrap -- artifacts/icon-render-fixture/bin/lumen-icon-render-fixture --bootstrap-check
+nix develop --command nu tests/ci/run-native.nu icon_render -- \
+  artifacts/icon-render-fixture/bin/lumen-icon-render-fixture \
   --assets "$PWD/res/lumen-desktop/shell" \
   --launcher /absolute/package/bin/lumen-desktop-shell \
   --sway /absolute/compositor/bin/sway --output /absolute/new-artifact-directory
@@ -36,7 +38,7 @@ private; no host provider actions or live input are used. Public artwork and
 source fonts retain their existing ownership boundary. No official or private
 consumer artwork is added to the repository.
 
-`test_icon_render_bootstrap.py` launches the actual outer Python entry through a
+The Rust fixture's `--bootstrap-check` launches its actual outer entry through a
 recording child transport and validates its environment, bus configuration and
 cleanup. This catches an outer-entry failure even when an inner-only invocation
 would bypass it. CI also runs the genuine standalone render and retains its

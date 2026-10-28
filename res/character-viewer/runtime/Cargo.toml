@@ -1,0 +1,10 @@
+[package]
+name = "character-viewer-runtime"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+character-viewer-catalogue = { path = "../catalogue" }
+character-replacements = { package = "lumen-character-replacements", path = "../replacements" }
+gtk = "0.19"
+serde_json = "1"

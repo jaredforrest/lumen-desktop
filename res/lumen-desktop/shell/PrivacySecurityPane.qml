@@ -11,8 +11,7 @@ Column {
     function refresh() {
         if (worker.running) return;
         error = "";
-        worker.command = [Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",
-            Qt.resolvedUrl("privacy_status.py").toString().replace(/^file:\/\//, "")];
+        worker.command = ["lumen-privacy-status"];
         worker.running = true;
     }
     onActiveChanged: if (active) refresh()

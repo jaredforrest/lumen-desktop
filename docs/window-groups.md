@@ -63,12 +63,13 @@ selects it. These are native atomic membership edits, independent from normal
 placement commands. The backend constructs them exclusively from typed numeric
 captured identities.
 
-`test_window_groups.py` checks strict types, duplicate and conflicting facts,
-stale targets, independent hide semantics, unsupported adapters and lock/suspend
-rejection. `window_groups_native.py` uses real disposable native windows, keyboard,
+The Rust Spaces and group-control tests check typed captured identities, stale
+targets, unsupported adapters and lock/suspend rejection. The Rust 2024 `tests/desktop/native-groups-rust` fixture uses real disposable native windows, keyboard,
 pointer, paired/fullscreen presentation, session lock, output disconnect and
-clean shutdown on both compositor variants. `desktop_lifecycle_input.py` also
+clean shutdown on both compositor variants. The `desktop-policy-rust` lifecycle scenario also
 exercises the production dialog with actual private pointer and keyboard input.
+It also checks recent-group selector input and Overview membership drag on
+both compositor variants, reusing private process, IPC and physical input code.
 No fixture contacts the host session or user documents.
 
 ## Recent-group edge selector

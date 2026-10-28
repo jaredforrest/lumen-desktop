@@ -123,7 +123,7 @@ Item {
     FileInfoWindow {id:info}
     Process {
         id:location
-        command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("desktop_files.py").toString().replace(/^file:\/\//,"")]
+        command:["lumen-desktop-files"]
         stdout:StdioCollector {onStreamFinished:{
             try {const data=JSON.parse(text);if(data.error)throw new Error(data.error);root.directory=data.disabled?"":data.path;root.error=data.disabled?"Desktop files are disabled in your user-folder configuration.":data.exists?"":"The Desktop folder is unavailable. Open Files to create or select it.";if(data.exists && root.active && root.service===internalFiles)root.service.navigate(data.path);}
             catch(error){root.error="Could not locate the Desktop folder: "+error;}

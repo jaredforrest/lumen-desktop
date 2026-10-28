@@ -28,11 +28,13 @@ No consumer configuration change is required for the pane. If a permission store
 ```sh
 nix flake check --print-build-logs --option abort-on-warn true
 nix build .#shell --out-link /tmp/lumen-permission-shell
-nix develop --command desktop-test-python tests/desktop/test_portal_permissions.py
-LUMEN_TEST_SHELL_LAUNCHER=/tmp/lumen-permission-shell/bin/lumen-desktop-shell nix develop --command desktop-test-python tests/desktop/test_portal_permissions_qml.py
+nix build .#test-portal-permission-provider-fixture --out-link /tmp/lumen-permission-provider
+nix develop --command nu -c 'let client = (which lumen-portal-permissions | get path | first); ^lumen-portal-permission-protocol-fixture --provider /tmp/lumen-permission-provider/bin/lumen-portal-permission-provider-fixture --client $client'
+nix develop --command lumen-portal-pane-fixture --launcher /tmp/lumen-permission-shell/bin/lumen-desktop-shell --assets res/lumen-desktop --provider /tmp/lumen-permission-provider/bin/lumen-portal-permission-provider-fixture
 nix build .#compositor-basic --out-link /tmp/lumen-permission-compositor
 nix build .#test-pointer --out-link /tmp/lumen-permission-pointer
-nix develop --command desktop-test-python tests/desktop/portal_permissions_input.py --launcher /tmp/lumen-permission-shell/bin/lumen-desktop-shell --sway /tmp/lumen-permission-compositor/bin/sway --pointer-tool /tmp/lumen-permission-pointer/bin/wlrctl --output /tmp/lumen-permission-evidence
+nix build .#test-portal-permissions-native-fixture --out-link /tmp/lumen-permission-native
+nix develop --command /tmp/lumen-permission-native/bin/lumen-portal-permissions-native-fixture --launcher /tmp/lumen-permission-shell/bin/lumen-desktop-shell --sway /tmp/lumen-permission-compositor/bin/sway --pointer-tool /tmp/lumen-permission-pointer/bin/wlrctl --provider /tmp/lumen-permission-provider/bin/lumen-portal-permission-provider-fixture --output /tmp/lumen-permission-evidence
 ```
 
 Tests use a private bus with activation disabled and a disposable implementation of the real D-Bus signatures. They cover denial/reset/forget, sibling isolation, explicit confirmation/cancel, changed decisions and service-owner replacement, version limits, refusal to apply a change, partial and missing providers, Changed signals, and secret redaction. Actual QML uses its real helper transport. The native fixture clicks confirmation against that provider and checks painted light/dark interiors. No live grants, credentials or account data are used.

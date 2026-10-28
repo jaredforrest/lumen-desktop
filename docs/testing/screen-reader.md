@@ -1,6 +1,6 @@
 # Owned screen-reader acceptance
 
-`tests/desktop/screen_reader_input.py` runs the installed Search, notification
+The Rust 2024 `lumen-accessibility-workflows-fixture` runs the installed Search, notification
 stack and session confirmation components with real Orca and AT-SPI. Providers
 contain disposable sentinel data; application activation and final session actions
 are private observers. The controls, focus handlers and accessibility roles are

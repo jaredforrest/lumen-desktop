@@ -124,7 +124,7 @@ Item {
     }
     Process {
         id: bridge
-        command: [Quickshell.env("GLOBAL_MENU_PYTHON"), Quickshell.env("GLOBAL_MENU_BRIDGE")]
+        command: [Quickshell.env("GLOBAL_MENU_BRIDGE")]
         running: Quickshell.env("SWAYSOCK") !== ""
         stdinEnabled:true
         stdout: SplitParser {

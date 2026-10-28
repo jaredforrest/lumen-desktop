@@ -9,7 +9,8 @@ Settings writes use the existing appearance transaction protocol. No host policy
 Run either compositor variant after building the shell and test pointer package:
 
 ```sh
-PYTHONWARNINGS=error nix develop --command desktop-test-python tests/desktop/dock_drag_out_native.py --launcher /path/to/lumen-desktop-shell --sway /path/to/sway --pointer-tool /path/to/wlrctl --output /tmp/dock-drag-out
+nix build .#test-dock-interaction-fixture --out-link artifacts/dock-interaction-fixture
+nix develop --command ./artifacts/dock-interaction-fixture/bin/lumen-dock-interaction-fixture drag --launcher /path/to/lumen-desktop-shell --sway /path/to/sway --pointer-tool /path/to/wlrctl --source . --output /tmp/dock-drag-out
 ```
 
 Add `--effects` for the effects compositor; this explicitly requests its supported software rendering mode. CI retains result, pointer-state/write evidence, screenshots, and compositor/QML logs.

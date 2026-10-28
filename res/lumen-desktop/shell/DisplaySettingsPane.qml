@@ -64,7 +64,7 @@ Column {
     ControlRow {width:parent.width;text:"Forget Saved Display Layout";enabled:!root.pending;onClicked:root.send({action:"forget"})}
     Process {
         id:worker;stdinEnabled:true
-        command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("display_settings.py").toString().replace("file://","")]
+        command:["lumen-display-settings"]
         onStarted:write(JSON.stringify(root.request)+"\n")
         stdout:StdioCollector {onStreamFinished:{try{const data=JSON.parse(text);if(data.error){root.error=data.error;return;}if(data.outputs)root.outputs=data.outputs;root.pending=data.pending || "";root.seconds=data.seconds || 0;}catch(e){root.error="Unable to read display settings";}}}
         onExited:{if(root.request.action!=="status")Qt.callLater(root.refresh);}

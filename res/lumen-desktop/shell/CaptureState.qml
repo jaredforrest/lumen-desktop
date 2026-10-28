@@ -33,7 +33,7 @@ Item {
         Process {
             id:worker
             property int requestGeneration:0
-            command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("capture_observation.py").toString().replace(/^file:\/\//,"")]
+            command:["lumen-capture-observation"]
             stdout:StdioCollector {onStreamFinished:{
                 if(root.reader!==worker || !root.active || worker.requestGeneration!==root.generation)return;
                 try{root.publish(JSON.parse(text));}catch(error){root.clear();}

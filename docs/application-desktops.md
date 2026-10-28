@@ -43,12 +43,11 @@ commands to replacement windows.
 ## Verification
 
 ```sh
-nix develop --command desktop-test-python tests/desktop/test_application_desktops.py
-nix develop --command desktop-test-python tests/desktop/test_spaces.py
+nix-shell -p cargo rustc --run 'CARGO_TARGET_DIR=/tmp/lumen-spaces-target cargo test --offline --manifest-path res/lumen-desktop/spaces/Cargo.toml'
 nix build .#shell .#compositor-basic .#compositor .#test-window-relationships
 ```
 
-Run `tests/desktop/application_desktops_native.py` with `--launcher` pointing to
+Run `lumen-desktop-policy-fixture application` with `--launcher` pointing to
 the built shell launcher, `--sway` to the basic or effects compositor, `--client`
 to the built `lumen-test-window-relationships`, and a new `--output` directory.
 Add `--effects` for the effects compositor. CI runs both and retains snapshots,

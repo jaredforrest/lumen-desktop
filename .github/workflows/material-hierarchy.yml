@@ -14,21 +14,10 @@ jobs:
         with:
           fetch-depth: 0
       - uses: cachix/install-nix-action@v31
-      - run: bash tests/ci/run-native.sh material_namespace_prepare nix develop --command desktop-test-python tests/ci/native_namespace_policy.py prepare --output artifacts/material-namespace-policy
-      - run: |
-          nix build .#shell --out-link artifacts/material-shell --option abort-on-warn true
-          nix build .#compositor-basic --out-link artifacts/material-basic --option abort-on-warn true
-          nix build .#compositor --out-link artifacts/material-effects --option abort-on-warn true
-          nix build .#test-application-font --out-link artifacts/material-font --option abort-on-warn true
-          nix build .#test-application-software-driver --out-link artifacts/material-driver --option abort-on-warn true
-          bash tests/ci/prepare-software-effects.sh artifacts/material-software-effects
-          for variant in basic effects; do
-            extra=()
-            if [[ "$variant" == effects ]]; then extra=(--effects); fi
-            bash tests/ci/run-native.sh material_hierarchy_native nix develop --command desktop-test-python tests/desktop/material_hierarchy_native.py --launcher "$PWD/artifacts/material-shell/bin/lumen-desktop-shell" --sway "$PWD/artifacts/material-$variant/bin/sway" --font-directory "$PWD/artifacts/material-font/share/fonts/truetype" --software-driver "$PWD/artifacts/material-driver" "${extra[@]}" --output "artifacts/material-hierarchy-$variant"
-          done
+      - run: nix develop --command nu tests/ci/run-native.nu material_namespace_prepare -- lumen-native-namespace-policy prepare --output artifacts/material-namespace-policy
+      - run: nix develop --command nu tests/ci/material-hierarchy.nu
       - if: always()
-        run: bash tests/ci/run-native.sh material_namespace_cleanup nix develop --command desktop-test-python tests/ci/native_namespace_policy.py cleanup --output artifacts/material-namespace-policy
+        run: nix develop --command nu tests/ci/run-native.nu material_namespace_cleanup -- lumen-native-namespace-policy cleanup --output artifacts/material-namespace-policy
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

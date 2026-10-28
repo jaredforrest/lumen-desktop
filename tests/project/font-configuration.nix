@@ -3,17 +3,10 @@ let
   configuration = (import ../../packages/font-configuration.nix { inherit pkgs; }) {
     fontDirectories = [ "${pkgs.dejavu_fonts}/share/fonts" ];
   };
-in pkgs.runCommand "lumen-font-configuration-validation" {
-  nativeBuildInputs = [ pkgs.libxml2 ];
-} ''
-  export XML_CATALOG_FILES=${configuration.xmlCatalog}
-  if ! xmllint --valid --noout ${configuration} 2>diagnostics; then
-    cat diagnostics >&2
-    exit 1
-  fi
-  if test -s diagnostics; then
-    cat diagnostics >&2
-    exit 1
-  fi
-  touch $out
-''
+in builtins.derivation {
+  name = "lumen-font-configuration-validation";
+  system = pkgs.stdenv.hostPlatform.system;
+  builder = "${pkgs.nushell}/bin/nu";
+  args = [ "${./font_configuration.nu}" "${configuration}" "${configuration.xmlCatalog}" ];
+  PATH = pkgs.lib.makeBinPath [ pkgs.libxml2 pkgs.coreutils ];
+}

@@ -134,7 +134,7 @@ Item {
     Process {
         id:transport;stdinEnabled:true
         onStarted:{root.ready=true;for(const line of root.queued)write(line);root.queued=[];}
-        command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("files.py").toString().replace("file://","")]
+        command:[Quickshell.env("LUMEN_FILES_BIN") || "lumen-files-rust-wip"]
         stdout:SplitParser {onRead:line=>{
             try {
                 const data=JSON.parse(line);

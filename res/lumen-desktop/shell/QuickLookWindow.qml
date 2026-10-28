@@ -115,7 +115,7 @@ FloatingWindow {
         onAccepted:root.subjectAction("save-subject",root.subjectSaveIntent,decodeURIComponent(selectedFile.toString().replace(/^file:\/\//,"")))
     }
     Process {id:subject;property string requestPath;property string requestCapability;property string requestSource;property string requestFacts;property var request;stdinEnabled:true
-        command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("context_tools.py").toString().replace("file://","")]
+        command:[Quickshell.env("LUMEN_CONTEXT_TOOLS") || "lumen-context-tools"]
         onStarted:write(JSON.stringify(request)+"\n")
         stdout:StdioCollector {onStreamFinished:{if(!root.visible || root.path!==subject.requestPath || !previewState.actionSelection || subject.requestCapability!==previewState.actionSelection.capability || root.subjectPath!==subject.requestSource || JSON.stringify(root.subjectFacts)!==subject.requestFacts)return;try{const data=JSON.parse(text);root.subjectMessage=data.error || data.message || "";if(data.subject){root.subjectPath=data.subject;subjectSave.currentFile="file://"+Quickshell.env("HOME")+"/Pictures/"+encodeURIComponent(root.path.split("/").pop().replace(/\.[^.]+$/,"")+"-subject.png");}subjectPopup.open();}catch(e){root.subjectMessage="Unable to extract subject";subjectPopup.open();}}}
     }

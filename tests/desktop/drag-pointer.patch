@@ -1,0 +1,26 @@
+--- a/pointer.c
++++ b/pointer.c
+@@ -1,3 +1,5 @@
++#define _DEFAULT_SOURCE
++#include <unistd.h>
+ #include <assert.h>
+ #include <linux/input-event-codes.h>
+ #include <stdio.h>
+@@ -186,7 +188,16 @@
+ 	zwlr_virtual_pointer_manager_v1_create_virtual_pointer(
+ 		state->vp_mgr, state->seat
+ 	);
+-	switch (cmd->action) {
++	if (cmd->action == POINTER_ACTION_MOTION) {
++		wl_display_roundtrip(state->display); usleep(200000);
++		pointer_press(cmd->device, BTN_LEFT); wl_display_roundtrip(state->display); usleep(200000);
++		for (int i = 0; i < 14; i++) {
++			pointer_move(cmd->device, cmd->dx / 14, cmd->dy / 14);
++			wl_display_roundtrip(state->display); usleep(50000);
++		}
++		usleep(1500000); pointer_release(cmd->device, BTN_LEFT);
++		wl_display_roundtrip(state->display);
++	} else switch (cmd->action) {
+ 	case POINTER_ACTION_CLICK:
+ 		pointer_press(cmd->device, cmd->button);
+ 		pointer_release(cmd->device, cmd->button);

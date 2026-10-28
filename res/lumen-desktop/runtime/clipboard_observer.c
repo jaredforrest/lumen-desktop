@@ -1,5 +1,5 @@
 #define _POSIX_C_SOURCE 200809L
-/* Exact-offer text transport. Consent, retention and storage remain in Python. */
+/* Exact-offer text transport. Consent, retention and storage live in Rust. */
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>

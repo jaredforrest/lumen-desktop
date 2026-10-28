@@ -1,6 +1,6 @@
 # Lumen Desktop
 
-An independent Linux desktop project built with Quickshell, Qt Quick and Python, with a patched Sway/SwayFX compositor and Nix packaging. This is an early extraction from a working personal system, with substantial integration work still ahead.
+An independent Linux desktop project built with Quickshell, Qt Quick and Rust, with a patched Sway/SwayFX compositor and Nix packaging. This is an early extraction from a working personal system, with substantial integration work still ahead.
 
 The project owns the shell, window interaction, desktop services, toolkit adapters and regression tests. A consuming NixOS configuration owns users, hardware, storage, secrets, backup and deployment policy. No machine configuration is included here.
 

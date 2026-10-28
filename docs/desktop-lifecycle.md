@@ -70,10 +70,10 @@ still unavailable; this feature does not simulate them.
 
 ## Tests
 
-`test_desktop_lifecycle.py` and `test_spaces.py` exercise persistence, stale
-revisions, output constraints, permutation validation and evacuation failures.
-`test_desktop_order.cjs` checks immutable previews and stale/cancelled commits.
-`desktop_lifecycle_input.py` runs a private compositor and real native windows on
+Rust Spaces tests exercise persistence, stale revisions, output constraints and
+assignment validation. The native fixture covers desktop evacuation.
+`javascript_models_fixture.qml` checks immutable previews and stale/cancelled commits.
+`tests/desktop/desktop-policy-rust` runs a private compositor and real native windows on
 both backends: visible/hidden/minimized evacuation, fully minimized removal,
 saved-output restoration, disconnected output recovery and production Overview
 pointer/keyboard commit/cancel/confirmation controls. It preserves exact process

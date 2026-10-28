@@ -1,0 +1,9 @@
+[package]
+name = "lumen-launch-app"
+version = "0.1.0"
+edition = "2024"
+
+[[test]]
+name = "process"
+path = "tests/process.rs"
+harness = false

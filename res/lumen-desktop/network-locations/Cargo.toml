@@ -1,0 +1,10 @@
+[package]
+name = "lumen-network-locations"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gio = "0.21"
+glib = { version = "0.21", features = ["v2_66"] }
+libc = "0.2"
+serde_json = "1"

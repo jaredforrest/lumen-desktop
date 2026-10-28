@@ -1,0 +1,420 @@
+use serde_json::Value;
+use std::collections::BTreeMap;
+use std::env;
+use std::error::Error;
+use std::fs::{self, File};
+use std::io::Write;
+use std::os::unix::fs::{PermissionsExt, symlink};
+use std::os::unix::process::CommandExt;
+use std::path::{Path, PathBuf};
+use std::process::{Child, Command, Stdio};
+use std::thread;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+pub type Result<T> = std::result::Result<T, Box<dyn Error>>;
+pub fn fail(message: impl Into<String>) -> Box<dyn Error> {
+    message.into().into()
+}
+pub fn require(ok: bool, message: impl Into<String>) -> Result<()> {
+    if ok { Ok(()) } else { Err(fail(message)) }
+}
+pub fn pause(ms: u64) {
+    thread::sleep(Duration::from_millis(ms));
+}
+pub fn wait_true(label: &str, mut probe: impl FnMut() -> Result<bool>) -> Result<()> {
+    let end = Instant::now() + Duration::from_secs(20);
+    loop {
+        if probe().unwrap_or(false) {
+            return Ok(());
+        }
+        if Instant::now() >= end {
+            return Err(fail(format!("Timed out: {label}")));
+        }
+        pause(75);
+    }
+}
+#[derive(Clone)]
+pub struct Options {
+    pub scenario: String,
+    pub output: PathBuf,
+    pub source: PathBuf,
+    pub launcher: PathBuf,
+    pub sway: PathBuf,
+    pub pointer: PathBuf,
+    pub effects: bool,
+    pub inside: bool,
+}
+impl Options {
+    pub fn parse() -> Result<Self> {
+        let mut args = env::args_os().skip(1);
+        let scenario = args
+            .next()
+            .ok_or("Missing Dock scenario")?
+            .to_string_lossy()
+            .into_owned();
+        let mut output = None;
+        let mut source = None;
+        let mut launcher = None;
+        let mut sway = None;
+        let mut pointer = None;
+        let mut effects = false;
+        let mut inside = false;
+        while let Some(arg) = args.next() {
+            match arg.to_str() {
+                Some("--output") => {
+                    output = Some(PathBuf::from(args.next().ok_or("Missing output")?))
+                }
+                Some("--source") => {
+                    source = Some(PathBuf::from(args.next().ok_or("Missing source")?))
+                }
+                Some("--launcher") => {
+                    launcher = Some(PathBuf::from(args.next().ok_or("Missing launcher")?))
+                }
+                Some("--sway") => sway = Some(PathBuf::from(args.next().ok_or("Missing Sway")?)),
+                Some("--pointer-tool") => {
+                    pointer = Some(PathBuf::from(args.next().ok_or("Missing pointer")?))
+                }
+                Some("--effects") => effects = true,
+                Some("--inside") => inside = true,
+                _ => return Err(fail("Unknown Dock fixture option")),
+            }
+        }
+        Ok(Self {
+            scenario,
+            output: env::current_dir()?.join(output.ok_or("--output required")?),
+            source: source.unwrap_or(env::current_dir()?).canonicalize()?,
+            launcher: launcher.ok_or("--launcher required")?.canonicalize()?,
+            sway: sway.ok_or("--sway required")?.canonicalize()?,
+            pointer: pointer.ok_or("--pointer-tool required")?.canonicalize()?,
+            effects,
+            inside,
+        })
+    }
+}
+pub fn private_session() -> Result<()> {
+    let nanos = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+    let root = PathBuf::from(format!("/tmp/ldi-{}-{nanos}", std::process::id()));
+    fs::create_dir(&root)?;
+    fs::set_permissions(&root, fs::Permissions::from_mode(0o700))?;
+    let mut command = Command::new("dbus-run-session");
+    command
+        .arg("--")
+        .arg(env::current_exe()?)
+        .args(env::args_os().skip(1))
+        .arg("--inside")
+        .env("HOME", &root)
+        .env("XDG_RUNTIME_DIR", &root);
+    for name in [
+        "DISPLAY",
+        "WAYLAND_DISPLAY",
+        "SWAYSOCK",
+        "DBUS_SESSION_BUS_ADDRESS",
+        "AT_SPI_BUS_ADDRESS",
+    ] {
+        command.env_remove(name);
+    }
+    let status = command.status();
+    let _ = fs::remove_dir_all(&root);
+    require(status?.success(), "Private Dock fixture failed")
+}
+fn copy_tree(source: &Path, target: &Path) -> Result<()> {
+    fs::create_dir_all(target)?;
+    for row in fs::read_dir(source)? {
+        let entry = row?;
+        let path = entry.path();
+        let destination = target.join(entry.file_name());
+        if path.is_dir() {
+            copy_tree(&path, &destination)?;
+        } else if path.is_file() {
+            fs::copy(path, destination)?;
+        }
+    }
+    Ok(())
+}
+pub struct Managed(pub Child);
+impl Managed {
+    pub fn stop(&mut self) {
+        if self.0.try_wait().ok().flatten().is_none() {
+            unsafe {
+                libc::killpg(self.0.id() as i32, libc::SIGTERM);
+            }
+        }
+        let end = Instant::now() + Duration::from_secs(5);
+        while self.0.try_wait().ok().flatten().is_none() {
+            if Instant::now() >= end {
+                unsafe {
+                    libc::killpg(self.0.id() as i32, libc::SIGKILL);
+                }
+                break;
+            }
+            pause(25);
+        }
+        let _ = self.0.wait();
+    }
+}
+pub struct Fixture {
+    pub options: Options,
+    pub env: BTreeMap<String, String>,
+    pub runtime: PathBuf,
+    pub qml: PathBuf,
+    pub processes: Vec<Managed>,
+    pub pointer: Option<usize>,
+}
+impl Drop for Fixture {
+    fn drop(&mut self) {
+        for child in self.processes.iter_mut().rev() {
+            child.stop();
+        }
+    }
+}
+impl Fixture {
+    pub fn new(options: Options, qml_source: &str) -> Result<Self> {
+        fs::create_dir(&options.output)?;
+        let runtime = PathBuf::from(env::var("XDG_RUNTIME_DIR")?);
+        let raw = Command::new(&options.launcher)
+            .arg("--print-env0")
+            .output()?;
+        require(raw.status.success(), "Launcher environment failed")?;
+        let mut values = env::vars().collect::<BTreeMap<_, _>>();
+        for row in raw.stdout.split(|byte| *byte == 0) {
+            if let Some(index) = row.iter().position(|byte| *byte == b'=') {
+                let key = String::from_utf8(row[..index].to_vec())?;
+                values.insert(key, String::from_utf8(row[index + 1..].to_vec())?);
+            }
+        }
+        for key in ["CONFIG", "STATE", "CACHE", "DATA"] {
+            let dir = options.output.join(key.to_lowercase());
+            fs::create_dir_all(&dir)?;
+            values.insert(format!("XDG_{key}_HOME"), dir.display().to_string());
+        }
+        for (key, value) in [
+            ("WLR_BACKENDS", "headless"),
+            ("WLR_RENDERER", "pixman"),
+            ("WLR_LIBINPUT_NO_DEVICES", "1"),
+            ("QT_QUICK_BACKEND", "software"),
+            ("QT_QPA_PLATFORM", "wayland"),
+            ("GDK_BACKEND", "wayland"),
+            ("GTK_USE_PORTAL", "0"),
+            ("GSETTINGS_BACKEND", "memory"),
+            ("NO_AT_BRIDGE", "1"),
+            ("QT_ACCESSIBILITY", "0"),
+            ("QT_LINUX_ACCESSIBILITY_ALWAYS_ON", "0"),
+            ("GTK_A11Y", "none"),
+            ("XDG_CURRENT_DESKTOP", "sway"),
+        ] {
+            values.insert(key.into(), value.into());
+        }
+        if options.effects {
+            for (key, value) in [
+                ("WLR_RENDERER", "gles2"),
+                ("WLR_RENDERER_ALLOW_SOFTWARE", "1"),
+                ("WLR_RENDERER_FORCE_SOFTWARE", "1"),
+                ("QT_QUICK_BACKEND", ""),
+                ("QSG_RHI_BACKEND", "opengl"),
+                ("LIBGL_ALWAYS_SOFTWARE", "1"),
+                ("LUMEN_COMPOSITOR_EFFECTS", "1"),
+            ] {
+                values.insert(key.into(), value.into());
+            }
+        }
+        for key in [
+            "AT_SPI_BUS_ADDRESS",
+            "DISPLAY",
+            "WAYLAND_DISPLAY",
+            "SWAYSOCK",
+        ] {
+            values.remove(key);
+        }
+        let portal = options.output.join("config/xdg-desktop-portal");
+        fs::create_dir_all(&portal)?;
+        fs::write(portal.join("portals.conf"), "[preferred]\ndefault=none\n")?;
+        let assets = options.output.join("assets");
+        copy_tree(&options.source.join("res/lumen-desktop/shell"), &assets)?;
+        let qml = assets.join("fixture.qml");
+        fs::write(&qml, qml_source)?;
+        Ok(Self {
+            options,
+            env: values,
+            runtime,
+            qml,
+            processes: Vec::new(),
+            pointer: None,
+        })
+    }
+    fn command(&self, program: &str, args: &[&str]) -> Command {
+        let mut cmd = Command::new(program);
+        cmd.args(args).env_clear().envs(&self.env);
+        cmd
+    }
+    pub fn call(&self, program: &str, args: &[&str]) -> Result<String> {
+        let output = self.command(program, args).output()?;
+        if !output.status.success() {
+            return Err(fail(format!(
+                "{program} {args:?}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            )));
+        }
+        Ok(String::from_utf8(output.stdout)?.trim().to_owned())
+    }
+    pub fn launch(
+        &mut self,
+        program: &str,
+        args: &[&str],
+        name: &str,
+        pipe: bool,
+    ) -> Result<usize> {
+        let log = File::create(self.options.output.join(format!("{name}.log")))?;
+        let mut cmd = self.command(program, args);
+        cmd.stdout(log.try_clone()?).stderr(log);
+        if pipe {
+            cmd.stdin(Stdio::piped());
+        }
+        unsafe {
+            cmd.pre_exec(|| {
+                if libc::setsid() < 0 {
+                    Err(std::io::Error::last_os_error())
+                } else {
+                    Ok(())
+                }
+            });
+        }
+        self.processes.push(Managed(cmd.spawn()?));
+        Ok(self.processes.len() - 1)
+    }
+    pub fn stop(&mut self, index: usize) {
+        self.processes[index].stop();
+    }
+    pub fn start_sway(&mut self) -> Result<()> {
+        let source = fs::read_to_string(self.options.source.join("res/lumen-desktop/sway.conf"))?;
+        let config = self.options.output.join("sway.conf");
+        fs::write(
+            &config,
+            format!(
+                "output * resolution 1920x1080\ndefault_border normal 1\ndefault_floating_border normal 1\n{source}"
+            ),
+        )?;
+        let sway = self.options.sway.display().to_string();
+        self.launch(
+            &sway,
+            &[
+                "--unsupported-gpu",
+                "-c",
+                config.to_str().ok_or("Sway config")?,
+            ],
+            "sway",
+            false,
+        )?;
+        wait_true("private Sway", || {
+            Ok(first_file(&self.runtime, "sway-ipc", false)?.is_some())
+        })?;
+        self.env.insert(
+            "SWAYSOCK".into(),
+            first_file(&self.runtime, "sway-ipc", false)?
+                .ok_or("Sway socket")?
+                .display()
+                .to_string(),
+        );
+        self.env.insert(
+            "WAYLAND_DISPLAY".into(),
+            first_file(&self.runtime, "wayland-", true)?
+                .ok_or("Wayland display")?
+                .file_name()
+                .ok_or("Display name")?
+                .to_string_lossy()
+                .into_owned(),
+        );
+        Ok(())
+    }
+    pub fn start_pointer(&mut self) -> Result<()> {
+        let path = self.options.pointer.display().to_string();
+        let index = self.launch(&path, &["pointer", "move", "0", "0"], "pointer", true)?;
+        self.pointer = Some(index);
+        pause(100);
+        self.call("swaymsg", &["seat", "seat0", "cursor", "set", "960", "540"])?;
+        Ok(())
+    }
+    pub fn pointer(&mut self, value: &str) -> Result<()> {
+        let index = self.pointer.ok_or("Missing pointer")?;
+        let pipe = self.processes[index]
+            .0
+            .stdin
+            .as_mut()
+            .ok_or("Missing pointer pipe")?;
+        pipe.write_all(value.as_bytes())?;
+        pipe.flush()?;
+        Ok(())
+    }
+    pub fn move_to(&mut self, position: &mut (i64, i64), x: i64, y: i64) -> Result<()> {
+        self.pointer(&format!("m {} {}\n", x - position.0, y - position.1))?;
+        *position = (x, y);
+        pause(80);
+        Ok(())
+    }
+    pub fn ipc(&self, method: &str, args: &[&str]) -> Result<String> {
+        let mut all = vec![
+            "-p",
+            self.qml.to_str().ok_or("QML path")?,
+            "ipc",
+            "call",
+            "fixture",
+            method,
+        ];
+        all.extend(args);
+        self.call("quickshell", &all)
+    }
+    pub fn state(&self) -> Result<Value> {
+        Ok(serde_json::from_str(&self.ipc("state", &[])?)?)
+    }
+    pub fn tree(&self) -> Result<Value> {
+        Ok(serde_json::from_str(
+            &self.call("swaymsg", &["-t", "get_tree"])?,
+        )?)
+    }
+    pub fn screenshot(&self, name: &str) -> Result<()> {
+        self.call(
+            "grim",
+            &[self
+                .options
+                .output
+                .join(name)
+                .to_str()
+                .ok_or("Screenshot path")?],
+        )?;
+        Ok(())
+    }
+    pub fn sibling(&self, name: &str) -> Result<PathBuf> {
+        Ok(env::current_exe()?
+            .parent()
+            .ok_or("Binary parent")?
+            .join(name))
+    }
+    pub fn install_stub(&mut self) -> Result<PathBuf> {
+        let bin = self.options.output.join("bin");
+        fs::create_dir(&bin)?;
+        let service = bin.join("lumen-appearance");
+        symlink(self.sibling("lumen-appearance")?, &service)?;
+        self.env.insert(
+            "PATH".into(),
+            format!(
+                "{}:{}",
+                bin.display(),
+                self.env.get("PATH").cloned().unwrap_or_default()
+            ),
+        );
+        self.env.insert(
+            "LUMEN_DOCK_AUDIT_OUTPUT".into(),
+            self.options.output.display().to_string(),
+        );
+        Ok(service)
+    }
+}
+fn first_file(root: &Path, prefix: &str, exclude_lock: bool) -> Result<Option<PathBuf>> {
+    Ok(fs::read_dir(root)?
+        .filter_map(|row| row.ok().map(|entry| entry.path()))
+        .find(|path| {
+            path.file_name().is_some_and(|name| {
+                let text = name.to_string_lossy();
+                text.starts_with(prefix) && (!exclude_lock || !text.ends_with(".lock"))
+            })
+        }))
+}

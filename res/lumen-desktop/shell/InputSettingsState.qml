@@ -21,7 +21,7 @@ Item {
     Process {
         id:worker;stdinEnabled:true
         property bool received:false
-        command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("input_settings.py").toString().replace(/^file:\/\//,"")]
+        command:["lumen-input-settings"]
         onStarted:{received=false;write(JSON.stringify(root.request)+"\n");}
         stdout:StdioCollector {onStreamFinished:{try{const data=JSON.parse(text);root.available=data.available===true;root.devices=data.devices || [];root.error=data.error || "";root.message=data.message || "";worker.received=true;}catch(error){root.available=false;root.devices=[];root.error="Unable to read input device settings.";}}}
         onExited:(code,status)=>{if(code!==0 || !received){root.available=false;root.devices=[];root.error="The input settings provider did not respond.";}}

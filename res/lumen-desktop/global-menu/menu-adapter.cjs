@@ -4,7 +4,7 @@ const { spawn } = require('node:child_process');
 const readline = require('node:readline');
 const root = process.env.CODEX_MENU_ADAPTER_ROOT;
 if (root && process.env.SWAYSOCK) app.whenReady().then(() => {
-  const child = spawn(root + '/python', [root + '/export-helper.py'], {stdio:['pipe','pipe','inherit']});
+  const child = spawn(root + '/export-helper', [], {stdio:['pipe','pipe','inherit']});
   let actions = new Map(), previous = '', alive = true;
   const hidden = new Map();
   const styles = new Map();

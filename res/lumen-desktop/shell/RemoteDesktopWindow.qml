@@ -69,7 +69,7 @@ FloatingWindow {
         }
         Shortcut {sequence:"Escape";onActivated:root.visible=false}
     }
-    Process {id:worker;stdinEnabled:true;command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("remote_desktop.py").toString().replace(/^file:\/\//,"")]
+    Process {id:worker;stdinEnabled:true;command:["lumen-remote-desktop"]
         onStarted:write(JSON.stringify(root.request)+"\n")
         stdout:StdioCollector {onStreamFinished:{try{const data=JSON.parse(text);root.error=data.error || "";if(data.connections)root.connections=data.connections;if(data.started)root.visible=false;}catch(e){root.error="Remote Desktop could not complete the request.";}}}
     }

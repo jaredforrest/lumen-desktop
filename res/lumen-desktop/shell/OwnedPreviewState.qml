@@ -92,7 +92,7 @@ Item {
     Timer {id:actionDeadline;interval:80000;onTriggered:root.fail("The preview action timed out") }
     Process {
         id:provider;stdinEnabled:true
-        command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("owned_preview.py").toString().replace(/^file:\/\//,"")]
+        command:[Quickshell.env("LUMEN_OWNED_PREVIEW_BIN") || "lumen-owned-preview-rust-wip"]
         onStarted:{if(!root.active){root.stopRequested=true;root.tryStop();}}
         stdout:SplitParser {onRead:line=>{
             try {
