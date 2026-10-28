@@ -3,6 +3,7 @@ import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
 import "DesktopLayoutModel.js" as Layout
+import "DesktopNavigationModel.js" as Navigation
 import "DesktopDragModel.js" as DragModel
 import "FileDropModel.js" as FileDrop
 
@@ -11,8 +12,9 @@ Item {
     id:root
     required property var shell
     property bool active:false
-    DesktopLayoutState {id:arrangement;directory:root.directory;rows:root.service.rows;listingBusy:root.service.busy===true;active:root.active}
-    readonly property var displayItems:Layout.build(active?service.rows:[],arrangement.layout,arrangement.expanded,stage.width,stage.height,Date.now())
+    DesktopLayoutState {id:arrangement;directory:root.directory;rows:root.service.rows;listingBusy:root.service.listingComplete!==true;itemWidth:captionMetrics.tileWidth;itemHeight:captionMetrics.tileHeight;active:root.active}
+    readonly property var displayItems:Layout.build(active?service.rows:[],arrangement.layout,arrangement.expanded,stage.width,stage.height,Date.now(),{width:captionMetrics.tileWidth,height:captionMetrics.tileHeight})
+    DesktopCaptionMetrics {id:captionMetrics;captions:Layout.build(root.active?root.service.rows:[],arrangement.layout,arrangement.expanded,stage.width,stage.height,Date.now()).map(item=>item.stack?item.label+" ("+item.children.length+")":(item.row.link?"↗ ":"")+item.row.name)}
     readonly property bool externalDragActive:active && shell.nativeFileDragActive===true
     readonly property var inputRectangles:externalDragActive || (shell.nativeFileDragAvailable===true && backgroundDrop.containsDrag && dragTail.running) || dragSnapshot.length>0 || nativeDragActive || dropConfirmation.visible || trashConfirmation.visible || editor.visible || actions.visible?[{x:stage.x,y:stage.y,width:stage.width,height:stage.height}]:displayItems.filter(item=>!item.overflow).map(item=>({x:stage.x+item.x,y:stage.y+item.y,width:item.width,height:item.height}))
     // Native drop completion can precede Qt delivery. Keep an entered target
@@ -21,7 +23,7 @@ Item {
     Timer {id:dragTail;interval:200}
     readonly property int overflowCount:displayItems.filter(item=>item.overflow).length
     readonly property var desktopLayout:arrangement.layout
-    function grouping(mode){selectedPaths=[];currentPath="";anchorPath="";arrangement.group(mode);}
+    function grouping(mode){currentLayoutKey="";selectedPaths=[];currentPath="";anchorPath="";arrangement.group(mode);}
     function desktopActions(){selectedPaths=[];currentPath="";anchorPath="";actions.open();focusContents();}
 
     property bool resolveDirectory:true
@@ -32,6 +34,7 @@ Item {
     property string error:""
     property var selectedPaths:[]
     property string currentPath:""
+    property string currentLayoutKey:""
     property string anchorPath:""
     property var pendingTrash:[]
     property string pendingRename:""
@@ -81,9 +84,17 @@ Item {
         else if(primary)selectedPaths=selectedPaths.includes(row.path)?selectedPaths.filter(path=>path!==row.path):selectedPaths.concat([row.path]);
         else selectedPaths=[row.path];
         if(!((modifiers || 0)&Qt.ShiftModifier))anchorPath=row.path;
-        currentPath=row.path;focusContents();
+        currentPath=row.path;const shown=displayItems.find(item=>!item.stack && item.row.path===row.path);currentLayoutKey=shown?shown.key:"";focusContents();
     }
-    function step(delta,modifiers){const index=service.rows.findIndex(row=>row.path===currentPath);choose(index<0?(delta<0?service.rows.length-1:0):Math.max(0,Math.min(service.rows.length-1,index+delta)),modifiers || 0);}
+    function step(delta,modifiers){const shown=displayItems.filter(item=>!item.stack && !item.overflow),index=shown.findIndex(item=>item.row.path===currentPath);if(!shown.length)return;const next=shown[index<0?(delta<0?shown.length-1:0):Math.max(0,Math.min(shown.length-1,index+delta))];choose(next.sourceIndex,modifiers || 0);}
+    function navigateVisible(direction,modifiers){
+        const key=Navigation.neighbour(displayItems,currentLayoutKey,direction);
+        const item=displayItems.find(value=>value.key===key && !value.overflow);if(!item)return;
+        currentLayoutKey=key;
+        if(item.stack){currentPath="";selectedPaths=[];focusContents();}
+        else choose(item.sourceIndex,modifiers);
+    }
+    function activateStack(){const item=displayItems.find(value=>value.key===currentLayoutKey && value.stack && !value.overflow);if(!item)return false;arrangement.toggle(item.key);return true;}
     function quickLookStep(delta){step(delta);if(current)shell.quickLookWindow.show(current.path,root);}
     function openCurrent(){if(!current)return;if(current.directory)shell.openFiles(current.path);else service.act("open",{path:current.path});leaveKeyboard();}
     function askTrash(){
@@ -133,13 +144,14 @@ Item {
             else if(primary && event.key===Qt.Key_Z)root.service.undo();
             else if(event.key===Qt.Key_Delete || primary && event.key===Qt.Key_Backspace)root.askTrash();
             else if(event.key===Qt.Key_F2)root.beginRename();
-            else if(event.key===Qt.Key_Return || event.key===Qt.Key_Enter)root.openCurrent();
+            else if(event.key===Qt.Key_Return || event.key===Qt.Key_Enter){if(!root.activateStack())root.openCurrent();}
+            else if(event.key===Qt.Key_Space && root.activateStack()){}
             else if(event.key===Qt.Key_Space && root.current)root.shell.quickLookWindow.show(root.current.path,root);
             else if(event.key===Qt.Key_Menu || event.key===Qt.Key_F10 && (event.modifiers&Qt.ShiftModifier))root.context();
-            else if(event.key===Qt.Key_Down)root.step(1,event.modifiers);
-            else if(event.key===Qt.Key_Up)root.step(-1,event.modifiers);
-            else if(event.key===Qt.Key_Right)root.step(Math.max(1,Math.floor(grid.height/grid.cellHeight)),event.modifiers);
-            else if(event.key===Qt.Key_Left)root.step(-Math.max(1,Math.floor(grid.height/grid.cellHeight)),event.modifiers);
+            else if(event.key===Qt.Key_Down)root.navigateVisible("down",event.modifiers);
+            else if(event.key===Qt.Key_Up)root.navigateVisible("up",event.modifiers);
+            else if(event.key===Qt.Key_Right)root.navigateVisible("right",event.modifiers);
+            else if(event.key===Qt.Key_Left)root.navigateVisible("left",event.modifiers);
             else {event.accepted=false;return;}
             event.accepted=true;
         }
@@ -169,13 +181,18 @@ Item {
                     readonly property var draggedPoint:root.dragPreview.find(item=>item.key===modelData.key) || null
                     x:draggedPoint?draggedPoint.x:modelData.x;y:draggedPoint?draggedPoint.y:modelData.y;width:modelData.width;height:modelData.height;visible:!modelData.overflow
                     Accessible.name:modelData.stack?modelData.label+" stack, "+modelData.children.length+" items":fileRow.name
-                    onClicked:{if(modelData.stack){root.focusContents();arrangement.toggle(modelData.key);}else root.choose(modelData.sourceIndex,0);}
-                    Keys.onPressed:event=>{if(modelData.stack && [Qt.Key_Return,Qt.Key_Enter,Qt.Key_Space].includes(event.key)){arrangement.toggle(modelData.key);event.accepted=true;}else event.accepted=false;}
+                    onClicked:{if(modelData.stack){root.currentLayoutKey=modelData.key;root.currentPath="";root.selectedPaths=[];root.focusContents();arrangement.toggle(modelData.key);}else root.choose(modelData.sourceIndex,0);}
+                    Keys.onPressed:event=>{
+                        const directions=({[Qt.Key_Left]:"left",[Qt.Key_Right]:"right",[Qt.Key_Up]:"up",[Qt.Key_Down]:"down"});
+                        if(directions[event.key]){root.currentLayoutKey=modelData.key;root.navigateVisible(directions[event.key],event.modifiers);event.accepted=true;}
+                        else if(modelData.stack && [Qt.Key_Return,Qt.Key_Enter,Qt.Key_Space].includes(event.key)){root.currentLayoutKey=modelData.key;arrangement.toggle(modelData.key);event.accepted=true;}
+                        else event.accepted=false;
+                    }
                     Accessible.role:Accessible.ListItem;Accessible.selected:!modelData.stack && root.selectedPaths.includes(fileRow.path)
                     background:Rectangle {radius:7;color:root.selectedPaths.includes(tile.fileRow.path)?Theme.colors.accent:tile.hovered?"#30303030":"transparent";border.color:tile.activeFocus?Theme.colors.text:"transparent"}
                     contentItem:Item {
                         SystemGlyph {anchors.horizontalCenter:parent.horizontalCenter;y:8;width:46;height:46;name:tile.modelData.stack || tile.fileRow.directory?"folder":"document";ink:root.selectedPaths.includes(tile.fileRow.path)?Theme.colors.selectedText:Theme.colors.accent}
-                        PanelLabel {x:5;y:61;width:98;height:34;text:tile.modelData.stack?tile.modelData.label+" ("+tile.modelData.children.length+")":(tile.fileRow.link?"↗ ":"")+tile.fileRow.name;textFormat:Text.PlainText;wrapMode:Text.Wrap;maximumLineCount:2;elide:Text.ElideRight;horizontalAlignment:Text.AlignHCenter;font.pixelSize:11;color:root.selectedPaths.includes(tile.fileRow.path)?Theme.colors.selectedText:"white";style:Text.Outline;styleColor:"#66000000"}
+                        PanelLabel {x:5;y:61;width:captionMetrics.captionWidth;height:captionMetrics.captionHeight;text:tile.modelData.stack?tile.modelData.label+" ("+tile.modelData.children.length+")":(tile.fileRow.link?"↗ ":"")+tile.fileRow.name;textFormat:Text.PlainText;wrapMode:Text.Wrap;maximumLineCount:2;elide:Text.ElideRight;horizontalAlignment:Text.AlignHCenter;font.pixelSize:Theme.textRole("metadata");color:root.selectedPaths.includes(tile.fileRow.path)?Theme.colors.selectedText:"white";style:Text.Outline;styleColor:"#66000000"}
                     }
                     DropArea {anchors.fill:parent;enabled:tile.fileRow.directory && !tile.modelData.stack
                         onEntered:drag=>{drag.accepted=!root.nativeDragActive && drag.hasUrls && (drag.supportedActions & Qt.CopyAction);}
@@ -189,7 +206,7 @@ Item {
                         onPositionChanged:if(drag.active){wasDragged=true;root.previewDrag();}
                         drag.onActiveChanged:if(drag.active){wasDragged=true;root.previewDrag();root.beginNativeDrag();}
                         onPressed:event=>{
-                            wasDragged=false;
+                            wasDragged=false;root.currentLayoutKey=tile.modelData.key;
                             if(!tile.modelData.stack){
                                 if(!root.selectedPaths.includes(tile.fileRow.path) || event.modifiers)root.choose(tile.modelData.sourceIndex,event.modifiers);
                                 else {root.currentPath=tile.fileRow.path;root.focusContents();}
@@ -198,7 +215,7 @@ Item {
                         }
                         onReleased:event=>{if(!root.nativeDragActive){if(wasDragged)root.finishDrag();else root.cancelDrag();}}
                         onCanceled:if(!root.nativeDragActive)root.cancelDrag()
-                        onClicked:event=>{if(wasDragged)return;if(tile.modelData.stack){if(event.button===Qt.RightButton)root.desktopActions();else {root.focusContents();arrangement.toggle(tile.modelData.key);}}else if(event.button===Qt.RightButton){root.currentPath=tile.fileRow.path;root.context();}}
+                        onClicked:event=>{if(wasDragged)return;if(tile.modelData.stack){if(event.button===Qt.RightButton)root.desktopActions();else {root.currentLayoutKey=tile.modelData.key;root.currentPath="";root.selectedPaths=[];root.focusContents();arrangement.toggle(tile.modelData.key);}}else if(event.button===Qt.RightButton){root.currentPath=tile.fileRow.path;root.context();}}
                         onDoubleClicked:event=>{if(!tile.modelData.stack && event.button===Qt.LeftButton)root.openCurrent();}
                     }
                 }

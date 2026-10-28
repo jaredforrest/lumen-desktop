@@ -1,0 +1,15 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const model={};vm.createContext(model);vm.runInContext(fs.readFileSync('res/lumen-desktop/shell/DesktopNavigationModel.js','utf8').replace('.pragma library',''),model);
+const item=(key,x,y,extra={})=>({key,x,y,width:108,height:100,...extra});
+const items=[item('right-top',300,0),item('right-bottom',300,200),item('left-top',0,0),item('left-bottom',0,200)];
+assert.equal(model.neighbour(items,'left-top','right'),'right-top');
+assert.equal(model.neighbour(items,'right-top','down'),'right-bottom');
+assert.equal(model.neighbour(items,'right-bottom','left'),'left-bottom');
+assert.equal(model.neighbour(items,'left-bottom','up'),'left-top');
+assert.equal(model.neighbour(items,'right-top','right'),'right-top');
+assert.equal(model.neighbour(items.concat(item('hidden',150,0,{overflow:true})),'left-top','right'),'right-top');
+assert.equal(model.neighbour([item('stack:one',0,0,{stack:true}),item('child',0,100),item('stack:two',200,0,{stack:true})],'stack:one','right'),'stack:two');
+assert.equal(model.neighbour(items,'removed','down'),'right-top');
+assert.equal(model.neighbour([],'removed','down'),null);
+assert.equal(model.neighbour(items.slice().reverse(),'left-top','right'),'right-top');
+console.log('PASS geometry navigation, hidden exclusion, stack identity and deterministic replacement');

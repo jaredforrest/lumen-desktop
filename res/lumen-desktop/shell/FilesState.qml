@@ -13,6 +13,10 @@ Item {
     property string parentPath:""
     property var rows:[]
     property string rowsPath:""
+    property int committedListingId:0
+    property bool committedListingComplete:false
+    readonly property bool listingComplete:listingCurrent && committedListingComplete
+    readonly property bool listingCurrent:ready && !busy && committedListingId>0 && committedListingId===currentId && rowsPath===path
     function prepareTab(value){path=value;rows=[];rowsPath="";breadcrumbs=[];parentPath="";columns=[];columnRequests={};}
     property var breadcrumbs:[]
     property bool busy:false
@@ -145,7 +149,7 @@ Item {
                 if(data.action==="applications"){if(data.id!==root.applicationRequestId){if(data.capability)root.send("retire-actions",{capabilities:[data.capability]});return;}root.applicationRequestId=0;if(data.error)root.error=data.error;else root.applicationsReady(data.applications,root.applicationRequestPath,{capability:data.capability,session:data.generation,choice:data.choice,facts:root.applicationRequestFacts.slice()});return;}
                 if(data.id!==root.currentId){if(data.action!=="list" && data.error)root.error=data.error;return;}
                 root.busy=false;
-                if(data.error){root.error=data.error;if(data.action==="list"){const saved=(root.history[root.historyIndex] || {}).presentation;if(saved && root.rowsPath===root.path){root.query=saved.query;root.historyReady(saved);root.selectedPath("@history");}}return;}
+                if(data.error){root.committedListingId=0;root.error=data.error;if(data.action==="list"){const saved=(root.history[root.historyIndex] || {}).presentation;if(saved && root.rowsPath===root.path){root.query=saved.query;root.historyReady(saved);root.selectedPath("@history");}}return;}
                 if(data.action==="list"){
                     const sameFolder=root.path===data.path;
                     root.path=data.path;root.rowsPath=data.path;root.parentPath=data.parent;root.rows=data.rows;root.breadcrumbs=data.breadcrumbs;root.writable=data.writable;root.loadColumns();
@@ -156,11 +160,13 @@ Item {
                     root.historyReady(saved || null);
                     root.selectedPath(root.nextSelection || (saved?"@history":sameFolder?"@preserve":""));root.nextSelection="";
                     if(root.pendingRefresh){root.pendingRefresh=false;Qt.callLater(root.refresh);}
+                    root.committedListingComplete=!data.limited && !data.unreadable;
+                    root.committedListingId=data.id===root.currentId && root.rowsPath===root.path?data.id:0;
                 } else {
                     root.nextSelection=data.selected || "";root.refresh();
                 }
-            }catch(e){root.busy=false;root.error="Unable to read Files results: "+e;}
+            }catch(e){root.committedListingId=0;root.busy=false;root.error="Unable to read Files results: "+e;}
         }}
-        onExited:(code,status)=>{root.cancelApplications();root.ready=false;root.queued=[];root.busy=false;root.error="Files disconnected. Refresh to reconnect.";}
+        onExited:(code,status)=>{root.cancelApplications();root.committedListingId=0;root.ready=false;root.queued=[];root.busy=false;root.error="Files disconnected. Refresh to reconnect.";}
     }
 }
