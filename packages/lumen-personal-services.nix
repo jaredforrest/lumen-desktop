@@ -1,39 +1,73 @@
 { pkgs, timeZone ? "Europe/London" }:
 let
-  assets = ../res/lumen-desktop/shell;
-  calendarPython = (import ./python-runtime.nix { inherit pkgs; }).withPackages (ps: [ ps.icalendar ps.recurring-ical-events ps.pygobject3 ]);
-  calendar = pkgs.stdenvNoCC.mkDerivation {
-    name = "lumen-calendar-runtime";
-    dontUnpack = true;
-    nativeBuildInputs = [ pkgs.makeWrapper pkgs.wrapGAppsHook3 pkgs.gobject-introspection ];
+  calendarRuntime = pkgs.rustPlatform.buildRustPackage {
+    pname = "lumen-calendar-runtime";
+    version = "0.1.0";
+    src = ../res/lumen-desktop/shell/calendar-runtime;
+    cargoLock.lockFile = ../res/lumen-desktop/shell/calendar-runtime/Cargo.lock;
+    cargoBuildFlags = [ "--features" "eds" ];
+    cargoTestFlags = [ "--features" "eds" ];
+    nativeBuildInputs = [ pkgs.pkg-config ];
     buildInputs = [ pkgs.evolution-data-server pkgs.gnome-online-accounts pkgs.libical pkgs.glib-networking ];
-    installPhase = ''
-      mkdir -p $out/bin
-      makeWrapper ${calendarPython}/bin/python3 $out/bin/lumen-calendar-python
-      makeWrapper ${calendarPython}/bin/python3 $out/bin/lumen-calendar \
-        --add-flags ${assets}/calendar_store.py \
-        --set LUMEN_CALENDAR_TIMEZONE ${pkgs.lib.escapeShellArg timeZone} \
-        --prefix PATH : "$out/bin:${pkgs.lib.makeBinPath [ setup pkgs.vdirsyncer pkgs.libsecret ]}"
-      makeWrapper ${calendarPython}/bin/python3 $out/bin/lumen-google-calendar-sync \
-        --add-flags ${assets}/google_calendar_eds.py \
-        --set LUMEN_CALENDAR_TIMEZONE ${pkgs.lib.escapeShellArg timeZone}
-    '';
   };
-  setup = pkgs.writeShellApplication {
+  setupRuntime = pkgs.rustPlatform.buildRustPackage {
+    pname = "lumen-icloud-setup";
+    version = "0.1.0";
+    src = ../res/lumen-desktop/icloud-setup;
+    cargoLock.lockFile = ../res/lumen-desktop/icloud-setup/Cargo.lock;
+  };
+  setup = pkgs.writeTextFile {
     name = "lumen-icloud-setup";
-    runtimeInputs = [ pkgs.vdirsyncer pkgs.libsecret ];
+    destination = "/bin/lumen-icloud-setup";
+    executable = true;
     text = ''
-      exec ${pkgs.python3}/bin/python3 ${assets}/icloud_setup.py "$@"
+      #!${pkgs.nushell}/bin/nu
+      def --wrapped main [...args] {
+        $env.PATH = ((${builtins.toJSON (pkgs.lib.makeBinPath [ pkgs.vdirsyncer pkgs.libsecret ])} | split row ':') ++ $env.PATH)
+        exec ${setupRuntime}/bin/lumen-icloud-setup ...$args
+      }
     '';
   };
-  googleSetup = pkgs.writeShellApplication {
-    name = "lumen-google-calendar-setup";
-    runtimeInputs = [ pkgs.gnome-online-accounts-gtk ];
+  calendar = pkgs.writeTextFile {
+    name = "lumen-calendar";
+    destination = "/bin/lumen-calendar";
+    executable = true;
     text = ''
-      exec gnome-online-accounts-gtk
+      #!${pkgs.nushell}/bin/nu
+      def --wrapped main [...args] {
+        $env.PATH = (["${calendarRuntime}/bin"] ++ (${builtins.toJSON (pkgs.lib.makeBinPath [ googleSync setup pkgs.vdirsyncer pkgs.libsecret ])} | split row ':') ++ $env.PATH)
+        $env.CALENDAR_DESKTOP_PREFIX = "lumen"
+        $env.CALENDAR_UID_SUFFIX = "@lumen-desktop.local"
+        $env.LUMEN_CALENDAR_TIMEZONE = ${builtins.toJSON timeZone}
+        exec ${calendarRuntime}/bin/desktop-calendar ...$args
+      }
+    '';
+  };
+  googleSync = pkgs.writeTextFile {
+    name = "lumen-google-calendar-sync";
+    destination = "/bin/lumen-google-calendar-sync";
+    executable = true;
+    text = ''
+      #!${pkgs.nushell}/bin/nu
+      def --wrapped main [...args] {
+        $env.LUMEN_CALENDAR_TIMEZONE = ${builtins.toJSON timeZone}
+        exec ${calendarRuntime}/bin/desktop-google-calendar-sync ...$args
+      }
+    '';
+  };
+  googleSetup = pkgs.writeTextFile {
+    name = "lumen-google-calendar-setup";
+    destination = "/bin/lumen-google-calendar-setup";
+    executable = true;
+    text = ''
+      #!${pkgs.nushell}/bin/nu
+      def main [] {
+        exec ${pkgs.gnome-online-accounts-gtk}/bin/gnome-online-accounts-gtk
+      }
     '';
   };
 in pkgs.symlinkJoin {
   name = "lumen-personal-services";
-  paths = [ calendar setup googleSetup ];
+  paths = [ calendar googleSync setup googleSetup ];
+  passthru = { inherit calendarRuntime; };
 }

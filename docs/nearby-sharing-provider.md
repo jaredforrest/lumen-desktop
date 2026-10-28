@@ -44,8 +44,8 @@ requires reopening the menu; it cannot silently substitute another file. This
 does not pin external file reads: the provider still owns filesystem validation
 and its explicit confirmation flow.
 
-`test_file_share_intent.py` verifies lossless native identities, captured literal
-arguments and stale/invalid selection refusal. `files_share_menu_qml.py` opens
+The Rust `checks.offscreen-qml` file-share fixture verifies lossless native identities, captured literal
+arguments and stale/invalid selection refusal. The Rust `files-share-menu-rust` fixture opens
 the actual Files menu in the private offscreen boundary and activates its real
 row signal. It proves unchanged selection dispatch, replacement refusal and a
 fresh explicit menu dispatch. Only volume discovery, sharing status and external

@@ -34,10 +34,12 @@ a deprecation that otherwise aborts real focus monitoring under strict warnings.
 
 ```
 nix flake check --print-build-logs --option abort-on-warn true
-nix develop --command desktop-test-python tests/desktop/widget_visibility_native.py \
+nix build .#test-widget-visibility-fixture -o artifacts/widget-visibility-fixture
+nix develop --command artifacts/widget-visibility-fixture/bin/lumen-widget-visibility-fixture \
   --launcher "$(nix build .#shell --no-link --print-out-paths)/bin/lumen-desktop-shell" \
   --sway "$(nix build .#compositor-basic --no-link --print-out-paths)/bin/sway" \
   --pointer-tool "$(nix build .#test-pointer --no-link --print-out-paths)/bin/wlrctl" \
+  --calendar-runtime "$(nix build .#test-calendar-runtime --no-link --print-out-paths)/bin/desktop-calendar" \
   --output /tmp/widget-visibility-acceptance
 ```
 

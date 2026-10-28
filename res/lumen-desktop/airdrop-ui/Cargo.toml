@@ -1,0 +1,20 @@
+[package]
+name = "lumen-airdrop-ui"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde_json = "1"
+libc = "0.2"
+
+[[bin]]
+name = "lumen-airdrop-receive-ui"
+path = "src/bin/receive.rs"
+
+[[bin]]
+name = "lumen-airdrop-send-ui"
+path = "src/bin/send.rs"
+
+[[test]]
+name = "process"
+harness = false

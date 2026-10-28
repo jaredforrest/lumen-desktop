@@ -28,10 +28,12 @@ calendar and calendar-timezone identity in their accessible names.
 
 ```
 nix flake check --print-build-logs --option abort-on-warn true
-nix develop --command desktop-test-python tests/desktop/calendar_widget_native.py \
+nix build .#test-calendar-widget-fixture -o artifacts/calendar-widget-fixture
+nix develop --command artifacts/calendar-widget-fixture/bin/lumen-calendar-widget-fixture \
   --launcher "$(nix build .#shell --no-link --print-out-paths)/bin/lumen-desktop-shell" \
   --sway "$(nix build .#compositor-basic --no-link --print-out-paths)/bin/sway" \
   --pointer-tool "$(nix build .#test-pointer --no-link --print-out-paths)/bin/wlrctl" \
+  --calendar-runtime "$(nix build .#test-calendar-runtime --no-link --print-out-paths)/bin/desktop-calendar" \
   --output /tmp/calendar-widget-acceptance
 ```
 

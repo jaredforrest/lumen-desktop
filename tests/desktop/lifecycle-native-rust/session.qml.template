@@ -1,0 +1,14 @@
+import QtQuick
+import Quickshell
+import Quickshell.Io
+import "__SHELL_URI__" as D
+ShellRoot {
+ D.ApplicationLifecycleState {id:lifecycle}
+ D.SessionOptions {id:options;lifecycle:lifecycle}
+ IpcHandler {target:"sessionAudit"
+  function begin():void{options.show("reboot");options.confirm();}
+  function confirm():void{options.confirm();}
+  function cancel():void{options.dismiss();}
+  function status():string{return JSON.stringify({available:lifecycle.available,session:lifecycle.session,applications:lifecycle.applications,visible:options.visible,error:options.error});}
+ }
+}

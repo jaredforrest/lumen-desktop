@@ -1,18 +1,20 @@
 # Mixed output scaling acceptance
 
-`tests/desktop/mixed_output_scale_native.py` runs in a disposable HOME/XDG tree,
+`lumen-mixed-output-scale-fixture` (Rust 2024) runs in a disposable HOME/XDG tree,
 activation-free private session bus and two nested compositor outputs. It does
 not change the login session or physical display settings.
 
-Build `.#shell`, `.#compositor-basic`, `.#compositor` and `.#test-pointer`,
+Build `.#shell`, `.#compositor-basic`, `.#compositor`, `.#test-pointer` and
+`.#test-display-visual-fixtures`,
 then run each compositor serially:
 
 ```sh
-bash tests/ci/run-native.sh mixed_output_scale_native nix develop --command \
-  desktop-test-python tests/desktop/mixed_output_scale_native.py \
+nix develop --command nu tests/ci/run-native.nu mixed_output_scale_native -- \
+  /absolute/display-visual-fixtures/bin/lumen-mixed-output-scale-fixture \
   --launcher /absolute/shell/bin/lumen-desktop-shell \
   --sway /absolute/compositor/bin/sway \
   --pointer-tool /absolute/pointer/bin/wlrctl \
+  --source res/lumen-desktop \
   --output /absolute/new-artifact-directory
 ```
 

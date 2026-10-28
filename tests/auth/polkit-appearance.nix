@@ -3,11 +3,12 @@ let
   agent = import ../../packages/lumen-authorization-agent.nix { inherit pkgs; };
   schemas = pkgs.gsettings-desktop-schemas;
 in pkgs.runCommand "polkit-session-appearance-test" {
-  nativeBuildInputs = [ pkgs.stdenv.cc pkgs.pkg-config pkgs.xvfb-run ];
+  nativeBuildInputs = [ pkgs.rustc pkgs.stdenv.cc pkgs.xvfb-run ];
   buildInputs = [ pkgs.gtk3 ];
 } ''
-  $CC -Wall -Wextra -Werror $(pkg-config --cflags gtk+-3.0) \
-    ${./polkit-appearance.c} $(pkg-config --libs gtk+-3.0) -o fixture
+  rustc --edition 2024 -D warnings \
+    -L native=${pkgs.gtk3}/lib -L native=${pkgs.glib.out}/lib \
+    ${./polkit-appearance.rs} -o fixture
   export HOME="$TMPDIR/home"
   mkdir -p "$HOME"
   export GSETTINGS_BACKEND=memory NO_AT_BRIDGE=1

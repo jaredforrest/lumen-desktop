@@ -6,7 +6,7 @@ a local false value cannot undo a global accessibility preference. Existing
 opaque surfaces stay opaque. The material substitution does not change layout,
 window ownership, hit regions or captured input targets.
 
-`tests/desktop/live_transparency_native.py` keeps production Remote Desktop,
+`lumen-live-transparency-fixture` (Rust 2024) keeps production Remote Desktop,
 Help and Session windows, a PanelSurface control popover, compact calendar,
 notification card and Dock mapped through normal/opaque/normal atomic appearance
 updates in both light and dark palettes. It holds a real pointer press over the
@@ -28,13 +28,15 @@ against the sampled material. The last mismatch and captures remain available on
 The renderer uses Qt software drawing and real basic/effects native compositors;
 this is not a measurement of hardware blur quality or a reference-system claim.
 
-Build `.#shell`, `.#compositor-basic`, `.#compositor` and `.#test-pointer`, then run:
+Build `.#shell`, `.#compositor-basic`, `.#compositor`, `.#test-pointer` and
+`.#test-display-visual-fixtures`, then run:
 
 ```sh
-nix develop --command desktop-test-python tests/desktop/live_transparency_native.py \
+nix develop --command /path/to/display-visual-fixtures/bin/lumen-live-transparency-fixture \
   --launcher /path/to/shell/bin/lumen-desktop-shell \
   --sway /path/to/compositor/bin/sway \
-  --pointer-tool /path/to/pointer/bin/wlrctl --output /new/output/directory
+  --pointer-tool /path/to/pointer/bin/wlrctl --source res/lumen-desktop \
+  --output /new/output/directory
 ```
 
 Add `--effects` for the effects compositor. CI runs both variants and retains

@@ -1,0 +1,116 @@
+{
+  "APP-BROWSE-01": [
+    "new_tab",
+    "close_tab",
+    "reopen_tab",
+    "pin_tab",
+    "reorder_tab",
+    "detach_tab",
+    "duplicate_tab",
+    "tab_groups",
+    "close_last_tab_policy"
+  ],
+  "APP-BROWSE-02": [
+    "edit_url",
+    "select_url",
+    "copy_url",
+    "paste_url",
+    "navigate",
+    "stop",
+    "reload",
+    "back",
+    "forward",
+    "draft_focus_preserved",
+    "offline_retry",
+    "invalid_url_edit"
+  ],
+  "APP-BROWSE-03": [
+    "bookmark_add",
+    "bookmark_edit",
+    "bookmark_delete",
+    "bookmark_folders",
+    "bookmark_search",
+    "bookmark_import",
+    "bookmark_export",
+    "history_search",
+    "history_delete",
+    "private_history_isolation",
+    "import_duplicates"
+  ],
+  "APP-BROWSE-04": [
+    "running_download",
+    "completed_download_hash",
+    "pause_download",
+    "resume_download",
+    "cancel_download",
+    "reveal_download",
+    "open_download",
+    "retry_download",
+    "missing_download_recovery",
+    "downloads_popover",
+    "downloads_manager"
+  ],
+  "APP-BROWSE-05": [
+    "notifications_allow",
+    "notifications_deny",
+    "notifications_revoke",
+    "location_allow",
+    "location_deny",
+    "location_revoke",
+    "camera_allow",
+    "camera_deny",
+    "camera_revoke",
+    "microphone_allow",
+    "microphone_deny",
+    "microphone_revoke",
+    "clipboard_allow",
+    "clipboard_deny",
+    "clipboard_revoke",
+    "capture_allow",
+    "capture_deny",
+    "capture_revoke",
+    "capture_picker_target"
+  ],
+  "APP-BROWSE-06": [
+    "new_profile",
+    "private_window",
+    "guest_window",
+    "cookie_isolation",
+    "history_isolation",
+    "extension_isolation",
+    "private_surface_label"
+  ],
+  "APP-BROWSE-07": [
+    "extension_load",
+    "extension_disable",
+    "extension_remove",
+    "toolbar_overflow",
+    "extension_popup",
+    "extension_frame_parent"
+  ],
+  "APP-BROWSE-08": [
+    "reader_availability",
+    "print_parent",
+    "print_to_file",
+    "pdf_controls",
+    "zoom_in",
+    "zoom_reset",
+    "find",
+    "page_vs_output_scale"
+  ],
+  "APP-BROWSE-09": [
+    "app_mode",
+    "picture_in_picture",
+    "browser_fullscreen",
+    "page_fullscreen",
+    "escape_fullscreen",
+    "resume_page_input"
+  ],
+  "APP-BROWSE-10": [
+    "default_handler",
+    "external_link_profile",
+    "protocol_consent",
+    "file_links",
+    "literal_protocol_arguments"
+  ]
+}

@@ -23,7 +23,7 @@ Item {
         id:worker
         property var request:({})
         property string response:""
-        command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("search_history.py").toString().replace(/^file:\/\//,"")]
+        command:["lumen-search-history"]
         stdinEnabled:true
         onStarted:{response="";write(JSON.stringify(request)+"\n");}
         stdout:StdioCollector {onStreamFinished:worker.response=text}

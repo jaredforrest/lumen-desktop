@@ -35,7 +35,7 @@ QtObject {
     function step(delta){if(active && destinations.length)selected=(selected+delta+destinations.length)%destinations.length;}
     property Connections popupEvents:Connections {target:root.shell;function onDismissPopups(owner){if(root.active && owner!=="groups:"+root.source.output)root.cancel();}}
     property Process worker:Process {stdinEnabled:true
-        command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("window_group_membership.py").toString().replace(/^file:\/\//,"")]
+        command:["lumen-group-control","membership"]
         onStarted:write(JSON.stringify(root.request)+"\n")
         stdout:StdioCollector {onStreamFinished:{try{const result=JSON.parse(text);root.error=result.error || "";if(result.ok)root.commits++;}catch(error){root.error="Unable to change the captured group membership";}}}
     }

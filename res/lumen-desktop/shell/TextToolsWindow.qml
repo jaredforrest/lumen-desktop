@@ -115,10 +115,10 @@ FloatingWindow {
     }
     Timer {interval:121000;running:root.recording;onTriggered:root.send({action:"dictation-finish"})}
     Timer {id:insertion;property string text;interval:150;onTriggered:root.send({action:"insert",text:text,target:root.target})}
-    Process {id:cancelCapture;stdinEnabled:true;command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("text_tools.py").toString().replace("file://","")];onStarted:write(JSON.stringify({action:"dictation-cancel"})+"\n")}
+    Process {id:cancelCapture;stdinEnabled:true;command:["lumen-text-tools"];onStarted:write(JSON.stringify({action:"dictation-cancel"})+"\n")}
     Process {
         id:worker;stdinEnabled:true
-        command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("text_tools.py").toString().replace("file://","")]
+        command:["lumen-text-tools"]
         onStarted:write(JSON.stringify(root.request)+"\n")
         stdout:StdioCollector {onStreamFinished:{try{const data=JSON.parse(text);root.error=data.error || data.message || "";root.severity=data.error?"error":data.message?"success":"info";if(data.snippets)root.snippets=data.snippets;if(data.language)root.language=data.language;if(data.automaticReplacements!==undefined)root.automaticReplacements=data.automaticReplacements;if(data.recording!==undefined){root.recording=data.recording;if(root.recording && !root.visible){cancelCapture.running=true;root.recording=false;}}if(root.request.action==="dictation-finish" || root.request.action==="dictation-cancel")root.recording=false;if(data.spelling){root.spelling=data.spelling;if(!data.spelling.length){root.error="No spelling errors found";root.severity="success";}}if(data.actions)root.detected=data.actions;if(data.text!==undefined)input.text=data.text;if(data.definition!==undefined)root.definition=data.definition;if(data.error && !root.visible)root.visible=true;}catch(e){root.error="Text tools could not complete the request";root.severity="error";}}}
     }

@@ -78,7 +78,7 @@ PanelSurface {
     }
     Process {id:pairing;stdinEnabled:true
         onExited:root.promptKind=""
-        command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("bluetooth_pair.py").toString().replace("file://",""),root.pairingPath]
+        command:["lumen-bluetooth-pair",root.pairingPath]
         stdout:SplitParser {onRead:line=>{try{const d=JSON.parse(line);if(d.error)root.pairingMessage=d.error;else if(d.event==="prompt"){root.promptKind=d.kind;root.passcode=d.code || "";pin.text="";}else if(d.event==="paired"){root.promptKind="";root.pairingMessage="Paired successfully. Select the device to connect.";}else if(d.event==="cancelled"){root.promptKind="";root.pairingMessage="Pairing cancelled";}}catch(e){root.pairingMessage="Unable to read pairing response";}}}
     }
 

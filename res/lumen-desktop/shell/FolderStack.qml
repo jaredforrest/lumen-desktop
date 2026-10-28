@@ -87,7 +87,7 @@ PanelWindow {
         }
     }
     Timer {id:reloadTimer;interval:1;onTriggered:if(root.visible && !worker.running){worker.requestGeneration=root.generation;worker.request={id:root.generation,action:"column-list",path:root.folder,sort:root.sort==="type"?"kind":root.sort,descending:root.descending};worker.running=true;}else if(root.visible)restart()}
-    Process {id:worker;stdinEnabled:true;property int requestGeneration:-1;property var request:({});command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("files.py").toString().replace("file://","")]
+    Process {id:worker;stdinEnabled:true;property int requestGeneration:-1;property var request:({});command:[Quickshell.env("LUMEN_FILES_BIN") || "lumen-files-rust-wip"]
         onStarted:write(JSON.stringify(request)+"\n")
         stdout:SplitParser {onRead:line=>{if(worker.requestGeneration!==root.generation || !root.visible)return;try{const result=JSON.parse(line);if(result.id!==root.generation)return;root.total=(result.rows || []).length;root.limited=!!result.limited;root.rows=result.rows || [];root.error=result.error || "";}catch(e){root.error="This folder is unavailable";}worker.running=false;}}
     }

@@ -19,9 +19,9 @@ replacement, or remove the original target. Normal directory-link navigation
 remains supported. External application handling is a pathname handoff, not an
 end-to-end descriptor or target-identity guarantee.
 
-`test_file_link_substitute.py` uses disposable real files for unique creation,
-structured dispatch, target moves, cyclic links, directory links and target
-errors. External launch is observed rather than executed. The Qt label test
+Acceptance uses disposable real files for unique creation, structured dispatch,
+target moves, cyclic links, directory links and target errors. External launch
+is observed rather than executed. The Qt label test
 loads the production column and information components on a private offscreen
 session. These checks do not certify external handlers or visual reference
 equivalence.

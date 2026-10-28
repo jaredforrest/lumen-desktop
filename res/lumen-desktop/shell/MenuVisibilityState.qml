@@ -16,7 +16,7 @@ QtObject {
     }catch(error){root.available=false;root.outputs={};root.error="Fullscreen menu observation is unavailable";}}
     property Process observer:Process {
         running:true
-        command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("menu_visibility.py").toString().replace(/^file:\/\//,""),String(root.transport)]
+        command:["lumen-menu-visibility",String(root.transport)]
         stdout:SplitParser {onRead:line=>root.receive(line)}
         onExited:{root.available=false;root.outputs={};retry.restart();}
     }

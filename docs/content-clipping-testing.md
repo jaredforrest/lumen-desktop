@@ -1,6 +1,6 @@
 # Owned content-boundary acceptance
 
-`tests/desktop/content_clipping_native.py` inserts a vivid scrolling grid into
+The Rust 2024 `tests/desktop/content-clipping-rust` fixture inserts a vivid scrolling grid into
 System Settings' actual content parent, underneath its unchanged controls. It
 reads the production mask radius and whether that layer is active. A decorative
 background radius alone is not interpreted as a content-clipping contract.
@@ -23,12 +23,13 @@ window. The grid's exact clipping positions are set separately; its fixture
 content does not replace the production input targets. All preference writes
 are recorded by a thin private adapter, and no host service is queried.
 
-Build `.#shell`, `.#compositor-basic`, `.#compositor` and `.#test-pointer`. For each
+Build `.#shell`, `.#compositor-basic`, `.#compositor`, `.#test-pointer` and `.#test-content-clipping-fixture`. For each
 combination, run serially in a new artifact directory:
 
 ```sh
-bash tests/ci/run-native.sh content_clipping_native nix develop --command \
-  desktop-test-python tests/desktop/content_clipping_native.py \
+nix develop --command nu tests/ci/run-native.nu content_clipping_native -- \
+  artifacts/content-clipping-fixture/bin/lumen-content-clipping-fixture \
+  --source . \
   --launcher /absolute/shell/bin/lumen-desktop-shell \
   --sway /absolute/compositor/bin/sway \
   --pointer-tool /absolute/pointer/bin/wlrctl \
@@ -96,21 +97,22 @@ shared helper replaces those raw resize requests.
 
 ## Consumer glue acceptance
 
-`consumer_fit_native.py` opens the actual Calendar and Files windows in a private
+The Rust 2024 `consumer-fit-rust` fixture opens the actual Calendar and Files windows in a private
 fragment. It preserves the large initial Calendar size that spans both outputs
 on moving to the smaller display; no pre-shrink conceals screen-selection
 ambiguity. Each consumer must fit its own outer margin, survive five coalesced
 no-op requests, and return without enlargement. Files retains a real selected
 synthetic text file and its rendered preview. Small-output captures are retained.
-The copied Files backend only replaces unused volume discovery with an empty
-private list; original/copied hashes record that adapter. All file contents,
-preferences and preview leases are private. The calendar executable accepts
-read-only requests and returns an empty synthetic provider catalogue; its hash
-is retained. There is no session activation directory or host system bus.
+The installed Files backend is unchanged. All file contents, preferences and
+preview leases are private. A Rust calendar responder accepts read-only requests
+and returns an empty synthetic provider catalogue. The result retains fixture,
+provider and packaged asset hashes. There is no session activation directory or
+host system bus.
 
 ```sh
-bash tests/ci/run-native.sh consumer_fit_native \
-  nix develop --command desktop-test-python tests/desktop/consumer_fit_native.py \
+nix build .#test-consumer-fit-fixture --out-link artifacts/consumer-fit-fixture
+nix develop --command nu tests/ci/run-native.nu consumer_fit -- \
+  artifacts/consumer-fit-fixture/bin/lumen-consumer-fit-fixture \
   --launcher /absolute/package/bin/lumen-desktop-shell \
   --sway /absolute/compositor/bin/sway --native-frame on \
   --output /absolute/new-consumer-artifact-directory

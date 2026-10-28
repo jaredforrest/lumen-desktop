@@ -1,0 +1,16 @@
+[package]
+name = "lumen-profile-tools"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde_json = "1"
+libc = "0.2"
+
+[[bin]]
+name = "lumen-profile-audit"
+path = "src/audit.rs"
+
+[[bin]]
+name = "lumen-native-profile"
+path = "src/native.rs"

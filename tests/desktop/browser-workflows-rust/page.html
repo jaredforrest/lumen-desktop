@@ -1,0 +1,7 @@
+<!doctype html><meta charset="utf-8"><title>Fixture browser workflow</title>
+<style>body{font:20px sans-serif;padding:32px}button,a{display:block;margin:20px;padding:10px}</style>
+<h1>Disposable local page</h1><p id="sample">Selectable fixture text: 12:34, punctuation &amp; accented café.</p>
+<a id="fixed" href="/download/fixed">Download gated fixture</a><a id="cancel" href="/download/cancel">Download cancellable fixture</a>
+<button id="set-marker" onclick="const marker=new URLSearchParams(location.search).get('marker')||'normal';document.cookie='fixture_marker='+marker+'; path=/; SameSite=Lax';localStorage.setItem('fixture_marker',marker);document.querySelector('#status').textContent='Storage marker: '+marker">Set disposable storage marker</button>
+<button id="permission" onclick="Notification.requestPermission().then(value=>document.querySelector('#status').textContent=value)">Request notification permission</button>
+<button id="fullscreen" onclick="document.documentElement.requestFullscreen()">Enter page fullscreen</button><p id="status">No permission requested</p>

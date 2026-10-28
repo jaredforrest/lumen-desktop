@@ -1,0 +1,9 @@
+[package]
+name = "character-viewer-catalogue"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde_json = "1"
+unicode_names2 = "4"
+unicode-general-category = "1.1"

@@ -44,7 +44,8 @@ still fail. Actual disposable native windows prove stale selection leaves the
 bystander focused and valid actions focus the exact chosen window once. App
 launch requests are recorded by a no-launch fixture, not executed on the host.
 
-`tests/desktop/accessibility_protocol.py` runs a private activation-free session
+`lumen-accessibility-protocol-fixture` from
+`tests/desktop/accessibility-protocol-rust` runs a private activation-free session
 bus, explicitly launched private AT-SPI bus/registry, private runtime and native
 headless compositor. It records actual protocol trees, checks keyboard and
 assistive actions, and verifies the live accessibility socket is unchanged.

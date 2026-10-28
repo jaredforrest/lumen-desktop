@@ -37,16 +37,15 @@ that another name is the same selected directory entry. Lost selection/focus has
 a visible notice. Ordinary single-link file rename and same-path sorting remain
 supported. No complete history of unobserved namespace events is claimed.
 
-`test_files_selection_model.cjs` covers modifier policy, exact references,
+`javascript_models_fixture.qml` covers modifier policy, exact references,
 independent focus/anchor, geometry and changed-revision refusal.
-`test_files_selection.py` reads a disposable personal Trash entry without deleting
-anything. `test_files_selection_qml.py` loads actual Files components offscreen and
-exercises sort/replacement focus, deferred-restore retirement, production delegate
-geometry, preview-only state and cancellation/focus routing. Its direct component
-protocol calls do not claim genuine pointer input; native acceptance is a separate
-gate.
+Offscreen QML acceptance covers sort/replacement focus, deferred-restore
+retirement, production delegate geometry, preview-only state and
+cancellation/focus routing. Its direct component protocol calls do not claim
+genuine pointer input; native acceptance is a separate gate.
 
-`files_selection_input.py` drives actual installed components in a disposable
+The Rust 2024 Files fixture (`tests/desktop/files-layout-rust`, invoked with
+`--selection`) drives actual installed components in a disposable
 compositor with full folders. It checks physical modifier gestures, preview-only
 state, exact-row release, Escape, wheel, native focus transfer, actual session
 lock and row-order invalidation in all four views. List and icon delegates also

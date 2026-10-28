@@ -161,7 +161,7 @@ FloatingWindow {
     }
     Timer {interval:2000;running:root.visible && !desktopStrip.editing && !removeDialog.opened && !groupsDialog.opened && !(root.shell.groupMembershipDrag && root.shell.groupMembershipDrag.active);repeat:true;onTriggered:root.send({action:"status"})}
     Process {id:worker;stdinEnabled:true
-        command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("window_overview.py").toString().replace("file://","")]
+        command:["lumen-window-overview"]
         onStarted:write(JSON.stringify(root.request)+"\n")
         stdout:StdioCollector {onStreamFinished:{try{const data=JSON.parse(text);root.error=data.error || "";if(data.created)root.managedDesktopId=data.created.logicalId;if(data.windows){const selectedId=root.draggedId || (root.current?root.current.id:0);root.windows=data.windows;root.windowGroups=data.windowGroups || null;const index=root.matches.findIndex(w=>w.id===selectedId);root.selected=root.draggedId?index:Math.max(0,index);if(root.draggedId && index<0)root.error="The dragged window is no longer available";root.workspaces=data.workspaces;root.outputs=data.outputs;root.removalSupported=!!(data.capabilities || {}).desktop_removal;root.revision=data.revision;root.sessionEpoch=data.sessionEpoch;
                     if(!root.workspaces.some(item=>item.logicalId===root.managedDesktopId)){const chosen=root.workspaces.find(item=>item.focused) || root.workspaces[0];root.managedDesktopId=chosen?chosen.logicalId:"";}

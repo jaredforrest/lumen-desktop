@@ -58,19 +58,19 @@ process ID before sending the native command. A closed selected partner clears
 selection and reports an error; another window is never selected as a fallback.
 
 The implementation lives in the `lumen_pair.c`/`.h` native module carried by
-`sway-paired-layouts.patch`, with narrow lifecycle hooks. `window_pair.py` is the
+`sway-paired-layouts.patch`, with narrow lifecycle hooks. `lumen-window-pair` is the
 shell adapter and `WindowPairPicker.qml` owns the overlay. Machine configuration
 contains no pairing algorithms or window restore state.
 
 ## Verification and limits
 
-`paired_layouts_input.py` runs real pointer gestures in disposable compositors.
+The Rust `paired-layouts-rust` fixture runs real pointer gestures in disposable compositors.
 It covers divider drag/cancellation/reset, group reveal, application hiding,
 replacement, swap, both exit paths, partner destruction during a drag, external
 removal, fixed and bounded size constraints, new application mapping, a real
 resizable protocol transient through owner exit/replacement/movement/destruction,
 explicit parent removal, and output loss with reachable restoration. Both compositor
-variants are tested. `paired_picker_qml.py` loads the real menu, chooser and
+variants are tested. The Rust `paired-picker-rust` fixture loads the real menu, chooser and
 adapter, including a selected partner disappearing before confirmation.
 
 Divider hit width, double-click interval and visual treatment are implementation

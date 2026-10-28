@@ -1,0 +1,11 @@
+[package]
+name = "lumen-menu-bridge"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+futures-util = "0.3"
+serde_json = "1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "io-std", "io-util", "sync", "time", "process"] }
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+tempfile = "3"

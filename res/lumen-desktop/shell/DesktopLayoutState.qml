@@ -49,7 +49,7 @@ Item {
         id:worker
         property var request:({})
         property string response:""
-        command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("desktop_layout.py").toString().replace(/^file:\/\//,"")]
+        command:["lumen-desktop-layout"]
         stdinEnabled:true
         onStarted:{response="";write(JSON.stringify(request)+"\n");}
         stdout:StdioCollector {onStreamFinished:worker.response=text}

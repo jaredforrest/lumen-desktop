@@ -33,8 +33,7 @@ Item {
     property alias resourceRetirement:previewRetirement
     signal opened()
     signal browseRequested(string path)
-    readonly property string python: Quickshell.env("GLOBAL_MENU_PYTHON") || "python3"
-    property string helper: Qt.resolvedUrl("search.py").toString().replace(/^file:\/\//, "")
+    property string helper: Quickshell.env("LUMEN_SEARCH_BIN") || "lumen-search-rust-wip"
     function send(action, data) {
         if (!available) return -1;
         const id=++sequence;
@@ -116,7 +115,7 @@ Item {
     }
     Process {
         id:transport
-        command:[root.python,root.helper]
+        command:[root.helper]
         stdinEnabled:true
         stdout:SplitParser {onRead:line=>{
             root.receive(line);

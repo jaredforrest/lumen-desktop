@@ -1,0 +1,13 @@
+[package]
+name = "lumen-dock-drop"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gio = "0.21"
+glib = "0.21"
+serde_json = "1"
+
+[[test]]
+name = "process"
+harness = false

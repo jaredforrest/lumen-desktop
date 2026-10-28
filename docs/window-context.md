@@ -46,12 +46,12 @@ its existing exporter PID and focused token guards remain unchanged.
 
 ## Verification and limits
 
-`test_window_context.py` covers independent main/key association, graph cycles,
+Rust desktop-state tests cover independent main/key association, graph cycles,
 ambiguous modal siblings, stale adapter declarations and strictly typed facts.
-`window_relationships_input.py` uses a disposable real Wayland client and virtual
+The Rust `window-relationships-rust` fixture uses a disposable real Wayland client and virtual
 keyboard in an isolated compositor: utility/document/other-app recipients, modal
 scope, dynamic set/unset/reparent/unparent, dialog-object destruction and live
-orphan utility after parent exit. `owned_window_context_input.py --full-shell`
+orphan utility after parent exit. The Rust `owned-window-context-rust --full-shell` fixture
 exercises real Files, Quick Look and inspector windows, routing a New Tab command
 from a key utility to the associated document and retaining its application group.
 CI runs native integration on both compositor backends.
@@ -86,7 +86,8 @@ placement. Parentless modal windows and transient windows cannot be primary
 paired members. Pair dialog ownership uses the same live relationship policy
 rather than a mutable class or an unsupported cross-process hint.
 
-`xwayland_relationships_input.py` uses a fixed native libxcb client and actual
+`tests/desktop/xwayland-relationships-rust` uses a Rust 2024 driver, a fixed
+native libxcb client, and an actual
 private Xwayland server. It checks utility/document/other-process physical key
 recipients, live map/reparent/unmap/destroy and replacement, modal message and
 property transitions, cycle rejection, ambiguous modal siblings, parentless
@@ -115,6 +116,11 @@ snapshot. Minimise, hide and full screen keep their existing placement lifecycle
 Zoom is unavailable for unregistered, transient/modal, full-screen, paired,
 unmapped and hidden windows, or when client constraints cannot fit the work area.
 An independently visible member of a window group can zoom itself.
+
+The Rust 2024 `lumen-preferred-zoom-fixture` exercises registration, native
+Zoom and restore, title-bar gestures, output shrink, protocol minimums, foreign
+window refusal and rapid stale acknowledgements in private basic and effects
+compositors. Both release runs pass 19 ordered checks.
 
 Native `lumen_state.zoomed` identifies the mode; `preferred_zoom` reports current
 eligibility. The title-free runtime reports these explicit facts and rejects

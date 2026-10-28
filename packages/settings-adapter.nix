@@ -10,12 +10,18 @@ let
       inherit (pkgs) lib; defaults = builtins.fromJSON (builtins.readFile ${defaults}); values = import (builtins.toPath source);
     }))
   '';
-in pkgs.writeShellApplication {
+  runtime = pkgs.callPackage ./settings-runtime.nix { };
+in pkgs.writeTextFile {
   name = "lumen-nix-settings";
-  runtimeInputs = [ pkgs.nix pkgs.python3 pkgs.procps pkgs.git ];
+  destination = "/bin/lumen-nix-settings";
+  executable = true;
   text = ''
-    export LUMEN_NIX_SETTINGS_SOURCE=${source}
-    export LUMEN_NIX_SETTINGS_BUILDER=${builder}
-    exec python3 ${../res/lumen-desktop/shell/nix_settings.py} "$@"
+    #!${pkgs.nushell}/bin/nu
+    def --wrapped main [...args] {
+      $env.PATH = ((${builtins.toJSON (pkgs.lib.makeBinPath [ pkgs.nix pkgs.procps pkgs.git pkgs.coreutils ])} | split row ':') ++ $env.PATH)
+      $env.LUMEN_NIX_SETTINGS_SOURCE = "${source}"
+      $env.LUMEN_NIX_SETTINGS_BUILDER = "${builder}"
+      exec ${runtime}/bin/lumen-nix-settings ...$args
+    }
   '';
 }

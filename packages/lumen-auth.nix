@@ -1,46 +1,48 @@
 { pkgs, lib ? pkgs.lib, swayPackage ? pkgs.sway, user ? "user", displayName ? user, assets ? ../res/lumen-desktop, greeterExtraConfig ? "", allowUnsupportedGpu ? false }:
 let
   quickshell = import ./quickshell-runtime.nix { inherit pkgs; };
-  authAssets = pkgs.runCommand "lumen-auth-assets" {} ''
-    mkdir -p $out
-    cp ${assets}/auth/*.qml $out/
-    ln -s ${assets}/shell/wallpaper.png $out/wallpaper.png
-  '';
+  lockLauncher = import ./lock-launcher.nix { inherit pkgs; };
+  authAssets = builtins.derivation {
+    name = "lumen-auth-assets";
+    system = pkgs.stdenv.hostPlatform.system;
+    builder = "${pkgs.nushell}/bin/nu";
+    args = [ "${./auth-assets.nu}" "${assets}" ];
+    PATH = pkgs.lib.makeBinPath [ pkgs.coreutils ];
+  };
   fontConfig = (import ./font-configuration.nix { inherit pkgs; }) {
     fontDirectories = [
       "${pkgs.callPackage ./interlude.nix {}}/share/fonts"
       "${pkgs.dejavu_fonts}/share/fonts"
     ];
   };
-  lock = pkgs.writeShellApplication {
+  lock = pkgs.writeTextFile {
     name = "lumen-lock";
-    runtimeInputs = [ quickshell pkgs.util-linux pkgs.coreutils pkgs.swaylock ];
+    destination = "/bin/lumen-lock";
+    executable = true;
     text = ''
-      export FONTCONFIG_FILE=${fontConfig}
-      export LUMEN_AUTH_NAME=${lib.escapeShellArg displayName}
-      # Serialize startup, then return only once the compositor confirms coverage.
-      exec 9>"$XDG_RUNTIME_DIR/lumen-lock-startup"
-      flock 9
-      if ! quickshell --no-duplicate --daemonize --path ${authAssets}/lock.qml 9>&-; then
-        exec swaylock -f
-      fi
-      for _ in {1..100}; do
-        if [[ $(quickshell --path ${authAssets}/lock.qml ipc call auth secure 2>/dev/null) == true ]]; then
-          exit 0
-        fi
-        sleep 0.05
-      done
-      echo "The session locker did not confirm secure coverage" >&2
-      exit 1
+      #!${pkgs.nushell}/bin/nu
+      def main [] {
+        $env.FONTCONFIG_FILE = "${fontConfig}"
+        $env.LUMEN_AUTH_NAME = ${builtins.toJSON displayName}
+        exec ${lockLauncher}/bin/lumen-lock-launcher ${quickshell}/bin/quickshell ${pkgs.swaylock}/bin/swaylock ${authAssets}/lock.qml
+      }
     '';
   };
-  greeterClient = pkgs.writeShellScript "lumen-greeter-client" ''
-    export FONTCONFIG_FILE=${fontConfig}
-    if ${quickshell}/bin/quickshell --path ${authAssets}/greeter.qml; then
-      touch "$LUMEN_AUTH_SUCCESS"
-    fi
-    ${swayPackage}/bin/swaymsg exit
-  '';
+  greeterClient = pkgs.writeTextFile {
+    name = "lumen-greeter-client";
+    executable = true;
+    text = ''
+      #!${pkgs.nushell}/bin/nu
+      def main [] {
+        $env.FONTCONFIG_FILE = "${fontConfig}"
+        try {
+          ^${quickshell}/bin/quickshell --path ${authAssets}/greeter.qml
+          ^${pkgs.coreutils}/bin/touch $env.LUMEN_AUTH_SUCCESS
+        } catch {}
+        ^${swayPackage}/bin/swaymsg exit
+      }
+    '';
+  };
   swayConfig = pkgs.writeText "lumen-greeter-sway.conf" ''
     xwayland disable
     output * bg #080b0f solid_color
@@ -48,49 +50,56 @@ let
     seat * hide_cursor 3000
     exec ${greeterClient}
   '';
-  greeter = pkgs.writeShellApplication {
+  greeter = pkgs.writeTextFile {
     name = "lumen-greeter";
-    runtimeInputs = [ pkgs.coreutils ];
+    destination = "/bin/lumen-greeter";
+    executable = true;
     text = ''
-      export LUMEN_AUTH_NAME=${lib.escapeShellArg displayName}
-      export LUMEN_AUTH_USER=${lib.escapeShellArg user}
-      export LUMEN_AUTH_SESSION=${swayPackage}/bin/sway
-      export LUMEN_AUTH_UNSUPPORTED_GPU=${if allowUnsupportedGpu then "1" else "0"}
-      ${lib.optionalString allowUnsupportedGpu "export SWAY_UNSUPPORTED_GPU=1"}
-      export XDG_CURRENT_DESKTOP=sway
-      # A compositor startup failure falls back to the existing password greeter.
-      LUMEN_AUTH_SUCCESS=$(mktemp)
-      export LUMEN_AUTH_SUCCESS
-      rm "$LUMEN_AUTH_SUCCESS"
-      trap 'rm -f "$LUMEN_AUTH_SUCCESS"' EXIT
-      ${swayPackage}/bin/sway ${lib.optionalString allowUnsupportedGpu "--unsupported-gpu"} --config ${swayConfig} || true
-      if [[ -f "$LUMEN_AUTH_SUCCESS" ]]; then exit 0; fi
-      exec ${pkgs.tuigreet}/bin/tuigreet --time --remember --asterisks --cmd ${swayPackage}/bin/sway
+      #!${pkgs.nushell}/bin/nu
+      def main [] {
+        $env.LUMEN_AUTH_NAME = ${builtins.toJSON displayName}
+        $env.LUMEN_AUTH_USER = ${builtins.toJSON user}
+        $env.LUMEN_AUTH_SESSION = "${swayPackage}/bin/sway"
+        $env.LUMEN_AUTH_UNSUPPORTED_GPU = "${if allowUnsupportedGpu then "1" else "0"}"
+        ${lib.optionalString allowUnsupportedGpu ''$env.SWAY_UNSUPPORTED_GPU = "1"''}
+        $env.XDG_CURRENT_DESKTOP = "sway"
+        let marker = (^${pkgs.coreutils}/bin/mktemp | str trim)
+        $env.LUMEN_AUTH_SUCCESS = $marker
+        ^${pkgs.coreutils}/bin/rm $marker
+        try { ^${swayPackage}/bin/sway ${lib.optionalString allowUnsupportedGpu "--unsupported-gpu"} --config ${swayConfig} } catch {}
+        if ($marker | path exists) {
+          ^${pkgs.coreutils}/bin/rm -f $marker
+          exit 0
+        }
+        ^${pkgs.coreutils}/bin/rm -f $marker
+        exec ${pkgs.tuigreet}/bin/tuigreet --time --remember --asterisks --cmd ${swayPackage}/bin/sway
+      }
     '';
   };
   greeterConfig = (pkgs.formats.toml {}).generate "greetd.toml" {
     default_session = { command = "${greeter}/bin/lumen-greeter"; user = "greeter"; };
     terminal.vt = 1;
   };
-  activateLogin = pkgs.writeShellApplication {
+  activateLogin = pkgs.writeTextFile {
     name = "lumen-auth-activate-login";
-    runtimeInputs = [ pkgs.coreutils pkgs.systemd ];
+    destination = "/bin/lumen-auth-activate-login";
+    executable = true;
     text = ''
-      if [[ $EUID -ne 0 ]]; then
-        echo "Run this command with administrator privileges." >&2
-        exit 1
-      fi
-      install -d -m 0755 /run/systemd/system/greetd.service.d
-      cat > /run/systemd/system/greetd.service.d/90-lumen-auth.conf <<'CONF'
-      [Service]
-      ExecStart=
-      ExecStart=${pkgs.greetd}/bin/greetd --config ${greeterConfig}
-      CONF
-      systemctl daemon-reload
-      echo "Login screen configured for the next greetd restart."
-      if [[ ''${1:-} == --restart ]]; then
-        systemctl restart greetd
-      fi
+      #!${pkgs.nushell}/bin/nu
+      def --wrapped main [...args] {
+        if (^${pkgs.coreutils}/bin/id -u | str trim) != "0" {
+          print --stderr "Run this command with administrator privileges."
+          exit 1
+        }
+        let directory = "/run/systemd/system/greetd.service.d"
+        ^${pkgs.coreutils}/bin/install -d -m 0755 $directory
+        $"[Service]\nExecStart=\nExecStart=${pkgs.greetd}/bin/greetd --config ${greeterConfig}\n" | save --force ($directory | path join 90-lumen-auth.conf)
+        ^${pkgs.systemd}/bin/systemctl daemon-reload
+        print "Login screen configured for the next greetd restart."
+        if ($args.0? | default "") == "--restart" {
+          ^${pkgs.systemd}/bin/systemctl restart greetd
+        }
+      }
     '';
   };
-in { inherit lock greeter fontConfig activateLogin; assets = authAssets; }
+in { inherit lock greeter greeterClient fontConfig activateLogin; assets = authAssets; }

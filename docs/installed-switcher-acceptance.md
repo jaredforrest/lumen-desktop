@@ -1,11 +1,13 @@
 # Installed application and window switching
 
-`tests/desktop/installed_switcher_input.py` runs a private full installed shell
+The Rust 2024 `tests/desktop/switcher-rust` fixture runs a private full installed shell
 with real independent Wayland terminal processes: multiple windows sharing an
 application ID and windows belonging to other application IDs. Application
 membership, history, creation order and activation all come from production
 shell code and compositor/foreign-toplevel facts. Read-only fixture IPC exposes
 state; it does not replace the application model or activation callback.
+Its isolated model scenario also checks the physical Super release, repeated
+Tab input, cancellation races and service restart routing.
 
 Physical virtual-keyboard input invokes the installed desktop-action dispatch
 through the production service-PID router. The copied routing wrapper replaces

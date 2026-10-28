@@ -5,15 +5,13 @@ let
   });
   schemaDir = "${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}/glib-2.0/schemas";
   bridge = pkgs.runCommand "gtk-session-appearance" {
-    nativeBuildInputs = [ pkgs.pkg-config pkgs.stdenv.cc ];
-    buildInputs = [ pkgs.gtk3 ];
+    nativeBuildInputs = [ pkgs.rustc pkgs.stdenv.cc ];
+    DESKTOP_SCHEMA_DIR = schemaDir;
   } ''
     mkdir -p $out/lib/gtk-3.0/modules
-    $CC -Wall -Wextra -Werror -shared -fPIC \
-      -DDESKTOP_SCHEMA_DIR='"${schemaDir}"' \
-      $(pkg-config --cflags gtk+-3.0 gmodule-2.0) \
-      ${../res/auth/gtk-session-appearance.c} \
-      $(pkg-config --libs gtk+-3.0 gmodule-2.0) \
+    rustc --edition 2024 --crate-type cdylib -D warnings \
+      -L native=${pkgs.gtk3}/lib -L native=${pkgs.glib.out}/lib \
+      ${../res/auth/gtk-session-appearance.rs} \
       -o $out/lib/gtk-3.0/modules/libsession-appearance.so
   '';
 in pkgs.symlinkJoin {

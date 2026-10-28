@@ -150,6 +150,7 @@ in {
       "XF86AudioPrev" = "exec ${mediaKey}/bin/lumen-media-key previous";
     } // builtins.listToAttrs (map (n: { name = "Mod4+Mod1+F${toString n}"; value = "exec ${menuCommand}/bin/lumen-menu-command slot ${toString n}"; }) (lib.range 1 12));
     desktopKeybindings = baseDesktopKeybindings // readerBindings;
+    shortcutValidator = pkgs.callPackage ../packages/shortcuts.nix { };
     shortcutDefaults = (builtins.fromJSON (builtins.readFile ../res/lumen-desktop/runtime/shortcut-defaults.json)).bindings;
     effectiveShortcutBindings = lib.mapAttrsToList (key: command:
       let known = lib.findFirst (item: builtins.hasAttr item.chord baseDesktopKeybindings && command == baseDesktopKeybindings.${item.chord}) null shortcutDefaults;
@@ -165,10 +166,12 @@ in {
       bindings = effectiveShortcutBindings ++ map (item: item // { scope = "application"; owner = "application-adapter"; }) cfg.shortcuts.applicationBindings
         ++ map (item: item // { scope = "global"; owner = "reserved"; }) cfg.shortcuts.reservedBindings;
     });
-    shortcutRegistry = pkgs.runCommand "lumen-effective-shortcuts.json" { nativeBuildInputs = [ pkgs.python3 ]; } ''
-      python3 ${../res/lumen-desktop/runtime/shortcuts.py} ${../res/lumen-desktop/runtime/shortcut-defaults.json} > /dev/null
-      python3 ${../res/lumen-desktop/runtime/shortcuts.py} ${shortcutRegistryInput} --output "$out"
-    '';
+    shortcutRegistry = builtins.derivation {
+      name = "lumen-effective-shortcuts.json";
+      system = pkgs.stdenv.hostPlatform.system;
+      builder = "${pkgs.nushell}/bin/nu";
+      args = [ "${../packages/effective-shortcuts.nu}" "${shortcutValidator}/bin/lumen-shortcuts" "${../res/lumen-desktop/runtime/shortcut-defaults.json}" "${shortcutRegistryInput}" ];
+    };
   in {
     assertions = [{
       assertion = builtins.intersectAttrs readerBindings baseDesktopKeybindings == {};

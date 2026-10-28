@@ -17,8 +17,9 @@ their token. A provider restart cannot reconstruct plans from paths. No plan or
 selection is persisted. Limits match the 5,000-row Files listing, with at most64
 simultaneously retained previews.
 
-Before writing, the helper rechecks every source and destination. It uses a
-retained directory descriptor and atomic `renameat2(RENAME_NOREPLACE)` for each
+Before writing, the Rust helper rechecks every source and destination. It opens
+the captured directory without following a symlink, checks its identity, and uses
+atomic `renameat2(RENAME_NOREPLACE)` for each
 item, then checks the resulting object. A known hard-link ctime change caused by
 an earlier row is reconciled without accepting content/mode/mtime changes. It
 stops at the first error and reports renamed, failed, not-run, unchanged or
@@ -33,10 +34,10 @@ cannot undo an independently changed namespace safely. It does not claim a
 filesystem-wide transaction or isolation from unrelated writers. No-overwrite
 is enforced atomically at the destination.
 
-`test_batch_rename.py` uses actual disposable filesystem objects for Unicode,
+The Rust unit and process tests use disposable filesystem objects for Unicode,
 case-only changes, no-ops, collisions, stale sources/parents, expiry, hard links,
-symlinks, real permission refusal, partial results and racing destinations.
-`test_batch_rename_qml.py` loads the actual dialog offscreen with a synthetic
+symlinks, destination creation, and one-use process tokens.
+`batch_rename_fixture.qml` loads the actual dialog offscreen with a synthetic
 transport to test captured selection, one-shot consent, late replies, editing,
 partial results and disconnect retirement. Native pointer/keyboard acceptance is
 a separate gate; those model/protocol tests alone do not prove it.
