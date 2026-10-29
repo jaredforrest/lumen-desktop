@@ -5,7 +5,7 @@ ROOT=Path(__file__).resolve().parents[2]/'res/lumen-desktop/shell'
 class TypographyRoles(unittest.TestCase):
  def test_role_bases_preserve_ordinary_sizes_and_all_supported_scales(self):
   theme=(ROOT/'Theme.qml').read_text();match=re.search(r'typography: \(\{([^}]+)\}\)',theme);self.assertIsNotNone(match)
-  values=dict((key,int(value))for key,value in re.findall(r'(\w+):(\d+)',match[1]));self.assertEqual(values,dict(caption=10,metadata=11,label=12,body=13,subheading=15,title=16,heading=18,display=29))
+  values=dict((key,int(value))for key,value in re.findall(r'(\w+):(\d+)',match[1]));self.assertEqual(values,dict(caption=10,metadata=11,label=12,body=13,subheading=15,title=16,dialogHeading=17,heading=18,display=29))
   self.assertIn('return textSize(typography[role]',theme)
   self.assertIn('font.pixelSize: Theme.textRole(textRole)',(ROOT/'PanelLabel.qml').read_text())
  def test_owned_labels_do_not_bypass_roles_except_fixed_symbols(self):

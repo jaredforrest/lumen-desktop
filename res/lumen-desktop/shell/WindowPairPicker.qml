@@ -43,28 +43,33 @@ PanelWindow {
     }
     Rectangle {anchors.fill:parent;color:"#55000000"}
     MouseArea {anchors.fill:parent;onClicked:root.visible=false}
-    Rectangle {id:content;anchors.centerIn:parent;width:Math.min(520,root.width-32);height:Math.min(520,root.height-32);color:Theme.colors.background;radius:12;border.color:Theme.outline;focus:true
+    Rectangle {id:content;anchors.centerIn:parent;width:Math.min(Math.round(520*Theme.textScale),root.width-32);height:Math.min(Math.round(520*Theme.textScale),root.height-32);color:Theme.colors.background;radius:12;border.color:Theme.outline;focus:true
         MouseArea {anchors.fill:parent;onClicked:event=>event.accepted=true}
-        PanelLabel {x:20;y:18;text:"Paired Windows";font.weight:Font.DemiBold}
         Keys.onEscapePressed:root.visible=false
         Keys.onReturnPressed:if(!root.busy && root.canChoose && root.current)root.send(root.paired?"replace":"create")
-        PanelLabel {x:20;y:50;width:parent.width-40;text:root.source?root.source.title:"Reading captured window…";textFormat:Text.PlainText;font.weight:Font.DemiBold;elide:Text.ElideRight}
-        PanelLabel {x:20;y:80;width:parent.width-40;wrapMode:Text.WordWrap;font.pixelSize:12;color:Theme.colors.muted;text:root.paired?"Choose a replacement partner, swap sides, or return this window to its desktop.":root.source && !root.canChoose && !root.survivor?"This window cannot be paired in its current state.":root.survivor?"This window remains full screen. Return it to its previous desktop when ready.":"Choose a compatible partner. The pair shares a separate full-screen desktop; drag its divider to resize."}
-        ListView {id:list;x:20;y:140;width:parent.width-40;height:parent.height-300;clip:true;spacing:5;model:root.candidates;currentIndex:root.selected;enabled:!root.busy && root.canChoose;ScrollBar.vertical:DesktopScrollBar {}
-            delegate:DialogButton {required property var modelData;required property int index;width:list.width;height:40;text:modelData.title;primary:index===root.selected;defaultAction:false;Accessible.name:modelData.title+" · "+modelData.app;onClicked:{root.selected=index;content.forceActiveFocus();}}
-            PanelLabel {anchors.centerIn:parent;visible:!root.candidates.length;text:root.busy?"Reading windows…":"No compatible partner is available";color:Theme.colors.muted}
-        }
-        Row {x:20;y:parent.height-145;spacing:8
-            DialogButton {text:"Keep on Left";visible:!root.paired && !root.survivor;enabled:!root.busy;primary:root.side==="left";defaultAction:false;onClicked:{root.side="left";content.forceActiveFocus();}}
-            DialogButton {text:"Keep on Right";visible:!root.paired && !root.survivor;enabled:!root.busy;primary:root.side==="right";defaultAction:false;onClicked:{root.side="right";content.forceActiveFocus();}}
-            DialogButton {text:"Swap Sides";visible:root.paired;enabled:!root.busy;onClicked:root.send("swap")}
-            DialogButton {text:"Reset Division";visible:root.paired;enabled:!root.busy;onClicked:root.send("ratio",0.5)}
-        }
-        PanelLabel {x:20;y:parent.height-95;width:parent.width-40;text:root.error;textFormat:Text.PlainText;color:Theme.colors.muted;wrapMode:Text.WordWrap;font.pixelSize:12}
-        Row {x:20;y:parent.height-50;spacing:8
-            DialogButton {text:"Cancel";onClicked:root.visible=false}
-            DialogButton {text:"Return to Desktop";visible:root.paired || root.survivor;enabled:!root.busy && !!root.source;onClicked:root.send("leave")}
-            DialogButton {text:root.paired?"Replace Partner":"Create Pair";visible:!root.survivor;primary:true;defaultAction:false;enabled:!root.busy && root.canChoose && !!root.current;onClicked:root.send(root.paired?"replace":"create")}
+        FocusFlickable {anchors.fill:parent;anchors.margins:20;contentHeight:body.implicitHeight;clip:true;flickableDirection:Flickable.VerticalFlick
+            ScrollBar.vertical:DesktopScrollBar {}
+            Column {id:body;width:parent.width;spacing:14
+                PanelLabel {width:parent.width;text:"Paired Windows";font.weight:Font.DemiBold;wrapMode:Text.WordWrap;elide:Text.ElideNone}
+                PanelLabel {width:parent.width;text:root.source?root.source.title:"Reading captured window…";textFormat:Text.PlainText;font.weight:Font.DemiBold;wrapMode:Text.WordWrap;elide:Text.ElideNone}
+                PanelLabel {width:parent.width;wrapMode:Text.WordWrap;elide:Text.ElideNone;textRole:"label";color:Theme.colors.muted;text:root.paired?"Choose a replacement partner, swap sides, or return this window to its desktop.":root.source && !root.canChoose && !root.survivor?"This window cannot be paired in its current state.":root.survivor?"This window remains full screen. Return it to its previous desktop when ready.":"Choose a compatible partner. The pair shares a separate full-screen desktop; drag its divider to resize."}
+                ListView {id:list;width:parent.width;height:root.candidates.length?Math.min(Math.round(180*Theme.textScale),contentHeight):Math.max(50,emptyState.implicitHeight+16);clip:true;spacing:5;model:root.candidates;currentIndex:root.selected;enabled:!root.busy && root.canChoose;ScrollBar.vertical:DesktopScrollBar {}
+                    delegate:DialogButton {required property var modelData;required property int index;width:list.width;text:modelData.title;primary:index===root.selected;defaultAction:false;Accessible.name:modelData.title+" · "+modelData.app;onClicked:{root.selected=index;content.forceActiveFocus();}}
+                    PanelLabel {id:emptyState;anchors.centerIn:parent;width:parent.width-16;visible:!root.candidates.length;text:root.busy?"Reading windows…":"No compatible partner is available";wrapMode:Text.WordWrap;elide:Text.ElideNone;horizontalAlignment:Text.AlignHCenter;color:Theme.colors.muted}
+                }
+                Flow {width:parent.width;spacing:8
+                    DialogButton {text:"Keep on Left";visible:!root.paired && !root.survivor;enabled:!root.busy;primary:root.side==="left";defaultAction:false;onClicked:{root.side="left";content.forceActiveFocus();}}
+                    DialogButton {text:"Keep on Right";visible:!root.paired && !root.survivor;enabled:!root.busy;primary:root.side==="right";defaultAction:false;onClicked:{root.side="right";content.forceActiveFocus();}}
+                    DialogButton {text:"Swap Sides";visible:root.paired;enabled:!root.busy;onClicked:root.send("swap")}
+                    DialogButton {text:"Reset Division";visible:root.paired;enabled:!root.busy;onClicked:root.send("ratio",0.5)}
+                }
+                PanelLabel {visible:!!root.error;width:parent.width;text:root.error;textFormat:Text.PlainText;color:Theme.colors.muted;wrapMode:Text.WordWrap;elide:Text.ElideNone;textRole:"label"}
+                Flow {width:parent.width;spacing:8
+                    DialogButton {text:"Cancel";onClicked:root.visible=false}
+                    DialogButton {text:"Return to Desktop";visible:root.paired || root.survivor;enabled:!root.busy && !!root.source;onClicked:root.send("leave")}
+                    DialogButton {text:root.paired?"Replace Partner":"Create Pair";visible:!root.survivor;primary:true;defaultAction:false;enabled:!root.busy && root.canChoose && !!root.current;onClicked:root.send(root.paired?"replace":"create")}
+                }
+            }
         }
     }
     Timer {interval:2000;running:root.visible;repeat:true;onTriggered:root.send("status")}

@@ -51,19 +51,24 @@ PanelWindow {
     Item {anchors.fill:parent;focus:true;Keys.onEscapePressed:root.cancel()}
     PanelSurface {
         Keys.onEscapePressed:root.cancel()
-        anchors.centerIn:parent;width:Math.min(420,parent.width-32);height:250
+        anchors.centerIn:parent;width:Math.min(Math.round(420*Theme.textScale),parent.width-32);height:Math.min(parent.height-32,Math.max(250,body.implicitHeight+44))
         MouseArea {anchors.fill:parent}
-        Column {anchors.fill:parent;anchors.margins:22;spacing:14
-            PanelLabel {width:parent.width;text:"Force Quit "+root.applicationName+"?";font.pixelSize:17;font.weight:Font.DemiBold;wrapMode:Text.WordWrap;maximumLineCount:2;elide:Text.ElideRight}
-            PanelLabel {width:parent.width;height:102;wrapMode:Text.WordWrap;font.pixelSize:13;text:root.error || (root.phase==="preparing"?"Checking the selected application's process identity…":root.phase==="confirming"?"Closing the selected application…":"Any unsaved changes will be lost. This closes "+root.windowCount+" selected window"+(root.windowCount===1?"":"s")+" and the application processes that own them.")}
+        FocusFlickable {anchors.fill:parent;anchors.margins:22;contentHeight:body.implicitHeight;clip:true;flickableDirection:Flickable.VerticalFlick
+        ScrollBar.vertical:DesktopScrollBar {}
+        Column {id:body;width:parent.width;spacing:14
+            PanelLabel {width:parent.width;text:"Force Quit "+root.applicationName+"?";textRole:"dialogHeading";font.weight:Font.DemiBold;wrapMode:Text.WordWrap;elide:Text.ElideNone}
+            PanelLabel {width:parent.width;wrapMode:Text.WordWrap;elide:Text.ElideNone;textRole:"body";text:root.error || (root.phase==="preparing"?"Checking the selected application's process identity…":root.phase==="confirming"?"Closing the selected application…":"Any unsaved changes will be lost. This closes "+root.windowCount+" selected window"+(root.windowCount===1?"":"s")+" and the application processes that own them.")}
             Row {width:parent.width;spacing:8
                 ControlRow {id:cancelButton;width:(parent.width-8)/2;text:root.phase==="error"?"Close":"Cancel";enabled:root.phase!=="confirming";onClicked:root.cancel()
+                    Keys.onReturnPressed:if(enabled)root.cancel()
+                    Keys.onEnterPressed:if(enabled)root.cancel()
                     contentItem:PanelLabel {text:parent.text;horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter}
                     background:Rectangle {radius:7;color:parent.hovered || parent.activeFocus?Theme.colors.hover:Theme.colors.field;border.width:parent.activeFocus?2:0;border.color:Theme.colors.accent}
                 }
                 ControlRow {width:(parent.width-8)/2;text:"Force Quit";enabled:root.phase==="ready" && !worker.running;onClicked:root.confirm();contentItem:PanelLabel {text:parent.text;color:parent.enabled?Theme.errorText:Theme.colors.muted;horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter} background:Rectangle {radius:7;color:parent.hovered || parent.activeFocus?Theme.colors.hover:Theme.colors.field;border.width:parent.activeFocus?2:0;border.color:Theme.colors.accent}}
             }
         }
+    }
     }
     Process {id:worker;property int requestGeneration:-1;property string action:"";property bool received:false
         onRunningChanged:if(running)received=false

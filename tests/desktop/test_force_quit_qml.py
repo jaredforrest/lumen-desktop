@@ -14,7 +14,7 @@ class ForceQuitQmlTests(unittest.TestCase):
     def test_queued_selection_cancel_and_explicit_confirmation(self):
         with tempfile.TemporaryDirectory() as temporary:
             root=Path(temporary);fixture=root/'fixture';fixture.mkdir();runtime=root/'runtime';runtime.mkdir(mode=0o700)
-            for name in ['ForceQuitDialog.qml','PanelSurface.qml','PanelLabel.qml','ControlRow.qml']:shutil.copy(ROOT/'res/lumen-desktop/shell'/name,fixture/name)
+            for name in ['ForceQuitDialog.qml','PanelSurface.qml','PanelLabel.qml','ControlRow.qml','FocusFlickable.qml','DesktopScrollBar.qml','ScrollGeometry.js']:shutil.copy(ROOT/'res/lumen-desktop/shell'/name,fixture/name)
             # The fast unit fixture executes the original dialog state machine
             # in a plain item. Wayland surface loading is covered by shell smoke.
             (fixture/'ForceQuitDialog.qml').chmod(0o600)
@@ -22,8 +22,8 @@ class ForceQuitQmlTests(unittest.TestCase):
             dialog=dialog.replace('    anchors {top:true;bottom:true;left:true;right:true}','    property var screen:null\n    width:800;height:600',1)
             dialog='\n'.join(line for line in dialog.splitlines() if not line.strip().startswith(('exclusionMode:','WlrLayershell.')))
             (fixture/'ForceQuitDialog.qml').write_text(dialog)
-            (fixture/'qmldir').write_text('singleton Theme 1.0 Theme.qml\nForceQuitDialog 1.0 ForceQuitDialog.qml\nPanelSurface 1.0 PanelSurface.qml\nPanelLabel 1.0 PanelLabel.qml\nControlRow 1.0 ControlRow.qml\n')
-            (fixture/'Theme.qml').write_text('pragma Singleton\nimport QtQuick\nQtObject {function textSize(value){return value;}function textRole(role){return 13;}property string font:"Sans";property color errorText:"#b42318";property string outline:"#999999";property string popoverMaterial:"#eeeeee";property bool dark:false;property var colors:({background:"#eeeeee",hover:"#dddddd",field:"#ffffff",accent:"#0088ff",text:"#000000",muted:"#666666"})}')
+            (fixture/'qmldir').write_text('singleton Theme 1.0 Theme.qml\nForceQuitDialog 1.0 ForceQuitDialog.qml\nPanelSurface 1.0 PanelSurface.qml\nPanelLabel 1.0 PanelLabel.qml\nControlRow 1.0 ControlRow.qml\nFocusFlickable 1.0 FocusFlickable.qml\nDesktopScrollBar 1.0 DesktopScrollBar.qml\n')
+            (fixture/'Theme.qml').write_text('pragma Singleton\nimport QtQuick\nQtObject {property real textScale:1;property var preferences:({});function textSize(value){return value;}function textRole(role){return 13;}property string font:"Sans";property color errorText:"#b42318";property string outline:"#999999";property string popoverMaterial:"#eeeeee";property bool dark:false;property var colors:({background:"#eeeeee",hover:"#dddddd",field:"#ffffff",accent:"#0088ff",text:"#000000",muted:"#666666"})}')
             helper=root/'lumen-application-control';log=root/'calls.jsonl'
             helper.write_text('#!'+sys.executable+'\nimport json,sys,time\nfrom pathlib import Path\nrequest=sys.argv[2];action=sys.argv[3];value=sys.argv[4]\nwith Path('+repr(str(log))+').open("a") as output:output.write(json.dumps(dict(request=request,action=action,value=value))+"\\n")\nif action=="prepare":\n if json.loads(value)[0]["title"]=="slow":time.sleep(.2)\n print(json.dumps(dict(requestId=request,token=format(int(request),"032x"),windowCount=1)))\nelse:print(json.dumps(dict(requestId=request,terminated=1,cancelled=True)))\n')
             helper.chmod(0o700)

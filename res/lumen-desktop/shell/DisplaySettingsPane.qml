@@ -5,6 +5,7 @@ import Quickshell.Io
 Column {
     id:root
     spacing:10
+    FontMetrics {id:positionMetrics;font.family:Theme.font;font.pixelSize:Theme.textRole("body")}
     property var outputs:[]
     property string selected:""
     readonly property var output:outputs.find(o=>o.name===selected) || outputs[0] || null
@@ -27,7 +28,7 @@ Column {
                 width:Math.max(30,Number(modelData.mode.split("@")[0].split("x")[0])/modelData.scale*arrangement.factor)
                 height:Math.max(24,Number(modelData.mode.split("@")[0].split("x")[1])/modelData.scale*arrangement.factor)
                 color:root.output && root.output.name===modelData.name?Theme.colors.accent:Theme.colors.surface;radius:5;border.color:Theme.outline
-                PanelLabel {anchors.centerIn:parent;width:parent.width-8;text:modelData.label || "Display "+(index+1);horizontalAlignment:Text.AlignHCenter;color:root.output && root.output.name===modelData.name?Theme.colors.selectedText:Theme.colors.text;font.pixelSize:10}
+                PanelLabel {anchors.centerIn:parent;width:parent.width-8;text:modelData.label || "Display "+(index+1);horizontalAlignment:Text.AlignHCenter;elide:Text.ElideRight;color:root.output && root.output.name===modelData.name?Theme.colors.selectedText:Theme.colors.text;textRole:"caption"}
                 MouseArea {anchors.fill:parent;enabled:!root.pending;drag.target:monitor;drag.axis:Drag.XAndYAxis
                     onPressed:{root.selected=modelData.name;monitor.originX=monitor.x;monitor.originY=monitor.y;}
                     onReleased:{const fields=position.children;fields.find(c=>c.objectName==="displayX").text=String(Math.round(modelData.x+(monitor.x-monitor.originX)/arrangement.factor));fields.find(c=>c.objectName==="displayY").text=String(Math.round(modelData.y+(monitor.y-monitor.originY)/arrangement.factor));}
@@ -35,21 +36,21 @@ Column {
             }
         }
     }
-    PanelLabel {width:parent.width;text:"Select a display, then drag it into position. Apply to review the change.";font.pixelSize:11;wrapMode:Text.WordWrap;color:Theme.colors.muted}
+    PanelLabel {width:parent.width;text:"Select a display, then drag it into position. Apply to review the change.";textRole:"metadata";wrapMode:Text.WordWrap;color:Theme.colors.muted}
     DesktopComboBox {width:parent.width;model:root.outputs;textRole:"label";currentIndex:root.outputs.findIndex(o=>o===root.output);Accessible.name:"Display";onActivated:index=>root.selected=root.outputs[index].name}
-    PanelLabel {text:"Resolution and refresh rate";font.pixelSize:12}
+    PanelLabel {text:"Resolution and refresh rate";textRole:"label"}
     DesktopComboBox {id:mode;width:parent.width;model:root.output?root.output.modes:[];currentIndex:root.output?model.indexOf(root.output.mode):-1;Accessible.name:"Display resolution and refresh rate";enabled:!!root.output && !root.pending}
-    Row {width:parent.width;spacing:8
+    Flow {width:parent.width;spacing:8
         Repeater {model:[{label:"Larger Text",scale:2},{label:"Balanced",scale:1.5},{label:"More Space",scale:1}]
-            DialogButton {required property var modelData;width:(parent.width-16)/3;text:modelData.label;enabled:!!root.output && !root.pending;onClicked:scaling.currentIndex=[1,1.25,1.5,1.75,2,2.5,3].indexOf(modelData.scale)}
+            DialogButton {required property var modelData;width:parent.width>=Math.round(360*Theme.textScale)?(parent.width-16)/3:parent.width;text:modelData.label;enabled:!!root.output && !root.pending;onClicked:scaling.currentIndex=[1,1.25,1.5,1.75,2,2.5,3].indexOf(modelData.scale)}
         }
     }
-    PanelLabel {text:"Scale";font.pixelSize:12}
+    PanelLabel {text:"Scale";textRole:"label"}
     DesktopComboBox {id:scaling;width:parent.width;model:["100%","125%","150%","175%","200%","250%","300%"];currentIndex:root.output?[1,1.25,1.5,1.75,2,2.5,3].indexOf(root.output.scale):0;Accessible.name:"Display scale";enabled:!!root.output && !root.pending}
-    PanelLabel {text:"Position in desktop points";font.pixelSize:12}
+    PanelLabel {text:"Position in desktop points";textRole:"label"}
     Row {width:parent.width;spacing:8
         Repeater {model:["x","y"]
-            TextField {required property string modelData;objectName:modelData==="x"?"displayX":"displayY";width:(parent.width-8)/2;height:30;text:root.output?String(root.output[modelData]):"0";validator:IntValidator {bottom:-32768;top:32767} enabled:!root.pending;font.family:Theme.font;color:Theme.colors.text;selectByMouse:true;Accessible.name:"Display "+modelData+" position";background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline}}
+            TextField {required property string modelData;objectName:modelData==="x"?"displayX":"displayY";width:(parent.width-8)/2;height:Math.max(30,positionMetrics.height+14);text:root.output?String(root.output[modelData]):"0";validator:IntValidator {bottom:-32768;top:32767} enabled:!root.pending;font.family:Theme.font;font.pixelSize:Theme.textRole("body");color:Theme.colors.text;selectByMouse:true;Accessible.name:"Display "+modelData+" position";background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline}}
         }
         id:position
     }
@@ -60,7 +61,7 @@ Column {
         DialogButton {width:(parent.width-8)/2;text:"Keep Changes";primary:true;onClicked:root.send({action:"confirm",token:root.pending})}
     }
     StatusMessage {width:parent.width;text:root.error;severity:"error"}
-    PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:"Confirmed settings update your Nix configuration and are applied on login or reconnect.";font.pixelSize:11;color:Theme.colors.muted}
+    PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:"Confirmed settings update your Nix configuration and are applied on login or reconnect.";textRole:"metadata";color:Theme.colors.muted}
     ControlRow {width:parent.width;text:"Forget Saved Display Layout";enabled:!root.pending;onClicked:root.send({action:"forget"})}
     Process {
         id:worker;stdinEnabled:true
