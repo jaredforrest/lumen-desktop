@@ -10,6 +10,9 @@ fn main() -> Result<()> {
         Some("recovery-shell") => {
             if env::args().skip(1).collect::<Vec<_>>() != ["--noprofile", "--norc"] { return Err("Unexpected interactive shell arguments".into()); }
             fs::write(env::var("RECOVERY_SHELL_RECEIPT")?, b"opened")?;
+            if env::var_os("RECOVERY_SHELL_HOLD").is_some() {
+                loop { std::thread::sleep(std::time::Duration::from_secs(1)); }
+            }
             return Ok(());
         }
         _ => {}
@@ -66,7 +69,7 @@ fn cases(command: &Path, root: &Path) -> Result<()> {
         let mut child = Command::new(command);
         child.env("RECOVERY_RESULT", state).env("RECOVERY_REQUESTS", &requests)
             .env("RECOVERY_TERMINAL", &terminal).env("RECOVERY_SHELL_RECEIPT", &shell)
-            .env_remove("RECOVERY_STATUS_ERROR").env_remove("RECOVERY_TERMINAL_ERROR");
+            .env_remove("RECOVERY_STATUS_ERROR").env_remove("RECOVERY_TERMINAL_ERROR").env_remove("RECOVERY_SHELL_HOLD");
         if *failure == "status" { child.env("RECOVERY_STATUS_ERROR", "1"); }
         if *failure == "terminal" { child.env("RECOVERY_TERMINAL_ERROR", "1"); }
         let output = child.stdin(Stdio::null()).output()?;

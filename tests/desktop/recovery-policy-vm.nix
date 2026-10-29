@@ -67,7 +67,7 @@ let
       systemd.user.services.lumen-desktop-recovery = {
         unitConfig = builtins.removeAttrs fallback.Unit [ "Description" ];
         serviceConfig = fallback.Service // {
-          Environment = [ "RECOVERY_TERMINAL=/home/fixture/fallback-terminal" "RECOVERY_SHELL_RECEIPT=/home/fixture/fallback-shell" ];
+          Environment = [ "RECOVERY_TERMINAL=/home/fixture/fallback-terminal" "RECOVERY_SHELL_RECEIPT=/home/fixture/fallback-shell" "RECOVERY_SHELL_HOLD=1" ];
         };
       };
       systemd.user.services.recovery-client = {

@@ -27,6 +27,8 @@ fn start_time(pid: &str) -> Result<String> {
 fn driver() -> Result<()> {
     wait("actual user manager", || Ok(user(&["show-environment"])?.status.success()))?;
     checked(&["start", "recovery-test-session.target"])?;
+    require(property("lumen-desktop-shell.service", "OnFailure")?=="lumen-desktop-recovery.service", "Enabled fallback is not connected in the real manager")?;
+    require(property("recovery-disabled.service", "OnFailure")?.is_empty(), "Disabled fallback still has an actual OnFailure handler")?;
     checked(&["start", "recovery-client.service"])?;
     let client=property("recovery-client.service","MainPID")?;
     require(client!="0","Client process missing")?;
@@ -34,6 +36,9 @@ fn driver() -> Result<()> {
     checked(&["start", "lumen-desktop-shell.service"])?;
     wait("restart limit", || Ok(property("lumen-desktop-shell.service","Result")?=="start-limit-hit"))?;
     wait("independent fallback terminal", || Ok(Path::new("/home/fixture/fallback-shell").is_file()))?;
+    let fallback=property("lumen-desktop-recovery.service", "MainPID")?;
+    require(fallback!="0", "Fallback process missing")?;
+    let fallback_identity=start_time(&fallback)?;
     require(count("/home/fixture/attempts")==3,"Restart budget did not allow exactly three starts")?;
     require(property("lumen-desktop-shell.service","ActiveState")?=="failed","Failed shell still active")?;
     let receipt=fs::metadata("/home/fixture/fallback-terminal")?.modified()?;
@@ -46,11 +51,13 @@ fn driver() -> Result<()> {
     checked(&["start","lumen-desktop-shell.service"])?;
     wait("manual recovered shell", || Ok(property("lumen-desktop-shell.service","ActiveState")?=="active" && count("/home/fixture/attempts")==4))?;
     require(fs::metadata("/home/fixture/fallback-terminal")?.modified()?==receipt,"Manual retry opened another fallback")?;
+    require(property("lumen-desktop-recovery.service", "ActiveState")?=="active" && property("lumen-desktop-recovery.service", "MainPID")?==fallback && start_time(&fallback)?==fallback_identity, "Independent fallback did not survive manual shell retry")?;
     checked(&["start","recovery-disabled.service"])?;
     wait("disabled fallback restart limit", || Ok(property("recovery-disabled.service","Result")?=="start-limit-hit"))?;
     require(count("/home/fixture/disabled-attempts")==3 && fs::metadata("/home/fixture/fallback-terminal")?.modified()?==receipt,"Disabled fallback changed terminal or restart budget")?;
+    require(property("recovery-client.service", "MainPID")?==client && start_time(&client)?==identity, "Client did not survive disabled-fallback failure")?;
     checked(&["stop","graphical-session.target"])?;
-    wait("graphical session stop", || Ok(property("lumen-desktop-shell.service","ActiveState")?=="inactive" && property("recovery-client.service","ActiveState")?=="inactive"))?;
+    wait("graphical session stop", || Ok(property("lumen-desktop-shell.service","ActiveState")?=="inactive" && property("recovery-client.service","ActiveState")?=="inactive" && property("lumen-desktop-recovery.service", "ActiveState")?=="inactive"))?;
     println!("RECOVERY_CHECK: explicit retry, disabled fallback and PartOf stop passed");
     Ok(())
 }
