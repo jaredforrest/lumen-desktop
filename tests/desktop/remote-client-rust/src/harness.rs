@@ -71,7 +71,7 @@ impl Options {
                 _ => {
                     let name = arg
                         .strip_prefix("--")
-                        .filter(|name| TOOLS.contains(name))
+                        .filter(|name| TOOLS.contains(name) || ["xrdp", "x11vnc"].contains(name))
                         .ok_or("Unknown fixture option")?;
                     let path = PathBuf::from(args.next().ok_or("Missing tool")?).canonicalize()?;
                     ensure(
@@ -95,6 +95,7 @@ impl Options {
             "Unknown scenario",
         )?;
         ensure(o.scenario != "interactions" || o.protocol != "ssh", "Viewer interactions require VNC or RDP")?;
+        ensure(o.scenario != "interactions" || o.protocol != "rdp" || ["xrdp", "x11vnc"].iter().all(|name| o.tools.contains_key(*name)), "RDP clipboard acceptance requires actual channel and backend servers")?;
         ensure(!o.output.as_os_str().is_empty(), "Fresh output required")?;
         Ok(o)
     }
@@ -165,6 +166,8 @@ pub fn outer(o: &Options) -> Result<()> {
                 "openssh" => vec!["bin/sshd", "bin/ssh-keygen"],
                 "rdp" => vec!["bin/freerdp-shadow-cli", "bin/winpr-hash"],
                 "xserver" => vec!["bin/Xvfb"],
+                "xrdp" => vec!["bin/xrdp", "bin/xrdp-chansrv", "bin/xrdp-keygen"],
+                "x11vnc" => vec!["bin/x11vnc"],
                 _ => vec![],
             } {
                 dependencies.push(path.join(relative));
@@ -244,6 +247,7 @@ pub struct Harness {
     pub children: Vec<Child>,
     pub clients: Vec<u32>,
     pub logs: Vec<String>,
+    pub remote_display: Option<String>,
 }
 impl Harness {
     pub fn command(&self, program: impl AsRef<Path>) -> Command {
@@ -782,6 +786,7 @@ pub fn inside(o: Options) -> Result<()> {
         children: vec![child],
         clients: vec![],
         logs: vec![],
+        remote_display: None,
     };
     let result = (|| -> Result<()> {
         let config = PathBuf::from(f.env.get("XDG_CONFIG_HOME").ok_or("Private config")?);

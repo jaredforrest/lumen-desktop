@@ -67,6 +67,14 @@
         remote-client = import ./packages/remote-client.nix { inherit pkgs; };
         test-remote-client = import ./packages/remote-client.nix { inherit pkgs; };
         test-remote-client-fixture = import ./tests/desktop/remote-client-rust { inherit pkgs; };
+        test-remote-clipboard-server = pkgs.xrdp.overrideAttrs (old: {
+          postPatch = (old.postPatch or "") + ''
+            substituteInPlace sesman/chansrv/chansrv.c --replace-fail \
+              'config_path = XRDP_CFG_PATH "/sesman.ini";' \
+              'config_path = "/run/fixture/xrdp/sesman.ini";'
+          '';
+        });
+        test-remote-x11vnc = pkgs.x11vnc;
         test-remote-adapter = pkgs.callPackage ./packages/remote-desktop.nix { };
         test-remote-vnc-server = pkgs.wayvnc;
         test-remote-rdp-server = pkgs.freerdp;
