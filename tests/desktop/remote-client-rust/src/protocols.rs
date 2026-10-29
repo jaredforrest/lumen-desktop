@@ -442,7 +442,12 @@ fn focus_app(f: &Harness, app: &str) -> Result<Value> {
     Ok(node)
 }
 fn chord(f: &mut Harness, key: &str) -> Result<()> {
-    f.keyboard.as_mut().ok_or("Keyboard")?.key(&["-M", "ctrl", "-k", key, "-m", "ctrl"])
+    let keyboard = f.keyboard.as_mut().ok_or("Keyboard")?;
+    // Remote protocols forward modifier keyvals; a local GDK mask alone is insufficient.
+    keyboard.send("k", 29, 1)?;
+    keyboard.key(&["-M", "ctrl", "-k", key, "-m", "ctrl"])?;
+    keyboard.send("k", 29, 0)?;
+    Ok(())
 }
 fn focus_viewer(f: &mut Harness) -> Result<()> {
     focus_app(f, "org.remmina.Remmina")?;
