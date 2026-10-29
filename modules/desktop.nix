@@ -74,6 +74,17 @@ in {
         enableFallback = lib.mkOption { type = lib.types.bool; default = true; description = "Open an independent recovery terminal when the shell exhausts its restart limit."; };
         fallbackPackage = lib.mkOption { type = lib.types.nullOr lib.types.package; default = null; description = "Optional consumer package exposing bin/lumen-session-recovery. The default terminal only explains recovery and never restarts the session automatically."; };
       };
+      sharing.providers = lib.mkOption {
+        default = [];
+        description = "Consumer-selected share endpoints. Providers advertise capabilities and own recipient consent; no receiver service is enabled.";
+        type = lib.types.listOf (lib.types.submodule {
+          options = {
+            id = lib.mkOption { type = lib.types.strMatching "[a-z][a-z0-9-]{0,47}"; description = "Stable destination identity; nearby is reserved when the nearby adapter is configured."; };
+            label = lib.mkOption { type = lib.types.addCheck (lib.types.strMatching "[^[:cntrl:]]+") (value: builtins.stringLength value <= 80); description = "Fallback label while the provider is unavailable."; };
+            providerPackage = lib.mkOption { type = lib.types.package; description = "Package exposing bin/lumen-share-provider share-describe and share-files."; };
+          };
+        });
+      };
       authorization.enable = lib.mkEnableOption "session authorization dialog appearance integration";
       calendar.enable = lib.mkEnableOption "calendar account services";
       bluetooth.enable = lib.mkEnableOption "Bluetooth UI integration";
@@ -110,6 +121,7 @@ in {
       readerCommandsEnabled = cfg.integrations.readerCommands.enable;
       nearbySharingProvider = cfg.integrations.nearbySharing.providerPackage;
       nearbySharingLabel = cfg.integrations.nearbySharing.label;
+      shareProviders = cfg.integrations.sharing.providers;
       networkProviderPackage = if cfg.integrations.networkLocations.enable then hostGvfsPackage else null;
       emojiFamily = cfg.appearance.emojiFamily;
       clipboardRetentionSeconds = if cfg.integrations.clipboard.retentionSeconds == null then 3600 else cfg.integrations.clipboard.retentionSeconds;

@@ -13,7 +13,14 @@ Timer {
             const rows = [{path: paths[0], directory: false, identity: {device: 4, inode: 8}}];
             const intent = Share.capture(context, paths, rows);
             assert(intent && Share.current(intent, context, paths, rows), "capture/current");
-            assert(JSON.stringify(Share.argumentsFor(intent)) === JSON.stringify(["lumen-nearby-sharing", "send", paths[0]]), "literal argv");
+            const destination={id:"fixture",state:"ready",fingerprint:"a".repeat(64)};
+            const request=Share.requestFor(intent,destination);
+            assert(request && request.files[0].path===paths[0] && request.files[0].inode==="8", "literal captured request");
+            assert(!Share.requestFor(intent,Object.assign({},destination,{state:"offline"})),"offline destination");
+            assert(!Share.requestFor(intent,Object.assign({},destination,{id:"bad id"})),"invalid identity");
+            assert(!Share.requestFor(intent,Object.assign({},destination,{fingerprint:"x"})),"invalid fingerprint");
+            request.files[0].inode="99";
+            assert(intent.selection[0].inode==="8","request copy independence");
             assert(!Share.current(intent, context, ["/fixture/b"], [{path: "/fixture/b", directory: false, identity: {device: 4, inode: 9}}]), "changed path");
             assert(!Share.current(intent, {path: context.path, tab: "second"}, paths, rows), "changed tab");
             assert(!Share.current(intent, {path: "/other", tab: context.tab}, paths, rows), "changed folder");

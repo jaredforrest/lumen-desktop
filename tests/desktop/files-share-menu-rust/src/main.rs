@@ -1,5 +1,5 @@
 //! Private offscreen acceptance for the production Files share menu.
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 use std::env;
@@ -10,26 +10,22 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-type Result<T> = std::result::Result<T, Box<dyn Error>>;
+pub(crate) type Result<T> = std::result::Result<T, Box<dyn Error>>;
 fn fail(message: impl Into<String>) -> Box<dyn Error> {
     message.into().into()
 }
-fn require(ok: bool, message: &str) -> Result<()> {
-    if ok {
-        Ok(())
-    } else {
-        Err(fail(message))
-    }
+pub(crate) fn require(ok: bool, message: &str) -> Result<()> {
+    if ok { Ok(()) } else { Err(fail(message)) }
 }
-struct Options {
-    launcher: PathBuf,
-    fontconfig: PathBuf,
-    output: PathBuf,
-    window_source: Option<PathBuf>,
-    inside: bool,
-    run: bool,
+pub(crate) struct Options {
+    pub(crate) launcher: PathBuf,
+    pub(crate) fontconfig: PathBuf,
+    pub(crate) output: PathBuf,
+    pub(crate) window_source: Option<PathBuf>,
+    pub(crate) inside: bool,
+    pub(crate) run: bool,
 }
-fn options() -> Result<Options> {
+pub(crate) fn options() -> Result<Options> {
     let mut launcher = None;
     let mut fontconfig = None;
     let mut output = None;
@@ -71,7 +67,7 @@ fn immutable(path: &Path) -> Result<PathBuf> {
     )?;
     Ok(value)
 }
-fn digest(data: impl AsRef<[u8]>) -> String {
+pub(crate) fn digest(data: impl AsRef<[u8]>) -> String {
     hex::encode(Sha256::digest(data))
 }
 fn file_hash(path: &Path) -> Result<String> {
@@ -96,7 +92,7 @@ fn tree_hash(root: &Path) -> Result<String> {
     tree_hashes(root, root, &mut hashes)?;
     Ok(digest(serde_json::to_vec(&hashes)?))
 }
-fn copy_tree(source: &Path, target: &Path) -> Result<()> {
+pub(crate) fn copy_tree(source: &Path, target: &Path) -> Result<()> {
     fs::create_dir(target)?;
     for entry in fs::read_dir(source)? {
         let entry = entry?;
@@ -110,7 +106,7 @@ fn copy_tree(source: &Path, target: &Path) -> Result<()> {
     }
     Ok(())
 }
-fn launcher_environment(launcher: &Path) -> Result<BTreeMap<String, String>> {
+pub(crate) fn launcher_environment(launcher: &Path) -> Result<BTreeMap<String, String>> {
     let output = Command::new(launcher).arg("--print-env0").output()?;
     require(
         output.status.success(),
@@ -158,7 +154,7 @@ fn command_args(options: &Options, inside: bool, run: bool) -> Vec<String> {
     }
     args
 }
-fn outer(options: &Options) -> Result<()> {
+pub(crate) fn outer(options: &Options) -> Result<()> {
     let repo = fs::canonicalize(env::current_dir()?)?;
     let output = if options.output.is_absolute() {
         options.output.clone()
@@ -211,7 +207,7 @@ fn outer(options: &Options) -> Result<()> {
         ])
         .output()?;
     let revision = String::from_utf8(revision.stdout)?.trim().to_owned();
-    let provenance = json!({"sourceRevision":revision,"sourceAssetsSha256":before,"launcherSha256":file_hash(&launcher)?,"fontConfigSha256":file_hash(&fontconfig)?,"fixtureSha256":digest([include_bytes!("main.rs").as_slice(),include_bytes!("../fixture.qml").as_slice()].concat()),"launcher":launcher,"fontConfig":fontconfig,"exitCode":status.code().unwrap_or(128),"sourceUnchanged":unchanged});
+    let provenance = json!({"sourceRevision":revision,"sourceAssetsSha256":before,"launcherSha256":file_hash(&launcher)?,"fontConfigSha256":file_hash(&fontconfig)?,"fixtureExecutableSha256":file_hash(&env::current_exe()?)?,"fixtureSha256":digest([include_bytes!("main.rs").as_slice(),include_bytes!("../fixture.qml").as_slice()].concat()),"launcher":launcher,"fontConfig":fontconfig,"exitCode":status.code().unwrap_or(128),"sourceUnchanged":unchanged});
     fs::write(
         output.join("offscreen-boundary.json"),
         serde_json::to_vec_pretty(&provenance)?,
@@ -232,7 +228,7 @@ fn outer(options: &Options) -> Result<()> {
     )?;
     Ok(())
 }
-fn private_environment() -> Result<BTreeMap<String, String>> {
+pub(crate) fn private_environment() -> Result<BTreeMap<String, String>> {
     require(
         unsafe { libc::getuid() } != 0,
         "Private fixture must not run as root",
@@ -294,7 +290,7 @@ fn private_environment() -> Result<BTreeMap<String, String>> {
     }
     Ok(values)
 }
-fn inner(options: &Options) -> Result<()> {
+pub(crate) fn inner(options: &Options) -> Result<()> {
     let private = private_environment()?;
     let mut command = Command::new("timeout");
     command.arg("35s").arg("dbus-run-session");
@@ -319,7 +315,7 @@ fn inner(options: &Options) -> Result<()> {
         &format!("Private D-Bus share menu fixture exited {status}"),
     )
 }
-fn replace_once(
+pub(crate) fn replace_once(
     path: &Path,
     old: &str,
     new: &str,

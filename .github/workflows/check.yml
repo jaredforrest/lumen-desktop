@@ -88,6 +88,7 @@ jobs:
             artifacts/launcher-typography-native-*
             artifacts/owned-typography-native-*
             artifacts/files-share-menu
+            artifacts/share-destinations
             artifacts/clipboard-native-*
             artifacts/search-native-*
             artifacts/search-history-*

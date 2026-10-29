@@ -162,3 +162,6 @@ MinimizedWindowState 1.0 MinimizedWindowState.qml
 FocusOutline 1.0 FocusOutline.qml
 WindowGeometryStatus 1.0 WindowGeometryStatus.qml
 DesktopCaptionMetrics 1.0 DesktopCaptionMetrics.qml
+
+ShareDestinationsState 1.0 ShareDestinationsState.qml
+FileShareDialog 1.0 FileShareDialog.qml

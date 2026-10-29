@@ -27,6 +27,13 @@ let
     services.lumen-desktop.integrations.shellRecovery.enableFallback = false;
   } ]; }).config;
   recoveryDisabledHome = recoveryDisabled.home-manager.users.test-user { config = {}; lib = nixpkgs.lib; };
+  destinationConfigured = (evaluated.extendModules {
+    modules = [ ({ pkgs, ... }: {
+      services.lumen-desktop.integrations.sharing.providers = [ {
+        id = "fixture"; label = "Fixture destination"; providerPackage = pkgs.hello;
+      } ];
+    }) ];
+  }).config;
   readerBinding = { "Mod4+Control+F8" = "where-am-i"; };
   readerDisabled = (evaluated.extendModules { modules = [ {
     services.lumen-desktop.shortcuts.readerBindings = readerBinding;
@@ -68,6 +75,12 @@ assert nixpkgs.lib.getName sharingConfigured.services.lumen-desktop.integrations
 assert sharingConfigured.services.gvfs.enable == c.services.gvfs.enable;
 assert sharingConfigured.services.greetd.enable == c.services.greetd.enable;
 assert sharingConfigured.services.blueman.enable == c.services.blueman.enable;
+assert c.services.lumen-desktop.integrations.sharing.providers == [];
+assert (builtins.head destinationConfigured.services.lumen-desktop.integrations.sharing.providers).id == "fixture";
+assert destinationConfigured.services.gvfs.enable == c.services.gvfs.enable;
+assert destinationConfigured.services.greetd.enable == c.services.greetd.enable;
+assert destinationConfigured.services.blueman.enable == c.services.blueman.enable;
+assert destinationConfigured.networking.firewall.allowedTCPPorts == c.networking.firewall.allowedTCPPorts;
 assert !c.hardware.i2c.enable;
 assert !c.programs.hyprland.enable;
 assert !c.services.greetd.enable;
