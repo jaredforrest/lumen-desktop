@@ -9,6 +9,18 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 unsafe extern "C" { fn kill(pid: i32, signal: i32) -> i32; }
 
+fn authored_target(line: &str) -> Option<&str> {
+    let value = line.split_once("\"target\":")?.1.trim_start();
+    value.strip_prefix('"')?.split('"').next()
+}
+
+#[test]
+fn target_is_independent_of_record_field_order() {
+    assert_eq!(authored_target(r#"{"id":"entry","page":"Page","target":"control"}"#), Some("control"));
+    assert_eq!(authored_target(r#"{"target": "control","id":"entry"}"#), Some("control"));
+    assert_eq!(authored_target(r#"{"id":"entry"}"#), None);
+}
+
 #[test]
 fn settings_search() {
     let nonce = SystemTime::now()
@@ -28,7 +40,7 @@ fn settings_search() {
             .collect::<std::io::Result<Vec<_>>>()?
             .join("\n");
         for line in source.lines().filter(|line| line.contains("\"target\":")) {
-            let target = line.split('"').nth(3).unwrap();
+            let target = authored_target(line).expect("Authored target must be a quoted string");
             if let Some(mode) = target.strip_prefix("settings-appearance-") {
                 assert!(["light", "dark", "auto"].contains(&mode));
                 assert!(qml.contains("objectName:\"settings-appearance-\"+modelData"));
