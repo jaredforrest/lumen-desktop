@@ -70,6 +70,10 @@ in {
         providerPackage = lib.mkOption { type = lib.types.nullOr lib.types.package; default = null; description = "Optional consumer provider exposing bin/lumen-nearby-provider status and open. Does not install or enable a receiver service."; };
         label = lib.mkOption { type = lib.types.str; default = "Nearby Sharing"; description = "Consumer-selected sharing control label."; };
       };
+      shellRecovery = {
+        enableFallback = lib.mkOption { type = lib.types.bool; default = true; description = "Open an independent recovery terminal when the shell exhausts its restart limit."; };
+        fallbackPackage = lib.mkOption { type = lib.types.nullOr lib.types.package; default = null; description = "Optional consumer package exposing bin/lumen-session-recovery. The default terminal only explains recovery and never restarts the session automatically."; };
+      };
       authorization.enable = lib.mkEnableOption "session authorization dialog appearance integration";
       calendar.enable = lib.mkEnableOption "calendar account services";
       bluetooth.enable = lib.mkEnableOption "Bluetooth UI integration";
@@ -118,6 +122,7 @@ in {
       rofiPackage = config.programs.rofi.package;
     };
     inherit (session) readerCommand hotCorners spaces wallpaperPreferences inputPreferences networkLocations quickshell nixSettings appearance qtTheme qtTheme5 palette menuRuntime personalServices fileClipboard displayLayout fileOperations focusWindow desktopState clipboardHistory launchApp shellLauncher audioKey mediaKey notifications menuCommand desktopDoctor desktopAction appLauncher filesLauncher remoteDesktopLauncher calendarLauncher settingsLauncher;
+    shellRecovery = if cfg.integrations.shellRecovery.fallbackPackage == null then import ../packages/session-recovery.nix { inherit pkgs; } else cfg.integrations.shellRecovery.fallbackPackage;
     readerBindings = lib.optionalAttrs cfg.integrations.readerCommands.enable (lib.mapAttrs (_: command:
       "exec ${readerCommand}/bin/lumen-reader-command ${command}") cfg.shortcuts.readerBindings);
     baseDesktopKeybindings = {
@@ -341,6 +346,9 @@ in {
       lumen-desktop-shell = {
         Unit = {
           Description = "Lumen-style desktop menu bar and Dock";
+          StartLimitIntervalSec = 60;
+          StartLimitBurst = 3;
+          OnFailure = lib.optional cfg.integrations.shellRecovery.enableFallback "lumen-desktop-recovery.service";
           PartOf = [ "graphical-session.target" ];
           After = [ "graphical-session.target" "lumen-notifications.service" "lumen-file-operations.service" "lumen-nix-settings.service" ];
           Wants = [ "lumen-notifications.service" "lumen-file-operations.service" ];
@@ -352,6 +360,10 @@ in {
           RestartSec = 2;
         };
         Install.WantedBy = [ "sway-session.target" ];
+      };
+      lumen-desktop-recovery = lib.mkIf cfg.integrations.shellRecovery.enableFallback {
+        Unit = { Description = "Independent desktop recovery terminal"; PartOf = [ "graphical-session.target" ]; };
+        Service = { Type = "exec"; ExecStart = "${shellRecovery}/bin/lumen-session-recovery"; Restart = "no"; UMask = "0077"; };
       };
     };
   };

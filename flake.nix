@@ -49,6 +49,7 @@
         test-runtime = runtime;
         test-network-provider = pkgs.gvfs;
         test-capture-pipewire = pkgs.pipewire;
+        session-recovery = import ./packages/session-recovery.nix { inherit pkgs; };
         test-audio-provider = pkgs.pulseaudio;
         test-vault-server = pkgs.vaultwarden;
         test-vault-web = pkgs.vaultwarden.webvault;

@@ -23,6 +23,10 @@ let
       };
     }) ];
   }).config;
+  recoveryDisabled = (evaluated.extendModules { modules = [ {
+    services.lumen-desktop.integrations.shellRecovery.enableFallback = false;
+  } ]; }).config;
+  recoveryDisabledHome = recoveryDisabled.home-manager.users.test-user { config = {}; lib = nixpkgs.lib; };
   readerBinding = { "Mod4+Control+F8" = "where-am-i"; };
   readerDisabled = (evaluated.extendModules { modules = [ {
     services.lumen-desktop.shortcuts.readerBindings = readerBinding;
@@ -43,6 +47,14 @@ let
   optedInHome = optedIn.home-manager.users.test-user { config = {}; lib = nixpkgs.lib; };
 in
 assert (defaultHome.wayland.windowManager.sway.config.input or {}) == {};
+assert defaultHome.systemd.user.services.lumen-desktop-shell.Unit.StartLimitIntervalSec == 60;
+assert defaultHome.systemd.user.services.lumen-desktop-shell.Unit.StartLimitBurst == 3;
+assert defaultHome.systemd.user.services.lumen-desktop-shell.Unit.OnFailure == [ "lumen-desktop-recovery.service" ];
+assert defaultHome.systemd.user.services.lumen-desktop-shell.Service.Restart == "on-failure";
+assert c.services.lumen-desktop.integrations.shellRecovery.enableFallback;
+assert recoveryDisabledHome.systemd.user.services.lumen-desktop-shell.Unit.OnFailure == [];
+assert recoveryDisabledHome.systemd.user.services.lumen-desktop-shell.Unit.StartLimitBurst == 3;
+assert c.services.lumen-desktop.integrations.shellRecovery.fallbackPackage == null;
 assert c.boot.kernel.sysctl."vm.swappiness" == 73;
 assert !c.services.lumen-desktop.integrations.readerCommands.enable;
 assert !((readerHome readerDisabled).wayland.windowManager.sway.config.keybindings.content ? "Mod4+Control+F8");
