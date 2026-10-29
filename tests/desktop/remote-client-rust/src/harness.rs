@@ -176,6 +176,7 @@ pub fn outer(o: &Options) -> Result<()> {
         &dependencies,
     )?;
     let mut command = Command::new(o.tool("isolation"));
+    command.arg("run");
     command.args([
         "--source",
         source.to_str().ok_or("source")?,
