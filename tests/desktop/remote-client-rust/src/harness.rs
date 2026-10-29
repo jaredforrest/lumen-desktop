@@ -633,7 +633,7 @@ pub fn nodes(tree: &Value) -> Vec<Value> {
             }
         }
     }
-    result.map_err(|error| fail(f.guard.redact(&error.to_string())))
+    result
 }
 impl Drop for Harness {
     fn drop(&mut self) {
