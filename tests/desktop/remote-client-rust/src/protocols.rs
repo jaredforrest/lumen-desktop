@@ -460,7 +460,11 @@ fn rdp_clipboard(f: &mut Harness) -> Result<()> {
     let upstream_config = f.o.tool("xrdp").join("etc/xrdp");
     for entry in fs::read_dir(upstream_config)? {
         let entry = entry?;
-        if entry.file_type()?.is_file() { fs::copy(entry.path(), config.join(entry.file_name()))?; }
+        if entry.file_type()?.is_file() {
+            let copy = config.join(entry.file_name());
+            fs::copy(entry.path(), &copy)?;
+            fs::set_permissions(copy, fs::Permissions::from_mode(0o600))?;
+        }
     }
     let sesman = config.join("sesman.ini");
     fs::write(&sesman, fs::read_to_string(&sesman)?.replace("#EnableFuseMount=false", "EnableFuseMount=false"))?;
