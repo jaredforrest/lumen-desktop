@@ -123,31 +123,56 @@ struct Signature {
 
 fn signature(path: &Path) -> JobResult<Signature> {
     let info = fs::symlink_metadata(path).map_err(|error| error.to_string())?;
-    Ok(Signature {
+    Ok(metadata_signature(&info))
+}
+
+fn metadata_signature(info: &fs::Metadata) -> Signature {
+    Signature {
         dev: info.dev(),
         ino: info.ino(),
         mode: info.mode(),
         size: info.size(),
         mtime_sec: info.mtime(),
         mtime_ns: info.mtime_nsec(),
-    })
+    }
 }
 
 fn snapshot(root: &Path) -> JobResult<BTreeMap<PathBuf, Signature>> {
+    snapshot_metadata(root).map(|(signatures, _)| signatures)
+}
+
+fn snapshot_metadata(
+    root: &Path,
+) -> JobResult<(
+    BTreeMap<PathBuf, Signature>,
+    BTreeMap<PathBuf, fs::Metadata>,
+)> {
     let mut result = BTreeMap::new();
-    fn visit(path: &Path, result: &mut BTreeMap<PathBuf, Signature>) -> JobResult<()> {
-        let state = signature(path)?;
+    let mut metadata = BTreeMap::new();
+    fn visit(
+        path: &Path,
+        result: &mut BTreeMap<PathBuf, Signature>,
+        metadata: &mut BTreeMap<PathBuf, fs::Metadata>,
+    ) -> JobResult<()> {
+        let info = fs::symlink_metadata(path).map_err(|error| error.to_string())?;
+        let state = metadata_signature(&info);
         let directory = state.mode & libc::S_IFMT == libc::S_IFDIR;
         result.insert(path.to_path_buf(), state);
+        // Capture times before enumerating: readdir can update directory atime.
+        metadata.insert(path.to_path_buf(), info);
         if directory {
             for child in fs::read_dir(path).map_err(|error| error.to_string())? {
-                visit(&child.map_err(|error| error.to_string())?.path(), result)?;
+                visit(
+                    &child.map_err(|error| error.to_string())?.path(),
+                    result,
+                    metadata,
+                )?;
             }
         }
         Ok(())
     }
-    visit(root, &mut result)?;
-    Ok(result)
+    visit(root, &mut result, &mut metadata)?;
+    Ok((result, metadata))
 }
 
 fn move_exact(source: &Path, destination: &Path) -> std::io::Result<()> {
@@ -651,17 +676,32 @@ impl Jobs {
         }
     }
 
-    fn copy(&self, id: &str, source: &Path, destination: &Path) -> JobResult<()> {
+    fn copy(
+        &self,
+        id: &str,
+        source: &Path,
+        destination: &Path,
+        observed: &BTreeMap<PathBuf, fs::Metadata>,
+    ) -> JobResult<()> {
         self.check(id)?;
         let info = fs::symlink_metadata(source).map_err(|error| error.to_string())?;
+        let original = observed.get(source).ok_or("Source changed while copying")?;
+        if metadata_signature(&info) != metadata_signature(original) {
+            return Err("Source changed while copying".into());
+        }
         if info.is_dir() {
             fs::create_dir(destination).map_err(|error| error.to_string())?;
             fs::set_permissions(destination, fs::Permissions::from_mode(0o700))
                 .map_err(|error| error.to_string())?;
             for child in fs::read_dir(source).map_err(|error| error.to_string())? {
                 let child = child.map_err(|error| error.to_string())?;
-                self.copy(id, &child.path(), &destination.join(child.file_name()))
-                    .map_err(|error| format!("{}: {error}", child.path().display()))?;
+                self.copy(
+                    id,
+                    &child.path(),
+                    &destination.join(child.file_name()),
+                    observed,
+                )
+                .map_err(|error| format!("{}: {error}", child.path().display()))?;
             }
             copy_tag_metadata(source, destination).map_err(|error| format!("tags: {error}"))?;
             fs::set_permissions(
@@ -669,7 +709,7 @@ impl Jobs {
                 fs::Permissions::from_mode(info.mode() & 0o7777),
             )
             .map_err(|error| format!("mode: {error}"))?;
-            preserve_times(destination, &info).map_err(|error| format!("times: {error}"))?;
+            preserve_times(destination, original).map_err(|error| format!("times: {error}"))?;
         } else if info.file_type().is_symlink() {
             symlink(
                 fs::read_link(source).map_err(|error| error.to_string())?,
@@ -712,7 +752,7 @@ impl Jobs {
                 fs::Permissions::from_mode(info.mode() & 0o7777),
             )
             .map_err(|error| format!("mode: {error}"))?;
-            preserve_times(destination, &info).map_err(|error| format!("times: {error}"))?;
+            preserve_times(destination, original).map_err(|error| format!("times: {error}"))?;
         } else {
             return Err("Device files, sockets and pipes cannot be copied".into());
         }
@@ -761,7 +801,8 @@ impl Jobs {
                 return Err("No available copy name".into());
             }
         }
-        let before = snapshot(source).map_err(|error| format!("source snapshot: {error}"))?;
+        let (before, observed) =
+            snapshot_metadata(source).map_err(|error| format!("source snapshot: {error}"))?;
         if moving {
             match move_exact(source, &dst) {
                 Ok(()) => {
@@ -779,7 +820,7 @@ impl Jobs {
         fs::create_dir(&staging).map_err(|error| error.to_string())?;
         let result = (|| {
             let partial = staging.join("item");
-            self.copy(id, source, &partial)
+            self.copy(id, source, &partial, &observed)
                 .map_err(|error| format!("copy: {error}"))?;
             self.check(id)?;
             if before != snapshot(source).map_err(|error| format!("source recheck: {error}"))? {
@@ -1070,6 +1111,40 @@ pub fn default_journal() -> JobResult<PathBuf> {
 mod tests {
     use super::*;
     use std::time::{Duration, UNIX_EPOCH};
+
+    #[test]
+    fn copy_uses_times_captured_before_source_enumeration() {
+        let root = env::temp_dir().join(format!("jobs-observed-times-{}", uuid().unwrap()));
+        let source = root.join("source");
+        let destination = root.join("copy");
+        fs::create_dir_all(&source).unwrap();
+        fs::write(source.join("payload"), b"contents").unwrap();
+        let old = UNIX_EPOCH + Duration::from_nanos(1_512_345_678_123_456_789);
+        for path in [&source, &source.join("payload")] {
+            File::open(path)
+                .unwrap()
+                .set_times(fs::FileTimes::new().set_accessed(old))
+                .unwrap();
+        }
+        let (_, observed) = snapshot_metadata(&source).unwrap();
+        // Deterministically model an atime-updating filesystem on every host.
+        for path in [&source, &source.join("payload")] {
+            File::open(path)
+                .unwrap()
+                .set_times(
+                    fs::FileTimes::new()
+                        .set_accessed(UNIX_EPOCH + Duration::from_secs(1_700_000_000)),
+                )
+                .unwrap();
+        }
+        Jobs::new(None)
+            .copy("test", &source, &destination, &observed)
+            .unwrap();
+        for path in [&destination, &destination.join("payload")] {
+            assert_eq!(fs::metadata(path).unwrap().accessed().unwrap(), old);
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn recursive_copy_preserves_directory_modes_times_and_literal_symlinks() {
