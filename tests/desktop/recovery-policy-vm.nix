@@ -32,6 +32,7 @@ let
     VM_RUNUSER = "${pkgs.util-linux}/bin/runuser";
     VM_ENV = "${pkgs.coreutils}/bin/env";
     VM_SYSTEMCTL = "${pkgs.systemd}/bin/systemctl";
+    VM_JOURNALCTL = "${pkgs.systemd}/bin/journalctl";
   } ''
     mkdir -p "$out/bin"
     rustc --edition=2024 -D warnings ${./recovery-policy-vm.rs} -o "$out/bin/lumen-recovery-policy"

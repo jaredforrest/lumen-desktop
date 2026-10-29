@@ -72,7 +72,16 @@ fn run() -> Result<()> {
         [mode] if mode=="client" => loop {thread::sleep(Duration::from_secs(1));},
         [mode] if mode=="driver" => {
             let result=driver();
-            match &result {Ok(())=>println!("LUMEN_RECOVERY_POLICY_PASS"),Err(error)=>eprintln!("LUMEN_RECOVERY_POLICY_FAIL: {error}")}
+            match &result {
+                Ok(())=>println!("LUMEN_RECOVERY_POLICY_PASS"),
+                Err(error)=>{
+                    eprintln!("LUMEN_RECOVERY_POLICY_FAIL: {error}");
+                    for name in ["recovery-test-session.target", "graphical-session.target", "lumen-desktop-shell.service"] {
+                        if let Ok(output)=user(&["show", name, "--property=RefuseManualStart,ActiveState,LoadState,Result"]) { eprintln!("UNIT_DIAGNOSTIC {name}: {}{}",String::from_utf8_lossy(&output.stdout),String::from_utf8_lossy(&output.stderr)); }
+                    }
+                    if let Ok(output)=Command::new(env!("VM_JOURNALCTL")).args(["-b", "--no-pager", "-n", "100"]).output() { eprintln!("JOURNAL_DIAGNOSTIC:\n{}",String::from_utf8_lossy(&output.stdout)); }
+                }
+            }
             io::stdout().flush()?;io::stderr().flush()?;
             Command::new(env!("VM_SYSTEMCTL")).args(["poweroff","--no-block"]).status()?;
             result
