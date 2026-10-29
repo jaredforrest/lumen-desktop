@@ -7,7 +7,7 @@ fn require(ok: bool, message: &str) -> Result<()> { if ok { Ok(()) } else { Err(
 fn user(arguments: &[&str]) -> Result<Output> {
     Ok(Command::new(env!("VM_RUNUSER")).args(["-u", "fixture", "--", env!("VM_ENV"),
         "XDG_RUNTIME_DIR=/run/user/1000", "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus",
-        env!("VM_SYSTEMCTL")]).args(arguments).output()?)
+        env!("VM_SYSTEMCTL"), "--user"]).args(arguments).output()?)
 }
 fn checked(arguments: &[&str]) -> Result<String> {
     let output=user(arguments)?;
@@ -38,6 +38,9 @@ fn inspect_filesystem() -> Result<()> {
 }
 fn driver() -> Result<()> {
     wait("actual user manager", || Ok(user(&["show-environment"])?.status.success()))?;
+    let paths=checked(&["show", "--property=UnitPath", "--value"])?;
+    require(paths.split_whitespace().any(|path|path=="/etc/systemd/user"), "Acceptance did not reach the actual user manager")?;
+    println!("RECOVERY_MANAGER_PATHS: {paths}");
     checked(&["start", "recovery-test-session.target"])?;
     require(property("lumen-desktop-shell.service", "OnFailure")?=="lumen-desktop-recovery.service", "Enabled fallback is not connected in the real manager")?;
     require(property("recovery-disabled.service", "OnFailure")?.is_empty(), "Disabled fallback still has an actual OnFailure handler")?;
