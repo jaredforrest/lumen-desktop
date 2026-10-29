@@ -145,10 +145,25 @@ pub fn run(ctx: &mut Context) -> Result<()> {
     }
     need(writes(ctx)?.is_empty() && state(ctx)?["activations"].as_array().is_some_and(Vec::is_empty),"Motion mutated Dock")?;
     let mut checks=vec!["Three continuous sweeps vary motion rate, neighbour tooltips and endpoint magnification, then clear without actions"];
+    let original_pins=pins(&initial)?;
+    let changed_pins=vec!["fixture-c","fixture-b","fixture-a","unknown-retained"];
+    point(ctx,"a")?;ctx.press()?;
+    wait("Held apply negative press",||Ok((state(ctx)?["pressed"]==true).then_some(())))?;
+    let applied:Value=serde_json::from_str(&ctx.ipc("applyPins",&[&serde_json::to_string(&changed_pins)?])?)?;
+    need(applied["applying"]==true,"An actual explicit edit must classify as applying")?;
+    let retired=wait("Held changed preferences retire capture",||{let row=state(ctx)?;Ok((row["busy"]==false && pins(&row)?==changed_pins && row["pressedKey"]=="" && row["intentValid"]==false && row["dragging"]==false).then_some(row))})?;
+    ctx.move_pointer(center(ctx,"c")?)?;ctx.release()?;
+    need(writes(ctx)?.len()==1 && state(ctx)?["activations"].as_array().is_some_and(Vec::is_empty),"Changed-capture release must never retarget or write")?;
+    ctx.ipc("applyPins",&[&serde_json::to_string(&original_pins)?])?;
+    wait("Restore explicit private pin edit",||{let row=state(ctx)?;Ok((row["busy"]==false && pins(&row)?==original_pins).then_some(()))})?;
+    let intentional=writes(ctx)?;
+    need(intentional.len()==2 && intentional[0]["value"]==json!(changed_pins) && intentional[1]["value"]==json!(original_pins),"Only the two explicit negative-case edits are permitted")?;
+    save(&ctx.opt.output.join("held-apply-negative.json"),&json!({"applying":applied,"retired":retired,"writes":intentional}))?;
+    checks.push("Actual applying and changed preferences retire held capture without retargeting on release");
     drag(ctx,"a","c")?; ctx.release()?;
     let mut expected=vec!["fixture-b","fixture-a","fixture-c","unknown-retained"];
     wait("Dock pin reorder",|| Ok((pins(&state(ctx)?)?==expected && state(ctx)?["busy"]==false).then_some(())))?;
-    need(writes(ctx)?.len()==1 && writes(ctx)?[0]==json!({"key":"dockPins","value":expected}) && state(ctx)?["activations"].as_array().is_some_and(Vec::is_empty),"First Dock write invalid")?;
+    need(writes(ctx)?.len()==3 && writes(ctx)?[2]==json!({"key":"dockPins","value":expected}) && state(ctx)?["activations"].as_array().is_some_and(Vec::is_empty),"First Dock write invalid")?;
     checks.push("Actual read-only settings polls preserve held pointer capture and exact intent across all drag cases");
     checks.push("Physical app reorder emits one captured write and preserves unknown pins");
     ctx.children[shell].stop(libc::SIGTERM)?;
@@ -160,12 +175,12 @@ pub fn run(ctx: &mut Context) -> Result<()> {
     checks.push("Production Dock and SettingsState reconstruct captured order after restart");
     drag(ctx,"c","folder:/synthetic/folder")?; ctx.release()?;
     wait("Dock invalid drop",|| Ok((state(ctx)?["dragging"]==false).then_some(())))?;
-    need(writes(ctx)?.len()==1 && pins(&state(ctx)?)?==expected && state(ctx)?["activations"].as_array().is_some_and(Vec::is_empty),"Document drop mutated Dock")?;
+    need(writes(ctx)?.len()==3 && pins(&state(ctx)?)?==expected && state(ctx)?["activations"].as_array().is_some_and(Vec::is_empty),"Document drop mutated Dock")?;
     checks.push("Document section drop does not reorder, remove, activate, or retarget");
     drag(ctx,"c","b")?; ctx.release()?;
     expected=vec!["fixture-c","fixture-b","fixture-a","unknown-retained"];
     wait("Dock reverse reorder",|| Ok((pins(&state(ctx)?)?==expected && state(ctx)?["busy"]==false).then_some(())))?;
-    need(writes(ctx)?.len()==2 && writes(ctx)?[1]["value"]==json!(expected),"Reverse Dock write invalid")?;
+    need(writes(ctx)?.len()==4 && writes(ctx)?[3]["value"]==json!(expected),"Reverse Dock write invalid")?;
     checks.push("Reverse physical reorder captures the reconstructed source and destination");
     ctx.picture("accepted.png")?;
     for file in ["shell.log","shell-restart.log"] {
