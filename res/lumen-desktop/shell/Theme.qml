@@ -47,7 +47,7 @@ Singleton {
     readonly property color sidebarMaterial: compositorEffects && !preferences.reduceTransparency && !increaseContrast ? Qt.rgba(sidebar.r,sidebar.g,sidebar.b,0.86) : sidebar
     readonly property color popoverMaterial: compositorEffects && !preferences.reduceTransparency && !increaseContrast ? Qt.rgba(backgroundTone.r,backgroundTone.g,backgroundTone.b,0.94) : backgroundTone
     readonly property color selection: dark ? "#414145" : "#dedee3"
-    readonly property int menuRowHeight: 23
+    readonly property int menuRowHeight: Math.max(23,textRole("body")+10)
     readonly property int menuRadius: 10
     FileView {
         id: file

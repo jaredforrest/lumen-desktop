@@ -31,7 +31,14 @@ int main(void) {
  struct zwp_virtual_keyboard_v1 *keyboard=zwp_virtual_keyboard_manager_v1_create_virtual_keyboard(state.manager,state.seat);
  struct xkb_context *context=xkb_context_new(XKB_CONTEXT_NO_FLAGS);
  struct xkb_rule_names names={.layout="us"};
- struct xkb_keymap *map=context?xkb_keymap_new_from_names(context,&names,XKB_KEYMAP_COMPILE_NO_FLAGS):NULL;
+ struct xkb_keymap *map=NULL;
+ const char *fixture_map=getenv("LUMEN_TEST_KEYMAP");
+ if(context && fixture_map){
+  FILE *input=fopen(fixture_map,"r");
+  if(!input){fprintf(stderr,"explicit fixture keymap unavailable\n");return 1;}
+  map=xkb_keymap_new_from_file(context,input,XKB_KEYMAP_FORMAT_TEXT_V1,XKB_KEYMAP_COMPILE_NO_FLAGS);
+  fclose(input);
+ }else if(context)map=xkb_keymap_new_from_names(context,&names,XKB_KEYMAP_COMPILE_NO_FLAGS);
  char *text=map?xkb_keymap_get_as_string(map,XKB_KEYMAP_FORMAT_TEXT_V1):NULL;
  int fd=memfd_create("private-physical-keyboard",MFD_CLOEXEC);
  if(!text || fd<0 || write(fd,text,strlen(text)+1)!=(ssize_t)(strlen(text)+1)){fprintf(stderr,"stable keymap unavailable\n");return 1;}

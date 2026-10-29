@@ -41,6 +41,7 @@ jobs:
           bash tests/ci/run-native.sh shared_control_typography_qml nix develop --command desktop-test-python tests/desktop/shared_control_typography_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/owned-typography-fonts" --output artifacts/shared-control-typography
           bash tests/ci/run-native.sh calendar_detail_typography_qml nix develop --command desktop-test-python tests/desktop/calendar_detail_typography_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/owned-typography-fonts" --output artifacts/calendar-detail-typography
           bash tests/ci/run-native.sh launcher_typography_qml nix develop --command desktop-test-python tests/desktop/launcher_typography_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/owned-typography-fonts" --output artifacts/launcher-typography
+          bash tests/ci/run-native.sh menu_typography_qml nix develop --command desktop-test-python tests/desktop/menu_typography_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/owned-typography-fonts" --output artifacts/menu-typography
           bash tests/ci/run-native.sh document_tabs_typography nix develop --command desktop-test-python tests/desktop/document_tabs_typography.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/owned-typography-fonts" --output artifacts/document-tabs-typography
           bash tests/ci/run-native.sh overview_typography_qml nix develop --command desktop-test-python tests/desktop/overview_typography_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/owned-typography-fonts" --output artifacts/overview-typography
           bash tests/ci/run-native.sh files_share_menu_qml nix develop --command desktop-test-python tests/desktop/files_share_menu_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --fontconfig "$PWD/artifacts/offscreen-font-config" --output artifacts/files-share-menu
@@ -92,6 +93,7 @@ jobs:
           nix build .#test-application-software-driver --out-link artifacts/owned-typography-driver --option abort-on-warn true
           nix build .#test-xwayland-relationships --out-link artifacts/xwayland-relationships-client --option abort-on-warn true
           nix build .#test-xwayland-server --out-link artifacts/xwayland-server --option abort-on-warn true
+          nix build .#test-audio-provider --out-link artifacts/menu-audio-provider --option abort-on-warn true
           nix build .#test-clipboard-producer --out-link artifacts/clipboard-producer --option abort-on-warn true
           nix build .#clipboard-observer --out-link artifacts/clipboard-observer --option abort-on-warn true
           nix build .#test-display-spaces-legacy-compositor --out-link artifacts/legacy-display-compositor --option abort-on-warn true
@@ -150,6 +152,7 @@ jobs:
             bash tests/ci/run-native.sh xwayland_relationships_input nix develop --command desktop-test-python tests/desktop/xwayland_relationships_input.py "${compositor_flags[@]}" --sway "$PWD/artifacts/$compositor/bin/sway" --client "$PWD/artifacts/xwayland-relationships-client/bin/lumen-test-xwayland-relationships" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --xwayland "$PWD/artifacts/xwayland-server/bin/Xwayland" --without-xres --output "artifacts/xwayland-no-xres-$compositor"
             bash tests/ci/run-native.sh owned_window_context_input nix develop --command desktop-test-python tests/desktop/owned_window_context_input.py "${compositor_flags[@]}" --full-shell --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --output "artifacts/owned-window-context-$compositor"
             bash tests/ci/run-native.sh menubar_input nix develop --command desktop-test-python tests/desktop/menubar_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/menubar-$compositor"
+            bash tests/ci/run-native.sh menu_scaled_native nix develop --command desktop-test-python tests/desktop/menu_scaled_native.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --xwayland "$PWD/artifacts/xwayland-server/bin/Xwayland" --audio "$PWD/artifacts/menu-audio-provider" --font-config "$PWD/artifacts/owned-typography-fonts" --software-driver "$PWD/artifacts/owned-typography-driver" --output "artifacts/menu-scaled-$compositor"
             bash tests/ci/run-native.sh menu_keyboard_input nix develop --command desktop-test-python tests/desktop/menu_keyboard_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/menu-keyboard-$compositor"
             bash tests/ci/run-native.sh shortcut_hints_input nix develop --command desktop-test-python tests/desktop/shortcut_hints_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --fixtures "$PWD/artifacts/shortcut-fixtures" --output "artifacts/shortcut-hints-$compositor"
           done
@@ -270,6 +273,7 @@ jobs:
             artifacts/calendar-detail-typography
             artifacts/calendar-detail-native-*
             artifacts/launcher-typography
+            artifacts/menu-typography
             artifacts/document-tabs-typography
             artifacts/overview-typography
             artifacts/overview-typography-native-*
@@ -352,6 +356,7 @@ jobs:
             artifacts/xwayland-relationships-*
             artifacts/xwayland-no-xres-*
             artifacts/owned-window-context-*
+            artifacts/menu-scaled-*
             artifacts/menu-keyboard-*
             artifacts/shortcut-fixtures
             artifacts/shortcut-hints-*

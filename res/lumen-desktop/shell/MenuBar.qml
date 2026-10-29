@@ -35,7 +35,7 @@ PanelWindow {
     property bool filesFocused:ownedFilesContext || (usesBridge ? exported.state.appName==="org.quickshell" && exported.state.title.startsWith("Files") : !!shell.active && shell.active.title.startsWith("Files"))
     property bool desktopFocused: usesBridge ? exported.state.windowId === 0 : !shell.active
     property bool special: ["Internet","Wi-Fi","Bluetooth","VPN","Sound","Controls","Focus","Date","Calendar","Now Playing","Files","Settings","Launcher","Capture"].includes(menu)
-    FontMetrics {id:headingMetrics;font.family:Theme.font;font.pixelSize:13}
+    FontMetrics {id:headingMetrics;font.family:Theme.font;font.pixelSize:Theme.textRole("body")}
     readonly property var menuHeadings: {
         if(exported.state.supported && exported.state.menu)return exported.state.menu.children.filter(n=>n.visible).map(n=>({label:exported.label(n.label),exportId:n.id,enabled:n.enabled}));
         return (desktopFocused || filesFocused?["File","Edit","View","Go","Window","Help"]:["Window"]).map(name=>({label:name,heading:name,enabled:true}));
@@ -275,9 +275,9 @@ PanelWindow {
             Accessible.role:Accessible.PopupMenu
             Accessible.name:bar.menu
             visible:bar.menu!=="" && !bar.special
-            x: Math.max(8,Math.min(bar.menuX,parent.width-width-8)); y: Theme.barHeight+1; width: Math.max(220,Math.min(360,builtinItems.model.reduce((w,n)=>Math.max(w,plainMetrics.advanceWidth(n.label || "")+plainMetrics.advanceWidth(bar.shortcutHint(n))+74),0))); height: Math.min(items.height+12,parent.height-Theme.barHeight-100)
+            x: Math.max(8,Math.min(bar.menuX,parent.width-width-8)); y: Theme.barHeight+1; width: Math.min(parent.width-16,Math.max(220,Math.min(Math.round(360*Theme.textScale),builtinItems.model.reduce((w,n)=>Math.max(w,plainMetrics.advanceWidth(n.label || "")+plainMetrics.advanceWidth(bar.shortcutHint(n))+74),0)))); height: Math.min(items.height+12,parent.height-Theme.barHeight-100)
             radius: Theme.menuRadius; color: Theme.colors.background; border.color: Theme.outline; border.width: 1
-            FontMetrics {id:plainMetrics;font.family:Theme.font;font.pixelSize:13}
+            FontMetrics {id:plainMetrics;font.family:Theme.font;font.pixelSize:Theme.textRole("body")}
             MouseArea { anchors.fill: parent }
             Flickable {
                 id:builtinScroll;anchors.fill:parent;anchors.margins:6;contentWidth:width;contentHeight:items.height;clip:true;boundsBehavior:Flickable.StopAtBounds
@@ -337,8 +337,8 @@ PanelWindow {
                         Accessible.description:shortcutHint?"Shortcut: "+shortcutHint:""
                         contentItem:Item {
                             SystemGlyph {visible:!builtinRow.modelData.separator && name!=="";x:7;anchors.verticalCenter:parent.verticalCenter;width:14;height:14;name:(builtinRow.modelData.label || "").startsWith("About")?"info":builtinRow.modelData.action==="settings"?"gear":builtinRow.modelData.action==="apps"?"grid":builtinRow.modelData.action==="terminal"?"screen":builtinRow.modelData.action==="lock"?"lock":"";ink:bar.builtinIndex===builtinRow.index && builtinRow.enabled?Theme.colors.selectedText:Theme.colors.text}
-                            Text {anchors.left:parent.left;anchors.leftMargin:28;anchors.right:parent.right;anchors.rightMargin:shortcutText.visible?shortcutText.width+20:8;anchors.verticalCenter:parent.verticalCenter;visible:!builtinRow.modelData.separator;text:builtinRow.modelData.label || "";elide:Text.ElideRight;color:builtinRow.enabled?(bar.builtinIndex===builtinRow.index?Theme.colors.selectedText:Theme.colors.text):Theme.colors.muted;font.family:Theme.font;font.pixelSize:13}
-                            Text {id:shortcutText;width:Math.min(200,implicitWidth);elide:Text.ElideRight;horizontalAlignment:Text.AlignRight;anchors.right:parent.right;anchors.rightMargin:8;anchors.verticalCenter:parent.verticalCenter;text:builtinRow.shortcutHint;visible:text!=="" && !builtinRow.modelData.separator;color:builtinRow.enabled?(bar.builtinIndex===builtinRow.index?Theme.colors.selectedText:Theme.colors.muted):Theme.colors.muted;font.family:Theme.font;font.pixelSize:12}
+                            Text {anchors.left:parent.left;anchors.leftMargin:28;anchors.right:parent.right;anchors.rightMargin:shortcutText.visible?shortcutText.width+20:8;anchors.verticalCenter:parent.verticalCenter;visible:!builtinRow.modelData.separator;text:builtinRow.modelData.label || "";elide:Text.ElideRight;color:builtinRow.enabled?(bar.builtinIndex===builtinRow.index?Theme.colors.selectedText:Theme.colors.text):Theme.colors.muted;font.family:Theme.font;font.pixelSize:Theme.textRole("body")}
+                            Text {id:shortcutText;width:Math.min(200,implicitWidth);elide:Text.ElideRight;horizontalAlignment:Text.AlignRight;anchors.right:parent.right;anchors.rightMargin:8;anchors.verticalCenter:parent.verticalCenter;text:builtinRow.shortcutHint;visible:text!=="" && !builtinRow.modelData.separator;color:builtinRow.enabled?(bar.builtinIndex===builtinRow.index?Theme.colors.selectedText:Theme.colors.muted):Theme.colors.muted;font.family:Theme.font;font.pixelSize:Theme.textRole("label")}
                             Rectangle {visible:!!builtinRow.modelData.separator;anchors.centerIn:parent;width:parent.width-12;height:1;color:Theme.colors.border;opacity:0.5}
                         }
                     }

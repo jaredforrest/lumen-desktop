@@ -92,7 +92,7 @@ Item {
         return y>=Math.min(lo,hi) && y<=Math.max(lo,hi)?450:160;
     }
     function rememberPointer(x,y) {pointer={x:x,y:y,time:Date.now()};}
-    FontMetrics { id:menuMetrics; font.family:root.menuFont; font.pixelSize:13 }
+    FontMetrics { id:menuMetrics; font.family:root.menuFont; font.pixelSize:Theme.textRole("body") }
     property var pathY: []
     property var selected: path.length ? node(path[path.length-1],state.menu) : null
     function shortcut(value) {
@@ -113,7 +113,7 @@ Item {
         return "";
     }
     function widthFor(n) {
-        return n ? Math.max(220,Math.min(410,n.children.filter(c=>c.visible).reduce((w,c)=>Math.max(w,menuMetrics.advanceWidth(label(c.label))+menuMetrics.advanceWidth(shortcut(c.shortcut))+76),0))) : 220;
+        return n ? Math.max(220,Math.min(Math.round(410*Theme.textScale),n.children.filter(c=>c.visible).reduce((w,c)=>Math.max(w,menuMetrics.advanceWidth(label(c.label))+menuMetrics.advanceWidth(shortcut(c.shortcut))+76),0))) : 220;
     }
     function closeBelow(depth) { if(path.length>depth+1)path=path.slice(0,depth+1); }
     function openChild(depth,id,y,intent) {
