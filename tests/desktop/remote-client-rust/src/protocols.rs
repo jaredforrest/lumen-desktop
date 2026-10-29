@@ -16,14 +16,37 @@ fn args(values: &[String]) -> Vec<OsString> {
     values.iter().map(OsString::from).collect()
 }
 pub fn target(f: &mut Harness) -> Result<()> {
-    let local_display = f.env.get("WAYLAND_DISPLAY").cloned().ok_or("Local display")?;
+    let local_display = f
+        .env
+        .get("WAYLAND_DISPLAY")
+        .cloned()
+        .ok_or("Local display")?;
     if f.o.protocol == "vnc" && f.o.scenario == "interactions" {
         let runtime = PathBuf::from(f.env.get("XDG_RUNTIME_DIR").ok_or("Runtime")?);
-        let existing = fs::read_dir(&runtime)?.flatten().map(|entry| entry.file_name()).collect::<Vec<_>>();
+        let existing = fs::read_dir(&runtime)?
+            .flatten()
+            .map(|entry| entry.file_name())
+            .collect::<Vec<_>>();
         let config = f.out.join("remote-sway.conf");
-        fs::write(&config, "output HEADLESS-1 resolution 1280x720 position 0 0\nseat seat0 fallback true\nxwayland disable\nfocus_follows_mouse no\nfor_window [app_id=\"org.lumen.RemoteTarget\"] move to output HEADLESS-1, fullscreen enable\n")?;
-        f.launch_s(f.o.tool("sway"), &["--unsupported-gpu", "-c", &s(&config)], "remote-sway.log")?;
-        let remote = wait("independent remote Wayland socket", || Ok(fs::read_dir(&runtime)?.flatten().map(|entry| entry.file_name()).find(|name| !existing.contains(name) && name.to_string_lossy().starts_with("wayland-") && !name.to_string_lossy().ends_with(".lock"))))?;
+        fs::write(
+            &config,
+            "output HEADLESS-1 resolution 1280x720 position 0 0\nseat seat0 fallback true\nxwayland disable\nfocus_follows_mouse no\nfor_window [app_id=\"org.lumen.RemoteTarget\"] move to output HEADLESS-1, fullscreen enable\n",
+        )?;
+        f.launch_s(
+            f.o.tool("sway"),
+            &["--unsupported-gpu", "-c", &s(&config)],
+            "remote-sway.log",
+        )?;
+        let remote = wait("independent remote Wayland socket", || {
+            Ok(fs::read_dir(&runtime)?
+                .flatten()
+                .map(|entry| entry.file_name())
+                .find(|name| {
+                    !existing.contains(name)
+                        && name.to_string_lossy().starts_with("wayland-")
+                        && !name.to_string_lossy().ends_with(".lock")
+                }))
+        })?;
         let remote = remote.to_str().ok_or("Remote display name")?.to_owned();
         f.remote_display = Some(remote.clone());
         f.env.insert("WAYLAND_DISPLAY".into(), remote);
@@ -150,9 +173,15 @@ fn negative_identity(f: &mut Harness, needle: &str) -> Result<Value> {
     Ok(row)
 }
 fn vnc_start(f: &mut Harness, settings: &Path, control: &Path, log: &str) -> Result<usize> {
-    let local_display = f.env.get("WAYLAND_DISPLAY").cloned().ok_or("Local display")?;
+    let local_display = f
+        .env
+        .get("WAYLAND_DISPLAY")
+        .cloned()
+        .ok_or("Local display")?;
     let independent = f.remote_display.is_some();
-    if let Some(display) = &f.remote_display { f.env.insert("WAYLAND_DISPLAY".into(), display.clone()); }
+    if let Some(display) = &f.remote_display {
+        f.env.insert("WAYLAND_DISPLAY".into(), display.clone());
+    }
     let result = f.launch_s(
         f.o.tool("wayvnc").join("bin/wayvnc"),
         &[
@@ -161,7 +190,11 @@ fn vnc_start(f: &mut Harness, settings: &Path, control: &Path, log: &str) -> Res
             "--config",
             &s(settings),
             "--output",
-            if independent { "HEADLESS-1" } else { "HEADLESS-2" },
+            if independent {
+                "HEADLESS-1"
+            } else {
+                "HEADLESS-2"
+            },
             "--seat",
             if independent { "seat0" } else { "remote" },
             "--socket",
@@ -250,7 +283,9 @@ fn vnc(f: &mut Harness) -> Result<()> {
             .then_some(()))
     })?;
     let original = f.safe_target()?;
-    if f.o.scenario == "interactions" { return interactions(f); }
+    if f.o.scenario == "interactions" {
+        return interactions(f);
+    }
     pause(400);
     f.capture("authenticated.png")?;
     let pixels = f.pixels("authenticated.png")?;
@@ -321,7 +356,9 @@ fn rdp_start(f: &mut Harness, sam: &Path, log: &str) -> Result<usize> {
     Ok(index)
 }
 fn rdp(f: &mut Harness) -> Result<()> {
-    if f.o.scenario == "interactions" { return rdp_clipboard(f); }
+    if f.o.scenario == "interactions" {
+        return rdp_clipboard(f);
+    }
     let sam = f.call(
         f.o.tool("rdp").join("bin/winpr-hash"),
         &["-u", "fixture", "-p", &f.password, "-f", "sam"],
@@ -406,7 +443,9 @@ fn rdp(f: &mut Harness) -> Result<()> {
             .then_some(()))
     })?;
     let original = f.safe_target()?;
-    if f.o.scenario == "interactions" { return interactions(f); }
+    if f.o.scenario == "interactions" {
+        return interactions(f);
+    }
     pause(400);
     f.capture("authenticated.png")?;
     let pixels = f.pixels("authenticated.png")?;
@@ -467,41 +506,121 @@ fn rdp_clipboard(f: &mut Harness) -> Result<()> {
         }
     }
     let sesman = config.join("sesman.ini");
-    fs::write(&sesman, fs::read_to_string(&sesman)?.replace("#EnableFuseMount=false", "EnableFuseMount=false"))?;
+    fs::write(
+        &sesman,
+        fs::read_to_string(&sesman)?.replace("#EnableFuseMount=false", "EnableFuseMount=false"),
+    )?;
     let uid = unsafe { libc::getuid() };
     fs::create_dir_all(format!("/var/run/xrdp/{uid}"))?;
     fs::create_dir_all(format!("/run/xrdp/{uid}"))?;
     let cert = f.private.join("xrdp.crt");
     let key = f.private.join("xrdp.key");
     let ca = f.certificate(&cert, &key, "localhost", "DNS:localhost,IP:127.0.0.1")?;
-    let trust = PathBuf::from(f.env.get("XDG_CONFIG_HOME").ok_or("Private config")?).join("freerdp/certs");
+    let trust =
+        PathBuf::from(f.env.get("XDG_CONFIG_HOME").ok_or("Private config")?).join("freerdp/certs");
     fs::create_dir_all(&trust)?;
     fs::copy(ca, trust.join("fixture-ca.pem"))?;
     f.quiet(f.o.tool("tls").join("bin/openssl"), &["rehash", &s(&trust)])?;
     let vnc_password = f.private.join("x11vnc-password");
-    f.quiet(f.o.tool("x11vnc").join("bin/x11vnc"), &["-storepasswd", &f.password, &s(&vnc_password)])?;
-    f.launch_s(f.o.tool("x11vnc").join("bin/x11vnc"), &["-display", "127.0.0.1:55", "-rfbport", "5906", "-listen", "127.0.0.1", "-rfbauth", &s(&vnc_password), "-forever", "-shared", "-noxdamage", "-noshm"], "x11vnc.log")?;
-    wait("private authenticated X11 VNC backend", || Ok(TcpStream::connect_timeout(&"127.0.0.1:5906".parse()?, Duration::from_millis(100)).ok().map(|_| ())))?;
+    f.quiet(
+        f.o.tool("x11vnc").join("bin/x11vnc"),
+        &["-storepasswd", &f.password, &s(&vnc_password)],
+    )?;
+    f.launch_s(
+        f.o.tool("x11vnc").join("bin/x11vnc"),
+        &[
+            "-display",
+            "127.0.0.1:55",
+            "-rfbport",
+            "5906",
+            "-listen",
+            "127.0.0.1",
+            "-rfbauth",
+            &s(&vnc_password),
+            "-forever",
+            "-shared",
+            "-noxdamage",
+            "-noshm",
+        ],
+        "x11vnc.log",
+    )?;
+    wait("private authenticated X11 VNC backend", || {
+        Ok(
+            TcpStream::connect_timeout(&"127.0.0.1:5906".parse()?, Duration::from_millis(100))
+                .ok()
+                .map(|_| ()),
+        )
+    })?;
     f.env.insert("CHANSRV_LOG_PATH".into(), s(&f.out));
-    f.launch_s(f.o.tool("xrdp").join("bin/xrdp-chansrv"), &[], "xrdp-chansrv.log")?;
+    f.launch_s(
+        f.o.tool("xrdp").join("bin/xrdp-chansrv"),
+        &[],
+        "xrdp-chansrv.log",
+    )?;
     let socket = wait("actual clipboard channel server", || {
-        Ok([format!("/var/run/xrdp/{uid}/xrdp_chansrv_socket_55"), format!("/run/xrdp/{uid}/xrdp_chansrv_socket_55")].into_iter().map(PathBuf::from).find(|path| path.exists()))
+        Ok([
+            format!("/var/run/xrdp/{uid}/xrdp_chansrv_socket_55"),
+            format!("/run/xrdp/{uid}/xrdp_chansrv_socket_55"),
+        ]
+        .into_iter()
+        .map(PathBuf::from)
+        .find(|path| path.exists()))
     })?;
     let rsa = config.join("rsakeys.ini");
-    f.quiet(f.o.tool("xrdp").join("bin/xrdp-keygen"), &["xrdp", &s(&rsa)])?;
+    f.quiet(
+        f.o.tool("xrdp").join("bin/xrdp-keygen"),
+        &["xrdp", &s(&rsa)],
+    )?;
     let ini = config.join("xrdp.ini");
-    fs::write(&ini, format!("[Globals]\nini_version=1\nfork=true\nport=tcp://127.0.0.1:3395\nautorun=fixture\nsecurity_layer=tls\ncrypt_level=high\ncertificate={}\nkey_file={}\nrsakeys_ini={}\nallow_channels=true\nmax_bpp=32\n[Logging]\nLogFile={}\nLogLevel=DEBUG\nEnableSyslog=false\n[Channels]\ncliprdr=true\nrdpdr=false\nrdpsnd=false\ndrdynvc=false\nrail=false\n[fixture]\nname=Disposable clipboard session\nlib={}\nip=127.0.0.1\nport=5906\nusername=fixture\npassword=ask\nchansrvport={}\n",cert.display(),key.display(),rsa.display(),f.out.join("xrdp-provider.log").display(),"libvnc.so",socket.display()))?;
-    f.launch_s(f.o.tool("xrdp").join("bin/xrdp"), &["--nodaemon", "--config", &s(&ini)], "xrdp.log")?;
-    wait("actual RDP clipboard server", || Ok(TcpStream::connect_timeout(&"127.0.0.1:3395".parse()?, Duration::from_millis(100)).ok().map(|_| ())))?;
-    fs::write(&f.profile, "[remmina]\nname=Disposable RDP clipboard\nprotocol=RDP\nserver=localhost:3395\nusername=fixture\nsecurity=tls\ncolordepth=32\nsound=off\nmicrophone=0\ndisableclipboard=0\nresolution_mode=0\nresolution_width=1280\nresolution_height=720\nviewmode=1\ncert_ignore=0\ndisablepasswordstoring=1\n")?;
+    fs::write(
+        &ini,
+        format!(
+            "[Globals]\nini_version=1\nfork=true\nport=tcp://127.0.0.1:3395\nautorun=fixture\nsecurity_layer=tls\ncrypt_level=high\ncertificate={}\nkey_file={}\nrsakeys_ini={}\nallow_channels=true\nmax_bpp=32\n[Logging]\nLogFile={}\nLogLevel=DEBUG\nEnableSyslog=false\n[Channels]\ncliprdr=true\nrdpdr=false\nrdpsnd=false\ndrdynvc=false\nrail=false\n[fixture]\nname=Disposable clipboard session\nlib={}\nip=127.0.0.1\nport=5906\nusername=fixture\npassword=ask\nchansrvport={}\n",
+            cert.display(),
+            key.display(),
+            rsa.display(),
+            f.out.join("xrdp-provider.log").display(),
+            "libvnc.so",
+            socket.display()
+        ),
+    )?;
+    f.launch_s(
+        f.o.tool("xrdp").join("bin/xrdp"),
+        &["--nodaemon", "--config", &s(&ini)],
+        "xrdp.log",
+    )?;
+    wait("actual RDP clipboard server", || {
+        Ok(
+            TcpStream::connect_timeout(&"127.0.0.1:3395".parse()?, Duration::from_millis(100))
+                .ok()
+                .map(|_| ()),
+        )
+    })?;
+    fs::write(
+        &f.profile,
+        "[remmina]\nname=Disposable RDP clipboard\nprotocol=RDP\nserver=localhost:3395\nusername=fixture\nsecurity=tls\ncolordepth=32\nsound=off\nmicrophone=0\ndisableclipboard=0\nresolution_mode=0\nresolution_width=1280\nresolution_height=720\nviewmode=1\ncert_ignore=0\ndisablepasswordstoring=1\n",
+    )?;
     f.connect()?;
     let password = f.password.clone();
     f.password(&password)?;
-    wait("real clipboard-capable RDP session", || Ok(f.log("remmina.log").contains("Connect signal emitted").then_some(())))?;
+    wait("real clipboard-capable RDP session", || {
+        Ok(f.log("remmina.log")
+            .contains("Connect signal emitted")
+            .then_some(()))
+    })?;
+    wait("actual authenticated RDP backend", || {
+        Ok(f.log("xrdp-provider.log")
+            .contains("VNC connection complete, connected ok")
+            .then_some(()))
+    })?;
     interactions(f)
 }
 fn focus_app(f: &Harness, app: &str) -> Result<Value> {
-    let node = wait("interaction window mapping", || Ok(nodes(&f.tree()?).into_iter().find(|node| node["app_id"] == app)))?;
+    let node = wait("interaction window mapping", || {
+        Ok(nodes(&f.tree()?)
+            .into_iter()
+            .find(|node| node["app_id"] == app))
+    })?;
     let id = node["id"].as_u64().ok_or("Interaction window identity")?;
     f.ipc(&[&format!("[con_id={id}] focus")])?;
     Ok(node)
@@ -516,7 +635,11 @@ fn chord(f: &mut Harness, key: &str) -> Result<()> {
 }
 fn focus_viewer(f: &mut Harness) -> Result<()> {
     focus_app(f, "org.remmina.Remmina")?;
-    let row = wait("remote drawing surface", || Ok(f.semantics()?.into_iter().find(|row| row["role"] == "drawing area" && row["states"]["focusable"] == true)))?;
+    let row = wait("remote drawing surface", || {
+        Ok(f.semantics()?
+            .into_iter()
+            .find(|row| row["role"] == "drawing area" && row["states"]["focusable"] == true))
+    })?;
     f.focus(&row)
 }
 fn fullscreen_key(f: &mut Harness) -> Result<()> {
@@ -526,44 +649,95 @@ fn fullscreen_key(f: &mut Harness) -> Result<()> {
     keyboard.send("k", 88, 0)?;
     Ok(())
 }
+fn paste_until(f: &mut Harness, local: bool, expected: &str) -> Result<bool> {
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while Instant::now() < deadline {
+        chord(f, "a")?;
+        chord(f, "v")?;
+        pause(100);
+        let state = if local {
+            f.target_named("org.lumen.LocalTarget")?
+        } else {
+            f.safe_target()?
+        };
+        if state["text"] == expected {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
 fn interactions(f: &mut Harness) -> Result<()> {
     let original_target = f.safe_target()?;
     let before = focus_app(f, "org.remmina.Remmina")?;
-    save(&f.out.join("interaction-semantics.json"), &json!(f.semantics()?))?;
-    f.keyboard.as_mut().ok_or("Keyboard")?.type_text("remote-input-receipt")?;
-    wait("actual protocol keyboard routing", || Ok((f.target()?["text"] == "remote-input-receipt").then_some(())))?;
+    save(
+        &f.out.join("interaction-semantics.json"),
+        &json!(f.semantics()?),
+    )?;
+    f.keyboard
+        .as_mut()
+        .ok_or("Keyboard")?
+        .type_text("remote-input-receipt")?;
+    wait("actual protocol keyboard routing", || {
+        Ok((f.target()?["text"] == "remote-input-receipt").then_some(()))
+    })?;
     f.keyboard.as_mut().ok_or("Keyboard")?.key(&["-k", "F11"])?;
-    wait("actual protocol function key", || Ok(f.target()?["keys"].as_array().is_some_and(|keys| keys.iter().any(|key| key["keyval"] == 65480)).then_some(())))?;
+    wait("actual protocol function key", || {
+        Ok(f.target()?["keys"]
+            .as_array()
+            .is_some_and(|keys| keys.iter().any(|key| key["keyval"] == 65480))
+            .then_some(()))
+    })?;
     fullscreen_key(f)?;
-    let full = wait("viewer fullscreen entry", || Ok(nodes(&f.tree()?).into_iter().find(|node| node["app_id"] == "org.remmina.Remmina" && node["fullscreen_mode"] == 1)))?;
+    let full = wait("viewer fullscreen entry", || {
+        Ok(nodes(&f.tree()?)
+            .into_iter()
+            .find(|node| node["app_id"] == "org.remmina.Remmina" && node["fullscreen_mode"] == 1))
+    })?;
     f.capture("viewer-fullscreen.png")?;
     fullscreen_key(f)?;
-    let exited = wait("viewer fullscreen exit", || Ok(nodes(&f.tree()?).into_iter().find(|node| node["app_id"] == "org.remmina.Remmina" && node["fullscreen_mode"] == 0)))?;
+    let exited = wait("viewer fullscreen exit", || {
+        Ok(nodes(&f.tree()?)
+            .into_iter()
+            .find(|node| node["app_id"] == "org.remmina.Remmina" && node["fullscreen_mode"] == 0))
+    })?;
     focus_viewer(f)?;
     chord(f, "a")?;
     chord(f, "c")?;
     pause(1500);
-    let target = env::current_exe()?.parent().ok_or("Fixture bin")?.join("lumen-remote-target");
+    let target = env::current_exe()?
+        .parent()
+        .ok_or("Fixture bin")?
+        .join("lumen-remote-target");
     f.launch_s(target, &["--local"], "local-clipboard-target.log")?;
-    wait("independent local clipboard target", || Ok(f.target_named("org.lumen.LocalTarget").ok()))?;
+    wait("independent local clipboard target", || {
+        Ok(f.target_named("org.lumen.LocalTarget").ok())
+    })?;
     focus_app(f, "org.lumen.LocalTarget")?;
-    chord(f, "v")?;
-    pause(1500);
+    let remote_to_local = paste_until(f, true, "remote-input-receipt")?;
     let received_local = f.target_named("org.lumen.LocalTarget")?;
-    let remote_to_local = received_local["text"] == "remote-input-receipt";
     chord(f, "a")?;
-    f.keyboard.as_mut().ok_or("Keyboard")?.type_text("local-clipboard-receipt")?;
+    f.keyboard
+        .as_mut()
+        .ok_or("Keyboard")?
+        .type_text("local-clipboard-receipt")?;
     chord(f, "a")?;
     chord(f, "c")?;
     pause(1500);
     focus_viewer(f)?;
-    chord(f, "a")?;
-    chord(f, "v")?;
-    pause(1500);
+    let local_to_remote = paste_until(f, false, "local-clipboard-receipt")?;
     let received_remote = f.safe_target()?;
-    let local_to_remote = received_remote["text"] == "local-clipboard-receipt";
-    save(&f.out.join("interaction-acceptance.json"), &json!({"protocol":f.o.protocol,"actualProvider":"Remmina","actualServer":if f.o.protocol=="vnc" {"WayVNC"} else {"xrdp with x11vnc and xrdp-chansrv"},"clipboardDisplaysIndependent":f.o.protocol=="rdp" || f.remote_display.is_some(),"nativeCompositors":if f.remote_display.is_some() {2} else {1},"remoteTargetIdentityRetained":original_target["pid"]==received_remote["pid"],"windowsOS":false,"physicalInput":true,"functionKeyF11":true,"fullscreenEntryAndExit":true,"fullscreenShortcut":"private configured F12+f host chord","originalViewerID":before["id"],"fullscreenViewerID":full["id"],"exitedViewerID":exited["id"],"remoteToLocalClipboard":remote_to_local,"localToRemoteClipboard":local_to_remote,"localReceipt":received_local,"remoteReceipt":received_remote,"hostClipboardAccess":false,"globalHostKeyClaim":false}))?;
-    ensure(remote_to_local && local_to_remote, "Actual clipboard direction failed; retained interaction diagnostics")
+    ensure(
+        original_target["pid"] == received_remote["pid"],
+        "Remote target restarted during viewer interactions",
+    )?;
+    save(
+        &f.out.join("interaction-acceptance.json"),
+        &json!({"protocol":f.o.protocol,"actualProvider":"Remmina","actualServer":if f.o.protocol=="vnc" {"WayVNC"} else {"xrdp with x11vnc and xrdp-chansrv"},"clipboardDisplaysIndependent":f.o.protocol=="rdp" || f.remote_display.is_some(),"nativeCompositors":if f.remote_display.is_some() {2} else {1},"remoteTargetIdentityRetained":original_target["pid"]==received_remote["pid"],"windowsOS":false,"physicalInput":true,"functionKeyF11":true,"fullscreenEntryAndExit":true,"fullscreenShortcut":"private configured F12+f host chord","originalViewerID":before["id"],"fullscreenViewerID":full["id"],"exitedViewerID":exited["id"],"remoteToLocalClipboard":remote_to_local,"localToRemoteClipboard":local_to_remote,"localReceipt":received_local,"remoteReceipt":received_remote,"hostClipboardAccess":false,"globalHostKeyClaim":false}),
+    )?;
+    ensure(
+        remote_to_local && local_to_remote,
+        "Actual clipboard direction failed; retained interaction diagnostics",
+    )
 }
 fn sshkey(f: &Harness, name: &str) -> Result<PathBuf> {
     let key = f.private.join(name);

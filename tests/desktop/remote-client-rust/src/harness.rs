@@ -91,11 +91,27 @@ impl Options {
             "Unknown protocol",
         )?;
         ensure(
-            ["authenticated", "wrong-identity", "wrong-password", "interactions"].contains(&o.scenario.as_str()),
+            [
+                "authenticated",
+                "wrong-identity",
+                "wrong-password",
+                "interactions",
+            ]
+            .contains(&o.scenario.as_str()),
             "Unknown scenario",
         )?;
-        ensure(o.scenario != "interactions" || o.protocol != "ssh", "Viewer interactions require VNC or RDP")?;
-        ensure(o.scenario != "interactions" || o.protocol != "rdp" || ["xrdp", "x11vnc"].iter().all(|name| o.tools.contains_key(*name)), "RDP clipboard acceptance requires actual channel and backend servers")?;
+        ensure(
+            o.scenario != "interactions" || o.protocol != "ssh",
+            "Viewer interactions require VNC or RDP",
+        )?;
+        ensure(
+            o.scenario != "interactions"
+                || o.protocol != "rdp"
+                || ["xrdp", "x11vnc"]
+                    .iter()
+                    .all(|name| o.tools.contains_key(*name)),
+            "RDP clipboard acceptance requires actual channel and backend servers",
+        )?;
         ensure(!o.output.as_os_str().is_empty(), "Fresh output required")?;
         Ok(o)
     }
@@ -388,12 +404,7 @@ impl Harness {
         self.target_named("org.lumen.RemoteTarget")
     }
     pub fn target_named(&self, name: &str) -> Result<Value> {
-        let proxy = Proxy::new(
-            &self.bus,
-            name,
-            "/Target",
-            "org.lumen.RemoteTarget",
-        )?;
+        let proxy = Proxy::new(&self.bus, name, "/Target", "org.lumen.RemoteTarget")?;
         let body: String = proxy.call("Status", &())?;
         Ok(serde_json::from_str(&body)?)
     }
