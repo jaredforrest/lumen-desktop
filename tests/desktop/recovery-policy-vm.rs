@@ -1,5 +1,6 @@
 //! Real disposable systemd user-manager restart-policy acceptance.
-use std::{env, fs, io::{self, Write}, path::Path, process::{Command, Output}, thread, time::{Duration, Instant}};
+use std::{env, fs, io::{self, Write}, os::{fd::AsRawFd, unix::fs::FileExt}, path::Path, process::{Command, Output}, thread, time::{Duration, Instant}};
+unsafe extern "C" { fn tcdrain(fd: i32) -> i32; }
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 const HOME: &str = "/home/fixture";
 fn require(ok: bool, message: &str) -> Result<()> { if ok { Ok(()) } else { Err(message.into()) } }
@@ -71,6 +72,7 @@ fn run() -> Result<()> {
         }
         [mode] if mode=="client" => loop {thread::sleep(Duration::from_secs(1));},
         [mode] if mode=="driver" => {
+            require(fs::read_to_string("/etc/lumen-recovery-policy-fixture")?=="disposable-recovery-policy\n", "Disposable VM marker missing")?;
             let result=driver();
             match &result {
                 Ok(())=>println!("LUMEN_RECOVERY_POLICY_PASS"),
@@ -83,8 +85,11 @@ fn run() -> Result<()> {
                 }
             }
             io::stdout().flush()?;io::stderr().flush()?;
-            Command::new(env!("VM_SYSTEMCTL")).args(["poweroff","--no-block"]).status()?;
-            result
+            let mut serial=fs::OpenOptions::new().write(true).open("/dev/ttyS0")?;
+            serial.write_all(if result.is_ok() {b"\nLUMEN_RECOVERY_POLICY_PASS\n"} else {b"\nLUMEN_RECOVERY_POLICY_FAIL\n"})?;
+            if unsafe {tcdrain(serial.as_raw_fd())} != 0 {return Err(io::Error::last_os_error().into());}
+            fs::OpenOptions::new().write(true).open("/dev/port")?.write_at(&0u32.to_le_bytes(),0xf4)?;
+            Err("Disposable VM exit device did not terminate execution".into())
         }
         _=>Err("Expected driver, client or crash counter".into()),
     }

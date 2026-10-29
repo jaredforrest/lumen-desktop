@@ -46,6 +46,7 @@ let
     modules = [ (nixpkgs + "/nixos/modules/virtualisation/qemu-vm.nix") ({ lib, ... }: {
       system.stateVersion = "26.05";
       nix.enable = false;
+      environment.etc."lumen-recovery-policy-fixture".text = "disposable-recovery-policy\n";
       networking.hostName = "recovery-policy";
       networking.useDHCP = false;
       users.users.fixture = { isNormalUser = true; uid = 1000; linger = true; hashedPassword = "!"; };
@@ -54,7 +55,7 @@ let
         useNixStoreImage = true; mountHostNixStore = false; writableStore = false;
         sharedDirectories = lib.mkForce {};
         qemu.forceAccel = false;
-        qemu.options = [ "-machine accel=tcg" ];
+        qemu.options = [ "-machine accel=tcg" "-device isa-debug-exit,iobase=0xf4,iosize=0x4" ];
         qemu.networkingOptions = lib.mkForce [ "-nic none" ];
       };
       systemd.user.targets.recovery-test-session = {
@@ -84,7 +85,12 @@ let
 in pkgs.runCommand "lumen-recovery-policy-vm" { nativeBuildInputs = [ pkgs.coreutils ]; } ''
   mkdir -p "$out"
   export NIX_DISK_IMAGE="$TMPDIR/recovery-policy.qcow2"
-  timeout 300 ${vm.config.system.build.vm}/bin/run-recovery-policy-vm > "$out/serial.log" 2>&1
+  set -o pipefail
+  set +e
+  timeout 300 ${vm.config.system.build.vm}/bin/run-recovery-policy-vm 2>&1 | tee "$out/serial.log"
+  result=''${PIPESTATUS[0]}
+  set -e
+  test "$result" -eq 1
   grep -q LUMEN_RECOVERY_POLICY_PASS "$out/serial.log"
   if grep -q LUMEN_RECOVERY_POLICY_FAIL "$out/serial.log"; then exit 1; fi
 ''
