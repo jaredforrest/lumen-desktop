@@ -264,6 +264,7 @@ pub struct Harness {
     pub clients: Vec<u32>,
     pub logs: Vec<String>,
     pub remote_display: Option<String>,
+    pub remote_ipc: Option<PathBuf>,
 }
 impl Harness {
     pub fn command(&self, program: impl AsRef<Path>) -> Command {
@@ -389,6 +390,27 @@ impl Harness {
     }
     pub fn tree(&self) -> Result<Value> {
         self.ipc(&["-r", "-t", "get_tree"])
+    }
+    pub fn remote_command(&self, args: &[&str]) -> Result<Value> {
+        let mut command = self.command(
+            self.o
+                .tool("sway")
+                .parent()
+                .ok_or("Compositor bin")?
+                .join("swaymsg"),
+        );
+        let output = command
+            .env(
+                "SWAYSOCK",
+                self.remote_ipc.as_ref().ok_or("Remote compositor IPC")?,
+            )
+            .args(args)
+            .output()?;
+        ensure(
+            output.status.success(),
+            "Independent remote compositor IPC failed",
+        )?;
+        Ok(serde_json::from_slice(&output.stdout)?)
     }
     pub fn semantics(&mut self) -> Result<Vec<Value>> {
         Ok(self
@@ -798,6 +820,7 @@ pub fn inside(o: Options) -> Result<()> {
         clients: vec![],
         logs: vec![],
         remote_display: None,
+        remote_ipc: None,
     };
     let result = (|| -> Result<()> {
         let config = PathBuf::from(f.env.get("XDG_CONFIG_HOME").ok_or("Private config")?);

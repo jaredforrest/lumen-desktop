@@ -32,11 +32,27 @@ pub fn target(f: &mut Harness) -> Result<()> {
             &config,
             "output HEADLESS-1 resolution 1280x720 position 0 0\nseat seat0 fallback true\nxwayland disable\nfocus_follows_mouse no\nfor_window [app_id=\"org.lumen.RemoteTarget\"] move to output HEADLESS-1, fullscreen enable\n",
         )?;
-        f.launch_s(
+        let local_outputs = f.env.insert("WLR_HEADLESS_OUTPUTS".into(), "1".into());
+        let launched = f.launch_s(
             f.o.tool("sway"),
             &["--unsupported-gpu", "-c", &s(&config)],
             "remote-sway.log",
-        )?;
+        );
+        if let Some(outputs) = local_outputs {
+            f.env.insert("WLR_HEADLESS_OUTPUTS".into(), outputs);
+        } else {
+            f.env.remove("WLR_HEADLESS_OUTPUTS");
+        }
+        launched?;
+        f.remote_ipc = Some(wait("independent remote IPC socket", || {
+            Ok(fs::read_dir(&runtime)?
+                .flatten()
+                .find(|entry| {
+                    !existing.contains(&entry.file_name())
+                        && entry.file_name().to_string_lossy().starts_with("sway-ipc")
+                })
+                .map(|entry| entry.path()))
+        })?);
         let remote = wait("independent remote Wayland socket", || {
             Ok(fs::read_dir(&runtime)?
                 .flatten()
@@ -136,6 +152,29 @@ pub fn target(f: &mut Harness) -> Result<()> {
     if f.o.protocol == "rdp" || f.remote_display.is_some() {
         wait("independent remote target", || Ok(f.target().ok()))?;
         f.env.insert("GDK_BACKEND".into(), "wayland".into());
+        if f.remote_ipc.is_some() {
+            let node = wait("independent remote window mapping", || {
+                Ok(nodes(&f.remote_command(&["-r", "-t", "get_tree"])?)
+                    .into_iter()
+                    .find(|node| node["app_id"] == "org.lumen.RemoteTarget"))
+            })?;
+            let id = node["id"].as_u64().ok_or("Remote window identity")?;
+            f.remote_command(&[&format!("[con_id={id}] focus")])?;
+            let seats = f.remote_command(&["-r", "-t", "get_seats"])?;
+            ensure(
+                seats
+                    .as_array()
+                    .ok_or("Remote seats")?
+                    .iter()
+                    .any(|seat| seat["name"] == "seat0" && seat["focus"] == id),
+                "Independent target lacks remote seat focus",
+            )?;
+            save(
+                &f.out.join("remote-initial-tree.json"),
+                &f.remote_command(&["-r", "-t", "get_tree"])?,
+            )?;
+            save(&f.out.join("remote-initial-seats.json"), &seats)?;
+        }
     } else {
         wait("actual target window", || {
             Ok(nodes(&f.tree()?)
@@ -669,6 +708,9 @@ fn paste_until(f: &mut Harness, local: bool, expected: &str) -> Result<bool> {
 fn interactions(f: &mut Harness) -> Result<()> {
     let original_target = f.safe_target()?;
     let before = focus_app(f, "org.remmina.Remmina")?;
+    focus_viewer(f)?;
+    pause(400);
+    f.capture("interaction-start.png")?;
     save(
         &f.out.join("interaction-semantics.json"),
         &json!(f.semantics()?),
