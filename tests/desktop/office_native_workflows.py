@@ -2,12 +2,14 @@
 import argparse,hashlib,json,os,re,signal,socket,subprocess,sys,time,traceback
 from pathlib import Path
 from application_fixture.isolation import run as isolate
+from application_fixture.provenance import FrozenSource
 from application_fixture.keyboard import PhysicalKeyboard
 from fixture_resources import close_reaped_pipes
 from office_fixture import corpus,formats,live
 from office_fixture.control import Control,ControlError
-p=argparse.ArgumentParser();p.add_argument('--writer',required=True);p.add_argument('--sheet',required=True);p.add_argument('--slides',required=True);p.add_argument('--software-driver',required=True);p.add_argument('--sway',required=True);p.add_argument('--keyboard-tool',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--close-probe',action='store_true');p.add_argument('--document-probe',action='store_true');p.add_argument('--pdf-output',action='store_true');p.add_argument('--picker-ownership',action='store_true');p.add_argument('--pdf-tools',default='');p.add_argument('--pdf-viewer',default='');p.add_argument('--xdg-tools',default='');p.add_argument('--mime-data',default='');p.add_argument('--at-spi-prefix',default=os.environ.get('LUMEN_TEST_AT_SPI',''));p.add_argument('--dialog-tools',default='');p.add_argument('--new-saveas',action='store_true');p.add_argument('--sheet-close-outcome',choices=['cancel','discard','save','error'],default='');p.add_argument('--slides-close-outcome',choices=['cancel','discard','save'],default='');p.add_argument('--effects',action='store_true');p.add_argument('--writer-close-outcome',choices=['cancel','discard','save'],default='cancel');p.add_argument('--app',choices=['writer','sheet','slides'],default='writer');p.add_argument('--output',type=Path,required=True);p.add_argument('--inside',action='store_true');p.add_argument('--profiles-json',default='');p.add_argument('--source-sha',default='');a=p.parse_args()
-if a.picker_ownership and (a.app!='writer' or not a.dialog_tools):p.error('Chooser ownership requires the document provider and private native chooser')
+p=argparse.ArgumentParser();p.add_argument('--writer',required=True);p.add_argument('--sheet',required=True);p.add_argument('--slides',required=True);p.add_argument('--software-driver',required=True);p.add_argument('--sway',required=True);p.add_argument('--keyboard-tool',required=True);p.add_argument('--pointer-tool',required=True);p.add_argument('--close-probe',action='store_true');p.add_argument('--document-probe',action='store_true');p.add_argument('--pdf-output',action='store_true');p.add_argument('--picker-ownership',action='store_true');p.add_argument('--copy-export-probe',action='store_true');p.add_argument('--copy-export-format',choices=['docx','odt'],default='docx');p.add_argument('--pdf-tools',default='');p.add_argument('--pdf-viewer',default='');p.add_argument('--xdg-tools',default='');p.add_argument('--mime-data',default='');p.add_argument('--at-spi-prefix',default=os.environ.get('LUMEN_TEST_AT_SPI',''));p.add_argument('--dialog-tools',default='');p.add_argument('--new-saveas',action='store_true');p.add_argument('--sheet-close-outcome',choices=['cancel','discard','save','error'],default='');p.add_argument('--slides-close-outcome',choices=['cancel','discard','save'],default='');p.add_argument('--effects',action='store_true');p.add_argument('--writer-close-outcome',choices=['cancel','discard','save'],default='cancel');p.add_argument('--app',choices=['writer','sheet','slides'],default='writer');p.add_argument('--output',type=Path,required=True);p.add_argument('--inside',action='store_true');p.add_argument('--profiles-json',default='');p.add_argument('--source-sha',default='');a=p.parse_args()
+if (a.picker_ownership or a.copy_export_probe) and (a.app!='writer' or not a.dialog_tools):p.error('Chooser ownership requires the document provider and private native chooser')
+if a.copy_export_probe and not a.at_spi_prefix:p.error('Copy export observation requires the explicit private accessibility prefix')
 if a.pdf_output and (a.app=='writer' or not a.dialog_tools or not a.pdf_tools or not a.at_spi_prefix):p.error('PDF output requires a retained spreadsheet/presentation, private chooser, PDF tools and accessibility prefix')
 if a.new_saveas and (not a.dialog_tools or a.close_probe or a.sheet_close_outcome or a.slides_close_outcome or a.writer_close_outcome!='cancel'):p.error('New SaveAs requires private dialog tools and a separate lifecycle scenario')
 if a.sheet_close_outcome and a.app!='sheet':p.error('Spreadsheet close outcome requires the spreadsheet provider')
@@ -24,14 +26,18 @@ if not a.inside:
  if a.document_probe:args.append('--document-probe')
  if a.pdf_output:args.append('--pdf-output')
  if a.picker_ownership:args.append('--picker-ownership')
+ if a.copy_export_probe:args.extend(['--copy-export-probe','--copy-export-format',a.copy_export_format])
  if a.pdf_tools:args.extend(['--pdf-tools',a.pdf_tools])
  if a.pdf_viewer:args.extend(['--pdf-viewer',a.pdf_viewer,'--xdg-tools',a.xdg_tools,'--mime-data',a.mime_data])
- if a.pdf_viewer or a.pdf_output:args.extend(['--at-spi-prefix',a.at_spi_prefix])
+ if a.pdf_viewer or a.pdf_output or a.copy_export_probe:args.extend(['--at-spi-prefix',a.at_spi_prefix])
  if a.dialog_tools:args.extend(['--dialog-tools',a.dialog_tools])
  if a.new_saveas:args.append('--new-saveas')
  if a.sheet_close_outcome:args.extend(['--sheet-close-outcome',a.sheet_close_outcome])
  if a.slides_close_outcome:args.extend(['--slides-close-outcome',a.slides_close_outcome])
- raise SystemExit(isolate(source,out,args,software_graphics=a.effects))
+ frozen=FrozenSource(source,Path(__file__),[a.writer,a.sheet,a.slides,a.sway,a.keyboard_tool,a.pointer_tool])
+ code=isolate(source,out,args,software_graphics=a.effects)
+ frozen.finish(out,code)
+ raise SystemExit(code)
 assert os.getpid()==1 and os.getuid()!=0 and os.uname().nodename=='fixture' and Path.home()==Path('/home/fixture')
 assert not any((Path('/dev')/name).exists() for name in ('dri','snd','video0')) and Path('/dev/udmabuf').exists()==a.effects
 out=Path('/artifacts');processes=[];control=None;keyboard=None;accessibility=None;checks=[];facts={};env=dict(os.environ)
@@ -40,7 +46,13 @@ facts['installedBinaries']={binary:hashlib.sha256(Path(binary).read_bytes()).hex
 settings=Path('/etc/nix');settings.mkdir();(settings/'desktop-settings.json').write_text(json.dumps(dict(applicationPreferences=json.loads(a.profiles_json))))
 mesa=Path(a.software_driver);vulkan=mesa/'share/vulkan/icd.d/lvp_icd.x86_64.json';egl=mesa/'share/glvnd/egl_vendor.d/50_mesa.json';assert vulkan.is_file() and egl.is_file()
 env.update(WLR_BACKENDS='headless',WLR_RENDERER='pixman',WLR_LIBINPUT_NO_DEVICES='1',LIBGL_ALWAYS_SOFTWARE='1',MESA_LOADER_DRIVER_OVERRIDE='llvmpipe',VK_DRIVER_FILES=str(vulkan),VK_ICD_FILENAMES=str(vulkan),__EGL_VENDOR_LIBRARY_FILENAMES=str(egl),LIBGL_DRIVERS_PATH=str(mesa/'lib/dri'),WGPU_BACKEND='vulkan',SWAYSOCK='/run/fixture/sway.sock',DECKCRAFT_WAYLAND='1',DECKCRAFT_NO_AUDIO='1')
-if a.effects:env.update(WLR_RENDERER='gles2',WLR_RENDERER_ALLOW_SOFTWARE='1',WLR_RENDERER_FORCE_SOFTWARE='1')
+if a.effects:
+ env.pop('LIBGL_ALWAYS_SOFTWARE',None)
+ env.update(WLR_RENDERER='gles2',WLR_RENDERER_ALLOW_SOFTWARE='1',WLR_RENDERER_FORCE_SOFTWARE='1')
+if a.dialog_tools:
+ manifest=Path(a.dialog_tools).resolve(strict=True);assert str(manifest).startswith('/nix/store/')
+ font=Path(json.loads(manifest.read_text())['fontConfig']).resolve(strict=True);assert str(font).startswith('/nix/store/') and font.is_file()
+ env['FONTCONFIG_FILE']=str(font)
 facts['boundary']=dict(uid=os.getuid(),gid=os.getgid(),pid=os.getpid(),hostname=os.uname().nodename,home=str(Path.home()),hardwarePathsAbsent=True,softwareAllocatorExposed=a.effects,renderer=env['WLR_RENDERER'])
 app={'writer':a.writer,'sheet':a.sheet,'slides':a.slides}[a.app];name={'writer':'wordcraft','sheet':'gridcraft','slides':'deckcraft'}[a.app];cli=str(Path(app).with_name(name+'-cli'));port=34217;env[name.upper()+'_CONTROL_PORT']=str(port)
 fixture=corpus.create();extension={'writer':'docx','sheet':'xlsx','slides':'pptx'}[a.app];source=out/(a.app+'-working.'+extension)
@@ -275,7 +287,7 @@ try:
  if a.pdf_viewer:
   from office_fixture.pdf_viewer import configure
   facts['pdfViewer']=configure(env,a.pdf_viewer,a.xdg_tools,a.mime_data)
- if a.pdf_viewer or a.pdf_output:
+ if a.pdf_viewer or a.pdf_output or a.copy_export_probe:
   from application_fixture.accessibility import start as start_accessibility
   accessibility=start_accessibility(Path(a.at_spi_prefix),env,launch,wait)
  provider=launch([app,str(source)],name);window=wait(native,'exact profile child maps a native window',provider);pid=live_pid();assert pid==window['pid']
@@ -286,7 +298,12 @@ try:
  elif a.app=='sheet':assert 'Summary' in json.dumps(initial),'Live controller returned a default headless model'
  else:assert 'Synthetic title' in json.dumps(initial),'Live controller returned a default headless model'
  checks.append('Installed profile wrapper, exact native PID/conId and private live document agree')
- if a.picker_ownership:
+ if a.copy_export_probe:
+  from office_fixture.copy_export import exercise
+  pointer=launch([a.pointer_tool,'pointer','move','0','0'],'pointer',stdin=subprocess.PIPE,text=True)
+  def release_pointer():pointer.stdin.write('r\n');pointer.stdin.flush()
+  exercise(control,key,pointer_events,command,wait,provider,source,out,facts,checks,tree,walk,accessibility,a.copy_export_format,release_pointer)
+ elif a.picker_ownership:
   from office_fixture.chooser_ownership import exercise
   exercise(control,key,command,wait,provider,source,out,facts,checks,tree,walk)
  elif a.pdf_output:

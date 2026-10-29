@@ -1,0 +1,565 @@
+diff --git a/crates/engine/src/cmd/file.rs b/crates/engine/src/cmd/file.rs
+index b9c8ce0..68f161b 100644
+--- a/crates/engine/src/cmd/file.rs
++++ b/crates/engine/src/cmd/file.rs
+@@ -38,6 +38,8 @@ pub fn specs() -> Vec<CommandSpec> {
+             .params(r#"{"path"?: string, "password"?: string (encrypt this and later saves with it, as file.encrypt does)}"#)
+             .pure(),
+         CommandSpec::new("file.saveAs", "Save As", "File", save_as).key("F12").params(r#"{"path": string, "password"?: string}"#).pure(),
++        CommandSpec::new("file.exportCopy", "Export a Copy", "File › Export", export_copy)
++            .params(r#"{"path": string}"#).pure(),
+         // Pure: the password must not land in Repeat or a recorded macro, and it isn't an edit
+         // to undo; it marks the document as changed itself.
+         CommandSpec::new("file.encrypt", "Encrypt with Password", "File › Info › Protect Document", encrypt)
+@@ -166,6 +168,10 @@ fn save(s: &mut Session, v: &Value) -> CmdResult {
+             return Ok(json!({"saved": false}));
+         }
+     };
++    #[cfg(not(target_arch = "wasm32"))]
++    let confirmed = s.take_confirmed_output(&path)?;
++    let previous_core = s.doc.core.clone();
++    let previous_password = s.password.clone();
+     if let Some(pw) = v.get("password").filter(|pw| !pw.is_null()) {
+         let Some(pw) = pw.as_str().filter(|pw| !pw.is_empty()) else {
+             return Err(CmdError::Params("`password` must be a non-empty string (file.encrypt removes a password)".into()));
+@@ -178,7 +184,17 @@ fn save(s: &mut Session, v: &Value) -> CmdResult {
+     }
+     s.stamp_save();
+     let password = s.password.as_ref().map(crate::io::Password::as_str);
+-    crate::io::save_path_with(&path, &s.doc, password).map_err(CmdError::Failed)?;
++    #[cfg(not(target_arch = "wasm32"))]
++    let publication = match confirmed {
++        Some(output) => crate::io::save_bytes_with(&path.to_string_lossy(), &s.doc, password).and_then(|bytes| crate::write_captured(&output, &bytes)),
++        None => crate::io::save_path_with(&path, &s.doc, password),
++    };
++    #[cfg(target_arch = "wasm32")]
++    let publication = crate::io::save_path_with(&path, &s.doc, password);
++    if let Err(error) = publication {
++        s.doc.core = previous_core; s.password = previous_password;
++        return Err(CmdError::Failed(error));
++    }
+     let encrypted = password.is_some() && crate::io::can_encrypt(&path.to_string_lossy());
+     let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+     if ["docx", "docm", "dotx", "dotm", "odt", "rtf", "json"].contains(&ext.as_str()) {
+@@ -196,6 +212,13 @@ fn save_as(s: &mut Session, v: &Value) -> CmdResult {
+     save(s, v)
+ }
+ 
++fn export_copy(s: &mut Session, v: &Value) -> CmdResult {
++    let path = std::path::Path::new(p::req_str(v, "path")?);
++    let password = s.password.as_ref().map(crate::io::Password::as_str);
++    crate::io::save_path_with(path, &s.doc, password).map_err(CmdError::Failed)?;
++    Ok(json!({"exported": true, "path": path.to_string_lossy()}))
++}
++
+ fn export_png(s: &mut Session, v: &Value) -> CmdResult {
+     let path = p::req_str(v, "path")?;
+     let page = p::u64(v, "page").unwrap_or(1).max(1) as usize - 1;
+@@ -205,7 +228,7 @@ fn export_png(s: &mut Session, v: &Value) -> CmdResult {
+     let img = wordcraft_render::render_page(&s.doc, pg, scale, &Default::default());
+     let png = img.to_png();
+     #[cfg(not(target_arch = "wasm32"))]
+-    std::fs::write(path, &png).map_err(|e| CmdError::Failed(format!("{path}: {e}")))?;
++    crate::lumen_atomic_output::write(std::path::Path::new(path), &png).map_err(CmdError::Failed)?;
+     Ok(json!({"path": path, "width": img.width, "height": img.height, "bytes": png.len()}))
+ }
+ 
+@@ -357,3 +380,60 @@ fn layout_summary(s: &mut Session, _: &Value) -> CmdResult {
+     let caret = l.caret_on(&s.sel.focus, s.page_hint).map(|c| json!({"page": c.page, "x": c.x, "y": c.top, "h": c.height}));
+     Ok(json!({"pages": pages, "caret": caret, "ms": l.ms}))
+ }
++
++#[cfg(all(test, target_os = "linux"))]
++mod copy_confirmation_contract {
++    use super::*;
++    use std::sync::atomic::{AtomicU64,Ordering};
++    static NEXT: AtomicU64 = AtomicU64::new(0);
++    struct Fixture(std::path::PathBuf);
++    impl Fixture {
++        fn new() -> Self { let path=std::env::temp_dir().join(format!("lumen-copy-contract-{}-{}",std::process::id(),NEXT.fetch_add(1,Ordering::Relaxed)));std::fs::create_dir(&path).unwrap();Self(path) }
++        fn path(&self,name:&str)->std::path::PathBuf{self.0.join(name)}
++    }
++    impl Drop for Fixture { fn drop(&mut self){std::fs::remove_dir_all(&self.0).unwrap();} }
++    fn facts(s:&Session)->Value { json!({"document":&s.doc,"selection":&s.sel,"path":&s.path,"dirty":s.dirty,"identity":s.document_id(),"revision":s.rev()}) }
++    fn edited(root:&Fixture)->(Session,std::path::PathBuf) {
++        let mut s=Session::new(wordcraft_doc::Document::from_text("Original complete document"));let source=root.path("original.docx");
++        s.run("file.save",&json!({"path":source})).unwrap();s.run("caret.docEnd",&json!({})).unwrap();s.run("text.insert",&json!({"text":" Newer unsaved copy marker"})).unwrap();(s,source)
++    }
++    #[test]
++    fn copy_confirmation_export_does_not_stamp_retarget_or_clear_the_working_document() {
++        let root=Fixture::new();let(mut s,source)=edited(&root);let before=facts(&s);let original=std::fs::read(&source).unwrap();
++        for ext in ["docx","odt","txt"] {
++            let path=root.path(&format!("copy.{ext}"));let result=s.run("file.exportCopy",&json!({"path":path})).unwrap();assert_eq!(result["exported"],true);assert_eq!(facts(&s),before);assert_eq!(std::fs::read(&source).unwrap(),original);
++            let copy=crate::io::open_path(&path).unwrap();assert!(copy.plain_text(wordcraft_doc::StoryRef::Body).contains("Newer unsaved copy marker"));
++        }
++    }
++    #[test]
++    fn copy_confirmation_export_failure_preserves_every_document_fact() {
++        let root=Fixture::new();let(mut s,source)=edited(&root);let before=facts(&s);let original=std::fs::read(&source).unwrap();let path=root.path("blocked.docx");std::fs::create_dir(&path).unwrap();
++        assert!(s.run("file.exportCopy",&json!({"path":path})).is_err());assert_eq!(facts(&s),before);assert_eq!(std::fs::read(source).unwrap(),original);assert!(path.is_dir());
++    }
++    #[test]
++    fn copy_confirmation_failed_save_restores_save_stamps_and_encryption_state() {
++        let root=Fixture::new();let(mut s,source)=edited(&root);let before=facts(&s);let password=s.password.clone();let original=std::fs::read(&source).unwrap();
++        assert!(s.run("file.save",&json!({"path":root.path("missing/output.docx"),"password":"Synthetic fixture password only"})).is_err());assert_eq!(facts(&s),before);assert_eq!(s.password,password);assert_eq!(std::fs::read(source).unwrap(),original);
++    }
++    #[test]
++    fn copy_confirmation_valid_confirmed_save_uses_normal_command_and_saved_state() {
++        let root=Fixture::new();let(mut s,source)=edited(&root);let original=std::fs::read(&source).unwrap();let target=root.path("converted.odt");let output=crate::capture_output(&target).unwrap();let revision=s.doc.core.revision;
++        let result=s.save_confirmed(output).unwrap();assert_eq!(result["saved"],true);assert_eq!(s.path.as_deref(),Some(target.as_path()));assert!(!s.dirty);assert_eq!(s.doc.core.revision,revision+1);assert_eq!(std::fs::read(source).unwrap(),original);
++        assert!(crate::io::open_path(&target).unwrap().plain_text(wordcraft_doc::StoryRef::Body).contains("Newer unsaved copy marker"));
++    }
++    #[test]
++    fn copy_confirmation_changed_target_refuses_and_restores_document_metadata() {
++        let root=Fixture::new();let(mut s,source)=edited(&root);let target=root.path("converted.odt");std::fs::write(&target,b"Old selected output").unwrap();let output=crate::capture_output(&target).unwrap();std::fs::write(&target,b"Newer destination contents").unwrap();let before=facts(&s);let original=std::fs::read(&source).unwrap();
++        assert!(s.save_confirmed(output).is_err());assert_eq!(facts(&s),before);assert_eq!(std::fs::read(target).unwrap(),b"Newer destination contents");assert_eq!(std::fs::read(source).unwrap(),original);
++    }
++
++    #[test]
++    fn copy_confirmation_page_image_replaces_alias_without_truncating_original() {
++        use std::os::unix::fs::symlink;
++        let root=Fixture::new();let(mut s,source)=edited(&root);let before=facts(&s);let original=std::fs::read(&source).unwrap();
++        for link in [false,true] {
++            let target=root.path(if link {"symlink.png"}else{"hardlink.png"});if link {symlink(&source,&target).unwrap();}else{std::fs::hard_link(&source,&target).unwrap();}
++            s.run("file.exportPng",&json!({"path":target,"scale":0.1})).unwrap();assert!(std::fs::read(&target).unwrap().starts_with(b"\x89PNG\r\n\x1a\n"));assert_eq!(std::fs::read(&source).unwrap(),original);assert_eq!(facts(&s),before);assert!(!std::fs::symlink_metadata(target).unwrap().file_type().is_symlink());
++        }
++    }
++}
+diff --git a/crates/engine/src/session.rs b/crates/engine/src/session.rs
+index ba67f99..4337c9c 100644
+--- a/crates/engine/src/session.rs
++++ b/crates/engine/src/session.rs
+@@ -236,6 +236,8 @@ pub struct Session {
+     pub autocorrect_user: Vec<(String, String)>,
+     /// Saved versions: (label, date, document).
+     pub versions: Vec<(String, String, Document)>,
++    #[cfg(not(target_arch = "wasm32"))]
++    confirmed_output: Option<(u64, u64, crate::CapturedOutput)>,
+     /// Quick Parts / AutoText entries.
+     pub building_blocks: std::collections::BTreeMap<String, Fragment>,
+     pub autosave: bool,
+@@ -333,6 +335,8 @@ impl Session {
+             autocorrect_on: true,
+             autocorrect_user: Vec::new(),
+             versions: Vec::new(),
++            #[cfg(not(target_arch = "wasm32"))]
++            confirmed_output: None,
+             building_blocks: Default::default(),
+             autosave: true,
+             bib_style: "APA".into(),
+@@ -447,6 +451,25 @@ impl Session {
+     /// Stamp the document's save metadata (modified time, last modified by, revision; created
+     /// when it has none) the way Word does on every save. `file.save` calls it, and so does any
+     /// front end that writes the bytes itself (the web build's download, #262).
++    /// Run the normal Save As command using a one-shot selected output capture.
++    #[cfg(not(target_arch = "wasm32"))]
++    pub fn save_confirmed(&mut self, output: crate::CapturedOutput) -> Result<Value, CmdError> {
++        if self.confirmed_output.is_some() { return Err(CmdError::Failed("A confirmed save is already running".into())); }
++        let path = output.path().to_string_lossy().to_string();
++        self.confirmed_output = Some((self.document_id(), self.rev(), output));
++        let result = self.run("file.save", &serde_json::json!({"path": path}));
++        self.confirmed_output = None;
++        result
++    }
++    #[cfg(not(target_arch = "wasm32"))]
++    pub(crate) fn take_confirmed_output(&mut self, path: &std::path::Path) -> Result<Option<crate::CapturedOutput>, CmdError> {
++        let Some((document, revision, output)) = self.confirmed_output.take() else { return Ok(None) };
++        if document != self.document_id() || revision != self.rev() || output.path() != path {
++            return Err(CmdError::Failed("The confirmed save request changed".into()));
++        }
++        Ok(Some(output))
++    }
++
+     pub fn stamp_save(&mut self) {
+         let core = &mut self.doc.core;
+         core.modified = crate::cmd::now_iso();
+@@ -569,6 +592,8 @@ impl Session {
+             autocorrect_on: _,
+             autocorrect_user: _,
+             versions: _,
++            #[cfg(not(target_arch = "wasm32"))]
++            confirmed_output: _,
+             building_blocks: _,
+             autosave: _,
+             bib_style: _,
+diff --git a/crates/ui-egui/src/canvas.rs b/crates/ui-egui/src/canvas.rs
+index 93e035b..0c8fa7f 100644
+--- a/crates/ui-egui/src/canvas.rs
++++ b/crates/ui-egui/src/canvas.rs
+@@ -717,7 +717,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
+     }
+     crate::table_pen::cursor(app, ui, &resp);
+     // While "Save changes?" is up, keys answer it rather than edit the document behind it.
+-    if app.canvas.focused && !matches!(app.dialog, Some(crate::dialogs::Dialog::SaveChanges { .. })) {
++    if app.canvas.focused && !matches!(app.dialog, Some(crate::dialogs::Dialog::SaveChanges { .. } | crate::dialogs::Dialog::FormatLoss { .. })) {
+         crate::keys::canvas_events(app, ui.ctx());
+     }
+     let _ = origin;
+diff --git a/crates/ui-egui/src/dialogs.rs b/crates/ui-egui/src/dialogs.rs
+index 2248796..c9c9018 100644
+--- a/crates/ui-egui/src/dialogs.rs
++++ b/crates/ui-egui/src/dialogs.rs
+@@ -168,6 +168,7 @@ pub enum Dialog {
+     /// Finish & Merge replaces the document (see [`WordApp::run`]); `then` runs once it is
+     /// answered (`ui.saveChanges`), and only while the document it asked about
+     /// (`Session::document_id`) is still the one open.
++    FormatLoss { request: u64, format: String, copy: bool, loses_password: bool },
+     SaveChanges {
+         name: String,
+         then: String,
+@@ -638,6 +639,7 @@ impl Dialog {
+             Dialog::PasteSpecial { .. } => "pasteSpecial",
+             Dialog::About { .. } => "about",
+             Dialog::SaveChanges { .. } => "saveChanges",
++            Dialog::FormatLoss { .. } => "formatLoss",
+             Dialog::RecipientList { .. } => "recipientList",
+             Dialog::InsertMergeField { .. } => "insertMergeField",
+             Dialog::FindRecipient { .. } => "findRecipient",
+@@ -926,6 +928,7 @@ pub fn show(app: &mut WordApp, ctx: &egui::Context) {
+         Dialog::PasteSpecial { .. } => "Paste Special",
+         Dialog::About { .. } => "About WordCraft",
+         Dialog::SaveChanges { .. } => "WordCraft",
++        Dialog::FormatLoss { .. } => "Confirm Conversion",
+         Dialog::RecipientList { .. } => "Recipient List",
+         Dialog::InsertMergeField { .. } => "Insert Merge Field",
+         Dialog::FindRecipient { .. } => "Find Recipient",
+@@ -952,6 +955,7 @@ pub fn show(app: &mut WordApp, ctx: &egui::Context) {
+     if open && !close {
+         app.dialog = Some(d);
+     } else {
++        if let Dialog::FormatLoss { request, .. } = &d { let _ = app.answer_conversion(*request, false); }
+         app.canvas.want_focus = true;
+     }
+ }
+@@ -1640,6 +1644,17 @@ fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
+             let (ok, cancel) = buttons(ui, tl!("Close"));
+             ok || cancel
+         }
++        Dialog::FormatLoss { request, format, copy, loses_password } => {
++            ui.label(egui::RichText::new(format!("Convert to {format}?" )).font(semibold(15.0)));
++            ui.label(tl!("This format may not preserve all document features, formatting or review information."));
++            if *loses_password { ui.label(tl!("This format cannot preserve password protection. The converted file will be unencrypted.")); }
++            ui.label(if *copy { tl!("Export writes a copy. Your working document and its unsaved changes remain unchanged.") }
++                else { tl!("Continuing saves the selected converted file. Some features may be lost when it is reopened. Cancel keeps your working document unchanged.") });
++            let (confirm, cancel) = buttons(ui, tl!("Continue"));
++            if cancel { let _ = app.answer_conversion(*request, false); true }
++            else if confirm { let _ = app.answer_conversion(*request, true); true }
++            else { false }
++        }
+         Dialog::SaveChanges { name, .. } => {
+             ui.label(egui::RichText::new(crate::i18n::fmt(tl!("Do you want to save changes to {name}?"), &[("name", name)])).font(semibold(15.0)));
+             ui.label(tl!("Your changes will be lost if you don't save them."));
+diff --git a/crates/ui-egui/src/file_dialogs.rs b/crates/ui-egui/src/file_dialogs.rs
+index f4c9071..2664a5a 100644
+--- a/crates/ui-egui/src/file_dialogs.rs
++++ b/crates/ui-egui/src/file_dialogs.rs
+@@ -58,6 +58,25 @@ pub(crate) struct PendingDialog {
+     owner: DialogOwner,
+ }
+ 
++#[cfg(not(target_arch = "wasm32"))]
++type ConfirmedOutput = wordcraft_engine::CapturedOutput;
++#[cfg(target_arch = "wasm32")]
++type ConfirmedOutput = ();
++
++pub(crate) struct PendingConversion {
++    request: u64,
++    owner: DialogOwner,
++    after: AfterPick,
++    picked: Option<String>,
++    output: Option<ConfirmedOutput>,
++}
++
++fn lossy_format(name: &str) -> bool {
++    let lower = name.to_ascii_lowercase();
++    let extension = lower.rsplit('.').next().unwrap_or("");
++    matches!(extension, "odt" | "rtf" | "html" | "htm" | "xhtml" | "md" | "markdown" | "tex" | "latex" | "ltx" | "txt" | "text" | "pdf" | "png")
++}
++
+ /// The document and operation context that requested a native chooser.
+ /// A late host answer must never act on whichever document is current later.
+ struct DialogOwner {
+@@ -144,7 +163,7 @@ impl WordApp {
+     /// Ask the host for a file and do `after` with the answer: now for a blocking dialog, on a
+     /// later frame for an asynchronous one. Ignored while another dialog is open.
+     pub(crate) fn ask_file(&mut self, req: FileDialogRequest, after: AfterPick) -> Asked {
+-        if self.file_dialog.is_some() {
++        if self.file_dialog.is_some() || self.conversion.is_some() {
+             log::debug!("file dialog already open; ignoring {req:?}");
+             self.status(tl!("A file dialog is already open."));
+             return Asked::Busy;
+@@ -188,14 +207,21 @@ impl WordApp {
+             return Err(message.to_string());
+         }
+         let result = self.finish_pick(after, picked);
+-        if result.is_err() {
++        if let Err(error) = &result {
+             self.ui.backstage = false;
++            self.status(error.clone());
+         }
+         result
+     }
+ 
+     /// Do what the dialog was for with the picked path (`None`: the user cancelled).
+     fn finish_pick(&mut self, after: AfterPick, picked: Option<String>) -> Result<Value, String> {
++        if matches!(after, AfterPick::SaveAs(_)) && picked.as_deref().is_some_and(|path| self.conversion_required(path)) {
++            return self.begin_conversion(after, picked);
++        }
++        self.finish_pick_confirmed(after, picked, None)
++    }
++    fn finish_pick_confirmed(&mut self, after: AfterPick, picked: Option<String>, output: Option<ConfirmedOutput>) -> Result<Value, String> {
+         match after {
+             AfterPick::OpenDocument => {
+                 let Some(path) = picked else { return Ok(json!({"cancelled": true})) };
+@@ -216,7 +242,11 @@ impl WordApp {
+             }
+             AfterPick::Export { ext } => {
+                 let Some(path) = picked else { return Ok(json!({"cancelled": true})) };
+-                let r = if ext == "png" { self.run("file.exportPng", json!({"path": path})) } else { self.run("file.saveAs", json!({"path": path})) };
++                let actual = std::path::Path::new(&path).extension().and_then(|value| value.to_str()).unwrap_or("");
++                if !actual.eq_ignore_ascii_case(&ext) {
++                    return Err(format!("The selected filename must end in .{ext} for this export. Choose the matching export format to convert the document."));
++                }
++                let r = if ext == "png" { self.run("file.exportPng", json!({"path": path})) } else { self.run("file.exportCopy", json!({"path": path})) };
+                 if r.is_ok() {
+                     self.status(crate::i18n::fmt(tl!("Exported {path}"), &[("path", &path)]));
+                 }
+@@ -224,8 +254,11 @@ impl WordApp {
+             }
+             AfterPick::SaveAs(after) => {
+                 let saved = picked.is_some_and(|path| {
+-                    self.run("file.save", json!({"path": path})).inspect_err(|_| self.ui.backstage = false)
+-                        .is_ok_and(|v| v.get("saved").and_then(Value::as_bool) == Some(true))
++                    #[cfg(not(target_arch = "wasm32"))]
++                    let result = match output { Some(output) => self.save_confirmed(output), None => self.run("file.save", json!({"path": path})) };
++                    #[cfg(target_arch = "wasm32")]
++                    let result = { let _ = output; self.run("file.save", json!({"path": path})) };
++                    result.inspect_err(|_| self.ui.backstage = false).is_ok_and(|v| v.get("saved").and_then(Value::as_bool) == Some(true))
+                 });
+                 match after {
+                     AfterSave::Nothing => Ok(json!({"saved": saved})),
+@@ -259,8 +292,68 @@ impl WordApp {
+ 
+     /// File › Export: ask where to save a copy in this format, then write it.
+     pub(crate) fn export_dialog(&mut self, ext: &str) {
++        if self.conversion_required(&format!("document.{ext}")) {
++            if let Err(error) = self.begin_conversion(AfterPick::Export { ext: ext.to_string() }, None) { self.ui.backstage = false; self.status(error); }
++        }
++        else { let _ = self.pick_export_copy(ext); }
++    }
++    fn pick_export_copy(&mut self, ext: &str) -> Asked {
+         let name = format!("{}.{ext}", self.title_stem());
+-        let _ = self.ask_file(FileDialogRequest::Save { name }, AfterPick::Export { ext: ext.to_string() });
++        self.ask_file(FileDialogRequest::Save { name }, AfterPick::Export { ext: ext.to_string() })
++    }
++    fn conversion_required(&self, name: &str) -> bool {
++        lossy_format(name) || (self.session.password.is_some() && !wordcraft_engine::io::can_encrypt(name))
++    }
++    fn begin_conversion(&mut self, after: AfterPick, picked: Option<String>) -> Result<Value, String> {
++        if self.file_dialog.is_some() || self.conversion.is_some() || self.dialog.is_some() { return Err("Another file operation or decision is already open".into()); }
++        let request = self.conversion_serial.checked_add(1).ok_or("No conversion request identity remains")?;
++        let (format, copy) = match &after {
++            AfterPick::Export { ext } => (ext.clone(), true),
++            AfterPick::SaveAs(_) => (picked.as_deref().ok_or("A selected output is required")?.rsplit('.').next().unwrap_or("").to_string(), false),
++            _ => return Err("This operation is not a conversion".into()),
++        };
++        #[cfg(not(target_arch = "wasm32"))]
++        let output = if !copy && self.services.download.is_none() {
++            Some(wordcraft_engine::capture_output(std::path::Path::new(picked.as_deref().ok_or("A selected output is required")?))?)
++        } else { None };
++        #[cfg(target_arch = "wasm32")]
++        let output = {
++            if !copy && self.services.download.is_none() { return Err("Confirmed filesystem output is unavailable".into()); }
++            None
++        };
++        let owner = DialogOwner::capture(self, &after);
++        self.conversion_serial = request;
++        let output_name = picked.as_deref().map(str::to_string).unwrap_or_else(|| format!("document.{format}"));
++        let loses_password = self.session.password.is_some() && !wordcraft_engine::io::can_encrypt(&output_name);
++        self.conversion = Some(PendingConversion { request, owner, after, picked, output });
++        self.dialog = Some(crate::dialogs::Dialog::FormatLoss { request, format: format.to_ascii_uppercase(), copy, loses_password });
++        self.ui.backstage = false;
++        self.canvas.focused = false;
++        Ok(json!({"pending": "formatLoss"}))
++    }
++    pub(crate) fn answer_conversion(&mut self, request: u64, confirm: bool) -> Result<Value, String> {
++        if self.conversion.as_ref().is_none_or(|value| value.request != request) { return Err("The conversion request is no longer current".into()); }
++        let pending = self.conversion.take().ok_or("The conversion request is unavailable")?;
++        if matches!(self.dialog.as_ref(), Some(crate::dialogs::Dialog::FormatLoss { request: current, .. }) if *current == request) { self.dialog = None; }
++        if !confirm { return Ok(json!({"cancelled": true})); }
++        if !pending.owner.matches(self, &pending.after) {
++            let message = "The document changed while confirming conversion. Please reopen the operation.";
++            self.ui.backstage = false; self.status(message); return Err(message.into());
++        }
++        if let AfterPick::Export { ext } = &pending.after {
++            return match self.pick_export_copy(ext) { Asked::Done(result) => result, Asked::Pending => Ok(json!({"pending": "export"})), Asked::Busy => Err("Another file dialog is open".into()) };
++        }
++        self.finish_pick_confirmed(pending.after, pending.picked, pending.output)
++    }
++    pub(crate) fn poll_conversion(&mut self) {
++        let Some(pending) = &self.conversion else { return };
++        let attached = matches!(self.dialog.as_ref(), Some(crate::dialogs::Dialog::FormatLoss { request, .. }) if *request == pending.request);
++        let valid = pending.owner.matches(self, &pending.after);
++        if !attached { self.conversion = None; }
++        else if !valid {
++            self.conversion = None; self.dialog = None; self.ui.backstage = false; self.canvas.want_focus = true;
++            self.status("The document changed while confirming conversion. Please reopen the operation.");
++        }
+     }
+ 
+     pub(crate) fn open_dialog(&mut self) {
+@@ -587,4 +677,82 @@ mod tests {
+         assert!(body_text(&a).contains(UNSAVED));
+         std::fs::remove_dir_all(dir).unwrap();
+     }
++
++    fn conversion_request(app:&WordApp)->u64 { match app.dialog.as_ref() { Some(crate::dialogs::Dialog::FormatLoss { request, .. })=>*request,_=>panic!("Expected conversion decision") } }
++    fn conversion_facts(app:&WordApp)->Value { json!({"document":&app.session.doc,"path":&app.session.path,"dirty":app.session.dirty,"selection":&app.session.sel,"identity":app.session.document_id(),"revision":app.session.rev()}) }
++    #[test]
++    fn copy_confirmation_native_copy_preserves_the_working_document() {
++        let dir=scratch("copy-state");let target=dir.join("copy.docx");let(mut a,shown)=async_app();typed(&mut a);let before=conversion_facts(&a);
++        a.export_dialog("docx");answer(&shown,Some(&target.to_string_lossy()));a.poll_file_dialog().unwrap().unwrap();assert_eq!(conversion_facts(&a),before);assert!(saved_text(&target).contains(UNSAVED));std::fs::remove_dir_all(dir).unwrap();
++    }
++    #[test]
++    fn copy_confirmation_export_suffix_mismatch_never_writes_or_changes_the_document() {
++        let dir=scratch("copy-suffix");
++        for (requested, chosen) in [("docx","copy.odt"),("docx","copy.rtf"),("png","copy.odt"),("odt","copy.rtf")] {
++            let target=dir.join(chosen);std::fs::write(&target,b"Existing selected output").unwrap();
++            let(mut a,shown)=async_app();typed(&mut a);let before=conversion_facts(&a);
++            a.export_dialog(requested);if lossy_format(requested) { let request=conversion_request(&a);a.answer_conversion(request,true).unwrap(); }
++            answer(&shown,Some(&target.to_string_lossy()));assert!(a.poll_file_dialog().unwrap().is_err());
++            assert_eq!(std::fs::read(&target).unwrap(),b"Existing selected output");assert_eq!(conversion_facts(&a),before);
++            assert!(a.status_msg.as_ref().is_some_and(|(message,_)|message.contains("selected filename must end")));
++        }
++        let target=dir.join("copy.DOCX");let(mut a,shown)=async_app();typed(&mut a);a.export_dialog("docx");answer(&shown,Some(&target.to_string_lossy()));a.poll_file_dialog().unwrap().unwrap();assert!(saved_text(&target).contains(UNSAVED));
++        std::fs::remove_dir_all(dir).unwrap();
++    }
++    #[test]
++    fn copy_confirmation_loss_warning_cancel_never_starts_a_picker_or_exposes_owner_facts() {
++        for ext in ["odt","rtf","html","htm","xhtml","md","markdown","tex","latex","ltx","txt","text","pdf","png","json"] {
++            let(mut a,shown)=async_app();typed(&mut a);a.execute("file.encrypt",json!({"password":"Synthetic private owner"})).unwrap();let before=conversion_facts(&a);let password=a.session.password.clone();
++            a.export_dialog(ext);let request=conversion_request(&a);assert!(shown.borrow().is_empty());assert!(matches!(a.dialog,Some(crate::dialogs::Dialog::FormatLoss { loses_password:true,.. })));let serialized=serde_json::to_string(&a.dialog).unwrap();assert!(!serialized.contains("Synthetic private owner")&&!serialized.contains(UNSAVED));a.answer_conversion(request,false).unwrap();assert!(shown.borrow().is_empty());assert!(a.conversion.is_none());assert_eq!(conversion_facts(&a),before);assert_eq!(a.session.password,password);
++        }
++    }
++    #[test]
++    fn copy_confirmation_protected_json_save_as_requires_explicit_decision() {
++        let dir=scratch("protected-json-consent");let target=dir.join("copy.json");let(mut a,shown)=async_app();typed(&mut a);a.execute("file.encrypt",json!({"password":"Synthetic private owner"})).unwrap();let before=conversion_facts(&a);
++        a.save_as_dialog();answer(&shown,Some(&target.to_string_lossy()));assert_eq!(a.poll_file_dialog().unwrap().unwrap()["pending"],"formatLoss");assert!(matches!(a.dialog,Some(crate::dialogs::Dialog::FormatLoss { loses_password:true,.. })));let request=conversion_request(&a);a.answer_conversion(request,false).unwrap();assert_eq!(conversion_facts(&a),before);assert!(!target.exists());std::fs::remove_dir_all(dir).unwrap();
++    }
++    #[test]
++    fn copy_confirmation_stale_or_retired_request_cannot_start_a_different_export() {
++        let(mut a,shown)=async_app();typed(&mut a);a.export_dialog("odt");let first=conversion_request(&a);a.answer_conversion(first,false).unwrap();a.export_dialog("rtf");let current=conversion_request(&a);assert!(current>first);assert!(a.answer_conversion(first,true).is_err());assert_eq!(conversion_request(&a),current);
++        a.execute("text.insert",json!({"text":"Newer edits"})).unwrap();let before=conversion_facts(&a);assert!(a.answer_conversion(current,true).is_err());assert!(shown.borrow().is_empty());assert_eq!(conversion_facts(&a),before);
++    }
++    #[test]
++    fn copy_confirmation_cancel_and_valid_continue_preserve_owned_output_semantics() {
++        let dir=scratch("copy-consent");let target=dir.join("copy.odt");let(mut a,shown)=async_app();typed(&mut a);let before=conversion_facts(&a);a.export_dialog("odt");let request=conversion_request(&a);a.answer_conversion(request,true).unwrap();assert!(a.file_dialog_open());answer(&shown,Some(&target.to_string_lossy()));a.poll_file_dialog().unwrap().unwrap();assert_eq!(conversion_facts(&a),before);assert!(saved_text(&target).contains(UNSAVED));std::fs::remove_dir_all(dir).unwrap();
++    }
++    #[test]
++    fn copy_confirmation_save_as_aliases_require_the_same_loss_decision() {
++        let dir=scratch("save-alias-consent");
++        for ext in ["text","htm","xhtml","markdown","latex","ltx"] {
++            let target=dir.join(format!("copy.{ext}"));let(mut a,shown)=async_app();typed(&mut a);let before=conversion_facts(&a);
++            a.save_as_dialog();answer(&shown,Some(&target.to_string_lossy()));assert_eq!(a.poll_file_dialog().unwrap().unwrap()["pending"],"formatLoss");
++            let request=conversion_request(&a);assert!(!target.exists());a.answer_conversion(request,false).unwrap();assert!(!target.exists());assert_eq!(conversion_facts(&a),before);
++        }
++        std::fs::remove_dir_all(dir).unwrap();
++    }
++    #[test]
++    fn copy_confirmation_save_as_cancel_retains_document_and_existing_destination() {
++        let dir=scratch("save-consent-cancel");let target=dir.join("copy.odt");std::fs::write(&target,b"Existing output").unwrap();let(mut a,shown)=async_app();typed(&mut a);let before=conversion_facts(&a);a.save_as_dialog();answer(&shown,Some(&target.to_string_lossy()));assert_eq!(a.poll_file_dialog().unwrap().unwrap()["pending"],"formatLoss");let request=conversion_request(&a);assert_eq!(std::fs::read(&target).unwrap(),b"Existing output");a.answer_conversion(request,false).unwrap();assert_eq!(conversion_facts(&a),before);assert_eq!(std::fs::read(&target).unwrap(),b"Existing output");std::fs::remove_dir_all(dir).unwrap();
++    }
++    #[test]
++    fn copy_confirmation_save_as_changed_destination_refuses_without_false_saved_state() {
++        let dir=scratch("save-consent-change");let target=dir.join("copy.odt");std::fs::write(&target,b"Existing output").unwrap();let(mut a,shown)=async_app();typed(&mut a);let before=conversion_facts(&a);a.save_as_dialog();answer(&shown,Some(&target.to_string_lossy()));a.poll_file_dialog().unwrap().unwrap();let request=conversion_request(&a);std::fs::write(&target,b"Newer output contents").unwrap();assert_eq!(a.answer_conversion(request,true).unwrap()["saved"],false);assert_eq!(conversion_facts(&a),before);assert_eq!(std::fs::read(&target).unwrap(),b"Newer output contents");assert!(a.status_msg.as_ref().is_some_and(|(message,_)|message.contains("confirmed output file changed")));std::fs::remove_dir_all(dir).unwrap();
++    }
++    #[test]
++    fn copy_confirmation_save_as_valid_continue_keeps_existing_save_policy() {
++        let dir=scratch("save-consent-success");let target=dir.join("copy.odt");let(mut a,shown)=async_app();typed(&mut a);a.save_as_dialog();answer(&shown,Some(&target.to_string_lossy()));a.poll_file_dialog().unwrap().unwrap();let request=conversion_request(&a);assert_eq!(a.answer_conversion(request,true).unwrap()["saved"],true);assert_eq!(a.session.path.as_deref(),Some(target.as_path()));assert!(!a.session.dirty);assert!(saved_text(&target).contains(UNSAVED));std::fs::remove_dir_all(dir).unwrap();
++    }
++    #[test]
++    fn copy_confirmation_replaced_document_and_detached_dialog_retire_without_clearing_newer_intent() {
++        let(mut a,shown)=async_app();typed(&mut a);a.export_dialog("odt");a.execute("file.new",json!({})).unwrap();typed(&mut a);let before=conversion_facts(&a);a.poll_conversion();assert!(a.conversion.is_none());assert!(shown.borrow().is_empty());assert_eq!(conversion_facts(&a),before);
++        a.export_dialog("odt");a.dialog=Some(crate::dialogs::Dialog::About { tab: 0 });a.poll_conversion();assert!(a.conversion.is_none());assert!(matches!(a.dialog,Some(crate::dialogs::Dialog::About { .. })));
++    }
++
++    #[test]
++    fn copy_confirmation_download_host_keeps_existing_copy_support_without_stamping() {
++        let(mut a,_)=async_app();typed(&mut a);let before=conversion_facts(&a);let downloads:Rc<RefCell<Vec<(String,Vec<u8>)>>>=Rc::default();let received=downloads.clone();
++        a.services.download=Some(Box::new(move |name,bytes| {received.borrow_mut().push((name.to_string(),bytes.to_vec()));Ok(())}));
++        a.execute("file.exportCopy",json!({"path":"copy.docx"})).unwrap();assert_eq!(conversion_facts(&a),before);let values=downloads.borrow();assert_eq!(values.len(),1);assert_eq!(values[0].0,"copy.docx");assert!(values[0].1.starts_with(b"PK"));drop(values);
++        a.services.download=Some(Box::new(|_,_|Err("Synthetic unavailable download".into())));assert!(a.execute("file.exportCopy",json!({"path":"refused.docx"})).is_err());assert_eq!(conversion_facts(&a),before);
++    }
+ }
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index f9ac3da..35d1227 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -208,6 +208,8 @@ pub struct WordApp {
+     autosave_path: Option<std::path::PathBuf>,
+     /// The file dialog the host is showing, and what its answer is for ([`file_dialogs`]).
+     file_dialog: Option<file_dialogs::PendingDialog>,
++    conversion: Option<file_dialogs::PendingConversion>,
++    conversion_serial: u64,
+     /// File › Info: the property field being typed in and the document revision after its last
+     /// keystroke, so one visit's keystrokes make a single undo step (and anything else in
+     /// between, such as an Undo, starts a new one).
+@@ -271,6 +273,8 @@ impl WordApp {
+             change_picture_target: None,
+             recipient_list_pending: false,
+             file_dialog: None,
++            conversion: None,
++            conversion_serial: 0,
+             info_editing: None,
+         }
+     }
+@@ -373,7 +377,7 @@ impl WordApp {
+             return r;
+         }
+         // Web: saving and exporting become downloads.
+-        if self.services.download.is_some() && matches!(id, "file.save" | "file.saveAs" | "file.exportPdf" | "file.exportPng") {
++        if self.services.download.is_some() && matches!(id, "file.save" | "file.saveAs" | "file.exportCopy" | "file.exportPdf" | "file.exportPng") {
+             let name = params.get("path").and_then(Value::as_str).map(str::to_string).unwrap_or_else(|| self.default_save_name());
+             let name = if id == "file.exportPdf" && !name.ends_with(".pdf") { format!("{name}.pdf") } else { name };
+             // A save with a password encrypts this and later saves (`file.save`'s `password`).
+@@ -391,7 +395,7 @@ impl WordApp {
+             }
+             // Word documents are encrypted with the document's password, if it has one.
+             let password =
+-                if matches!(id, "file.save" | "file.saveAs") { self.session.password.as_ref().map(wordcraft_engine::Password::as_str) } else { None };
++                if matches!(id, "file.save" | "file.saveAs" | "file.exportCopy") { self.session.password.as_ref().map(wordcraft_engine::Password::as_str) } else { None };
+             let bytes = wordcraft_engine::io::save_bytes_with(&name, &self.session.doc, password)?;
+             if let Some(d) = &self.services.download
+                 && let Err(e) = d(&name, &bytes)
+@@ -410,6 +414,9 @@ impl WordApp {
+         }
+         let document = self.session.document_id();
+         let r = self.session.run(id, &params).map_err(|e| e.to_string());
++        self.finish_engine_command(id, document, r)
++    }
++    fn finish_engine_command(&mut self, id: &str, document: u64, r: Result<Value, String>) -> Result<Value, String> {
+         // When the document has been replaced (not when Open only showed its picker), a pending
+         // "Save changes?" and AutoSave's go-ahead were both about the old one.
+         if self.session.document_id() != document {
+@@ -433,6 +440,13 @@ impl WordApp {
+         r
+     }
+ 
++    #[cfg(not(target_arch = "wasm32"))]
++    fn save_confirmed(&mut self, output: wordcraft_engine::CapturedOutput) -> Result<Value, String> {
++        let document = self.session.document_id();
++        let result = self.session.save_confirmed(output).map_err(|error| error.to_string());
++        self.finish_engine_command("file.save", document, result)
++    }
++
+     /// Answer the Save Changes prompt: Save (through Save As for a new document) and carry on,
+     /// carry on without saving, or cancel. A failed or cancelled save cancels too.
+     fn answer_save_changes(&mut self, choice: SaveChoice) -> Result<Value, String> {
+@@ -792,6 +806,7 @@ impl WordApp {
+         zotero::poll(self, ctx);
+         read_aloud::poll(self, ctx);
+         self.clear_stale_change_picture();
++        self.poll_conversion();
+         let _ = self.poll_file_dialog();
+         self.drain_inbox();
+         self.autosave_tick(now_ms());

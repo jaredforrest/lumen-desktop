@@ -1,11 +1,13 @@
 --- a/crates/engine/src/lib.rs
 +++ b/crates/engine/src/lib.rs
-@@ -8,6 +8,8 @@
+@@ -8,6 +8,10 @@
  
  pub mod catalog;
  pub mod cf;
 +#[cfg(not(target_arch = "wasm32"))]
 +mod lumen_atomic_output;
++#[cfg(not(target_arch = "wasm32"))]
++pub use lumen_atomic_output::{CapturedOutput, capture_output, write_captured};
  pub mod cmd;
  pub mod display;
  pub mod fill;

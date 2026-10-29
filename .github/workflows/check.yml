@@ -424,9 +424,27 @@ jobs:
           nix build .#wordcraft --out-link artifacts/wordcraft --option abort-on-warn true
           nix build .#gridcraft --out-link artifacts/gridcraft --option abort-on-warn true
           nix build .#deckcraft --out-link artifacts/deckcraft --option abort-on-warn true
+      - run: |
+          nix build .#compositor-basic --out-link artifacts/provider-compositor --option abort-on-warn true
+          nix build .#compositor --out-link artifacts/provider-compositor-effects --option abort-on-warn true
+          nix build .#test-physical-keyboard --out-link artifacts/provider-keyboard --option abort-on-warn true
+          nix build .#test-pointer --out-link artifacts/provider-pointer --option abort-on-warn true
+          nix build .#test-application-software-driver --out-link artifacts/provider-software-driver --option abort-on-warn true
+          nix build .#test-office-dialog-tools --out-link artifacts/provider-dialog-tools --option abort-on-warn true
+          nix build .#test-screen-reader-atspi --out-link artifacts/provider-atspi --option abort-on-warn true
+          bash tests/ci/prepare-software-effects.sh artifacts/provider-software-effects-kernel
       - run: bash tests/ci/run-native.sh provider_save_namespace_prepare nix develop --command desktop-test-python tests/ci/native_namespace_policy.py prepare --output artifacts/provider-save-namespace
       - run: bash tests/ci/run-native.sh provider_atomic_save nix develop --command desktop-test-python tests/desktop/provider_atomic_save.py --wordcraft "$PWD/artifacts/wordcraft/bin/wordcraft-cli" --gridcraft "$PWD/artifacts/gridcraft/bin/gridcraft-cli" --deckcraft "$PWD/artifacts/deckcraft/bin/deckcraft-cli" --output artifacts/provider-atomic-save
       - run: bash tests/ci/run-native.sh provider_output_formats nix develop --command desktop-test-python tests/desktop/deck_format_truthfulness.py --slides "$PWD/artifacts/deckcraft/bin/deckcraft-cli" --output artifacts/provider-output-formats
+      - run: |
+          for backend in basic effects; do
+            compositor=provider-compositor
+            flags=()
+            if [[ "$backend" == effects ]]; then compositor=provider-compositor-effects; flags+=(--effects); fi
+            for format in docx odt; do
+              bash tests/ci/run-native.sh "provider_copy_${backend}_${format}" nix develop --command desktop-test-python tests/desktop/office_native_workflows.py "${flags[@]}" --app writer --copy-export-probe --copy-export-format "$format" --writer "$PWD/artifacts/wordcraft/bin/wordcraft" --sheet "$PWD/artifacts/gridcraft/bin/gridcraft" --slides "$PWD/artifacts/deckcraft/bin/deckcraft" --sway "$PWD/artifacts/$compositor/bin/sway" --keyboard-tool "$PWD/artifacts/provider-keyboard/bin/lumen-test-physical-keyboard" --pointer-tool "$PWD/artifacts/provider-pointer/bin/wlrctl" --software-driver "$PWD/artifacts/provider-software-driver" --dialog-tools "$PWD/artifacts/provider-dialog-tools" --at-spi-prefix "$PWD/artifacts/provider-atspi" --output "artifacts/provider-copy-$backend-$format"
+            done
+          done
       - if: always()
         run: bash tests/ci/run-native.sh provider_save_namespace_cleanup nix develop --command desktop-test-python tests/ci/native_namespace_policy.py cleanup --output artifacts/provider-save-namespace
       - if: always()
@@ -437,4 +455,6 @@ jobs:
             artifacts/provider-save-namespace
             artifacts/provider-atomic-save
             artifacts/provider-output-formats
+            artifacts/provider-copy-*
+            artifacts/provider-software-effects-kernel
             artifacts/native-command-logs/provider*

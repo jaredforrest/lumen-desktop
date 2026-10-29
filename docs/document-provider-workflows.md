@@ -144,6 +144,46 @@ continuations. This does not add cancellation to a foreign host's legacy
 `open_async` callback interface; the selected native host uses the owned
 `Services::file_dialog` response channel.
 
+## Document copy export and conversion decisions
+
+The word processor uses a separate `file.exportCopy` command for Export. It
+serializes current unsaved content without stamping Save metadata, changing the
+active path, clearing dirty state or replacing the working document. PNG export
+uses the same descriptor-anchored atomic publication as other provider outputs.
+The selected filename must match the declared export suffix, case-insensitively;
+changing an export filename to another format is refused before publication.
+
+Known structural-loss formats (including PDF and PNG) require an explicit
+Continue or Cancel decision before the export chooser opens. A protected
+working document also requires that decision for every output that cannot
+preserve its password, including native JSON. The warning separately discloses
+that the converted file will be unencrypted. Save As bases the decision on the
+actual selected path after the chooser returns. Cancel creates no output.
+
+The decision captures the document owner, revision, dirty state, saved path and
+protected state. Replacement, edits or a detached/replaced dialog retire that
+request. A stale or repeated request cannot act on a newer operation. For
+filesystem Save As, a retained parent descriptor and selected entry identity
+are checked again before staging and before publication. A newly created,
+replaced or edited destination is refused without changing that destination or
+marking the working document saved. This is bounded cooperative concurrency;
+it is not an atomic compare-and-swap, hostile same-user protection or a
+power-loss guarantee. Normal Save retains its existing behavior.
+
+`office_native_workflows.py --app writer --copy-export-probe
+--copy-export-format docx|odt --dialog-tools ... --at-spi-prefix ...` exercises
+the installed provider with physical pointer/keyboard controls, its actual
+accessible button semantics and native destination chooser. It records full
+working-document projections, original hashes and independently parsed output.
+The DOCX scenario checks copy ownership and mismatched suffix refusal. The ODT
+scenario checks Cancel, held Continue after an edit, valid copy output, Save As
+Cancel, a destination created during the decision and valid Save As continuation.
+Both scenarios run in a disposable namespace with frozen source/tool identities.
+Source tests separately cover all supported suffix aliases, protected JSON,
+PNG aliases, one-shot decisions, failed output and download-host behavior.
+These tests do not establish complete conversion fidelity or encrypted format
+interoperability with another application's implementation.
+
 ## Presentation output formats
 
 The presentation provider checks the requested output family before writing or
