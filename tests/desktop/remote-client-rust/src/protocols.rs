@@ -459,10 +459,10 @@ fn interactions(f: &mut Harness) -> Result<()> {
     f.keyboard.as_mut().ok_or("Keyboard")?.key(&["-k", "F11"])?;
     wait("actual protocol function key", || Ok(f.target()?["keys"].as_array().is_some_and(|keys| keys.iter().any(|key| key["keyval"] == 65480)).then_some(())))?;
     fullscreen_key(f)?;
-    wait("viewer fullscreen entry", || Ok(nodes(&f.tree()?).into_iter().find(|node| node["id"] == before["id"] && node["fullscreen_mode"] == 1)))?;
+    let full = wait("viewer fullscreen entry", || Ok(nodes(&f.tree()?).into_iter().find(|node| node["app_id"] == "org.remmina.Remmina" && node["fullscreen_mode"] == 1)))?;
     f.capture("viewer-fullscreen.png")?;
     fullscreen_key(f)?;
-    wait("viewer fullscreen exit", || Ok(nodes(&f.tree()?).into_iter().find(|node| node["id"] == before["id"] && node["fullscreen_mode"] == 0)))?;
+    let exited = wait("viewer fullscreen exit", || Ok(nodes(&f.tree()?).into_iter().find(|node| node["app_id"] == "org.remmina.Remmina" && node["fullscreen_mode"] == 0)))?;
     chord(f, "a")?;
     chord(f, "c")?;
     pause(1500);
@@ -485,7 +485,7 @@ fn interactions(f: &mut Harness) -> Result<()> {
     pause(1500);
     let received_remote = f.safe_target()?;
     let local_to_remote = received_remote["text"] == "local-clipboard-receipt";
-    save(&f.out.join("interaction-acceptance.json"), &json!({"protocol":f.o.protocol,"actualProvider":"Remmina","actualServer":if f.o.protocol=="vnc" {"WayVNC"} else {"FreeRDP shadow"},"windowsOS":false,"physicalInput":true,"functionKeyF11":true,"fullscreenEntryAndExit":true,"fullscreenShortcut":"private configured F12+f host chord","originalViewerID":before["id"],"remoteToLocalClipboard":remote_to_local,"localToRemoteClipboard":local_to_remote,"localReceipt":received_local,"remoteReceipt":received_remote,"hostClipboardAccess":false,"globalHostKeyClaim":false}))?;
+    save(&f.out.join("interaction-acceptance.json"), &json!({"protocol":f.o.protocol,"actualProvider":"Remmina","actualServer":if f.o.protocol=="vnc" {"WayVNC"} else {"FreeRDP shadow"},"windowsOS":false,"physicalInput":true,"functionKeyF11":true,"fullscreenEntryAndExit":true,"fullscreenShortcut":"private configured F12+f host chord","originalViewerID":before["id"],"fullscreenViewerID":full["id"],"exitedViewerID":exited["id"],"remoteToLocalClipboard":remote_to_local,"localToRemoteClipboard":local_to_remote,"localReceipt":received_local,"remoteReceipt":received_remote,"hostClipboardAccess":false,"globalHostKeyClaim":false}))?;
     ensure(remote_to_local && local_to_remote, "Actual clipboard direction failed; retained interaction diagnostics")
 }
 fn sshkey(f: &Harness, name: &str) -> Result<PathBuf> {
