@@ -454,8 +454,9 @@ fn outer(mut options: Options) -> Result<()> {
         &options.source.join("tests/desktop/office-workflows-rust/src/bin/office-native-workflows.rs"),
         &[current.clone(), options.writer.clone(), options.sheet.clone(), options.slides.clone(), options.sway.clone(), options.keyboard_tool.clone(), options.pointer_tool.clone()],
     ).map_err(|error| fail(error.to_string()))?;
-    let status = cmd.status()?;
-    frozen.finish(&options.output, status.code().unwrap_or(1)).map_err(|error| fail(error.to_string()))?;
+    let status = cmd.status();
+    frozen.finish(&options.output, status.as_ref().ok().and_then(|status| status.code()).unwrap_or(1)).map_err(|error| fail(error.to_string()))?;
+    let status = status?;
     ensure(
         status.success(),
         format!("Native office workflow failed: {status}"),

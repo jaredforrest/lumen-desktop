@@ -9,8 +9,4 @@ pkgs.rustPlatform.buildRustPackage {
   sourceRoot = "source/office-workflows-rust";
   cargoLock.lockFile = ./Cargo.lock;
   RUSTFLAGS = "-D warnings";
-  postPatch = ''
-    mkdir -p ../fixtures
-    cp ${../fixtures/x11-us.xkb} ../fixtures/x11-us.xkb
-  '';
 }

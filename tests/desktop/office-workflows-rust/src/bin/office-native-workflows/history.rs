@@ -21,7 +21,8 @@ impl Native {
         let bounds = a11y.bounds_captured(&row)?;
         ensure(bounds.0 >= 0 && bounds.1 >= 0 && bounds.0 + bounds.2 <= number(&self.window["rect"]["width"])? as i32 + 1 && bounds.1 + bounds.3 <= number(&self.window["rect"]["height"])? as i32 + 1,
                "History action falls outside its captured native window")?;
-        let frame = a11y.find(self.pid as u32, "Version History", true)?;
+        let frame = a11y.find(self.pid as u32, "Version History", true)?
+            .filter(|frame| frame["role"] == "frame" || frame["role"] == "role:23");
         let dialog = frame.as_ref().map(|frame| a11y.bounds_captured(frame)).transpose()?;
         if let Some(frame) = dialog {
             ensure(bounds.0 >= frame.0 && bounds.1 >= frame.1 && bounds.0 + bounds.2 <= frame.0 + frame.2 + 1 && bounds.1 + bounds.3 <= frame.1 + frame.3 + 1,
@@ -94,7 +95,9 @@ impl Native {
         self.history_open()?; self.history_select(&versions[0])?;
         self.history_recovery_preview()?; self.history_close()?;
         self.checks.push("The actual version browser exposes complete pre-restore recovery content with visible decision controls".into());
-        self.history_process_reopen(&original, &source_hash, &saved, &versions[0])
+        self.history_process_reopen(&original, &source_hash, &saved, &versions[0])?;
+        self.set_fact("historyScope", json!("Actual owned controls and independent native process reopen; no external application, cloud or visual reference parity claim"));
+        Ok(())
     }
     fn history_recovery_preview(&mut self) -> Result<()> {
         let state = self.history_state()?;
@@ -128,7 +131,7 @@ impl Native {
         ensure(rows.iter().any(|row| row["id"] == saved["id"]) && rows.iter().any(|row| row["id"] == recovery["id"]), "Process reopen lost stable captured versions")?;
         self.history_select(rows.iter().find(|row| row["id"] == recovery["id"]).ok_or("Reopened recovery version")?)?;
         self.history_recovery_preview()?; self.screenshot("history-process-reopened.png")?; self.history_close()?;
-        self.set_fact("historyReopen", json!({"previous":previous,"current":{"conId":self.window["id"],"pid":self.pid,"profileWrapperPid":self.processes[reopened].0.id()},"persisted":rows}));
+        self.set_fact("historyReopen", json!({"previous":previous,"current":{"conId":self.window["id"],"pid":self.pid,"profileWrapperPid":self.processes[reopened].0.id()},"persisted":rows,"controlFrames":self.control.as_ref().ok_or("Reopened controller unavailable")?.frames}));
         self.checks.push("Independent native provider process reopens original source and browses persistent captured and pre-restore versions".into());
         self.history_same(original, source_hash)
     }
