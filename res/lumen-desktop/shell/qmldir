@@ -165,3 +165,7 @@ DesktopCaptionMetrics 1.0 DesktopCaptionMetrics.qml
 
 ShareDestinationsState 1.0 ShareDestinationsState.qml
 FileShareDialog 1.0 FileShareDialog.qml
+TooltipState 1.0 TooltipState.qml
+TooltipSurface 1.0 TooltipSurface.qml
+OwnedToolTip 1.0 OwnedToolTip.qml
+singleton TooltipCoordinator 1.0 TooltipCoordinator.qml

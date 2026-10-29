@@ -34,11 +34,6 @@ impl Keyboard {
         };
         self.event('k',code,1)?;self.event('k',code,0)
     }
-    pub fn shift_tab(&mut self) -> Result<()> {
-        self.event('m',1,0)?;
-        self.key("Tab")?;
-        self.event('m',0,0)
-    }
     pub fn logo_number(&mut self, number: u8) -> Result<()> {
         need(number == 1 || number == 2, "Only workspaces 1 and 2 are supported")?;
         self.event('m',64,0)?;

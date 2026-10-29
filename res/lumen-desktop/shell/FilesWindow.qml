@@ -364,12 +364,9 @@ FloatingWindow {
             Repeater {
                 model:[{icon:"chevron-left",label:"Back",action:"back"},{icon:"chevron-right",label:"Forward",action:"forward"}]
                 AbstractButton {
-                    required property var modelData;width:27;height:30
+                     id:historyButton;hoverEnabled:true;required property var modelData;width:27;height:30
                     enabled:!root.service.busy && (modelData.action==="back"?root.service.historyIndex>0:root.service.historyIndex<root.service.history.length-1)
                     Accessible.name:modelData.label
-                    Accessible.description:modelData.action==="preview" && !root.previewLimits.enabled?"Widen this window to show the preview pane":""
-                    ToolTip.visible:hovered && modelData.action==="preview" && !root.previewLimits.enabled
-                    ToolTip.text:"Widen this window to show the preview pane"
                     onClicked:root.service.back(modelData.action==="back"?-1:1)
                     background:Rectangle {radius:6;color:parent.hovered || parent.activeFocus?Theme.colors.hover:"transparent"}
                     contentItem:Item {SystemGlyph {anchors.centerIn:parent;width:17;height:17;name:modelData.icon;opacity:parent.parent.enabled?1:0.3}}
@@ -383,11 +380,10 @@ FloatingWindow {
             Repeater {
                 model:[{icon:"info",label:"Preview",action:"preview"},{icon:"more",label:"File actions",action:"menu"}]
                 AbstractButton {
-                    required property var modelData;width:30;height:30
+                     id:actionButton;hoverEnabled:true;required property var modelData;width:30;height:30
                     Accessible.name:modelData.label
                     Accessible.description:modelData.action==="preview" && !root.previewLimits.enabled?"Widen this window to show the preview pane":""
-                    ToolTip.visible:hovered && modelData.action==="preview" && !root.previewLimits.enabled
-                    ToolTip.text:"Widen this window to show the preview pane"
+                    OwnedToolTip {target:actionButton;suppressed:actionButton.modelData.action!=="preview" || root.previewLimits.enabled;text:"Widen this window to show the preview pane"}
                     onClicked:{if(modelData.action==="grid")root.service.viewMode="grid";else if(modelData.action==="list")root.service.viewMode="list";else if(modelData.action==="preview")root.previewOpen=!root.previewOpen;else {actions.x=root.width-230;actions.y=48;actions.open();}}
                     background:Rectangle {radius:7;color:parent.hovered || parent.activeFocus || (parent.modelData.action==="list" && root.listMode) || (parent.modelData.action==="grid" && !root.listMode) || (parent.modelData.action==="preview" && root.previewOpen)?Theme.selection:"transparent"}
                     contentItem:Item {SystemGlyph {anchors.centerIn:parent;width:17;height:17;name:modelData.icon}}

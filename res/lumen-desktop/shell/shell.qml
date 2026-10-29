@@ -33,7 +33,7 @@ ShellRoot {
     WidgetState {id:widgetState}
     GlobalMenu { id:exported; shell:root; holdDisplay:root.popupOwner!=="" && root.popupOwner!=="exported" }
     property int focusEpoch:0
-    function claimPopup(owner) { ++focusEpoch;popupOwner=owner; dismissPopups(owner); }
+    function claimPopup(owner) { TooltipCoordinator.dismiss(); ++focusEpoch;popupOwner=owner; dismissPopups(owner); }
     Connections {target:Quickshell; function onScreensChanged() {
         const names=Quickshell.screens.map(s=>s.name);
         if((root.popupOwner.startsWith("bar:") || root.popupOwner.startsWith("dock:")) && !names.includes(root.popupOwner.substring(root.popupOwner.indexOf(":")+1)))root.claimPopup("");

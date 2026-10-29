@@ -89,6 +89,7 @@ jobs:
             artifacts/owned-typography-native-*
             artifacts/files-share-menu
             artifacts/share-destinations
+            artifacts/tooltip-lifecycle
             artifacts/clipboard-native-*
             artifacts/search-native-*
             artifacts/search-history-*

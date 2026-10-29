@@ -1,8 +1,5 @@
 //! Private software acceptance of the real chooser, process events and failures.
-#[allow(dead_code)]
-#[path = "../main.rs"]
-mod isolation;
-use isolation::*;
+use lumen_files_share_menu_fixture::*;
 use serde_json::{Value, json};
 use std::{env, fs, os::unix::fs::MetadataExt, path::Path, process::Command};
 fn run(options: &Options) -> Result<()> {

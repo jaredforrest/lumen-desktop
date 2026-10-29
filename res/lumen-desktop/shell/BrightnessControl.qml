@@ -24,38 +24,16 @@ Column {
     DesktopComboBox {visible:root.displays.length>1;width:parent.width;model:root.displays;textRole:"name";currentIndex:root.displays.findIndex(d=>d.bus===root.selectedBus);displayText:currentIndex<0?"Choose display":currentText;onActivated:index=>{root.selectedBus=root.displays[index].bus;root.level=root.display.level;} Accessible.name:"Brightness display"}
     PanelLabel {text:root.display?"Display":"Display · Unavailable";font.pixelSize:Theme.textSize(12);font.weight:Font.DemiBold}
     SystemSlider {
-        id: slider;width:parent.width;height:18;from:0;to:1;value:root.level;enabled:!!root.display
+        id: slider;hoverEnabled:true;width:parent.width;height:18;from:0;to:1;value:root.level;enabled:!!root.display
         leftPadding:24;rightPadding:26
         Accessible.name:"Display brightness"
         leadingGlyph:"sun";trailingGlyph:"sun"
         onPressedChanged:{root.editing=pressed;if(!pressed)root.flush();}
         onMoved:{root.level=value;root.pending=value;root.revision++;root.error="";debounce.restart();}
-        ToolTip {
-            id: brightnessTip
-            width:Math.min(slider.width,tooltipText.implicitWidth+2*padding)
-            parent: slider
-            visible: slider.hovered && !slider.pressed
-            delay: 700
-            timeout: 4000
-            text: root.error || (root.display ? root.display.name : "Brightness control is not available for this display")
-            x: Math.max(0, (slider.width-width)/2)
-            y: slider.height+8
-            padding: 7
-            contentItem: Text {
-                id:tooltipText
-                wrapMode:Text.Wrap
-                text: brightnessTip.text
-                font.family: Theme.font
-                font.pixelSize: Theme.textRole("metadata")
-                color: Theme.colors.text
-                textFormat: Text.PlainText
-            }
-            background: Rectangle {
-                radius: 6
-                color: Theme.colors.background
-                border.color: Theme.outline
-                border.width: 1
-            }
+        Accessible.description:root.error || (root.display ? root.display.name : "Brightness control is not available for this display")
+        OwnedToolTip {
+            id:brightnessTip;target:slider
+            text:root.error || (root.display ? root.display.name : "Brightness control is not available for this display")
         }
     }
     Timer {id:debounce;interval:100;onTriggered:root.flush()}

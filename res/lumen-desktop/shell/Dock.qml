@@ -22,6 +22,7 @@ PanelWindow {
     readonly property bool displayAllowed:!shell.displaySpaces || shell.displaySpaces.dockVisible(outputName)
     visible:displayAllowed
     onDisplayAllowedChanged:if(!displayAllowed){cancelDrag();leaveKeyboard();contextEntry=null;contextAlias=null;hovered=-1;}
+    TooltipState {id:tooltipLifecycle;eligible:dock.displayAllowed && dock.hovered>=0 && (!dock.autoHide || dock.revealed) && !dock.dragging && !dock.contextEntry && !dock.contextAlias && !dock.pressedKey && (!shell.popupOwner || shell.popupOwner==="dock:"+dock.outputName);identity:dock.hovered>=0 && shell.referenceDock[dock.hovered]?String(shell.referenceDock[dock.hovered].key):""}
     property int hovered: -1
     property bool keyboardMode:false
     property int keyboardIndex:0
@@ -143,6 +144,7 @@ PanelWindow {
                 event.accepted=true;return;
             }
             if(!dock.keyboardMode)return;
+            if(event.key===Qt.Key_F1){tooltipLifecycle.help();event.accepted=true;return;}
             if(event.key===Qt.Key_Escape){dock.leaveKeyboard();event.accepted=true;}
             else if([Qt.Key_Home,Qt.Key_End].includes(event.key) || (dock.vertical?[Qt.Key_Up,Qt.Key_Down]:[Qt.Key_Left,Qt.Key_Right]).includes(event.key)){
                 const n=shell.referenceDock.length;
@@ -242,6 +244,7 @@ PanelWindow {
         onExited:{dock.clearPointer();hideTimer.restart();}
         onCanceled: { dock.cancelDrag(); dock.clearPointer(); }
         onPressed: mouse => {
+            tooltipLifecycle.dismiss();
             dock.trackPointer(mouse.x,mouse.y);dock.pressX=mouse.x;dock.pressY=mouse.y;dock.dragCompleted=false;
             dock.pressedKey=dock.hovered>=0?shell.referenceDock[dock.hovered].key:"";
             dock.pressIntent=mouse.button===Qt.LeftButton && dock.hovered>=0 && !shell.dockPreferencesBusy?{items:shell.referenceDock,item:shell.referenceDock[dock.hovered]}:null;
@@ -275,16 +278,16 @@ PanelWindow {
 
     }
     PanelWindow {
-        screen:dock.screen;visible:dock.displayAllowed && dock.hovered>=0 && (!dock.autoHide || dock.revealed) && !dock.dragging && !dock.contextEntry && !dock.contextAlias
+        screen:dock.screen;visible:dock.displayAllowed && dock.hovered>=0 && tooltipLifecycle.shown
         anchors {top:true;bottom:true;left:true;right:true}
         exclusionMode:ExclusionMode.Ignore;color:"transparent";mask:Region {}
         WlrLayershell.layer:WlrLayer.Overlay;WlrLayershell.namespace:"lumen-dock-tooltip"
         WlrLayershell.keyboardFocus:WlrKeyboardFocus.None
-        Rectangle {
-            width:Math.min(tip.implicitWidth+20,parent.width-16);height:26;radius:7;color:Theme.colors.background;border.color:Theme.colors.border
+        TooltipSurface {
+            id:tip;maximumWidth:Math.min(360,parent.width-16);maximumHeight:parent.height-16
+            text:dock.hovered>=0 && shell.referenceDock[dock.hovered]?shell.dockLabel(shell.referenceDock[dock.hovered]):""
             x:Math.max(8,Math.min(parent.width-width-8,dock.vertical?(dock.position==="left"?dock.shelfThickness+24:parent.width-dock.shelfThickness-width-24):((parent.width-dock.width)/2+12+(dock.hovered+0.5)*dock.slot-width/2)))
             y:Math.max(8,Math.min(parent.height-height-8,dock.vertical?((parent.height-dock.height)/2+12+(dock.hovered+0.5)*dock.slot-height/2):parent.height-dock.shelfThickness-height-18))
-            Text {id:tip;anchors.centerIn:parent;width:parent.width-20;elide:Text.ElideRight;text:dock.hovered>=0 && shell.referenceDock[dock.hovered]?shell.dockLabel(shell.referenceDock[dock.hovered]):"";color:Theme.colors.text;font.family:Theme.font;font.pixelSize:13}
         }
     }
     PanelWindow {
