@@ -27,7 +27,7 @@ ShellRoot {
             {key:"downloads",action:"downloads",image:"files.svg",canvas:68},
             {key:"trash",action:"trash",image:"files.svg",canvas:68}
         ]
-        property bool dockPreferencesBusy: settings.busy
+        property bool dockPreferencesBusy: settings.applying
         property var referenceDock: Model.build(reference,apps,[],settings.preferences.dockPins,[apps[3]],true,settings.preferences.dockFolders,settings.preferences.dockFiles)
         property string popupOwner: ""
         property date currentDate: new Date()
@@ -50,6 +50,7 @@ ShellRoot {
     D.Dock { id: dock; shell: stub; screen: Quickshell.screens[0] }
     IpcHandler {
         target: "dockAudit"
+        function pollSettings():string {settings.refresh();return JSON.stringify({started:settings.busy,applying:settings.applying});}
         function status(): string {
             return JSON.stringify({keys:stub.referenceDock.map(x=>x.key),separators:stub.referenceDock.map(x=>x.separatorBefore),
                 width:dock.width,height:dock.height,slot:dock.slot,shelf:dock.shelfThickness,

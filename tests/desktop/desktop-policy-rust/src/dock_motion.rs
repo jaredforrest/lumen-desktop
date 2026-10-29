@@ -41,6 +41,11 @@ fn drag(ctx: &mut Context, source: &str, target: &str) -> Result<()> {
     point(ctx,source)?;
     ctx.press()?;
     wait("Dock held pointer", || Ok((state(ctx)?["pressed"]==true).then_some(())))?;
+    let read:Value=serde_json::from_str(&ctx.ipc("pollSettings",&[])?)?;
+    need(read["started"]==true && read["applying"]==false,"Actual read-only poll must not be an edit")?;
+    wait("Dock held refresh complete",|| {let row=state(ctx)?;Ok((row["busy"]==false).then_some(row))})?;
+    let held=state(ctx)?;
+    need(held["pressed"]==true && held["pressedKey"]==source && held["intentValid"]==true,"A read-only poll invalidated the physically captured Dock press")?;
     let location = center(ctx,target)?;
     ctx.move_pointer(location)?;
     wait("Dock drag target", || {
@@ -144,6 +149,7 @@ pub fn run(ctx: &mut Context) -> Result<()> {
     let mut expected=vec!["fixture-b","fixture-a","fixture-c","unknown-retained"];
     wait("Dock pin reorder",|| Ok((pins(&state(ctx)?)?==expected && state(ctx)?["busy"]==false).then_some(())))?;
     need(writes(ctx)?.len()==1 && writes(ctx)?[0]==json!({"key":"dockPins","value":expected}) && state(ctx)?["activations"].as_array().is_some_and(Vec::is_empty),"First Dock write invalid")?;
+    checks.push("Actual read-only settings polls preserve held pointer capture and exact intent across all drag cases");
     checks.push("Physical app reorder emits one captured write and preserves unknown pins");
     ctx.children[shell].stop(libc::SIGTERM)?;
     ctx.move_pointer((30.0,400.0))?;

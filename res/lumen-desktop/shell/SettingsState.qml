@@ -1,5 +1,6 @@
 import QtQuick
 import "MenuVisibilityPolicy.js" as MenuVisibilityPolicy
+import "ConfigValues.js" as ConfigValues
 import Quickshell
 import Quickshell.Io
 Item {
@@ -46,7 +47,7 @@ Item {
             try{
                 const data=JSON.parse(text);worker.received=true;
                 if(data.error){root.error=data.error;return;}
-                root.menuBarPreferences=MenuVisibilityPolicy.normalize(data.menuBarPreferences || Theme.menuBarPreferences);root.preferences=data.preferences;root.searchPreferences=data.searchPreferences || ({disabledProviders:[]});root.notificationsPreferences=data.notificationsPreferences || ({preview:"when_unlocked"});root.windowsPreferences=data.windowsPreferences || Theme.windowsPreferences;root.desktopPreferences=data.desktopPreferences || ({showFiles:false,fileSort:"name",fileDescending:false});root.appearance=data.appearance;root.system=data.system;
+                root.menuBarPreferences=MenuVisibilityPolicy.normalize(data.menuBarPreferences || Theme.menuBarPreferences);if(!ConfigValues.equivalent(root.preferences,data.preferences))root.preferences=data.preferences;root.searchPreferences=data.searchPreferences || ({disabledProviders:[]});root.notificationsPreferences=data.notificationsPreferences || ({preview:"when_unlocked"});root.windowsPreferences=data.windowsPreferences || Theme.windowsPreferences;root.desktopPreferences=data.desktopPreferences || ({showFiles:false,fileSort:"name",fileDescending:false});root.appearance=data.appearance;root.system=data.system;
                 root.available=true;root.error="";root.warning=data.warning || "";
             }catch(e){root.error="Unable to read desktop preferences";}
         }}

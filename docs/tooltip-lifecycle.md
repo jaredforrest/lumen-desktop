@@ -20,3 +20,13 @@ both palettes and at default/enlarged text. An optional immutable committed
 battery baseline reproduces its missing default hover route and unbounded attached-tooltip policy.
 The production Dock motion scenario retains its pointer sweeps and drag checks.
 No hardware services, private accounts or real user files are needed.
+
+The longer hover exercise exposed a pre-existing Dock capture race: a periodic
+read was treated as a settings edit, and decoded equal preferences replaced the
+captured model's identity. Only applying/queued edits now block configuration
+interactions. Decoded no-op values preserve identity in both SettingsState and
+the watched Theme file; object-key ordering does not count as a change. Genuine
+changed values still replace snapshots and the existing strict capture guards
+remain in place. The actual settings protocol test covers a queued edit during
+a read, and native drags explicitly complete a real read while the pointer is
+held before proceeding to their captured target.

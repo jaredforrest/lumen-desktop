@@ -178,7 +178,7 @@ ShellRoot {
     property var dockApps: referenceDock.filter(item=>item.action!=="minimized-window" && item.entry).map(item=>item.entry)
     property var recentAppIds:[]
     readonly property var recentApps:recentAppIds.map(id=>entries.find(entry=>DockModel.sameEntry(id,entry.id))).filter(Boolean)
-    readonly property bool dockPreferencesBusy:settingsState.busy
+    readonly property bool dockPreferencesBusy:settingsState.applying
     readonly property var configuredDockPins:DockModel.configuredPins(ReferenceDock.items,entries,Theme.preferences.dockPins)
     property var referenceDock: DockModel.build(ReferenceDock.items, entries, runningExtras, Theme.preferences.dockPins, recentApps, Theme.preferences.dockRecentApps!==false,Theme.preferences.dockFolders,Theme.preferences.dockFiles,Theme.preferences.dockMinimizeDestination==="windows"?minimizedWindows.items:[])
     function canConfigureDockEntry(entry){return !DockModel.sameEntry(entry.id,"lumen-files");}

@@ -90,6 +90,7 @@ jobs:
             artifacts/files-share-menu
             artifacts/share-destinations
             artifacts/tooltip-lifecycle
+            artifacts/settings-poll
             artifacts/clipboard-native-*
             artifacts/search-native-*
             artifacts/search-history-*
