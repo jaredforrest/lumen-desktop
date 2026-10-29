@@ -80,6 +80,7 @@ let
         wantedBy = [ "multi-user.target" ]; after = [ "user@1000.service" ]; wants = [ "user@1000.service" ];
         serviceConfig = { Type = "oneshot"; ExecStart = "${driver}/bin/lumen-recovery-policy driver"; StandardOutput = "tty"; StandardError = "tty"; TTYPath = "/dev/ttyS0"; };
       };
+      systemd.services."serial-getty@ttyS0".enable = false;
     }) ];
   };
 in pkgs.runCommand "lumen-recovery-policy-vm" { nativeBuildInputs = [ pkgs.coreutils ]; } ''
