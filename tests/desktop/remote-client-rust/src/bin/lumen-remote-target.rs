@@ -126,13 +126,14 @@ unsafe extern "C" fn destroy(_: *mut c_void, _: *mut c_void) {
     }
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let local = std::env::args().any(|argument| argument == "--local");
     let shared = Arc::new(Mutex::new(State::default()));
     let _bus = zbus::blocking::connection::Builder::session()?
-        .name("org.lumen.RemoteTarget")?
+        .name(if local { "org.lumen.LocalTarget" } else { "org.lumen.RemoteTarget" })?
         .serve_at("/Target", Target(shared.clone()))?
         .build()?;
     unsafe {
-        g_set_prgname(c"org.lumen.RemoteTarget".as_ptr());
+        g_set_prgname(if local { c"org.lumen.LocalTarget".as_ptr() } else { c"org.lumen.RemoteTarget".as_ptr() });
         gtk_init(std::ptr::null_mut(), std::ptr::null_mut());
         let window = gtk_window_new(0);
         gtk_window_set_title(window, c"Disposable remote target".as_ptr());

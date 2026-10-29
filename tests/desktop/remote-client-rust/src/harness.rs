@@ -91,9 +91,10 @@ impl Options {
             "Unknown protocol",
         )?;
         ensure(
-            ["authenticated", "wrong-identity", "wrong-password"].contains(&o.scenario.as_str()),
+            ["authenticated", "wrong-identity", "wrong-password", "interactions"].contains(&o.scenario.as_str()),
             "Unknown scenario",
         )?;
+        ensure(o.scenario != "interactions" || o.protocol != "ssh", "Viewer interactions require VNC or RDP")?;
         ensure(!o.output.as_os_str().is_empty(), "Fresh output required")?;
         Ok(o)
     }
@@ -380,9 +381,12 @@ impl Harness {
             .collect())
     }
     pub fn target(&self) -> Result<Value> {
+        self.target_named("org.lumen.RemoteTarget")
+    }
+    pub fn target_named(&self, name: &str) -> Result<Value> {
         let proxy = Proxy::new(
             &self.bus,
-            "org.lumen.RemoteTarget",
+            name,
             "/Target",
             "org.lumen.RemoteTarget",
         )?;
@@ -838,7 +842,11 @@ pub fn inside(o: Options) -> Result<()> {
             (
                 "remmina",
                 "remmina.pref",
-                "[remmina_pref]\nfloating_toolbar_monitor=0\ndisable_tray_icon=true\n",
+                if f.o.scenario == "interactions" {
+                    "[remmina_pref]\nfloating_toolbar_monitor=0\ndisable_tray_icon=true\nhostkey=65481\nshortcutkey_fullscreen=102\n"
+                } else {
+                    "[remmina_pref]\nfloating_toolbar_monitor=0\ndisable_tray_icon=true\n"
+                },
             ),
             (
                 "gtk-3.0",

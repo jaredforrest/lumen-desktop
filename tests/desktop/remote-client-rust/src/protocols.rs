@@ -205,7 +205,7 @@ fn vnc(f: &mut Harness) -> Result<()> {
             &json!({"protocol":"VNC","scenario":f.o.scenario,"passed":true,"actualProvider":"Remmina","actualServer":"WayVNC","trustedCA":true,"wrongIPSAN":true,"credentialPrompt":false,"rejection":rejection}),
         );
     }
-    let password = if f.o.scenario == "authenticated" {
+    let password = if f.o.scenario != "wrong-password" {
         f.password.clone()
     } else {
         "Deliberately-wrong-fixture-password".into()
@@ -232,6 +232,7 @@ fn vnc(f: &mut Harness) -> Result<()> {
             .then_some(()))
     })?;
     let original = f.safe_target()?;
+    if f.o.scenario == "interactions" { return interactions(f); }
     pause(400);
     f.capture("authenticated.png")?;
     let pixels = f.pixels("authenticated.png")?;
@@ -359,7 +360,7 @@ fn rdp(f: &mut Harness) -> Result<()> {
         "Valid trusted peer requested certificate override",
     )?;
     f.focus(&row)?;
-    let password = if f.o.scenario == "authenticated" {
+    let password = if f.o.scenario != "wrong-password" {
         f.password.clone()
     } else {
         "Deliberately-wrong-fixture-password".into()
@@ -386,6 +387,7 @@ fn rdp(f: &mut Harness) -> Result<()> {
             .then_some(()))
     })?;
     let original = f.safe_target()?;
+    if f.o.scenario == "interactions" { return interactions(f); }
     pause(400);
     f.capture("authenticated.png")?;
     let pixels = f.pixels("authenticated.png")?;
@@ -432,6 +434,59 @@ fn rdp(f: &mut Harness) -> Result<()> {
         &f.out.join("acceptance.json"),
         &json!({"protocol":"RDP","scenario":f.o.scenario,"passed":true,"actualProvider":"Remmina","actualServer":"FreeRDP shadow","windowsOS":false,"authenticated":true,"security":"NLA","trustedCA":true,"certificateOverride":false,"nondefaultPort":3395,"palettePixels":pixels,"transportLossObserved":true,"reconnect":"manual same-profile client restart","serverCertificateUnchanged":true,"remoteTargetIdentityRetained":true}),
     )
+}
+fn focus_app(f: &Harness, app: &str) -> Result<Value> {
+    let node = nodes(&f.tree()?).into_iter().find(|node| node["app_id"] == app).ok_or("Interaction window absent")?;
+    let id = node["id"].as_u64().ok_or("Interaction window identity")?;
+    f.ipc(&[&format!("[con_id={id}] focus")])?;
+    Ok(node)
+}
+fn chord(f: &mut Harness, key: &str) -> Result<()> {
+    f.keyboard.as_mut().ok_or("Keyboard")?.key(&["-M", "ctrl", "-k", key, "-m", "ctrl"])
+}
+fn fullscreen_key(f: &mut Harness) -> Result<()> {
+    let keyboard = f.keyboard.as_mut().ok_or("Keyboard")?;
+    keyboard.send("k", 88, 1)?;
+    keyboard.key(&["-k", "f"])?;
+    keyboard.send("k", 88, 0)?;
+    Ok(())
+}
+fn interactions(f: &mut Harness) -> Result<()> {
+    let before = focus_app(f, "org.remmina.Remmina")?;
+    save(&f.out.join("interaction-semantics.json"), &json!(f.semantics()?))?;
+    f.keyboard.as_mut().ok_or("Keyboard")?.type_text("remote-input-receipt")?;
+    wait("actual protocol keyboard routing", || Ok((f.target()?["text"] == "remote-input-receipt").then_some(())))?;
+    f.keyboard.as_mut().ok_or("Keyboard")?.key(&["-k", "F11"])?;
+    wait("actual protocol function key", || Ok(f.target()?["keys"].as_array().is_some_and(|keys| keys.iter().any(|key| key["keyval"] == 65480)).then_some(())))?;
+    fullscreen_key(f)?;
+    wait("viewer fullscreen entry", || Ok(nodes(&f.tree()?).into_iter().find(|node| node["id"] == before["id"] && node["fullscreen_mode"] == 1)))?;
+    f.capture("viewer-fullscreen.png")?;
+    fullscreen_key(f)?;
+    wait("viewer fullscreen exit", || Ok(nodes(&f.tree()?).into_iter().find(|node| node["id"] == before["id"] && node["fullscreen_mode"] == 0)))?;
+    chord(f, "a")?;
+    chord(f, "c")?;
+    pause(1500);
+    let target = env::current_exe()?.parent().ok_or("Fixture bin")?.join("lumen-remote-target");
+    f.launch_s(target, &["--local"], "local-clipboard-target.log")?;
+    wait("independent local clipboard target", || Ok(f.target_named("org.lumen.LocalTarget").ok()))?;
+    focus_app(f, "org.lumen.LocalTarget")?;
+    chord(f, "v")?;
+    pause(1500);
+    let received_local = f.target_named("org.lumen.LocalTarget")?;
+    let remote_to_local = received_local["text"] == "remote-input-receipt";
+    chord(f, "a")?;
+    f.keyboard.as_mut().ok_or("Keyboard")?.type_text("local-clipboard-receipt")?;
+    chord(f, "a")?;
+    chord(f, "c")?;
+    pause(1500);
+    focus_app(f, "org.remmina.Remmina")?;
+    chord(f, "a")?;
+    chord(f, "v")?;
+    pause(1500);
+    let received_remote = f.safe_target()?;
+    let local_to_remote = received_remote["text"] == "local-clipboard-receipt";
+    save(&f.out.join("interaction-acceptance.json"), &json!({"protocol":f.o.protocol,"actualProvider":"Remmina","actualServer":if f.o.protocol=="vnc" {"WayVNC"} else {"FreeRDP shadow"},"windowsOS":false,"physicalInput":true,"functionKeyF11":true,"fullscreenEntryAndExit":true,"fullscreenShortcut":"private configured F12+f host chord","originalViewerID":before["id"],"remoteToLocalClipboard":remote_to_local,"localToRemoteClipboard":local_to_remote,"localReceipt":received_local,"remoteReceipt":received_remote,"hostClipboardAccess":false,"globalHostKeyClaim":false}))?;
+    ensure(remote_to_local && local_to_remote, "Actual clipboard direction failed; retained interaction diagnostics")
 }
 fn sshkey(f: &Harness, name: &str) -> Result<PathBuf> {
     let key = f.private.join(name);
