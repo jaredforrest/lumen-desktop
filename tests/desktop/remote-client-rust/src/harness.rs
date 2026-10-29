@@ -187,7 +187,7 @@ pub fn outer(o: &Options) -> Result<()> {
         command.arg("--software-graphics");
     }
     if o.protocol == "ssh" {
-        command.arg("--private-pty");
+        command.args(["--private-pty", "--ssh-fixture"]);
     }
     command.arg("--").arg(executable).args([
         "--inside",

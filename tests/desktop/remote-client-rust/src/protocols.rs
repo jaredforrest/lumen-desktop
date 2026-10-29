@@ -470,17 +470,6 @@ fn remote_command(f: &mut Harness, name: &str, marker: &str) -> Result<()> {
     )
 }
 fn ssh(f: &mut Harness) -> Result<()> {
-    let (uid, gid) = unsafe { (libc::getuid(), libc::getgid()) };
-    let shell = f.o.tool("posix-shell");
-    fs::write(
-        "/etc/passwd",
-        format!(
-            "fixture:x:{uid}:{gid}:Disposable fixture:/home/fixture:{}\nsshd:x:{uid}:{gid}:Private transport:/home/fixture:{}\n",
-            shell.display(),
-            shell.display()
-        ),
-    )?;
-    fs::write("/etc/shadow", "fixture:*:20000:0:99999:7:::\n")?;
     fs::create_dir("/run/sshd")?;
     fs::create_dir_all("/var/empty")?;
     let host = sshkey(f, "host")?;

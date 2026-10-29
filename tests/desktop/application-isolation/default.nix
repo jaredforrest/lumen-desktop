@@ -5,5 +5,6 @@ pkgs.rustPlatform.buildRustPackage {
   src = ./.;
   cargoLock.lockFile = ./Cargo.lock;
   nativeBuildInputs = [ pkgs.git ];
+  LUMEN_PRIVATE_SSH_SHELL = "${pkgs.bash}/bin/bash";
   LUMEN_BWRAP = "${pkgs.bubblewrap}/bin/bwrap";
 }

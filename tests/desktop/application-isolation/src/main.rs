@@ -47,11 +47,12 @@ fn next_path(args: &mut impl Iterator<Item = OsString>, message: &'static str) -
 
 fn arguments(
     mut args: impl Iterator<Item = OsString>,
-) -> Result<(PathBuf, PathBuf, bool, bool, Vec<OsString>)> {
+) -> Result<(PathBuf, PathBuf, bool, bool, bool, Vec<OsString>)> {
     let mut source = None;
     let mut output = None;
     let mut software = false;
     let mut pty = false;
+    let mut ssh = false;
     let mut command = Vec::new();
     while let Some(arg) = args.next() {
         match arg.to_str() {
@@ -59,6 +60,7 @@ fn arguments(
             Some("--output") => output = Some(next_path(&mut args, "Missing output path")?),
             Some("--software-graphics") => software = true,
             Some("--private-pty") => pty = true,
+            Some("--ssh-fixture") => ssh = true,
             Some("--") => {
                 command.extend(args);
                 break;
@@ -66,11 +68,15 @@ fn arguments(
             _ => return Err(malformed("Unknown isolation option")),
         }
     }
+    if ssh && !pty {
+        return Err(malformed("SSH fixture requires private PTY policy"));
+    }
     Ok((
         source.ok_or("Missing source")?,
         output.ok_or("Missing output")?,
         software,
         pty,
+        ssh,
         command,
     ))
 }
@@ -211,13 +217,20 @@ fn runtime_environment(
     values
 }
 
-fn write_etc(root: &Path) -> Result<()> {
+fn write_etc(root: &Path, ssh: bool) -> Result<()> {
     let uid = unsafe { libc::getuid() };
     let gid = unsafe { libc::getgid() };
     for (name, content) in [
         (
             "passwd",
-            format!("fixture:x:{uid}:{gid}:Disposable fixture:/home/fixture:/bin/sh\n"),
+            if ssh {
+                let shell = env!("LUMEN_PRIVATE_SSH_SHELL");
+                format!(
+                    "fixture:x:{uid}:{gid}:Disposable fixture:/home/fixture:{shell}\nsshd:x:{uid}:{gid}:Private transport:/home/fixture:{shell}\n"
+                )
+            } else {
+                format!("fixture:x:{uid}:{gid}:Disposable fixture:/home/fixture:/bin/sh\n")
+            },
         ),
         ("group", format!("fixture:x:{gid}:\n")),
         (
@@ -233,6 +246,9 @@ fn write_etc(root: &Path) -> Result<()> {
     ] {
         fs::write(root.join(name), content)?;
     }
+    if ssh {
+        fs::write(root.join("shadow"), "fixture:*:20000:0:99999:7:::\n")?;
+    }
     Ok(())
 }
 
@@ -242,6 +258,7 @@ fn run_with_environment(
     command: &[OsString],
     software: bool,
     pty: bool,
+    ssh: bool,
     environment: impl IntoIterator<Item = (OsString, OsString)>,
 ) -> Result<i32> {
     if command.is_empty() {
@@ -249,7 +266,10 @@ fn run_with_environment(
     }
     let (source, output) = validate(source, output)?;
     let etc = tempfile::tempdir()?;
-    write_etc(etc.path())?;
+    if ssh && !pty {
+        return Err(malformed("SSH fixture requires private PTY policy"));
+    }
+    write_etc(etc.path(), ssh)?;
     let device = if software {
         Some(software_device()?)
     } else {
@@ -349,6 +369,12 @@ fn run_with_environment(
             .arg(etc.path().join(name))
             .arg(format!("/etc/{name}"));
     }
+    if ssh {
+        bwrap
+            .arg("--ro-bind")
+            .arg(etc.path().join("shadow"))
+            .arg("/etc/shadow");
+    }
     for (key, value) in runtime_environment(environment) {
         bwrap.arg("--setenv").arg(key).arg(value);
     }
@@ -373,8 +399,9 @@ fn run(
     command: &[OsString],
     software: bool,
     pty: bool,
+    ssh: bool,
 ) -> Result<i32> {
-    run_with_environment(source, output, command, software, pty, env::vars_os())
+    run_with_environment(source, output, command, software, pty, ssh, env::vars_os())
 }
 
 fn inside_graphics(mut args: impl Iterator<Item = OsString>) -> Result<()> {
@@ -506,7 +533,7 @@ fn probe(source: &Path, output: &Path) -> Result<()> {
             "FIXTURE_SECRET".into(),
             "synthetic omitted value".into(),
         )));
-        let exit = run_with_environment(source, &target, &args, false, pty, supplied)?;
+        let exit = run_with_environment(source, &target, &args, false, pty, false, supplied)?;
         if exit != 0 {
             return Err(format!("Isolation probe exited {exit}").into());
         }
@@ -528,15 +555,18 @@ fn real_main() -> Result<i32> {
     let mut args = env::args_os().skip(1);
     match args.next().as_deref() {
         Some(value) if value == "run" => {
-            let (source, output, software, pty, command) = arguments(args)?;
-            run(&source, &output, &command, software, pty)
+            let (source, output, software, pty, ssh, command) = arguments(args)?;
+            run(&source, &output, &command, software, pty, ssh)
         }
         Some(value) if value == "inside-graphics" => {
             inside_graphics(args)?;
             Ok(0)
         }
         Some(value) if value == "probe" => {
-            let (source, output, _, _, command) = arguments(args)?;
+            let (source, output, _, _, ssh, command) = arguments(args)?;
+            if ssh {
+                return Err(malformed("SSH fixture is supported by run only"));
+            }
             if !command.is_empty() {
                 return Err(malformed("Probe takes no child command"));
             }
@@ -572,6 +602,43 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn ssh_fixture_is_explicit_and_requires_private_pty() {
+        let args = [
+            "--source",
+            "/source",
+            "--output",
+            "/output",
+            "--ssh-fixture",
+            "--",
+            "/command",
+        ];
+        assert!(arguments(args.into_iter().map(OsString::from)).is_err());
+        let ordinary = tempfile::tempdir().unwrap();
+        write_etc(ordinary.path(), false).unwrap();
+        let plain = fs::read_to_string(ordinary.path().join("passwd")).unwrap();
+        assert_eq!(plain.lines().count(), 1);
+        assert!(!ordinary.path().join("shadow").exists());
+        let ssh = tempfile::tempdir().unwrap();
+        write_etc(ssh.path(), true).unwrap();
+        let accounts = fs::read_to_string(ssh.path().join("passwd")).unwrap();
+        let uid = unsafe { libc::getuid() };
+        assert_eq!(accounts.lines().count(), 2);
+        assert!(
+            accounts
+                .lines()
+                .all(|line| line.split(':').nth(2) == Some(uid.to_string().as_str()))
+        );
+        assert!(
+            accounts
+                .lines()
+                .all(|line| line.ends_with(env!("LUMEN_PRIVATE_SSH_SHELL")))
+        );
+        assert_eq!(
+            fs::read_to_string(ssh.path().join("shadow")).unwrap(),
+            "fixture:*:20000:0:99999:7:::\n"
+        );
+    }
     #[test]
     fn output_must_be_empty_and_private() {
         let root = tempfile::tempdir().unwrap();
