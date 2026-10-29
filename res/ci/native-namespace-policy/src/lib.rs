@@ -380,7 +380,9 @@ fn run_profile(operation: &str, output: &str, executable: &str) -> Result<(), St
 fn for_each_profile(mut action: impl FnMut(&str, &str) -> Result<(), String>) -> Result<(), String> {
     let mut errors = Vec::new();
     for (name, executable) in [("bwrap", env!("LUMEN_BWRAP_BIN")), ("unshare", env!("LUMEN_UNSHARE_BIN"))] {
-        if let Err(error) = action(name, executable) { errors.push(format!("{name}: {error}")); }
+        let result = fs::canonicalize(executable).map_err(|error| error.to_string())
+            .and_then(|path| action(name, path.to_str().ok_or("Invalid immutable executable")?));
+        if let Err(error) = result { errors.push(format!("{name}: {error}")); }
     }
     if errors.is_empty() { Ok(()) } else { Err(errors.join("; ")) }
 }
