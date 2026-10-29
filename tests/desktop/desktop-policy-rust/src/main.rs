@@ -283,7 +283,7 @@ struct Context {
 }
 impl Drop for Context {
     fn drop(&mut self) {
-        self.children.clear();
+        while let Some(mut child)=self.children.pop(){let _=child.stop(libc::SIGTERM);}
     }
 }
 impl Context {
@@ -566,6 +566,9 @@ fn setup(opt: Options) -> Result<Context> {
         vars.insert("FONTCONFIG_FILE".into(), path(font_config));
     }
     if let Some(driver) = &opt.software_driver {
+        need(driver.starts_with("/nix/store") && driver.join("lib/dri").is_dir() && driver.join("share/glvnd/egl_vendor.d/50_mesa.json").is_file(),"--software-driver requires the immutable Mesa package directory")?;
+        // An explicit pinned software device must not also request a generic device override.
+        vars.remove("LIBGL_ALWAYS_SOFTWARE");
         vars.insert("LIBGL_DRIVERS_PATH".into(), path(&driver.join("lib/dri")));
         vars.insert("__EGL_VENDOR_LIBRARY_FILENAMES".into(), path(&driver.join("share/glvnd/egl_vendor.d/50_mesa.json")));
         vars.insert("MESA_LOADER_DRIVER_OVERRIDE".into(), "llvmpipe".into());
