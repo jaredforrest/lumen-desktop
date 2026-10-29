@@ -25,14 +25,23 @@ fn run(options: &Options) -> Result<()> {
     let target = assets.join("shell/SettingsState.qml");
     let mut seams = vec![];
     if let Some(baseline) = &options.window_source {
-        let before = fs::read_to_string(&target)?;
-        replace_once(
-            &target,
-            &before,
-            &fs::read_to_string(baseline)?,
-            "Immutable committed SettingsState baseline",
-            &mut seams,
-        )?;
+        let sources: Value = serde_json::from_slice(&fs::read(baseline)?)?;
+        for name in ["SettingsState.qml", "Theme.qml"] {
+            let original = immutable(Path::new(
+                sources[name]
+                    .as_str()
+                    .ok_or("Missing immutable baseline source")?,
+            ))?;
+            let path = assets.join("shell").join(name);
+            let before = fs::read_to_string(&path)?;
+            replace_once(
+                &path,
+                &before,
+                &fs::read_to_string(original)?,
+                "Immutable committed baseline component",
+                &mut seams,
+            )?;
+        }
     }
     let before = fs::read_to_string(&target)?;
     require(

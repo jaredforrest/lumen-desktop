@@ -8,7 +8,7 @@ fn main() {
     let mut file = fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(log)
+        .open(&log)
         .unwrap();
     writeln!(file, "{}", serde_json::to_string(&args).unwrap()).unwrap();
     let mut preferences: Value = fs::read(&store)
@@ -23,8 +23,18 @@ fn main() {
         }
         _ => std::process::exit(2),
     }
-    println!(
-        "{}",
-        json!({"preferences":preferences,"appearance":{},"system":{}})
-    );
+    let appearance = env::var_os("LUMEN_APPEARANCE_STATE").unwrap();
+    let mut published: Value = serde_json::from_slice(&fs::read(&appearance).unwrap()).unwrap();
+    published["preferences"] = preferences.clone();
+    fs::write(appearance, serde_json::to_vec(&published).unwrap()).unwrap();
+    let count = fs::read_to_string(&log).unwrap().lines().count();
+    let encoded = if count % 2 == 0 {
+        format!(
+            "{{\"dockSize\":{},\"dockPins\":{}}}",
+            preferences["dockSize"], preferences["dockPins"]
+        )
+    } else {
+        preferences.to_string()
+    };
+    println!("{{\"preferences\":{encoded},\"appearance\":{{}},\"system\":{{}}}}");
 }
