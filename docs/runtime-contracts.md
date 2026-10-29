@@ -324,7 +324,9 @@ with atomic replacement. `lumen-spaces watch` applies assignments to newly mappe
 windows, including delayed advertised application identity, without a focus
 command. Exact identities distinguish Wayland app IDs from X11 classes; these
 are advertised identifiers and do not authenticate an application. Assignments
-apply to subsequent windows, not all existing windows retroactively.
+to a specific desktop or display apply to subsequent windows, not all existing
+windows retroactively. The separate all-desktop policy also reconciles current
+eligible instances; see [application desktop assignment](application-desktops.md).
 
 Logical desktop UUIDs survive compositor restarts by name, and preserve identity
 through renames observed in the same compositor session. Renaming a desktop while
@@ -332,16 +334,21 @@ the policy service is stopped cannot be inferred. Recent-use order is a separate
 list; names, compositor IDs and window membership are never renumbered. The
 Overview switch controls automatic ordering and Control Left/Right follows that
 published order on the focused output, stopping at either end. Empty assigned
-desktops can be recreated on their recorded connected output. Explicit desktop
-deletion/forgetting is not currently exposed.
+desktops can be recreated on their recorded connected output. Overview supports
+explicit creation, ordering and removal with a captured surviving destination.
+Removal requires the running compositor's saved-placement rehome extension;
+see [logical desktop lifecycle](desktop-lifecycle.md) for cancellation and partial
+failure behavior.
 
 A display assignment chooses its currently visible desktop. Hardware identity
 uses make/model/serial when available and a clearly labelled connector fallback
 otherwise. Disconnected targets retain their assignment and leave new windows
 where the compositor placed them; reconnection resumes matching. Overview shows
-unavailable saved assignments. The all-desktop assignment is not implemented by
-the native compositor: the backend rejects it rather than substituting floating
-sticky windows. This remains an implementation gap.
+unavailable saved assignments. All desktops on current display uses native sticky
+membership for eligible independent floating windows, without forcing a layout
+change. Unsupported tiled, grouped, owned or saved-placement states remain
+pending with a reason. This scoped policy does not establish all-window parity;
+the eligibility and ownership contract is documented separately.
 
 ### Desktop arrangements
 
