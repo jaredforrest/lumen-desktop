@@ -565,10 +565,10 @@ fn inner(options: &Options) -> Result<()> {
         for (k, v) in [
             ("WLR_RENDERER_FORCE_SOFTWARE", "1"),
             ("WLR_RENDERER_ALLOW_SOFTWARE", "1"),
-            ("LIBGL_ALWAYS_SOFTWARE", "1"),
         ] {
             envs.insert(k.into(), v.into());
         }
+        envs.remove("LIBGL_ALWAYS_SOFTWARE");
     }
     let runtime = PathBuf::from(envs.get("XDG_RUNTIME_DIR").ok_or("Runtime missing")?);
     let home = PathBuf::from(envs.get("HOME").ok_or("Home missing")?);
