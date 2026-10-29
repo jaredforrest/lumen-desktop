@@ -1,115 +1,86 @@
-//! Exercise the built recovery script with private status and terminal endpoints.
-use std::env;
-use std::fs;
-use std::os::unix::fs::PermissionsExt;
-use std::path::Path;
-use std::process::{Command, Stdio};
-use std::time::{SystemTime, UNIX_EPOCH};
-
+//! Exercise compiled recovery logic with immutable private command endpoints.
+use std::{env, fs, io::Write, path::Path, process::{Command, Stdio}, time::{SystemTime, UNIX_EPOCH}};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 fn main() -> Result<()> {
-    match Path::new(&env::args().next().unwrap_or_default()).file_name().and_then(|name| name.to_str()) {
-        Some("systemctl") => return status_stub(),
-        Some("foot") => return terminal_stub(),
+    let executable = env::args().next().unwrap_or_default();
+    match Path::new(&executable).file_name().and_then(|name| name.to_str()) {
+        Some("systemctl") => return status_endpoint(),
+        Some("foot") => return terminal_endpoint(),
+        Some("recovery-shell") => {
+            if env::args().skip(1).collect::<Vec<_>>() != ["--noprofile", "--norc"] { return Err("Unexpected interactive shell arguments".into()); }
+            fs::write(env::var("RECOVERY_SHELL_RECEIPT")?, b"opened")?;
+            return Ok(());
+        }
         _ => {}
     }
-    let args: Vec<String> = env::args().skip(1).collect();
-    match args.as_slice() {
-        [command, script] if command == "--command" => run(Path::new(script)),
+    let arguments = env::args().skip(1).collect::<Vec<_>>();
+    match arguments.as_slice() {
+        [flag, command] if flag == "--command" => run(Path::new(command)),
         _ => Err("Expected --command /nix/store/.../bin/lumen-session-recovery".into()),
     }
 }
 
-fn status_stub() -> Result<()> {
-    let args: Vec<String> = env::args().skip(1).collect();
-    let expected = ["--user", "show", "--property=Result", "--value", "lumen-desktop-shell.service"];
-    if args != expected { return Err(format!("Unexpected status request: {args:?}").into()); }
-    fs::write(env::var("RECOVERY_REQUESTS")?, args.join("\n"))?;
+fn status_endpoint() -> Result<()> {
+    let arguments = env::args().skip(1).collect::<Vec<_>>();
+    if arguments != ["--user", "show", "--property=Result", "--value", "lumen-desktop-shell.service"] { return Err("Unexpected status request".into()); }
+    fs::write(env::var("RECOVERY_REQUESTS")?, arguments.join("\n"))?;
+    if env::var_os("RECOVERY_STATUS_ERROR").is_some() { return Err("Disposable status failure".into()); }
     println!("{}", env::var("RECOVERY_RESULT")?);
     Ok(())
 }
 
-fn terminal_stub() -> Result<()> {
-    let args: Vec<String> = env::args().skip(1).collect();
-    if args.len() < 4 || args[0] != "--app-id=lumen-session-recovery" || args[1] != "--title=Desktop Recovery" {
-        return Err(format!("Unexpected terminal request: {args:?}").into());
-    }
-    fs::write(env::var("RECOVERY_TERMINAL")?, args.join("\n"))?;
-    let output = Command::new(&args[2]).args(&args[3..]).stdin(Stdio::null()).output()?;
-    if !output.status.success() { return Err(format!("Recovery shell failed: {output:?}").into()); }
-    use std::io::Write;
+fn terminal_endpoint() -> Result<()> {
+    let arguments = env::args().skip(1).collect::<Vec<_>>();
+    if arguments.len() != 4 || arguments[0] != "--app-id=lumen-session-recovery" || arguments[1] != "--title=Desktop Recovery" || arguments[3] != "--terminal" { return Err("Unexpected terminal request".into()); }
+    fs::write(env::var("RECOVERY_TERMINAL")?, arguments.join("\n"))?;
+    if env::var_os("RECOVERY_TERMINAL_ERROR").is_some() { return Err("Disposable terminal failure".into()); }
+    let output = Command::new(&arguments[2]).args(&arguments[3..]).stdin(Stdio::null()).output()?;
+    if !output.status.success() { return Err("Recovery terminal child failed".into()); }
     std::io::stdout().write_all(&output.stdout)?;
     std::io::stderr().write_all(&output.stderr)?;
     Ok(())
 }
 
-fn replace_foot(script: &str, terminal: &Path) -> Result<String> {
-    let suffix = "/bin/foot";
-    let mut matches = script.match_indices(suffix).filter_map(|(end, _)| {
-        let prefix = &script[..end];
-        let start = prefix.rfind("/nix/store/")?;
-        prefix[start..].contains("-foot-").then_some((start, end + suffix.len()))
-    });
-    let (start, end) = matches.next().ok_or("No built foot invocation")?;
-    if matches.next().is_some() { return Err("Multiple built foot invocations".into()); }
-    Ok(format!("{}{}{}", &script[..start], terminal.display(), &script[end..]))
-}
-
 fn run(command: &Path) -> Result<()> {
-    let command = fs::canonicalize(command)?;
-    if !command.starts_with("/nix/store/") { return Err("Command must be a built store script".into()); }
-    let original = fs::read_to_string(&command)?;
-    let unique = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
-    let root = env::temp_dir().join(format!("lumen-recovery-{}-{unique}", std::process::id()));
+    let command = command.canonicalize()?;
+    if !command.starts_with("/nix/store/") { return Err("Immutable recovery binary required".into()); }
+    let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+    let root = env::temp_dir().join(format!("lumen-recovery-{}-{nonce}", std::process::id()));
     fs::create_dir(&root)?;
-    let result = run_cases(&original, &root);
-    fs::remove_dir_all(&root)?;
+    let result = cases(&command, &root);
+    fs::remove_dir_all(root)?;
     result
 }
 
-fn run_cases(original: &str, root: &Path) -> Result<()> {
-    let stubs = root.join("stubs");
-    fs::create_dir(&stubs)?;
-    let executable = env::current_exe()?;
-    for name in ["systemctl", "foot"] { fs::copy(&executable, stubs.join(name))?; }
-    let mut inserted = 0;
-    let modified = original.lines().map(|line| {
-        if line.starts_with("export PATH=\"") {
-            inserted += 1;
-            format!("{line}\nexport PATH=\"{}:$PATH\"", stubs.display())
-        } else { line.to_owned() }
-    }).collect::<Vec<_>>().join("\n");
-    if inserted != 1 { return Err(format!("Expected one package PATH declaration, found {inserted}").into()); }
-    let modified = replace_foot(&modified, &stubs.join("foot"))?;
-    let script = root.join("recovery");
-    fs::write(&script, format!("{modified}\n"))?;
-    fs::set_permissions(&script, fs::Permissions::from_mode(0o700))?;
-    let bash = original.lines().next().and_then(|line| line.strip_prefix("#!")).ok_or("Missing script shebang")?;
-    for outcome in ["success", "exit-code", "start-limit-hit"] {
-        let request = root.join(format!("{outcome}-request"));
-        let terminal = root.join(format!("{outcome}-terminal"));
-        let output = Command::new(bash).arg(&script).env("RECOVERY_RESULT", outcome)
-            .env("RECOVERY_REQUESTS", &request).env("RECOVERY_TERMINAL", &terminal)
-            .stdin(Stdio::null()).output()?;
-        if !output.status.success() || !output.stderr.is_empty() {
-            return Err(format!("Recovery script failed for {outcome}: {output:?}").into());
-        }
-        let status = fs::read_to_string(&request)?;
-        if status != "--user\nshow\n--property=Result\n--value\nlumen-desktop-shell.service" {
-            return Err(format!("Unexpected status request: {status}").into());
-        }
-        let opened = terminal.exists();
-        if opened != (outcome == "start-limit-hit") { return Err(format!("Wrong terminal status for {outcome}").into()); }
-        let body = String::from_utf8(output.stdout)?;
-        if opened {
-            let lines: Vec<&str> = body.lines().collect();
-            if lines.len() != 6 || lines[0] != "The desktop shell stopped after repeated failures."
-                || lines[5] != "  systemctl --user start lumen-desktop-shell.service" {
-                return Err(format!("Unexpected recovery body: {body:?}").into());
-            }
-        } else if !body.is_empty() { return Err(format!("Unexpected output for {outcome}: {body:?}").into()); }
+fn cases(command: &Path, root: &Path) -> Result<()> {
+    let bytes = fs::read(command)?;
+    for (index, (state, failure)) in [
+        ("success", ""), ("exit-code", ""), ("start-limit-hit", ""),
+        ("unknown", ""), ("", ""), ("start-limit-hit\nextra", ""),
+        ("start-limit-hit", "status"), ("start-limit-hit", "terminal"),
+    ].iter().enumerate() {
+        let requests = root.join(format!("{index}-status"));
+        let terminal = root.join(format!("{index}-terminal"));
+        let shell = root.join(format!("{index}-shell"));
+        let mut child = Command::new(command);
+        child.env("RECOVERY_RESULT", state).env("RECOVERY_REQUESTS", &requests)
+            .env("RECOVERY_TERMINAL", &terminal).env("RECOVERY_SHELL_RECEIPT", &shell)
+            .env_remove("RECOVERY_STATUS_ERROR").env_remove("RECOVERY_TERMINAL_ERROR");
+        if *failure == "status" { child.env("RECOVERY_STATUS_ERROR", "1"); }
+        if *failure == "terminal" { child.env("RECOVERY_TERMINAL_ERROR", "1"); }
+        let output = child.stdin(Stdio::null()).output()?;
+        if output.status.success() != failure.is_empty() { return Err(format!("Wrong recovery outcome for {index}: {output:?}").into()); }
+        if !requests.is_file() { return Err("Missing status receipt".into()); }
+        let opened = *state == "start-limit-hit" && *failure != "status";
+        if terminal.exists() != opened || shell.exists() != (opened && failure.is_empty()) { return Err(format!("Unexpected terminal/shell for case {index}").into()); }
+        if opened && failure.is_empty() {
+            let body = String::from_utf8(output.stdout)?;
+            let lines = body.lines().collect::<Vec<_>>();
+            if lines.len() != 6 || lines[0] != "The desktop shell stopped after repeated failures." || lines[5] != "  systemctl --user start lumen-desktop-shell.service" || !output.stderr.is_empty() { return Err(format!("Wrong terminal disclosure: {body:?}").into()); }
+        } else if !output.stdout.is_empty() { return Err("Unexpected recovery output".into()); }
     }
-    println!("Built recovery script: three status cases and terminal body passed");
+    if fs::read(command)? != bytes { return Err("Recovery executable changed".into()); }
+    println!("Compiled recovery: eight real status/terminal cases, body and shell handoff passed");
     Ok(())
 }

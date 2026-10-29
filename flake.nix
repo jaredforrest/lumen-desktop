@@ -406,7 +406,12 @@
            pkgs.writeText "lumen-placement-schema" "passed";
         session-recovery-fallback = let
           fixture = import ./tests/desktop/session-recovery-rust { inherit pkgs; };
-          recovery = import ./packages/session-recovery.nix { inherit pkgs; };
+          recovery = import ./packages/session-recovery.nix {
+            inherit pkgs;
+            systemctl = "${fixture}/bin/systemctl";
+            terminal = "${fixture}/bin/foot";
+            shell = "${fixture}/bin/recovery-shell";
+          };
         in pkgs.runCommand "lumen-session-recovery-fallback" { } ''
           ${fixture}/bin/lumen-session-recovery-fixture --command ${recovery}/bin/lumen-session-recovery
           touch $out
