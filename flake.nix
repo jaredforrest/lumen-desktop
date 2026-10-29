@@ -272,7 +272,6 @@
             "${session.personalServices}/bin/lumen-calendar"
             "${session.personalServices}/bin/lumen-google-calendar-sync"
             "${session.personalServices}/bin/lumen-icloud-setup"
-            "${privateBus}/bin/dbus-run-session"
             "${session.desktopDoctor}/bin/lumen-desktop-doctor"
             "${profileBridge}/bin/lumen-native-profile"
             "${auth.greeterClient}"
