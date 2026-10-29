@@ -56,7 +56,7 @@ PanelWindow {
     Timer {id:pending;interval:0;property var data:null;property int focusEpoch:0;onTriggered:if(focusEpoch===root.shell.focusEpoch){root.request=data;worker.running=true;}}
     property var request:null
     Process {id:worker;stdinEnabled:true
-        command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("window_group_selector.py").toString().replace(/^file:\/\//,"")]
+        command:["lumen-group-control","select"]
         onStarted:write(JSON.stringify(root.request)+"\n")
         stdout:StdioCollector {onStreamFinished:{try{const result=JSON.parse(text);root.error=result.error || "";if(result.ok)root.commits++;}catch(error){root.error="Unable to select the captured group";}}}
     }

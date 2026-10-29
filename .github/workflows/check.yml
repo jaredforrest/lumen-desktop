@@ -17,9 +17,8 @@ jobs:
           fetch-depth: 0
       - uses: cachix/install-nix-action@v31
       - run: nix flake check --print-build-logs --option abort-on-warn true
-      - run: python3 tests/ci/test_prepare_software_effects.py
-      - run: python3 tests/ci/test_run_native.py
-      - run: python3 tests/ci/test_native_namespace_policy.py
+      - run: nix develop --command nu tests/ci/test_prepare_software_effects.nu
+      - run: nix develop --command nu tests/ci/test_run_native.nu
   integration:
     runs-on: ubuntu-24.04
     steps:
@@ -28,234 +27,36 @@ jobs:
           fetch-depth: 0
       - uses: cachix/install-nix-action@v31
       - run: nix develop --command gitleaks git . --redact=100
-      - run: bash tests/ci/run-native.sh namespace_policy_prepare nix develop --command desktop-test-python tests/ci/native_namespace_policy.py prepare --output artifacts/native-namespace-policy
-      - run: |
-          mkdir -p artifacts
-          nix build .#shell --out-link artifacts/shell-package --option abort-on-warn true
-          nix build .#test-offscreen-font-config --out-link artifacts/offscreen-font-config --option abort-on-warn true
-          nix build .#test-owned-font-config --out-link artifacts/owned-typography-fonts --option abort-on-warn true
-          nix build .#test-session-bus --out-link artifacts/session-bus --option abort-on-warn true
-          bash tests/ci/run-native.sh owned_typography_qml nix develop --command desktop-test-python tests/desktop/owned_typography_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/owned-typography-fonts" --output artifacts/owned-typography-qml
-          bash tests/ci/run-native.sh owned_focus_qml nix develop --command desktop-test-python tests/desktop/owned_focus_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/owned-typography-fonts" --output artifacts/owned-focus-qml
-          bash tests/ci/run-native.sh owned_utility_typography_qml nix develop --command desktop-test-python tests/desktop/owned_utility_typography_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/owned-typography-fonts" --output artifacts/owned-utility-typography
-          bash tests/ci/run-native.sh shared_control_typography_qml nix develop --command desktop-test-python tests/desktop/shared_control_typography_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/owned-typography-fonts" --output artifacts/shared-control-typography
-          bash tests/ci/run-native.sh calendar_detail_typography_qml nix develop --command desktop-test-python tests/desktop/calendar_detail_typography_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/owned-typography-fonts" --output artifacts/calendar-detail-typography
-          bash tests/ci/run-native.sh launcher_typography_qml nix develop --command desktop-test-python tests/desktop/launcher_typography_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/owned-typography-fonts" --output artifacts/launcher-typography
-          bash tests/ci/run-native.sh menu_typography_qml nix develop --command desktop-test-python tests/desktop/menu_typography_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/owned-typography-fonts" --output artifacts/menu-typography
-          bash tests/ci/run-native.sh document_tabs_typography nix develop --command desktop-test-python tests/desktop/document_tabs_typography.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/owned-typography-fonts" --output artifacts/document-tabs-typography
-          bash tests/ci/run-native.sh overview_typography_qml nix develop --command desktop-test-python tests/desktop/overview_typography_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/owned-typography-fonts" --output artifacts/overview-typography
-          bash tests/ci/run-native.sh essential_dialog_typography_qml nix develop --command desktop-test-python tests/desktop/essential_dialog_typography_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/owned-typography-fonts" --dbus-daemon "$PWD/artifacts/session-bus/bin/dbus-daemon" --output artifacts/essential-dialog-typography
-          bash tests/ci/run-native.sh files_share_menu_qml nix develop --command desktop-test-python tests/desktop/files_share_menu_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --fontconfig "$PWD/artifacts/offscreen-font-config" --output artifacts/files-share-menu
-          bash tests/ci/run-native.sh screen_saver_queue_qml nix develop --command desktop-test-python tests/desktop/screen_saver_queue_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --fontconfig "$PWD/artifacts/offscreen-font-config" --output artifacts/screen-saver-queue
-          bash tests/ci/run-native.sh focus_expiry_presentation nix develop --command desktop-test-python tests/desktop/focus_expiry_presentation.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/owned-typography-fonts" --bus "$PWD/artifacts/session-bus/bin/dbus-daemon" --output artifacts/focus-expiry-presentation
-          bash tests/ci/run-native.sh dock_calendar_corpus nix develop --command desktop-test-python tests/desktop/dock_calendar_corpus.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/offscreen-font-config" --output artifacts/dock-calendar-corpus
-          bash tests/ci/run-native.sh semantic_state_paint nix develop --command desktop-test-python tests/desktop/semantic_state_paint.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/offscreen-font-config" --output artifacts/semantic-state-paint
-          bash tests/ci/run-native.sh switch_indicator_paint nix develop --command desktop-test-python tests/desktop/switch_indicator_paint.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/offscreen-font-config" --output artifacts/switch-indicator-paint
-          bash tests/ci/run-native.sh calendar_toggle_contrast nix develop --command desktop-test-python tests/desktop/calendar_toggle_contrast.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/offscreen-font-config" --output artifacts/calendar-toggle-contrast
-          LUMEN_TEST_SHELL_LAUNCHER="$PWD/artifacts/shell-package/bin/lumen-desktop-shell" bash tests/ci/run-native.sh run_backend_tests nix develop --command desktop-test-python tests/desktop/run_backend_tests.py --output artifacts/backends
-          bash tests/ci/run-native.sh biometric_provider nix develop --command desktop-test-python tests/desktop/biometric_provider.py --output artifacts/biometric-provider
-      - run: |
-          mkdir -p artifacts
-          nix build .#compositor --out-link artifacts/compositor-effects --option abort-on-warn true
-          bash tests/ci/prepare-software-effects.sh artifacts/software-effects-kernel
-          bash tests/ci/run-native.sh effects_software_render nix develop --command desktop-test-python tests/desktop/effects_software_render.py --sway "$PWD/artifacts/compositor-effects/bin/sway" --output artifacts/effects-software-render
-          nix build .#shell-runtime --out-link artifacts/shell-runtime --option abort-on-warn true
-          nix build .#test-typography --out-link artifacts/typography-probe --option abort-on-warn true
-          bash tests/ci/run-native.sh typography_corpus nix develop --command desktop-test-python tests/desktop/typography_corpus.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --probe "$PWD/artifacts/typography-probe/bin/typography-probe" --output artifacts/typography
-          nix build .#compositor-basic --out-link artifacts/compositor --option abort-on-warn true
-          bash tests/ci/run-native.sh live_appearance nix develop --command desktop-test-python tests/desktop/live_appearance.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/live-appearance
-          LUMEN_TEST_SHELL_LAUNCHER="$PWD/artifacts/shell-package/bin/lumen-desktop-shell" LUMEN_TEST_COMPOSITOR="$PWD/artifacts/compositor/bin/sway" bash tests/ci/run-native.sh window_layout_menu_qml nix develop --command desktop-test-python tests/desktop/window_layout_menu_qml.py
-          bash tests/ci/run-native.sh window_overview_lifecycle nix develop --command desktop-test-python tests/desktop/window_overview_lifecycle.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/overview-lifecycle
-          bash tests/ci/run-native.sh smoke_installed nix develop --command desktop-test-python tests/desktop/smoke_installed.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/shell
-      - run: |
-          nix build .#app-launcher --out-link artifacts/app-launcher --option abort-on-warn true
-          nix build .#desktop-action --out-link artifacts/desktop-action --option abort-on-warn true
-          nix build .#checks.x86_64-linux.shortcut-hints --out-link artifacts/shortcut-fixtures --option abort-on-warn true
-          nix build .#test-pointer --out-link artifacts/pointer --option abort-on-warn true
-          bash tests/ci/run-native.sh application_isolation_native nix develop --command desktop-test-python tests/desktop/application_isolation_native.py --output artifacts/application-isolation
-          nix build .#test-capture-pipewire --out-link artifacts/capture-pipewire --option abort-on-warn true
-          bash tests/ci/run-native.sh capture_protocol_input nix develop --command desktop-test-python tests/desktop/capture_protocol_input.py --pipewire "$PWD/artifacts/capture-pipewire/bin" --output artifacts/capture-protocol
-          bash tests/ci/run-native.sh live_transparency_native nix develop --command desktop-test-python tests/desktop/live_transparency_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/live-transparency-basic
-          bash tests/ci/run-native.sh live_transparency_native nix develop --command desktop-test-python tests/desktop/live_transparency_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --effects --output artifacts/live-transparency-effects
-          nix build .#reader-command --out-link artifacts/reader-command-package --option abort-on-warn true
-          nix build .#test-reader-command --out-link artifacts/reader-command-enabled-package --option abort-on-warn true
-          bash tests/ci/run-native.sh reader_commands_provider nix develop --command desktop-test-python tests/desktop/reader_commands_provider.py --disabled "$PWD/artifacts/reader-command-package" --enabled "$PWD/artifacts/reader-command-enabled-package" --output artifacts/reader-command-provider
-          nix build .#test-screen-reader --out-link artifacts/screen-reader-package --option abort-on-warn true
-          nix build .#test-screen-reader-atspi --out-link artifacts/screen-reader-atspi-package --option abort-on-warn true
-          nix build .#test-screen-reader-tools --out-link artifacts/screen-reader-tools-package --option abort-on-warn true
-          nix build .#test-speech-dispatcher --out-link artifacts/speech-dispatcher-package --option abort-on-warn true
-          nix build .#test-speech-source --out-link artifacts/speech-dispatcher-source --option abort-on-warn true
-          bash tests/ci/run-native.sh screen_reader_transport nix develop --command desktop-test-python tests/desktop/screen_reader_transport.py --dispatcher "$PWD/artifacts/speech-dispatcher-package" --dispatcher-source "$PWD/artifacts/speech-dispatcher-source" --output artifacts/screen-reader-transport
-          bash tests/ci/run-native.sh atspi_action_metadata nix develop --command desktop-test-python tests/desktop/atspi_action_metadata.py --atspi "$PWD/artifacts/screen-reader-atspi-package" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/screen-reader-action-metadata
-          nix build .#test-session-lock --out-link artifacts/session-lock --option abort-on-warn true
-          nix build .#test-constraint-client --out-link artifacts/constraint-client --option abort-on-warn true
-          nix build .#test-window-relationships --out-link artifacts/window-relationships-client --option abort-on-warn true
-          nix build .#test-physical-keyboard --out-link artifacts/physical-keyboard --option abort-on-warn true
-          nix build .#test-application-software-driver --out-link artifacts/owned-typography-driver --option abort-on-warn true
-          nix build .#test-xwayland-relationships --out-link artifacts/xwayland-relationships-client --option abort-on-warn true
-          nix build .#test-xwayland-server --out-link artifacts/xwayland-server --option abort-on-warn true
-          nix build .#test-audio-provider --out-link artifacts/menu-audio-provider --option abort-on-warn true
-          nix build .#session-recovery --out-link artifacts/session-recovery-package --option abort-on-warn true
-          bash tests/ci/run-native.sh session_recovery_fallback nix develop --command desktop-test-python tests/desktop/session_recovery_fallback.py --command "$PWD/artifacts/session-recovery-package/bin/lumen-session-recovery" --output artifacts/session-recovery-fallback
-          nix build .#test-clipboard-producer --out-link artifacts/clipboard-producer --option abort-on-warn true
-          nix build .#clipboard-observer --out-link artifacts/clipboard-observer --option abort-on-warn true
-          nix build .#test-display-spaces-legacy-compositor --out-link artifacts/legacy-display-compositor --option abort-on-warn true
-          bash tests/ci/run-native.sh display_spaces_recovery_native nix develop --command desktop-test-python tests/desktop/display_spaces_recovery_native.py --legacy --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/legacy-display-compositor/bin/sway" --font-config "$PWD/artifacts/offscreen-font-config" --output artifacts/display-spaces-recovery-legacy
-          nix build .#test-owned-geometry-legacy-compositor --out-link artifacts/owned-geometry-legacy-compositor --option abort-on-warn true
-          nix build .#test-owned-geometry-legacy-effects --out-link artifacts/owned-geometry-legacy-effects --option abort-on-warn true
-          for geometry_variant in compositor compositor-effects owned-geometry-legacy-compositor owned-geometry-legacy-effects; do
-            geometry_flags=()
-            if [[ "$geometry_variant" == *effects ]]; then geometry_flags+=(--effects); fi
-            if [[ "$geometry_variant" == owned-geometry-legacy-* ]]; then geometry_flags+=(--legacy); fi
-            bash tests/ci/run-native.sh owned_geometry_native nix develop --command desktop-test-python tests/desktop/owned_geometry_native.py "${geometry_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$geometry_variant/bin/sway" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --pointer "$PWD/artifacts/pointer/bin/wlrctl" --font-config "$PWD/artifacts/offscreen-font-config" --egl-vendor "$PWD/artifacts/owned-typography-driver/share/glvnd/egl_vendor.d/50_mesa.json" --output "artifacts/owned-geometry-$geometry_variant"
-          done
-          for compositor in compositor compositor-effects; do
-            compositor_flags=()
-            if [[ "$compositor" == compositor-effects ]]; then compositor_flags=(--effects); fi
-            bash tests/ci/run-native.sh owned_typography_input nix develop --command desktop-test-python tests/desktop/owned_typography_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --font-config "$PWD/artifacts/owned-typography-fonts" --software-driver "$PWD/artifacts/owned-typography-driver" --output "artifacts/owned-typography-native-$compositor"
-            bash tests/ci/run-native.sh reduced_motion_native nix develop --command desktop-test-python tests/desktop/reduced_motion_native.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --font-config "$PWD/artifacts/owned-typography-fonts" --software-driver "$PWD/artifacts/owned-typography-driver" --output "artifacts/reduced-motion-$compositor"
-            bash tests/ci/run-native.sh live_overlay_appearance_native nix develop --command desktop-test-python tests/desktop/live_overlay_appearance_native.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --font-config "$PWD/artifacts/owned-typography-fonts" --software-driver "$PWD/artifacts/owned-typography-driver" --output "artifacts/live-overlay-appearance-$compositor"
-            bash tests/ci/run-native.sh semantic_state_native nix develop --command desktop-test-python tests/desktop/semantic_state_native.py "${compositor_flags[@]}" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --font-config "$PWD/artifacts/owned-typography-fonts" --software-driver "$PWD/artifacts/owned-typography-driver" --output "artifacts/semantic-state-native-$compositor"
-            bash tests/ci/run-native.sh owned_utility_typography_native nix develop --command desktop-test-python tests/desktop/owned_utility_typography_native.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --font-config "$PWD/artifacts/owned-typography-fonts" --software-driver "$PWD/artifacts/owned-typography-driver" --output "artifacts/owned-utility-native-$compositor"
-            bash tests/ci/run-native.sh shared_control_typography_native nix develop --command desktop-test-python tests/desktop/shared_control_typography_native.py --protocol-trace "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --font-config "$PWD/artifacts/owned-typography-fonts" --software-driver "$PWD/artifacts/owned-typography-driver" --output "artifacts/shared-control-native-$compositor"
-            bash tests/ci/run-native.sh calendar_detail_typography_native nix develop --command desktop-test-python tests/desktop/calendar_detail_typography_native.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --font-config "$PWD/artifacts/owned-typography-fonts" --software-driver "$PWD/artifacts/owned-typography-driver" --output "artifacts/calendar-detail-native-$compositor"
-            bash tests/ci/run-native.sh launcher_typography_native nix develop --command desktop-test-python tests/desktop/launcher_typography_native.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --font-config "$PWD/artifacts/owned-typography-fonts" --software-driver "$PWD/artifacts/owned-typography-driver" --output "artifacts/launcher-typography-native-$compositor"
-            bash tests/ci/run-native.sh overview_typography_native nix develop --command desktop-test-python tests/desktop/overview_typography_native.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --font-config "$PWD/artifacts/owned-typography-fonts" --software-driver "$PWD/artifacts/owned-typography-driver" --output "artifacts/overview-typography-native-$compositor"
-            bash tests/ci/run-native.sh desktop_typography_native nix develop --command desktop-test-python tests/desktop/desktop_typography_native.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --font-config "$PWD/artifacts/owned-typography-fonts" --software-driver "$PWD/artifacts/owned-typography-driver" --output "artifacts/desktop-typography-native-$compositor"
-            bash tests/ci/run-native.sh launcher_typography_native nix develop --command desktop-test-python tests/desktop/launcher_typography_native.py --long-preview-only "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --font-config "$PWD/artifacts/owned-typography-fonts" --software-driver "$PWD/artifacts/owned-typography-driver" --output "artifacts/launcher-typography-native-long-$compositor"
-            for frame in native unified; do
-              bash tests/ci/run-native.sh owned_inactive_native nix develop --command desktop-test-python tests/desktop/owned_inactive_native.py "${compositor_flags[@]}" --frame "$frame" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --font-config "$PWD/artifacts/owned-typography-fonts" --software-driver "$PWD/artifacts/owned-typography-driver" --output "artifacts/owned-inactive-native-$frame-$compositor"
-            done
-            bash tests/ci/run-native.sh owned_preview_input nix develop --command desktop-test-python tests/desktop/owned_native_fixture.py owned_preview_input "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --output "artifacts/owned-preview-$compositor"
-            bash tests/ci/run-native.sh qt_pointer_retirement_input nix develop --command desktop-test-python tests/desktop/owned_native_fixture.py qt_pointer_retirement_input "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/qt-pointer-retirement-$compositor"
-            bash tests/ci/run-native.sh image_markup_input nix develop --command desktop-test-python tests/desktop/owned_native_fixture.py image_markup_input "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --output "artifacts/image-markup-$compositor"
-            bash tests/ci/run-native.sh preview_actions_input nix develop --command desktop-test-python tests/desktop/preview_actions_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/preview-actions-$compositor"
-            bash tests/ci/run-native.sh files_history_input nix develop --command desktop-test-python tests/desktop/files_history_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/files-history-$compositor"
-            bash tests/ci/run-native.sh batch_rename_input nix develop --command desktop-test-python tests/desktop/batch_rename_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/batch-rename-$compositor"
-            bash tests/ci/run-native.sh trash_confirmation_input nix develop --command desktop-test-python tests/desktop/trash_confirmation_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/trash-confirmation-$compositor"
-            bash tests/ci/run-native.sh files_selection_input nix develop --command desktop-test-python tests/desktop/files_selection_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --lock-client "$PWD/artifacts/session-lock/bin/lumen-test-session-lock" --output "artifacts/files-selection-$compositor"
-            bash tests/ci/run-native.sh installed_switcher_input nix develop --command desktop-test-python tests/desktop/installed_switcher_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --action "$PWD/artifacts/desktop-action/bin/lumen-desktop-action" --sway "$PWD/artifacts/$compositor/bin/sway" --output "artifacts/installed-switcher-$compositor"
-            bash tests/ci/run-native.sh clipboard_native_input nix develop --command desktop-test-python tests/desktop/clipboard_native_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --producer "$PWD/artifacts/clipboard-producer/bin/lumen-test-clipboard-producer" --observer "$PWD/artifacts/clipboard-observer/bin/lumen-clipboard-observer" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/clipboard-native-$compositor"
-            bash tests/ci/run-native.sh search_history_input nix develop --command desktop-test-python tests/desktop/search_history_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --app-launcher "$PWD/artifacts/app-launcher/bin/lumen-app-launcher" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/search-history-$compositor"
-            bash tests/ci/run-native.sh screen_reader_input nix develop --command desktop-test-python tests/desktop/screen_reader_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --orca "$PWD/artifacts/screen-reader-package" --at-spi-prefix "$PWD/artifacts/screen-reader-atspi-package" --dispatcher "$PWD/artifacts/speech-dispatcher-package" --dispatcher-source "$PWD/artifacts/speech-dispatcher-source" --schema-compiler "$PWD/artifacts/screen-reader-tools-package/bin/glib-compile-schemas" --isolation-tool "$PWD/artifacts/screen-reader-tools-package/bin/unshare" --reader-command "$PWD/artifacts/reader-command-enabled-package/bin/lumen-reader-command" --lock-client "$PWD/artifacts/session-lock/bin/lumen-test-session-lock" --output "artifacts/screen-reader-input-$compositor"
-            bash tests/ci/run-native.sh capture_native_input nix develop --command desktop-test-python tests/desktop/capture_native_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --pipewire "$PWD/artifacts/capture-pipewire/bin" --at-spi-prefix "$PWD/artifacts/screen-reader-atspi-package" --output "artifacts/capture-native-$compositor"
-            bash tests/ci/run-native.sh clock_native_input nix develop --command desktop-test-python tests/desktop/clock_native_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --at-spi-prefix "$PWD/artifacts/screen-reader-atspi-package" --output "artifacts/clock-native-$compositor"
-            bash tests/ci/run-native.sh display_spaces_recovery_native nix develop --command desktop-test-python tests/desktop/display_spaces_recovery_native.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --font-config "$PWD/artifacts/offscreen-font-config" --output "artifacts/display-spaces-recovery-$compositor"
-            bash tests/ci/run-native.sh display_spaces_native nix develop --command desktop-test-python tests/desktop/display_spaces_native.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --client "$PWD/artifacts/window-relationships-client/bin/lumen-test-window-relationships" --font-config "$PWD/artifacts/offscreen-font-config" --output "artifacts/display-spaces-$compositor"
-            bash tests/ci/run-native.sh settings_search_input nix develop --command desktop-test-python tests/desktop/settings_search_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/settings-search-$compositor"
-            bash tests/ci/run-native.sh search_native_input nix develop --command desktop-test-python tests/desktop/search_native_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/search-native-$compositor"
-            bash tests/ci/run-native.sh group_membership_input nix develop --command desktop-test-python tests/desktop/group_membership_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --client "$PWD/artifacts/window-relationships-client/bin/lumen-test-window-relationships" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --locker "$PWD/artifacts/session-lock/bin/lumen-test-session-lock" --output "artifacts/group-membership-$compositor"
-            bash tests/ci/run-native.sh group_selector_input nix develop --command desktop-test-python tests/desktop/group_selector_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --client "$PWD/artifacts/window-relationships-client/bin/lumen-test-window-relationships" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --locker "$PWD/artifacts/session-lock/bin/lumen-test-session-lock" --output "artifacts/group-selector-$compositor"
-            bash tests/ci/run-native.sh window_groups_native nix develop --command desktop-test-python tests/desktop/window_groups_native.py "${compositor_flags[@]}" --sway "$PWD/artifacts/$compositor/bin/sway" --client "$PWD/artifacts/window-relationships-client/bin/lumen-test-window-relationships" --keyboard wtype --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --locker "$PWD/artifacts/session-lock/bin/lumen-test-session-lock" --output "artifacts/window-groups-$compositor"
-            bash tests/ci/run-native.sh widget_catalogue_input nix develop --command desktop-test-python tests/desktop/widget_catalogue_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/widget-catalogue-$compositor"
-            bash tests/ci/run-native.sh dialog_manager_lifetime nix develop --command desktop-test-python tests/desktop/dialog_manager_lifetime.py "${compositor_flags[@]}" --sway "$PWD/artifacts/$compositor/bin/sway" --client "$PWD/artifacts/window-relationships-client/bin/lumen-test-window-relationships" --output "artifacts/dialog-manager-lifetime-$compositor"
-            bash tests/ci/run-native.sh desktop_lifecycle_input nix develop --command desktop-test-python tests/desktop/desktop_lifecycle_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/desktop-lifecycle-$compositor"
-            bash tests/ci/run-native.sh window_relationships_input nix develop --command desktop-test-python tests/desktop/window_relationships_input.py "${compositor_flags[@]}" --sway "$PWD/artifacts/$compositor/bin/sway" --client "$PWD/artifacts/window-relationships-client/bin/lumen-test-window-relationships" --keyboard wtype --output "artifacts/window-relationships-$compositor"
-            bash tests/ci/run-native.sh xwayland_relationships_input nix develop --command desktop-test-python tests/desktop/xwayland_relationships_input.py "${compositor_flags[@]}" --sway "$PWD/artifacts/$compositor/bin/sway" --client "$PWD/artifacts/xwayland-relationships-client/bin/lumen-test-xwayland-relationships" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --xwayland "$PWD/artifacts/xwayland-server/bin/Xwayland" --output "artifacts/xwayland-relationships-$compositor"
-            bash tests/ci/run-native.sh xwayland_relationships_input nix develop --command desktop-test-python tests/desktop/xwayland_relationships_input.py "${compositor_flags[@]}" --sway "$PWD/artifacts/$compositor/bin/sway" --client "$PWD/artifacts/xwayland-relationships-client/bin/lumen-test-xwayland-relationships" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --xwayland "$PWD/artifacts/xwayland-server/bin/Xwayland" --without-xres --output "artifacts/xwayland-no-xres-$compositor"
-            bash tests/ci/run-native.sh owned_window_context_input nix develop --command desktop-test-python tests/desktop/owned_window_context_input.py "${compositor_flags[@]}" --full-shell --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --output "artifacts/owned-window-context-$compositor"
-            bash tests/ci/run-native.sh menubar_input nix develop --command desktop-test-python tests/desktop/menubar_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/menubar-$compositor"
-            bash tests/ci/run-native.sh session_shell_recovery_native nix develop --command desktop-test-python tests/desktop/session_shell_recovery_native.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --audio "$PWD/artifacts/menu-audio-provider" --font-config "$PWD/artifacts/owned-typography-fonts" --software-driver "$PWD/artifacts/owned-typography-driver" --output "artifacts/session-shell-recovery-$compositor"
-            bash tests/ci/run-native.sh menu_scaled_native nix develop --command desktop-test-python tests/desktop/menu_scaled_native.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --xwayland "$PWD/artifacts/xwayland-server/bin/Xwayland" --audio "$PWD/artifacts/menu-audio-provider" --font-config "$PWD/artifacts/owned-typography-fonts" --software-driver "$PWD/artifacts/owned-typography-driver" --output "artifacts/menu-scaled-$compositor"
-            bash tests/ci/run-native.sh menu_keyboard_input nix develop --command desktop-test-python tests/desktop/menu_keyboard_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output "artifacts/menu-keyboard-$compositor"
-            bash tests/ci/run-native.sh shortcut_hints_input nix develop --command desktop-test-python tests/desktop/shortcut_hints_input.py "${compositor_flags[@]}" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/$compositor/bin/sway" --fixtures "$PWD/artifacts/shortcut-fixtures" --output "artifacts/shortcut-hints-$compositor"
-          done
-          bash tests/ci/run-native.sh widget_catalogue_input nix develop --command desktop-test-python tests/desktop/widget_catalogue_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --theme light --output artifacts/widget-catalogue-light
-          bash tests/ci/run-native.sh network_connectivity_provider nix develop --command desktop-test-python tests/desktop/network_connectivity_provider.py --output artifacts/network-connectivity-provider
-          bash tests/ci/run-native.sh battery_provider nix develop --command desktop-test-python tests/desktop/battery_provider.py --output artifacts/power-provider
-          bash tests/ci/run-native.sh status_clock_input nix develop --command desktop-test-python tests/desktop/status_clock_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/status-clock
-          bash tests/ci/run-native.sh input_settings_native nix develop --command desktop-test-python tests/desktop/input_settings_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/input-settings
-          bash tests/ci/run-native.sh wallpaper_settings_native nix develop --command desktop-test-python tests/desktop/wallpaper_settings_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/wallpaper-settings
-          bash tests/ci/run-native.sh screen_saver_native nix develop --command desktop-test-python tests/desktop/screen_saver_boundary.py --fontconfig "$PWD/artifacts/owned-typography-fonts" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --lock "$PWD/artifacts/session-lock/bin/lumen-test-session-lock" --output artifacts/screen-saver
-          bash tests/ci/run-native.sh screen_saver_native nix develop --command desktop-test-python tests/desktop/screen_saver_boundary.py --fontconfig "$PWD/artifacts/owned-typography-fonts" --effects --egl "$PWD/artifacts/owned-typography-driver/share/glvnd/egl_vendor.d/50_mesa.json" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --lock "$PWD/artifacts/session-lock/bin/lumen-test-session-lock" --output artifacts/screen-saver-effects
-          bash tests/ci/run-native.sh calendar_widget_native nix develop --command desktop-test-python tests/desktop/calendar_widget_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/calendar-widget
-          bash tests/ci/run-native.sh calendar_widget_native nix develop --command desktop-test-python tests/desktop/calendar_widget_native.py --effects --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/calendar-widget-effects
-          bash tests/ci/run-native.sh widget_visibility_native nix develop --command desktop-test-python tests/desktop/widget_visibility_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/widget-visibility
-          bash tests/ci/run-native.sh widget_visibility_native nix develop --command desktop-test-python tests/desktop/widget_visibility_native.py --effects --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/widget-visibility-effects
-          bash tests/ci/run-native.sh fullscreen_menu_native nix develop --command desktop-test-python tests/desktop/fullscreen_menu_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/fullscreen-menu
-          bash tests/ci/run-native.sh fullscreen_menu_native nix develop --command desktop-test-python tests/desktop/fullscreen_menu_native.py --effects --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/fullscreen-menu-effects
-          bash tests/ci/run-native.sh media_control_native nix develop --command desktop-test-python tests/desktop/media_control_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/media-controls
-          bash tests/ci/run-native.sh media_control_native nix develop --command desktop-test-python tests/desktop/media_control_native.py --effects --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/media-controls-effects
-          PYTHONWARNINGS=error bash tests/ci/run-native.sh dock_drag_out_native nix develop --command desktop-test-python tests/desktop/dock_drag_out_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/dock-drag-out
-          PYTHONWARNINGS=error bash tests/ci/run-native.sh dock_drag_out_native nix develop --command desktop-test-python tests/desktop/dock_drag_out_native.py --effects --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/dock-drag-out-effects
-          bash tests/ci/run-native.sh dock_offer_source_qml nix develop --command desktop-test-python tests/desktop/dock_offer_source_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/offscreen-font-config" --output artifacts/dock-offer-source
-          bash tests/ci/run-native.sh dock_offer_native nix develop --command desktop-test-python tests/desktop/dock_offer_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer "$PWD/artifacts/pointer/bin/wlrctl" --font-config "$PWD/artifacts/offscreen-font-config" --output artifacts/dock-offer-basic
-          bash tests/ci/run-native.sh dock_offer_native nix develop --command desktop-test-python tests/desktop/dock_offer_native.py --busy-case --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer "$PWD/artifacts/pointer/bin/wlrctl" --font-config "$PWD/artifacts/offscreen-font-config" --output artifacts/dock-offer-busy-basic
-          bash tests/ci/run-native.sh dock_offer_native nix develop --command desktop-test-python tests/desktop/dock_offer_native.py --effects --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --pointer "$PWD/artifacts/pointer/bin/wlrctl" --font-config "$PWD/artifacts/offscreen-font-config" --output artifacts/dock-offer-effects
-          bash tests/ci/run-native.sh dock_offer_native nix develop --command desktop-test-python tests/desktop/dock_offer_native.py --busy-case --effects --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --pointer "$PWD/artifacts/pointer/bin/wlrctl" --font-config "$PWD/artifacts/offscreen-font-config" --output artifacts/dock-offer-busy-effects
-          bash tests/ci/run-native.sh dock_motion_native nix develop --command desktop-test-python tests/desktop/dock_motion_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer "$PWD/artifacts/pointer/bin/wlrctl" --font-config "$PWD/artifacts/offscreen-font-config" --output artifacts/dock-motion-basic
-          bash tests/ci/run-native.sh dock_motion_native nix develop --command desktop-test-python tests/desktop/dock_motion_native.py --effects --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --pointer "$PWD/artifacts/pointer/bin/wlrctl" --font-config "$PWD/artifacts/offscreen-font-config" --output artifacts/dock-motion-effects
-          bash tests/ci/run-native.sh folder_stack_native nix develop --command desktop-test-python tests/desktop/folder_stack_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer "$PWD/artifacts/pointer/bin/wlrctl" --font-config "$PWD/artifacts/offscreen-font-config" --output artifacts/folder-stack-basic
-          bash tests/ci/run-native.sh folder_stack_native nix develop --command desktop-test-python tests/desktop/folder_stack_native.py --effects --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --pointer "$PWD/artifacts/pointer/bin/wlrctl" --font-config "$PWD/artifacts/offscreen-font-config" --output artifacts/folder-stack-effects
-          bash tests/ci/run-native.sh system_popover_reflow_native nix develop --command desktop-test-python tests/desktop/system_popover_reflow_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/system-popover-reflow
-          bash tests/ci/run-native.sh system_popover_reflow_native nix develop --command desktop-test-python tests/desktop/system_popover_reflow_native.py --effects --theme light --native-frame on --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --output artifacts/system-popover-reflow-effects
-          bash tests/ci/run-native.sh text_sizing_input nix develop --command desktop-test-python tests/desktop/text_sizing_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/text-sizing
-          bash tests/ci/run-native.sh portal_permissions_input nix develop --command desktop-test-python tests/desktop/portal_permissions_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/portal-permissions
-          nix build .#test-audio-provider -o artifacts/private-audio-provider
-          bash tests/ci/run-native.sh files_layout_input nix develop --command desktop-test-python tests/desktop/files_layout_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --font-config "$PWD/artifacts/owned-typography-fonts" --software-driver "$PWD/artifacts/owned-typography-driver" --audio-provider "$PWD/artifacts/private-audio-provider" --text-scale 1.5 --output artifacts/files-layout
-          bash tests/ci/run-native.sh files_layout_input nix develop --command desktop-test-python tests/desktop/files_layout_input.py --effects --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --font-config "$PWD/artifacts/owned-typography-fonts" --software-driver "$PWD/artifacts/owned-typography-driver" --audio-provider "$PWD/artifacts/private-audio-provider" --text-scale 1.5 --output artifacts/files-layout-effects
-          bash tests/ci/run-native.sh files_layout_input nix develop --command desktop-test-python tests/desktop/files_layout_input.py --split-panes --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --font-config "$PWD/artifacts/owned-typography-fonts" --software-driver "$PWD/artifacts/owned-typography-driver" --audio-provider "$PWD/artifacts/private-audio-provider" --text-scale 1.5 --output artifacts/files-split-panes
-          bash tests/ci/run-native.sh files_layout_input nix develop --command desktop-test-python tests/desktop/files_layout_input.py --split-panes --effects --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --font-config "$PWD/artifacts/owned-typography-fonts" --software-driver "$PWD/artifacts/owned-typography-driver" --audio-provider "$PWD/artifacts/private-audio-provider" --text-scale 1.5 --output artifacts/files-split-panes-effects
-          bash tests/ci/run-native.sh edge_layouts_input nix develop --command desktop-test-python tests/desktop/edge_layouts_input.py --sway "$PWD/artifacts/compositor/bin/sway" --pointer "$PWD/artifacts/pointer/bin/wlrctl" --keyboard wtype --lock "$PWD/artifacts/session-lock/bin/lumen-test-session-lock" --quickshell "$PWD/artifacts/shell-runtime/bin/quickshell" --constraint-client "$PWD/artifacts/constraint-client/bin/lumen-test-constraint-client" --font-config "$PWD/artifacts/offscreen-font-config" --output artifacts/edge-layouts
-          bash tests/ci/run-native.sh edge_layouts_input nix develop --command desktop-test-python tests/desktop/edge_layouts_input.py --effects --software-driver "$PWD/artifacts/owned-typography-driver" --sway "$PWD/artifacts/compositor-effects/bin/sway" --pointer "$PWD/artifacts/pointer/bin/wlrctl" --keyboard wtype --lock "$PWD/artifacts/session-lock/bin/lumen-test-session-lock" --quickshell "$PWD/artifacts/shell-runtime/bin/quickshell" --constraint-client "$PWD/artifacts/constraint-client/bin/lumen-test-constraint-client" --font-config "$PWD/artifacts/offscreen-font-config" --output artifacts/edge-layouts-effects
-          bash tests/ci/run-native.sh paired_layouts_input nix develop --command desktop-test-python tests/desktop/paired_layouts_input.py --sway "$PWD/artifacts/compositor/bin/sway" --pointer "$PWD/artifacts/pointer/bin/wlrctl" --keyboard wtype --constraint-client "$PWD/artifacts/constraint-client/bin/lumen-test-constraint-client" --output artifacts/paired-layouts
-          bash tests/ci/run-native.sh paired_layouts_input nix develop --command desktop-test-python tests/desktop/paired_layouts_input.py --sway "$PWD/artifacts/compositor-effects/bin/sway" --pointer "$PWD/artifacts/pointer/bin/wlrctl" --keyboard wtype --constraint-client "$PWD/artifacts/constraint-client/bin/lumen-test-constraint-client" --effects --output artifacts/paired-layouts-effects
-          bash tests/ci/run-native.sh paired_picker_qml nix develop --command desktop-test-python tests/desktop/paired_picker_qml.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/paired-picker
-          bash tests/ci/run-native.sh notification_recovery_input nix develop --command desktop-test-python tests/desktop/notification_recovery_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/notification-recovery-basic
-          bash tests/ci/run-native.sh notification_recovery_input nix develop --command desktop-test-python tests/desktop/notification_recovery_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --effects --output artifacts/notification-recovery-effects
-          bash tests/ci/run-native.sh notification_lock_input nix develop --command desktop-test-python tests/desktop/notification_lock_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --lock-client "$PWD/artifacts/session-lock/bin/lumen-test-session-lock" --output artifacts/notification-lock-basic
-          bash tests/ci/run-native.sh notification_lock_input nix develop --command desktop-test-python tests/desktop/notification_lock_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --lock-client "$PWD/artifacts/session-lock/bin/lumen-test-session-lock" --effects --output artifacts/notification-lock-effects
-          PATH="$PWD/artifacts/shell-package/bin:$PATH" bash tests/ci/run-native.sh desktop_native_drag_render nix develop --command desktop-test-python tests/desktop/desktop_native_drag_render.py --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/file-drag
-          for mode in light dark; do
-            for frame in off on; do
-              bash tests/ci/run-native.sh surface_matrix nix develop --command desktop-test-python tests/desktop/surface_matrix.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --theme "$mode" --native-frame "$frame" --output "artifacts/surfaces-$mode-$frame"
-            done
-          done
-          bash tests/ci/run-native.sh native_hot_corners nix develop --command desktop-test-python tests/desktop/native_hot_corners.py --sway "$PWD/artifacts/compositor/bin/sway" --pointer "$PWD/artifacts/pointer/bin/wlrctl" --keyboard wtype --lock "$PWD/artifacts/session-lock/bin/lumen-test-session-lock" --output artifacts/hot-corners
-          bash tests/ci/run-native.sh window_frames_render nix develop --command desktop-test-python tests/desktop/window_frames_render.py --core-only --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/native-layouts
-          bash tests/ci/run-native.sh window_controls_native nix develop --command desktop-test-python tests/desktop/window_controls_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer "$PWD/artifacts/pointer/bin/wlrctl" --constraint-client "$PWD/artifacts/constraint-client/bin/lumen-test-constraint-client" --font-config "$PWD/artifacts/offscreen-font-config" --output artifacts/window-controls-basic
-          bash tests/ci/run-native.sh window_controls_native nix develop --command desktop-test-python tests/desktop/window_controls_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --pointer "$PWD/artifacts/pointer/bin/wlrctl" --constraint-client "$PWD/artifacts/constraint-client/bin/lumen-test-constraint-client" --font-config "$PWD/artifacts/offscreen-font-config" --effects --output artifacts/window-controls-effects
-          bash tests/ci/run-native.sh resize_hit_targets_native nix develop --command desktop-test-python tests/desktop/resize_hit_targets_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer "$PWD/artifacts/pointer/bin/wlrctl" --font-config "$PWD/artifacts/offscreen-font-config" --output artifacts/resize-hit-targets-basic
-          bash tests/ci/run-native.sh resize_hit_targets_native nix develop --command desktop-test-python tests/desktop/resize_hit_targets_native.py --effects --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --pointer "$PWD/artifacts/pointer/bin/wlrctl" --font-config "$PWD/artifacts/offscreen-font-config" --egl-vendor "$PWD/artifacts/owned-typography-driver/share/glvnd/egl_vendor.d/50_mesa.json" --output artifacts/resize-hit-targets-effects
-          bash tests/ci/run-native.sh resize_hit_targets_native nix develop --command desktop-test-python tests/desktop/resize_hit_targets_native.py --rapid --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer "$PWD/artifacts/pointer/bin/wlrctl" --font-config "$PWD/artifacts/offscreen-font-config" --output artifacts/resize-rapid-basic
-          bash tests/ci/run-native.sh resize_hit_targets_native nix develop --command desktop-test-python tests/desktop/resize_hit_targets_native.py --rapid --effects --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --pointer "$PWD/artifacts/pointer/bin/wlrctl" --font-config "$PWD/artifacts/offscreen-font-config" --egl-vendor "$PWD/artifacts/owned-typography-driver/share/glvnd/egl_vendor.d/50_mesa.json" --output artifacts/resize-rapid-effects
-          bash tests/ci/run-native.sh minimized_dock_native nix develop --command desktop-test-python tests/desktop/minimized_dock_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer "$PWD/artifacts/pointer/bin/wlrctl" --font-config "$PWD/artifacts/offscreen-font-config" --output artifacts/minimized-dock-basic
-          bash tests/ci/run-native.sh minimized_dock_native nix develop --command desktop-test-python tests/desktop/minimized_dock_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --pointer "$PWD/artifacts/pointer/bin/wlrctl" --font-config "$PWD/artifacts/offscreen-font-config" --effects --output artifacts/minimized-dock-effects
-          bash tests/ci/run-native.sh icon_render nix develop --command desktop-test-python tests/desktop/icon_render.py --assets "$PWD/res/lumen-desktop/shell" --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/icon-grid
-          bash tests/ci/run-native.sh mixed_output_scale_native nix develop --command desktop-test-python tests/desktop/mixed_output_scale_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/mixed-output-scale-basic
-          bash tests/ci/run-native.sh mixed_output_scale_native nix develop --command desktop-test-python tests/desktop/mixed_output_scale_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --effects --output artifacts/mixed-output-scale-effects
-          for variant in basic effects; do
-            compositor="$PWD/artifacts/compositor/bin/sway"
-            extra=()
-            if [[ "$variant" == effects ]]; then compositor="$PWD/artifacts/compositor-effects/bin/sway"; extra=(--effects); fi
-            bash tests/ci/run-native.sh preferred_zoom_native nix develop --command desktop-test-python tests/desktop/preferred_zoom_native.py --rapid --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$compositor" --pointer "$PWD/artifacts/pointer/bin/wlrctl" "${extra[@]}" --output "artifacts/preferred-zoom-$variant"
-            for backend in software opengl; do
-              for frame in on off; do
-                bash tests/ci/run-native.sh content_clipping_native nix develop --command desktop-test-python tests/desktop/content_clipping_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$compositor" --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" "${extra[@]}" --native-frame "$frame" --content-backend "$backend" --output "artifacts/content-clipping-$variant-$backend-$frame"
-              done
-            done
-            for frame in on off; do
-              bash tests/ci/run-native.sh consumer_fit_native nix develop --command desktop-test-python tests/desktop/consumer_fit_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$compositor" "${extra[@]}" --native-frame "$frame" --output "artifacts/consumer-fit-$variant-$frame"
-            done
-          done
-          PATH="$PWD/artifacts/shell-package/bin:$PATH" bash tests/ci/run-native.sh interaction_regression nix develop --command desktop-test-python tests/desktop/interaction_regression.py --pointer-tool "$PWD/artifacts/pointer/bin/wlrctl" --output artifacts/interactions
-          bash tests/ci/run-native.sh accessibility_protocol nix develop --command desktop-test-python tests/desktop/accessibility_protocol.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/accessibility --full-shell
-          PYTHONWARNINGS=error bash tests/ci/run-native.sh force_quit_surface nix develop --command desktop-test-python tests/desktop/force_quit_surface.py --sway "$PWD/artifacts/compositor/bin/sway" --wtype wtype --output artifacts/force-quit
-          bash tests/ci/run-native.sh force_quit_native nix develop --command desktop-test-python tests/desktop/force_quit_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --font-config "$PWD/artifacts/offscreen-font-config" --output artifacts/force-quit-native-basic
-          bash tests/ci/run-native.sh essential_dialog_typography_native nix develop --command desktop-test-python tests/desktop/essential_dialog_typography_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/offscreen-font-config" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/essential-dialog-native-basic
-          bash tests/ci/run-native.sh essential_dialog_typography_native nix develop --command desktop-test-python tests/desktop/essential_dialog_typography_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --font-config "$PWD/artifacts/offscreen-font-config" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --effects --egl-vendor "$PWD/artifacts/owned-typography-driver/share/glvnd/egl_vendor.d/50_mesa.json" --sway "$PWD/artifacts/compositor-effects/bin/sway" --output artifacts/essential-dialog-native-effects
-          bash tests/ci/run-native.sh force_quit_native nix develop --command desktop-test-python tests/desktop/force_quit_native.py --effects --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --keyboard "$PWD/artifacts/physical-keyboard/bin/lumen-test-physical-keyboard" --font-config "$PWD/artifacts/offscreen-font-config" --egl-vendor "$PWD/artifacts/owned-typography-driver/share/glvnd/egl_vendor.d/50_mesa.json" --output artifacts/force-quit-native-effects
-          bash tests/ci/run-native.sh spaces_placement nix develop --command desktop-test-python tests/desktop/spaces_placement.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/spaces
-          bash tests/ci/run-native.sh application_desktops_native nix develop --command desktop-test-python tests/desktop/application_desktops_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --client "$PWD/artifacts/window-relationships-client/bin/lumen-test-window-relationships" --output artifacts/application-desktops-basic
-          bash tests/ci/run-native.sh application_desktops_native nix develop --command desktop-test-python tests/desktop/application_desktops_native.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --client "$PWD/artifacts/window-relationships-client/bin/lumen-test-window-relationships" --effects --output artifacts/application-desktops-effects
-          bash tests/ci/run-native.sh application_lifecycle_input nix develop --command desktop-test-python tests/desktop/application_lifecycle_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/application-lifecycle
-          bash tests/ci/run-native.sh session_end_input nix develop --command desktop-test-python tests/desktop/session_end_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor/bin/sway" --output artifacts/session-end --font-config "$PWD/artifacts/owned-typography-fonts" --software-driver "$PWD/artifacts/owned-typography-driver" --bus "$PWD/artifacts/session-bus/bin/dbus-daemon"
-          bash tests/ci/run-native.sh session_end_input nix develop --command desktop-test-python tests/desktop/session_end_input.py --launcher "$PWD/artifacts/shell-package/bin/lumen-desktop-shell" --sway "$PWD/artifacts/compositor-effects/bin/sway" --effects --output artifacts/session-end-effects --font-config "$PWD/artifacts/owned-typography-fonts" --software-driver "$PWD/artifacts/owned-typography-driver" --bus "$PWD/artifacts/session-bus/bin/dbus-daemon"
-      - run: |
-          nix build .#test-network-provider --out-link artifacts/network-provider --option abort-on-warn true
-          bash tests/ci/run-native.sh network_locations_provider nix develop --command desktop-test-python tests/desktop/network_locations_provider.py --provider "$PWD/artifacts/network-provider" | tee artifacts/network-provider.log
+      - run: nix develop --command nu tests/ci/run-native.nu namespace_policy_prepare -- lumen-native-namespace-policy prepare --output artifacts/native-namespace-policy
+      - run: nix develop --command nu tests/ci/integration-smoke.nu
+      - run: nix develop --command nu tests/desktop/image_markup_qml.nu
+      - run: nix develop --command nu tests/desktop/typography_roles.nu
+      - run: nix develop --command nu tests/desktop/test_typography_cases.nu
+      - run: nix develop --command nu tests/desktop/owned_typography_qml.nu
+      - run: nix develop --command nu tests/desktop/owned_utility_typography_qml.nu
+      - run: nix develop --command nu tests/desktop/document_tabs_typography.nu
+      - run: nix develop --command nu tests/desktop/overview_typography_qml.nu
+      - run: nix develop --command nu tests/desktop/calendar_detail_typography_qml.nu
+      - run: nix develop --command nu tests/desktop/shared_control_typography_qml.nu
+      - run: nix develop --command nu tests/desktop/launcher_typography_qml.nu
+      - run: nix develop --command nu tests/desktop/network_health_presentation.nu
+      - run: nix develop --command nu tests/desktop/display_spaces_model.nu
+      - run: nix develop --command nu tests/desktop/display_spaces_wire.nu
+      - run: nix develop --command nu tests/desktop/owned_focus.nu
+      - run: nix develop --command nu tests/desktop/minimized_window_model.nu
+      - run: nix develop --command nu tests/desktop/screen_saver_queue.nu
+      - run: nix develop --command nu tests/desktop/folder_stack_model.nu
+      - run: nix develop --command nu tests/desktop/desktop_navigation_model.nu
+      - run: nix develop --command nu tests/desktop/captured_directory_qml.nu
+      - run: nix develop --command nu tests/desktop/files_listing_checkpoint.nu
+      - run: nix develop --command nu tests/desktop/dock_calendar_corpus.nu
+      - run: nix develop --command nu tests/desktop/switch_indicator_paint.nu
+      - run: nix develop --command nu tests/desktop/semantic_state_paint.nu
+      - run: nix develop --command nu tests/ci/integration-effects.nu
+      - run: nix develop --command nu tests/ci/integration-native.nu
+      - run: nix develop --command nu tests/ci/integration-network.nu
       - if: always()
-        run: bash tests/ci/run-native.sh namespace_policy_cleanup nix develop --command desktop-test-python tests/ci/native_namespace_policy.py cleanup --output artifacts/native-namespace-policy
+        run: nix develop --command nu tests/ci/run-native.nu namespace_policy_cleanup -- lumen-native-namespace-policy cleanup --output artifacts/native-namespace-policy
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -264,7 +65,6 @@ jobs:
           path: |
             artifacts/native-command-logs
             artifacts/native-namespace-policy
-            artifacts/backends
             artifacts/calendar-toggle-contrast
             artifacts/owned-typography-qml
             artifacts/owned-focus-qml
@@ -281,17 +81,13 @@ jobs:
             artifacts/calendar-detail-typography
             artifacts/calendar-detail-native-*
             artifacts/launcher-typography
-            artifacts/menu-typography
             artifacts/document-tabs-typography
-            artifacts/essential-dialog-typography
-            artifacts/essential-dialog-native-*
             artifacts/overview-typography
             artifacts/overview-typography-native-*
             artifacts/desktop-typography-native-*
             artifacts/launcher-typography-native-*
             artifacts/owned-typography-native-*
             artifacts/files-share-menu
-            artifacts/biometric-provider
             artifacts/clipboard-native-*
             artifacts/search-native-*
             artifacts/search-history-*
@@ -316,6 +112,9 @@ jobs:
             artifacts/widget-visibility*
             artifacts/screen-saver*
             artifacts/calendar-widget*
+            artifacts/calendar-card
+            artifacts/calendar-window
+            artifacts/calendar-popover
             artifacts/input-settings
             artifacts/wallpaper-settings
             artifacts/widget-catalogue-*
@@ -326,6 +125,7 @@ jobs:
             artifacts/resize-hit-targets-*
             artifacts/resize-rapid-*
             artifacts/owned-geometry-*
+            artifacts/owned-components-*
             artifacts/minimized-dock-*
             artifacts/icon-grid
             artifacts/content-clipping-*
@@ -336,6 +136,8 @@ jobs:
             artifacts/screen-reader-input-*
             artifacts/screen-reader-transport
             artifacts/screen-reader-action-metadata
+            artifacts/screen-reader-action-metadata-rust
+            artifacts/screen-reader-closures
             artifacts/reader-command-provider
             artifacts/application-isolation
             artifacts/capture-protocol
@@ -352,13 +154,13 @@ jobs:
             artifacts/file-drag
             artifacts/files-layout
             artifacts/files-layout-effects
-            artifacts/files-split-panes*
             artifacts/surfaces-*
             artifacts/typography
             artifacts/live-appearance
             artifacts/live-transparency-*
             artifacts/spaces
             artifacts/display-spaces-*
+            artifacts/pointer-retirement-*
             artifacts/application-desktops-*
             artifacts/network-connectivity-provider
             artifacts/power-provider
@@ -367,9 +169,6 @@ jobs:
             artifacts/xwayland-relationships-*
             artifacts/xwayland-no-xres-*
             artifacts/owned-window-context-*
-            artifacts/session-recovery-fallback
-            artifacts/session-shell-recovery-*
-            artifacts/menu-scaled-*
             artifacts/menu-keyboard-*
             artifacts/shortcut-fixtures
             artifacts/shortcut-hints-*
@@ -387,6 +186,7 @@ jobs:
             artifacts/text-sizing
             artifacts/application-lifecycle
             artifacts/session-end*
+            artifacts/session-recovery-*
             artifacts/network-provider.log
 
   vault-compatibility:
@@ -404,12 +204,12 @@ jobs:
           nix build .#test-vault-browser -o artifacts/vault-browser --option abort-on-warn true
           nix build .#test-vault-tools -o artifacts/vault-tools --option abort-on-warn true
           nix build .#test-owned-font-config -o artifacts/vault-fonts --option abort-on-warn true
-      - run: python3 -W error tests/desktop/test_vault_artifacts.py
-      - run: bash tests/ci/run-native.sh vault_namespace_prepare nix develop --command desktop-test-python tests/ci/native_namespace_policy.py prepare --output artifacts/vault-namespace
-      - run: bash tests/ci/run-native.sh vault_transport_native nix develop --command desktop-test-python tests/desktop/vault_transport_native.py --tls-tool "$PWD/artifacts/vault-tools/bin/openssl" --output artifacts/vault-transport
-      - run: bash tests/ci/run-native.sh vault_compatibility nix develop --command desktop-test-python tests/desktop/disposable_vault.py --server "$PWD/artifacts/vault-server/bin/vaultwarden" --web "$PWD/artifacts/vault-web/share/vaultwarden/vault" --cli "$PWD/artifacts/vault-cli/bin/bw" --browser "$PWD/artifacts/vault-browser/bin/brave" --bus "$PWD/artifacts/vault-tools/bin/dbus-daemon" --tls-tool "$PWD/artifacts/vault-tools/bin/openssl" --trust-tool "$PWD/artifacts/vault-tools/bin/certutil" --font-config "$PWD/artifacts/vault-fonts" --output artifacts/vault-compatibility
+          nix build .#test-browser-workflows-fixture -o artifacts/vault-fixture --option abort-on-warn true
+      - run: nix develop --command nu tests/ci/run-native.nu vault_namespace_prepare -- lumen-native-namespace-policy prepare --output artifacts/vault-namespace
+      - run: nix develop --command nu tests/ci/run-native.nu vault_transport_native -- "$PWD/artifacts/vault-fixture/bin/vault-transport-native" --tls-tool "$PWD/artifacts/vault-tools/bin/openssl" --output artifacts/vault-transport
+      - run: nix develop --command nu tests/ci/run-native.nu vault_compatibility -- "$PWD/artifacts/vault-fixture/bin/disposable-vault" --server "$PWD/artifacts/vault-server/bin/vaultwarden" --web "$PWD/artifacts/vault-web/share/vaultwarden/vault" --cli "$PWD/artifacts/vault-cli/bin/bw" --browser "$PWD/artifacts/vault-browser/bin/brave" --bus "$PWD/artifacts/vault-tools/bin/dbus-daemon" --tls-tool "$PWD/artifacts/vault-tools/bin/openssl" --trust-tool "$PWD/artifacts/vault-tools/bin/certutil" --font-config "$PWD/artifacts/vault-fonts" --output artifacts/vault-compatibility
       - if: always()
-        run: bash tests/ci/run-native.sh vault_namespace_cleanup nix develop --command desktop-test-python tests/ci/native_namespace_policy.py cleanup --output artifacts/vault-namespace
+        run: nix develop --command nu tests/ci/run-native.nu vault_namespace_cleanup -- lumen-native-namespace-policy cleanup --output artifacts/vault-namespace
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -432,7 +232,9 @@ jobs:
           nix build .#wordcraft --out-link artifacts/wordcraft --option abort-on-warn true
           nix build .#gridcraft --out-link artifacts/gridcraft --option abort-on-warn true
           nix build .#deckcraft --out-link artifacts/deckcraft --option abort-on-warn true
-      - run: |
+          nix build .#test-office-workflows-fixture --out-link artifacts/provider-integrity-fixture --option abort-on-warn true
+          nix build .#test-office-tools --out-link artifacts/office-pdf-tools --option abort-on-warn true
+          nix build .#test-application-isolation --out-link artifacts/application-isolation --option abort-on-warn true
           nix build .#compositor-basic --out-link artifacts/provider-compositor --option abort-on-warn true
           nix build .#compositor --out-link artifacts/provider-compositor-effects --option abort-on-warn true
           nix build .#test-physical-keyboard --out-link artifacts/provider-keyboard --option abort-on-warn true
@@ -440,29 +242,29 @@ jobs:
           nix build .#test-application-software-driver --out-link artifacts/provider-software-driver --option abort-on-warn true
           nix build .#test-office-dialog-tools --out-link artifacts/provider-dialog-tools --option abort-on-warn true
           nix build .#test-screen-reader-atspi --out-link artifacts/provider-atspi --option abort-on-warn true
-          bash tests/ci/prepare-software-effects.sh artifacts/provider-software-effects-kernel
-      - run: bash tests/ci/run-native.sh provider_save_namespace_prepare nix develop --command desktop-test-python tests/ci/native_namespace_policy.py prepare --output artifacts/provider-save-namespace
-      - run: bash tests/ci/run-native.sh provider_atomic_save nix develop --command desktop-test-python tests/desktop/provider_atomic_save.py --wordcraft "$PWD/artifacts/wordcraft/bin/wordcraft-cli" --gridcraft "$PWD/artifacts/gridcraft/bin/gridcraft-cli" --deckcraft "$PWD/artifacts/deckcraft/bin/deckcraft-cli" --output artifacts/provider-atomic-save
-      - run: bash tests/ci/run-native.sh provider_output_formats nix develop --command desktop-test-python tests/desktop/deck_format_truthfulness.py --slides "$PWD/artifacts/deckcraft/bin/deckcraft-cli" --output artifacts/provider-output-formats
+      - run: nix develop --command nu tests/ci/prepare-software-effects.nu artifacts/provider-software-effects-kernel
+      - run: nix develop --command nu tests/ci/run-native.nu provider_save_namespace_prepare -- lumen-native-namespace-policy prepare --output artifacts/provider-save-namespace
+      - run: nix develop --command nu tests/ci/run-native.nu provider_save_integrity -- "$PWD/artifacts/provider-integrity-fixture/bin/provider-save-integrity" --wordcraft "$PWD/artifacts/wordcraft/bin/wordcraft-cli" --gridcraft "$PWD/artifacts/gridcraft/bin/gridcraft-cli" --deckcraft "$PWD/artifacts/deckcraft/bin/deckcraft-cli" --output artifacts/provider-save-integrity
+      - run: PATH="$PWD/artifacts/application-isolation/bin:$PATH" nix develop --command nu tests/ci/run-native.nu document_capabilities -- "$PWD/artifacts/provider-integrity-fixture/bin/document-capabilities" --writer "$PWD/artifacts/wordcraft/bin/wordcraft-cli" --sheet "$PWD/artifacts/gridcraft/bin/gridcraft-cli" --slides "$PWD/artifacts/deckcraft/bin/deckcraft-cli" --pdf-tools "$PWD/artifacts/office-pdf-tools" --output artifacts/document-capabilities
       - run: |
           for backend in basic effects; do
             compositor=provider-compositor
             flags=()
             if [[ "$backend" == effects ]]; then compositor=provider-compositor-effects; flags+=(--effects); fi
             for format in docx odt; do
-              bash tests/ci/run-native.sh "provider_copy_${backend}_${format}" nix develop --command desktop-test-python tests/desktop/office_native_workflows.py "${flags[@]}" --app writer --copy-export-probe --copy-export-format "$format" --writer "$PWD/artifacts/wordcraft/bin/wordcraft" --sheet "$PWD/artifacts/gridcraft/bin/gridcraft" --slides "$PWD/artifacts/deckcraft/bin/deckcraft" --sway "$PWD/artifacts/$compositor/bin/sway" --keyboard-tool "$PWD/artifacts/provider-keyboard/bin/lumen-test-physical-keyboard" --pointer-tool "$PWD/artifacts/provider-pointer/bin/wlrctl" --software-driver "$PWD/artifacts/provider-software-driver" --dialog-tools "$PWD/artifacts/provider-dialog-tools" --at-spi-prefix "$PWD/artifacts/provider-atspi" --output "artifacts/provider-copy-$backend-$format"
+              nix develop --command nu tests/ci/run-native.nu "provider_copy_${backend}_${format}" -- "$PWD/artifacts/provider-integrity-fixture/bin/office-native-workflows" "${flags[@]}" --app writer --copy-export-probe --copy-export-format "$format" --writer "$PWD/artifacts/wordcraft/bin/wordcraft" --sheet "$PWD/artifacts/gridcraft/bin/gridcraft" --slides "$PWD/artifacts/deckcraft/bin/deckcraft" --sway "$PWD/artifacts/$compositor/bin/sway" --keyboard-tool "$PWD/artifacts/provider-keyboard/bin/lumen-test-physical-keyboard" --pointer-tool "$PWD/artifacts/provider-pointer/bin/wlrctl" --software-driver "$PWD/artifacts/provider-software-driver" --dialog-tools "$PWD/artifacts/provider-dialog-tools" --at-spi-prefix "$PWD/artifacts/provider-atspi" --output "artifacts/provider-copy-$backend-$format"
             done
           done
       - if: always()
-        run: bash tests/ci/run-native.sh provider_save_namespace_cleanup nix develop --command desktop-test-python tests/ci/native_namespace_policy.py cleanup --output artifacts/provider-save-namespace
+        run: nix develop --command nu tests/ci/run-native.nu provider_save_namespace_cleanup -- lumen-native-namespace-policy cleanup --output artifacts/provider-save-namespace
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: provider-save-integrity
           path: |
             artifacts/provider-save-namespace
-            artifacts/provider-atomic-save
-            artifacts/provider-output-formats
+            artifacts/provider-save-integrity
+            artifacts/document-capabilities
             artifacts/provider-copy-*
             artifacts/provider-software-effects-kernel
             artifacts/native-command-logs/provider*

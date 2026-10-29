@@ -17,7 +17,7 @@ PanelSurface {
     scale:parent?Math.min(1,(parent.width-32)/width,(parent.height-Theme.barHeight-110)/height):1
     onKindChanged:{page=kind==="Files"?"Home":"Appearance";selectedFile=-1;}
     Process {
-        command:[Quickshell.env("GLOBAL_MENU_PYTHON"),"-c","import os,json; print(json.dumps(sorted([{'name':e.name,'directory':e.is_dir()} for e in os.scandir(os.path.expanduser('~')) if not e.name.startswith('.')],key=lambda e:(not e['directory'],e['name'].lower()))[:60]))"]
+        command:["lumen-desktop-files","--home-list"]
         running:root.isFiles
         stdout:StdioCollector {onStreamFinished:{try{root.files=JSON.parse(text);}catch(e){root.files=[];}}}
     }

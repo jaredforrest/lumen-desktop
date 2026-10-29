@@ -3,7 +3,7 @@
 These are separate provider capabilities. PDF export is not printer submission,
 and an in-memory snapshot is not persistent document history. The retained
 providers are version 0.5.0; the spreadsheet uses the separately pinned native
-close patch. `document_provider_workflows.py` records exact installed executable
+close patch. The Rust 2024 `document-capabilities` fixture records exact installed executable
 hashes and runs in the shared disposable filesystem/network/process boundary.
 It never connects to a host printer service.
 
@@ -18,8 +18,7 @@ Snapshots belong to the current logical document: New and a successful Open
 clear the previous document's snapshots. A failed Open preserves the current
 document and its snapshots. Restoring within the same document keeps its
 snapshot list available for repeated restores. The installed
-`word_version_ownership.py --writer /nix/store/.../bin/wordcraft-cli --output ...`
-fixture separately checks these boundaries inside the disposable namespace.
+`document-capabilities` separately checks these boundaries inside the disposable namespace.
 This ownership fix does not add persistent history or a version-browser UI.
 
 The spreadsheet's `file.print` action can produce a PDF at a chosen file path.
@@ -69,21 +68,22 @@ workflows.
 
 ## Reproduction
 
-Run `tests/desktop/document_provider_workflows.py` through
-`tests/ci/run-native.sh`, using `desktop-test-python` and absolute pinned
-`--writer`, `--sheet`, `--slides` CLI paths plus `--pdf-tools`. The outer runner
+Run `.#test-office-workflows-fixture`'s `bin/document-capabilities` with absolute pinned
+`--writer`, `--sheet`, `--slides` CLI paths, `--pdf-tools`, and a new `--output` directory.
+Put `.#test-application-isolation`'s `bin` on `PATH`. The outer runner
 creates an owned empty artifact directory and enters the disposable boundary.
-It records every command, exit status and output digest. Five CLI checks cover only the command observations. The existing
-`office_native_workflows.py --document-probe` exercises the native workflow;
-`--pdf-viewer`, `--xdg-tools`, `--mime-data`, `--at-spi-prefix`, `--dialog-tools`
+It records every command, exit status and output digest. Its CLI checks cover the old
+print and session-version observations, including ownership across New and Open.
+The Rust 2024 `office-native-workflows --document-probe` exercises the native workflow;
+`--pdf-viewer`, `--xdg-tools`, `--mime-data`, `--dialog-tools`
 and `--pdf-tools` must name immutable selected dependencies. The browser gets a
-fresh private profile and private PDF association. Ten native checks cover the
+fresh private profile and private PDF association. Native checks cover the
 configured viewer route; a separate unavailable-viewer run checks immediate
 failure visibility. Persistent version browsing remains unsupported by the
 observed session snapshots. These optional installed-provider fixtures are
 separate from the ordinary shell CI lane.
 
-For the spreadsheet and presentation subset, use `office_native_workflows.py`
+For the spreadsheet and presentation subset, use `office-native-workflows`
 with `--app sheet` or `--app slides`, `--pdf-output`, `--dialog-tools`,
 `--pdf-tools` and the same pinned physical keyboard/pointer dependencies.
 The test uses real Cancel, unavailable destination and Save interactions, checks
@@ -104,7 +104,7 @@ An existing destination link is replaced rather than followed. Old predictable
 staging names are neither opened nor removed. A refused publication removes only
 its own unchanged staging file.
 
-`provider_atomic_save.py` runs the installed command-line binaries in detached
+`tests/desktop/office-workflows-rust/src/bin/provider-save-integrity.rs` runs the installed command-line binaries in detached
 user, process, network, mount, IPC and hostname namespaces. Its 21 cases cover
 existing staging hardlinks/symlinks, destination hardlinks/symlinks, a FIFO parent,
 publication failure cleanup and ordinary saves for each provider. Original hashes,
@@ -132,7 +132,7 @@ Canceling a stale
 request does not clear a newer operation's state. Ordinary same-owner Save As
 and cancellation retain their existing behavior.
 
-`office_native_workflows.py --app writer --picker-ownership --dialog-tools ...`
+`office-native-workflows --app writer --picker-ownership --dialog-tools ...`
 uses the actual installed provider, native chooser and physical keyboard in the
 disposable namespace. Supported provider commands replace or edit the document
 while the chooser is open. The test waits for the provider's read-only
@@ -199,7 +199,7 @@ content; they are not evidence of template or slide-show format semantics.
 There is no ODP exporter. Refusing ODP is preferable to reporting success for
 native-container bytes bearing an ODP suffix.
 
-`deck_format_truthfulness.py` runs the installed command-line provider in the
+The same Rust integrity fixture runs the installed command-line provider in the
 disposable application namespace. It checks refusal against existing destination
 sentinels and original source hashes, verifies supported container signatures,
 and checks that an unsupported conversion produces no output. Source tests

@@ -13,13 +13,13 @@ idempotently and rejects any still-running child. A final bounded reap covers
 children already killed by the existing timeout cleanup. Input commands, child
 PIDs, functional deadlines, geometry and test assertions are unchanged.
 
-`test_fixture_resources.py` checks all fixture sources for anonymous or unowned
-named subprocess logs and requires parent-pipe cleanup in native process-list
-fixtures. Its real child test proves streams are usable before reaping, a live
-child is refused, output can be consumed after exit, and explicit cleanup closes
-all three streams without double-close errors.
+`test-fixture-infrastructure` exercises child pipe ownership and private D-Bus startup.
+Rust's owned process and file values replace the Python AST scan for anonymous
+or unowned subprocess logs. Its real child test proves streams are usable
+before reaping, a live child is refused, output can be consumed after exit,
+and explicit cleanup closes all three streams without double-close errors.
 
-CI uses `tests/ci/run-native.sh` so a zero child exit does not hide an unraisable
+CI uses `tests/ci/run-native.nu` so a zero child exit does not hide an unraisable
 finalizer warning. Replay uses `PYTHONWARNINGS=error` and retains the command log.
 
 Legacy render helpers that are not in the CI native matrix are covered by the

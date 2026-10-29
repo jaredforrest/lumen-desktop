@@ -68,12 +68,13 @@ parity. Unsupported identifiers remain inspectable rather than unsafe selectors.
 
 ```sh
 nix flake check --print-build-logs --option abort-on-warn true
-nix develop --command desktop-test-python tests/desktop/test_input_settings.py
+nix-build -E 'let pkgs = import <nixpkgs> {}; in pkgs.callPackage ./packages/input-settings.nix {}' --no-out-link
 nix build .#shell --out-link /tmp/lumen-input-shell
-LUMEN_TEST_SHELL_LAUNCHER=/tmp/lumen-input-shell/bin/lumen-desktop-shell nix develop --command desktop-test-python tests/desktop/test_input_settings_qml.py
+nix build .#checks.x86_64-linux.offscreen-qml --no-link
 nix build .#compositor-basic --out-link /tmp/lumen-input-compositor
 nix build .#test-pointer --out-link /tmp/lumen-input-pointer
-nix develop --command desktop-test-python tests/desktop/input_settings_native.py --launcher /tmp/lumen-input-shell/bin/lumen-desktop-shell --sway /tmp/lumen-input-compositor/bin/sway --pointer-tool /tmp/lumen-input-pointer/bin/wlrctl --output /tmp/lumen-input-evidence
+nix build .#test-input-settings-fixture --out-link /tmp/lumen-input-fixture
+nix develop --command /tmp/lumen-input-fixture/bin/lumen-input-settings-fixture --launcher /tmp/lumen-input-shell/bin/lumen-desktop-shell --sway /tmp/lumen-input-compositor/bin/sway --pointer-tool /tmp/lumen-input-pointer/bin/wlrctl --output /tmp/lumen-input-evidence
 ```
 
 Protocol tests use a real private Unix socket with the Sway IPC envelope and

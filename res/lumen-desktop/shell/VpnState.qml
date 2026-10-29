@@ -22,7 +22,7 @@ Item {
     Process {
         id: worker
         stdinEnabled: true
-        command: [Quickshell.env("GLOBAL_MENU_PYTHON") || "python3", Qt.resolvedUrl("vpn_control.py").toString().replace("file://", "")]
+        command: ["lumen-vpn-control"]
         onStarted:write(JSON.stringify(root.request)+"\n")
         stdout:StdioCollector {onStreamFinished:{
             try {

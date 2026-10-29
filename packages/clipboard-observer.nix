@@ -1,19 +1,9 @@
 { pkgs }:
-pkgs.stdenv.mkDerivation {
-  pname = "lumen-clipboard-observer";
-  version = "1";
-  dontUnpack = true;
-  nativeBuildInputs = [ pkgs.pkg-config pkgs.wayland-scanner ];
-  buildInputs = [ pkgs.wayland ];
-  buildPhase = ''
-    runHook preBuild
-    wayland-scanner client-header ${pkgs.wlr-protocols}/share/wlr-protocols/unstable/wlr-data-control-unstable-v1.xml wlr-data-control-client-protocol.h
-    wayland-scanner private-code ${pkgs.wlr-protocols}/share/wlr-protocols/unstable/wlr-data-control-unstable-v1.xml protocol.c
-    $CC -std=c11 -Wall -Wextra -Werror -I. ${../res/lumen-desktop/runtime/clipboard_observer.c} protocol.c $(pkg-config --cflags --libs wayland-client) -o lumen-clipboard-observer
-    runHook postBuild
-  '';
-  installPhase = ''
-    mkdir -p "$out/bin"
-    cp lumen-clipboard-observer "$out/bin/"
-  '';
+builtins.derivation {
+  name = "lumen-clipboard-observer-1";
+  system = pkgs.stdenv.hostPlatform.system;
+  builder = "${pkgs.nushell}/bin/nu";
+  args = [ "${./wayland-clipboard-build.nu}" "observer" "${../res/lumen-desktop/runtime/clipboard_observer.c}" "${pkgs.wlr-protocols}/share/wlr-protocols/unstable/wlr-data-control-unstable-v1.xml" ];
+  PATH = pkgs.lib.makeBinPath [ pkgs.wayland-scanner pkgs.pkg-config pkgs.stdenv.cc pkgs.coreutils ];
+  PKG_CONFIG_PATH = pkgs.lib.makeSearchPath "lib/pkgconfig" [ pkgs.wayland.dev ];
 }

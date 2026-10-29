@@ -45,7 +45,7 @@ and the choice of lock shortcut remain consumer-owned.
 For standalone validation:
 
 ```sh
-python3 res/lumen-desktop/runtime/shortcuts.py declarations.json --output effective.json
+lumen-shortcuts declarations.json --output effective.json
 ```
 
 The input is `{ "version": 1, "bindings": [...] }`. Bindings require `id`,

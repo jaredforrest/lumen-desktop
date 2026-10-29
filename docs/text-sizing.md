@@ -32,10 +32,11 @@ Reproduce:
 ```sh
 nix flake check --print-build-logs --option abort-on-warn true
 nix build .#shell --out-link /tmp/lumen-text-shell
-LUMEN_TEST_SHELL_LAUNCHER=/tmp/lumen-text-shell/bin/lumen-desktop-shell nix develop --command desktop-test-python tests/desktop/test_text_sizing_qml.py
+nix build .#checks.x86_64-linux.offscreen-qml
 nix build .#compositor-basic --out-link /tmp/lumen-text-compositor
 nix build .#test-pointer --out-link /tmp/lumen-text-pointer
-nix develop --command desktop-test-python tests/desktop/text_sizing_input.py --launcher /tmp/lumen-text-shell/bin/lumen-desktop-shell --sway /tmp/lumen-text-compositor/bin/sway --pointer-tool /tmp/lumen-text-pointer/bin/wlrctl --output /tmp/lumen-text-evidence
+nix build .#test-text-sizing-fixture --out-link /tmp/lumen-text-fixture
+nix develop --command /tmp/lumen-text-fixture/bin/lumen-text-sizing-fixture --launcher /tmp/lumen-text-shell/bin/lumen-desktop-shell --sway /tmp/lumen-text-compositor/bin/sway --pointer-tool /tmp/lumen-text-pointer/bin/wlrctl --output /tmp/lumen-text-evidence
 ```
 
 The native fixture uses a disposable preference backend, isolated compositor and

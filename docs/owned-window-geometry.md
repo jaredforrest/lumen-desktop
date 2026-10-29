@@ -75,12 +75,11 @@ surface without replacing a successful ordinary fit.
 
 ## Acceptance
 
-`owned_geometry_native.py` uses the real installed Settings/Calendar components,
-private fixed settings/calendar providers, two private outputs and actual
-pointer/acknowledged keyboard protocol clients. Both native variants prove
-same-process hide/public reopen, later resized-record continuity, distinct
-process reopen, stale container refusal, changed/removed outputs, opt-out and
-unsupported registrations. The separate legacy variants disable only the new
-native event patch and prove visible unavailability and unchanged normal fitting.
-All entry points use the full disposable namespace and frozen source/tool guard;
-no host settings, windows, clock, accounts or input are used.
+The Rust 2024 `desktop-policy-rust` fixture runs `owned-geometry` and
+`owned-geometry-legacy` against private two-output compositors. It checks real
+pointer-committed records for both registered keys, process restart, stale
+container refusal, output shrink and removal, unsupported registration, and
+the old compositor's explicit capability refusal. Its `owned-components` and
+`owned-components-legacy` scenarios load the production Settings and Calendar
+components and check fitting, capability status, and the placement status
+footer. These fixtures use private runtime, state and compositor endpoints.

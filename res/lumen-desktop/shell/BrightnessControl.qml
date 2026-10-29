@@ -14,12 +14,11 @@ Column {
     property int revision: 0
     property string writingBus: ""
     onSelectedBusChanged:{revision++;pending=-1;editing=false;debounce.stop();error="";const selected=displays.find(d=>d.bus===selectedBus) || (displays.length===1?displays[0]:null);level=selected?selected.level:0;}
-    readonly property string python: Quickshell.env("GLOBAL_MENU_PYTHON") || "python3"
-    readonly property string helper: Qt.resolvedUrl("system-controls.py").toString().replace(/^file:\/\//, "")
+    readonly property string helper: "lumen-system-controls"
     spacing:6
     function flush() {
         if(writer.running || !display || pending<0)return;
-        writer.command=[python,helper,"brightness",display.bus,String(Math.round(pending*display.maximum))];
+        writer.command=[helper,"brightness",display.bus,String(Math.round(pending*display.maximum))];
         writingBus=display.bus;pending=-1;writer.running=true;
     }
     DesktopComboBox {visible:root.displays.length>1;width:parent.width;model:root.displays;textRole:"name";currentIndex:root.displays.findIndex(d=>d.bus===root.selectedBus);displayText:currentIndex<0?"Choose display":currentText;onActivated:index=>{root.selectedBus=root.displays[index].bus;root.level=root.display.level;} Accessible.name:"Brightness display"}
@@ -63,7 +62,7 @@ Column {
     Process {id:writer;onExited:(code,status)=>{if(root.display && root.display.bus===root.writingBus && code!==0)root.error="The display rejected the brightness change";if(root.pending>=0)root.flush();else refresh.restart();}}
     Process {
         id:reader;property int requestRevision:0
-        command:[root.python,root.helper,"displays"]
+        command:[root.helper,"displays"]
         stdout:StdioCollector {onStreamFinished:{try{const s=JSON.parse(text);if(reader.requestRevision!==root.revision || root.editing || writer.running || root.pending>=0)return;root.displays=s.displays || [];if(root.display)root.level=root.display.level;}catch(e){root.displays=[];}}}
     }
     // Hidden panels do not poll hardware. Detection/read caches are shared by all controls.

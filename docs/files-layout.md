@@ -32,8 +32,8 @@ validation and real Qt/backend restoration tests. The native input fixture uses
 a disposable home/state and isolated headless compositor:
 
 ```sh
-nix build .#shell .#compositor-basic .#test-pointer
-nix develop --command desktop-test-python tests/desktop/files_layout_input.py \
+nix build .#test-files-layout-fixture --out-link /tmp/lumen-files-layout-fixture
+nix develop --command /tmp/lumen-files-layout-fixture/bin/lumen-files-layout-fixture \
   --launcher /path/to/shell/bin/lumen-desktop-shell \
   --sway /path/to/compositor/bin/sway \
   --pointer-tool /path/to/pointer/bin/wlrctl --output /tmp/files-layout-input

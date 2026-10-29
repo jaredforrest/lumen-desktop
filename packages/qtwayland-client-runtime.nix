@@ -5,21 +5,16 @@ in pkgs.stdenv.mkDerivation {
   pname = "lumen-qt-wayland-client-runtime";
   inherit (qt) version src;
   patches = (qt.patches or [ ]) ++ [ ./qtwayland-destroyed-focus-release.patch ];
-  nativeBuildInputs = (qt.nativeBuildInputs or [ ]) ++ [ pkgs.cmake pkgs.ninja pkgs.pkg-config pkgs.wayland-scanner pkgs.python3 pkgs.patchelf pkgs.binutils qt ];
+  nativeBuildInputs = (qt.nativeBuildInputs or [ ]) ++ [ pkgs.cmake pkgs.ninja pkgs.pkg-config pkgs.wayland-scanner pkgs.patchelf pkgs.binutils qt ];
   buildInputs = (qt.buildInputs or [ ]) ++ (qt.propagatedBuildInputs or [ ]) ++ [ qt pkgs.wayland pkgs.wayland-protocols pkgs.libxkbcommon ];
   NIX_CFLAGS_COMPILE = qt.NIX_CFLAGS_COMPILE or "";
   postPatch = ''
-    python3 - <<'PYTHON'
-from pathlib import Path
-p=Path('src/plugins/platforms/wayland/CMakeLists.txt')
-s=p.read_text()
-start=s.index('qt_internal_add_plugin(QWaylandIntegrationPlugin\n')
-end=s.index('\nqt6_generate_wayland_protocol_client_sources',start)
-s=s[:start]+s[end:]
-assert s.count('    add_subdirectory(plugins)')==1
-s=s.replace("    add_subdirectory(plugins)","")
-p.write_text(s)
-PYTHON
+    waylandCmake=src/plugins/platforms/wayland/CMakeLists.txt
+    test "$(grep -c '^qt_internal_add_plugin(QWaylandIntegrationPlugin$' "$waylandCmake")" -eq 1
+    test "$(grep -c '^qt6_generate_wayland_protocol_client_sources' "$waylandCmake")" -ge 1
+    test "$(grep -c '^    add_subdirectory(plugins)$' "$waylandCmake")" -eq 1
+    sed -i '/^qt_internal_add_plugin(QWaylandIntegrationPlugin$/,/^qt6_generate_wayland_protocol_client_sources/{ /^qt6_generate_wayland_protocol_client_sources/!d; }' "$waylandCmake"
+    sed -i '/^    add_subdirectory(plugins)$/d' "$waylandCmake"
     cat > CMakeLists.txt <<'EOF'
 cmake_minimum_required(VERSION 3.22)
 include(.cmake.conf)

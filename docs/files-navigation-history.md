@@ -31,8 +31,9 @@ History is runtime-only and does not add a directory preference database.
 Restoration suppresses global preference writes; explicit user view changes
 continue to use the existing global preference policy.
 
-`test_files_history_model.cjs` covers immutable transaction and tab behavior,
-identity reconciliation, bounds and overflow. `files_history_input.py` copies
+`javascript_models_fixture.qml` covers immutable transaction and tab behavior,
+identity reconciliation, bounds and overflow. The Rust 2024 Files fixture
+(`tests/desktop/files-layout-rust`, invoked with `--history`) copies
 assets from an immutable installed shell into a private compositor with synthetic
 directories. It exercises actual pointer selection, physical shortcuts, all four
 scrolled views, filters, sort changes, independent tabs, failed destinations,

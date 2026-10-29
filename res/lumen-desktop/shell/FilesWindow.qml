@@ -92,9 +92,11 @@ FloatingWindow {
     }
     function restorePresentation(saved){
         pendingPresentation=saved;restoringPresentationState=true;const revision=++presentationRevision;
+        const pendingFilterText=filterDelay.running?filter.text:null;
         if(saved){if(saved.selectionOverflow)service.warning="The previous selection exceeded the navigation history limit and was cleared. Select the items again.";service.restoreView(saved.view);filter.text=service.query;const selectedState=HistoryModel.reconcile(saved,service.rows);if(!saved.selectionOverflow && ((saved.selection || []).length>selectedState.paths.length || (saved.current && selectedState.selected<0)))service.warning="Some selected or focused items changed or could not be followed. Select them again.";selectedPaths=selectedState.paths;selected=selectedState.selected;selectionAnchor=selectedState.anchor;}
         else {selectedPaths=[];selected=-1;selectionAnchor=-1;}
-        Qt.callLater(()=>{if(revision!==presentationRevision)return;if(service.busy){restoringPresentationState=false;return;}const scroll=(saved || {}).scroll || {};restoreScroll(list,scroll.list,false);restoreScroll(grid,scroll.grid,false);restoreScroll(galleryStrip,scroll.gallery,true);columnView.restoreSnapshot(scroll.columns || {});restoringPresentationState=false;saveTab();});
+        if(pendingFilterText!==null){filter.text=pendingFilterText;service.query=pendingFilterText;filterDelay.restart();}
+        Qt.callLater(()=>{if(revision!==presentationRevision)return;if(service.busy){restoringPresentationState=false;return;}const scroll=(saved || {}).scroll || {};restoreScroll(list,scroll.list,false);restoreScroll(grid,scroll.grid,false);restoreScroll(galleryStrip,scroll.gallery,true);columnView.restoreSnapshot(scroll.columns || {});});
     }
     function newTab(){saveTab();const current=tabs[activeTab];const tab=TabModel.create("tab-"+(++tabSerial),current?current.path:service.path);tab.viewMode=service.viewMode;tabs=tabs.concat([tab]);switchTab(tabs.length-1);}
     function saveTab(){
@@ -259,7 +261,7 @@ FloatingWindow {
     Item {
         layer.enabled:!Theme.nativeWindowFrame && GraphicsInfo.api !== GraphicsInfo.Software
         layer.effect:MultiEffect {maskEnabled:true;maskSource:windowMask}
-        id:content;anchors.fill:parent;focus:true
+        id:content;objectName:"files-keyboard-content";anchors.fill:parent;focus:true
         Keys.onPressed:event=>{
             const ctrl=event.modifiers & Qt.ControlModifier,shift=event.modifiers & Qt.ShiftModifier,alt=event.modifiers & Qt.AltModifier;
             let handled=true;
@@ -470,15 +472,15 @@ FloatingWindow {
         TextField {
             placeholderTextColor:Theme.colors.muted;selectionColor:Theme.colors.accent;selectedTextColor:Theme.colors.selectedText
 
-            id:filter;x:root.sidebarWidth+14;y:66+root.tabHeight;width:parent.width-x-14;height:30
+            id:filter;objectName:"files-filter";x:root.sidebarWidth+14;y:66+root.tabHeight;width:parent.width-x-14;height:30
             placeholderText:"Filter folder or tag:red";font.family:Theme.font;font.pixelSize:Theme.textRole("label");color:Theme.colors.text;selectByMouse:true
             Accessible.name:"Filter this folder"
             background:Rectangle {radius:7;color:Theme.colors.background;border.color:filter.activeFocus?Theme.colors.accent:Theme.hairline}
-            onTextEdited:filterDelay.restart()
+            onTextEdited:{root.service.query=text;filterDelay.restart();}
             Keys.onDownPressed:{content.forceActiveFocus();root.step(1);}
             onAccepted:{root.service.query=text;root.service.refresh();content.forceActiveFocus();}
         }
-        Timer {id:filterDelay;interval:220;onTriggered:{root.service.query=filter.text;root.service.refresh();}}
+        Timer {id:filterDelay;interval:220;onTriggered:root.service.refresh()}
         PanelLabel {
             id:message;x:root.sidebarWidth+14;y:103+root.tabHeight;width:parent.width-x-14;height:visible?Math.max(48,Math.ceil(messageMetrics.height)*3):0
             visible:root.service.error!=="" || root.service.warning!=="" || root.previewMessage!==""
@@ -553,7 +555,7 @@ FloatingWindow {
             }
             FilesBandSelection {objectName:"files-list-band-selection";parent:list;anchors.fill:parent;view:list;rows:root.service.rows;selectedPaths:root.selectedPaths;currentIndex:root.selected;anchorIndex:root.selectionAnchor;contextKey:root.bandContext;permitted:root.bandPermitted && list.visible;rightInset:listScrollBar.visible?listScrollBar.width:0;onBegan:root.cancelPendingPresentation();onPreviewed:paths=>root.bandPreviewPaths=paths;onCommitted:value=>root.commitBand(value);onCanceled:reason=>root.cancelBand(reason)}
             FilesBandSelection {objectName:"files-grid-band-selection";parent:grid;anchors.fill:parent;view:grid;rows:root.service.rows;selectedPaths:root.selectedPaths;currentIndex:root.selected;anchorIndex:root.selectionAnchor;contextKey:root.bandContext;permitted:root.bandPermitted && grid.visible;rightInset:gridScrollBar.visible?gridScrollBar.width:0;onBegan:root.cancelPendingPresentation();onPreviewed:paths=>root.bandPreviewPaths=paths;onCommitted:value=>root.commitBand(value);onCanceled:reason=>root.cancelBand(reason)}
-            ColumnView {id:columnView;objectName:"files-column-view";preferredWidths:root.service.columnWidths || [];onWidthCommitted:(index,value)=>{const widths=(root.service.columnWidths || []).slice();while(widths.length<=index)widths.push(240);widths[index]=value;root.service.columnWidths=widths;};selectedPaths:root.bandPreviewPaths===null?root.selectedPaths:root.bandPreviewPaths;bandBasePaths:root.selectedPaths;bandRows:root.service.rows;bandPermitted:root.bandPermitted;bandContext:root.bandContext;bandCurrent:root.selected;bandAnchor:root.selectionAnchor;selectionFolder:root.service.path;onBandBegan:root.cancelPendingPresentation();onBandPreviewed:paths=>root.bandPreviewPaths=paths;onBandCommitted:value=>root.commitBand(value);onBandCanceled:reason=>root.cancelBand(reason);selectionActive:root.selectionActive;dropCoordinator:fileDrop;visible:root.columnsMode;anchors.fill:parent;columns:root.service.columns;currentPath:root.current?root.current.path:"";onChosen:(path,directory)=>{if(directory)root.navigate(path);else {const index=root.service.rows.findIndex(r=>r.path===path);if(index>=0)root.choose(index,0);else {root.service.nextSelection=path;root.navigate(path.slice(0,path.lastIndexOf("/")) || "/");}}}}
+            ColumnView {id:columnView;objectName:"files-column-view";preferredWidths:root.service.columnWidths || [];onWidthCommitted:(index,value)=>{const widths=(root.service.columnWidths || []).slice();while(widths.length<=index)widths.push(240);widths[index]=value;root.service.columnWidths=widths;};selectedPaths:root.bandPreviewPaths===null?root.selectedPaths:root.bandPreviewPaths;bandBasePaths:root.selectedPaths;bandRows:root.service.rows;bandPermitted:root.bandPermitted;bandContext:root.bandContext;bandCurrent:root.selected;bandAnchor:root.selectionAnchor;selectionFolder:root.service.path;onBandBegan:root.cancelPendingPresentation();onBandPreviewed:paths=>root.bandPreviewPaths=paths;onBandCommitted:value=>root.commitBand(value);onBandCanceled:reason=>root.cancelBand(reason);onSnapshotRestored:{if(root.restoringPresentationState){root.restoringPresentationState=false;root.saveTab();}}selectionActive:root.selectionActive;dropCoordinator:fileDrop;visible:root.columnsMode;anchors.fill:parent;columns:root.service.columns;currentPath:root.current?root.current.path:"";onChosen:(path,directory)=>{if(directory)root.navigate(path);else {const index=root.service.rows.findIndex(r=>r.path===path);if(index>=0)root.choose(index,0);else {root.service.nextSelection=path;root.navigate(path.slice(0,path.lastIndexOf("/")) || "/");}}}}
             Item {visible:root.galleryMode;anchors.fill:parent
                 FilePreview {resourceRetirement:root.service.previewResourceRetirement;x:12;y:0;width:parent.width-24;height:Math.max(60,parent.height-118);result:root.current?root.service.preview:{text:"Select an item"};active:root.visible && root.galleryMode;loading:root.service.previewBusy;onPageRequested:number=>root.service.requestPreview(root.current.path,number)}
                 ListView {id:galleryStrip;objectName:"files-gallery-view";anchors.bottom:parent.bottom;width:parent.width;height:104+(Theme.textRole("metadata")-11)*3;orientation:ListView.Horizontal;clip:true;spacing:5;model:root.service.rows;ScrollBar.horizontal:DesktopScrollBar {id:galleryScrollBar}

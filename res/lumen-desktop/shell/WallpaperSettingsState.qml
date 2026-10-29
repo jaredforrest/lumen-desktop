@@ -26,7 +26,7 @@ Item {
     Timer {interval:4000;repeat:true;running:root.active;onTriggered:root.refresh()}
     Process {
         id:worker;stdinEnabled:true
-        command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("wallpaper_settings.py").toString().replace(/^file:\/\//,"")]
+        command:["lumen-wallpaper-settings"]
         onStarted:write(JSON.stringify(root.request)+"\n")
         stdout:StdioCollector {onStreamFinished:{try{const data=JSON.parse(text);if(data.action==="browse"){root.entries=data.entries || [];root.folder=data.folder || root.folder;root.parentFolder=data.parent || root.parentFolder;root.browseError=data.error || "";root.truncated=data.truncated===true;return;}if(data.outputs!==undefined)root.outputs=data.outputs;if(data.disconnected!==undefined)root.disconnected=data.disconnected;root.defaultImage=data.defaultImage || "";root.defaultMetadata=data.defaultMetadata || null;root.defaultError=data.defaultError || "";root.error=data.error || "";}catch(error){root.error="Unable to read background settings.";}}}
         onExited:(code,status)=>{if(code!==0)root.error="The background provider did not respond.";}

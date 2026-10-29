@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Launch test
+Exec=app
+Actions=new-window;
+[Desktop Action new-window]
+Name=New Window
+Exec=env MULTI=1 app --new-instance

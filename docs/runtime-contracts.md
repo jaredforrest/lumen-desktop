@@ -19,17 +19,13 @@ fixture containing `tree` and `outputs`. Production diagnostics should retain on
 synthetic or appropriately private artifacts. The command's JSON has schema
 version 1 and must not be confused with a complete application registry.
 
-`res/lumen-desktop/runtime/protocol.py` supplies dependency-free primitives for
-future adapters: bounded four-byte-length UTF-8 JSON frames, duplicate-key and
-nonfinite-number rejection, fragmented frame decoding, peer/epoch-scoped replay
-fingerprints and revision-gap reconciliation. These primitives are not a running
-command broker and do not claim authentication or capabilities an adapter has
-not implemented. Replay retention fails closed at capacity; uncertain destructive
-requests require reconciliation after a process restart.
+The old unreferenced Python framing and replay prototype was removed during the
+Rust migration. The active Rust services implement their own bounded transport,
+exact session identity and command authority. No general command broker is
+provided by this state observer.
 
-Regression tests use synthetic streams, fake monotonic time, isolated socket
-paths and compositor trees. They cover changed-payload retries, bounded allocation,
-sequence/epoch gaps, duplicate identities, unknown minimisation and title privacy.
+Regression tests use synthetic compositor trees and private native sessions.
+They cover duplicate identities, unknown minimisation and title privacy.
 No test reaches a real account, modifies a document or injects live input.
 
 ## Opt-in clipboard history
@@ -76,7 +72,7 @@ selection without saving a startup snapshot or fingerprint. Capture age is check
 capture age, so delayed or suspended supervision cannot extend retention. The barrier is
 runtime-only and resets with the user runtime directory each boot.
 
-`clipboard_native_input.py` uses a disposable compositor, private buses/HOME,
+`lumen-clipboard-native-fixture` (Rust 2024) uses a disposable compositor, private buses/HOME,
 synthetic real Wayland producers and an editable document observer. It exercises
 actual launcher pointer/keyboard controls, clipboard reads/writes and explicit
 paste on both compositor variants. Only user-service supervision is adapted to
@@ -278,7 +274,7 @@ but exposes no accessible children. This affects both ordinary and shell-owned
 windows, so the corrected runtime is used by the shell, authentication surfaces,
 IPC tools and test environment.
 
-`tests/desktop/accessibility_protocol.py` deliberately enables accessibility in a
+The Rust 2024 `lumen-accessibility-protocol-fixture` deliberately enables accessibility in a
 private compositor, session bus and runtime created before service activation. It
 launches its own accessibility bus and registry, validates their private address
 and enabled/screen-reader status, registers an actual protocol listener and checks
@@ -311,10 +307,12 @@ full Files operations are offered only when the provider returns a real local
 filesystem path. Files operations through FUSE retain the ordinary Files backend's
 limitations; this is not a guarantee of offline support or bounded kernel I/O.
 
-`test_network_locations.py` checks provider failures, credential rejection,
-redaction, cancellation, stale callbacks and bounded listing with fake providers.
-`test_network_locations_qml.py` runs the actual Qt state/pane and child-process
-protocol. `network_locations_provider.py --provider GVFS_PACKAGE` uses an anonymous
+The Rust address unit test checks credential rejection, redaction and malformed
+addresses. The private provider fixture checks credential-bearing request
+rejection, bounded listing, folder scope, cancellation without late replies,
+and real mount lifecycle.
+`network_locations_fixture.qml` runs the actual Qt state/pane and child-process
+protocol. `lumen-network-provider-fixture --provider GVFS_PACKAGE --client RUST_BINARY` uses an anonymous
 loopback DAV fixture and a private D-Bus/GVfs session, with FUSE disabled, to verify
 real connect, browse and disconnect without user accounts or existing mounts.
 Other protocols and authenticated server/keyring interactions still need their
@@ -356,7 +354,7 @@ Positions are normalized to the usable desktop bounds, so display-size changes
 keep placed items reachable. Items that do not fit the automatic grid are counted
 with an explicit message and remain available through Open Desktop in Files.
 
-`desktop_layout.py` stores private, atomic metadata per directory identity. It
+`lumen-desktop-layout` stores private, atomic metadata per directory identity. It
 never moves, renames or writes the desktop files themselves. Item inode identity
 preserves ordinary rename placement; hard links receive distinct name suffixes.
 Authoritative observed removals prune obsolete placements. This does not promise
@@ -365,13 +363,13 @@ Stack expansion is temporary; grouping and freeform positions persist.
 
 The layer input mask is the union of displayed item rectangles. Empty desktop
 areas continue to the surface below. A visible modal menu or confirmation owns
-its usable desktop region while open. `desktop_files_render.py --layout` verifies
+its usable desktop region while open. `lumen-desktop-surface-fixture files --layout` verifies
 real pointer dragging, persisted metadata, rename identity, stack expansion and
 empty-area click-through in a disposable nested compositor, alongside existing
 selection and destructive-confirmation checks. Multi-item dragging uses one frozen selection snapshot and one clamped delta,
 preserving relative offsets at screen edges. Whole-stack anchors also persist;
 expanded children follow the anchor and wrap into neighbouring columns as needed.
-`desktop_files_render.py --layout --multi-drag` verifies actual multi-item and
+`lumen-desktop-surface-fixture files --layout --multi-drag` verifies actual multi-item and
 expanded-stack pointer gestures, grouping-switch persistence and file preservation.
 Cross-application native file drops are not implemented by this slice.
 
@@ -418,7 +416,7 @@ queries may reconnect. Open actions are never retried. Dismissing the surface or
 changing its query retires pending action acknowledgements so they cannot close
 a later invocation. It cannot undo an external open that was already dispatched.
 
-`search_native_input.py` uses the installed shell/index with an explicitly
+`lumen-search-native-fixture` (Rust 2024) uses the installed shell/index with an explicitly
 recorded response-delivery gate, disposable files and a URI launch sink. Native
 input proves delayed query/preview ordering, category transitions, replacement
 and removal rejection, provider death/restart/hang and retired acknowledgement

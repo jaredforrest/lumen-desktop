@@ -1,0 +1,24 @@
+[package]
+name = "lumen-force-quit-native"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gio = "0.22"
+glib = "0.22"
+gtk = "0.19"
+libc = "0.2"
+serde_json = "1"
+tempfile = "3"
+
+[[bin]]
+name = "lumen-force-quit-native"
+path = "src/main.rs"
+
+[[bin]]
+name = "lumen-application-control"
+path = "src/peer.rs"
+
+[[bin]]
+name = "lumen-force-quit-client"
+path = "src/client.rs"

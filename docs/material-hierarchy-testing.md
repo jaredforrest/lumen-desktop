@@ -7,7 +7,7 @@ accounts, audio, display-control devices or personal folders.
 
 Build `.#shell`, `.#compositor-basic`, `.#compositor`, `.#test-application-font`
 and `.#test-application-software-driver`, then invoke
-`tests/desktop/material_hierarchy_native.py` through `tests/ci/run-native.sh`
+the Rust 2024 `lumen-material-hierarchy-fixture` through `tests/ci/run-native.nu`
 within `nix develop`. Supply the immutable `--launcher`, `--sway`,
 `--font-directory`, `--software-driver` and a fresh `--output`; add `--effects`
 for the effects compositor. The manual workflow contains the complete command.

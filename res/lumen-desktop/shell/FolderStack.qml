@@ -51,7 +51,7 @@ PanelWindow {
     function valid(intent){return visible && Model.valid(intent,rows,generation,folder,folderFacts);}
     function openCaptured(intent){
         if(actionBusy || !valid(intent))return;
-        error="";actionIntent=intent;actionWorker.request={path:intent.path,facts:intent.facts.slice()};actionWorker.running=true;
+        error="";actionIntent=intent;actionWorker.request={action:"folder-stack-action",path:intent.path,facts:intent.facts.slice()};actionWorker.running=true;
     }
     function openItem(){openCaptured(capture(rows[selected]));}
     function reportFailure(message){if(typeof shell.reportApplicationError==="function")shell.reportApplicationError(message);}
@@ -128,17 +128,17 @@ PanelWindow {
         }
     }
     Timer {id:reloadTimer;interval:1;onTriggered:if(root.visible && !worker.running){worker.requestGeneration=root.generation;worker.request={id:root.generation,action:"column-list",path:root.folder,sort:root.sort==="type"?"kind":root.sort,descending:root.descending,captureDirectory:true};worker.running=true;}else if(root.visible)restart()}
-    Process {id:worker;stdinEnabled:true;property bool received:false;property int requestGeneration:-1;property var request:({});command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("files.py").toString().replace("file://","")]
+    Process {id:worker;stdinEnabled:true;property bool received:false;property int requestGeneration:-1;property var request:({});command:[Quickshell.env("LUMEN_FILES_BIN") || "lumen-files-rust-wip"]
         onStarted:{received=false;write(JSON.stringify(request)+"\n");}
         stdout:SplitParser {onRead:line=>{if(worker.requestGeneration!==root.generation || !root.visible)return;worker.received=true;try{const result=JSON.parse(line);if(result.id!==root.generation)return;root.folderFacts=result.folderFacts || null;root.total=(result.rows || []).length;root.limited=!!result.limited;root.rows=result.rows || [];root.error=result.error || "";}catch(e){root.error="This folder is unavailable";}worker.running=false;}}
         onExited:(code,status)=>{if(root.visible && requestGeneration===root.generation && !received){root.error="The folder listing provider is unavailable";root.rows=[];root.folderFacts=null;}}
     }
     Process {id:actionWorker;stdinEnabled:true;property var request:({});property bool received:false
-        command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("folder_stack_actions.py").toString().replace("file://","")]
+        command:[Quickshell.env("LUMEN_FILES_BIN") || "lumen-files-rust-wip"]
         onStarted:{received=false;write(JSON.stringify(request)+"\n");}
-        stdout:StdioCollector {onStreamFinished:{
-            let result;try{result=JSON.parse(text);}catch(e){result={error:"The folder action provider is unavailable"};}
-            actionWorker.received=true;const captured=root.actionIntent;root.actionIntent=null;
+        stdout:SplitParser {onRead:line=>{
+            let result;try{result=JSON.parse(line);}catch(e){result={error:"The folder action provider is unavailable"};}
+            actionWorker.received=true;actionWorker.running=false;const captured=root.actionIntent;root.actionIntent=null;
             if(result.error){if(root.valid(captured))root.error=result.error;else root.reportFailure(result.error);return;}
             if(!root.valid(captured) || (!captured.footer && root.rows[root.selected]!==captured.row))return;
             if(result.folder){root.visible=false;root.shell.openFiles(result.folder,result.expectedFacts);}

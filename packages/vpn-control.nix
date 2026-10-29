@@ -1,0 +1,7 @@
+{ pkgs }:
+pkgs.rustPlatform.buildRustPackage {
+  pname = "lumen-vpn-control";
+  version = "0.1.0";
+  src = ../res/lumen-desktop/vpn-control;
+  cargoLock.lockFile = ../res/lumen-desktop/vpn-control/Cargo.lock;
+}

@@ -1,8 +1,24 @@
-{ pkgs, menuRuntime, assets ? ../res/lumen-desktop, providerPackage ? null }:
+{ pkgs, providerPackage ? null }:
 let
   bridge = (import ./lumen-authorization-agent.nix { inherit pkgs; }).bridge;
-in pkgs.writeShellScriptBin "lumen-network-locations" ''
-  export GTK_MODULES="${bridge}/lib/gtk-3.0/modules/libsession-appearance.so''${GTK_MODULES:+:$GTK_MODULES}"
-  ${pkgs.lib.optionalString (providerPackage != null) ''export GIO_EXTRA_MODULES="${providerPackage}/lib/gio/modules''${GIO_EXTRA_MODULES:+:$GIO_EXTRA_MODULES}"''}
-  exec ${menuRuntime}/bin/global-menu-python ${assets}/shell/network_locations.py "$@"
-''
+  binary = pkgs.rustPlatform.buildRustPackage {
+    pname = "lumen-network-locations";
+    version = "0.1.0";
+    src = ../res/lumen-desktop/network-locations;
+    cargoLock.lockFile = ../res/lumen-desktop/network-locations/Cargo.lock;
+    nativeBuildInputs = [ pkgs.pkg-config ];
+    buildInputs = [ pkgs.gtk3 ];
+  };
+in pkgs.writeTextFile {
+  name = "lumen-network-locations";
+  destination = "/bin/lumen-network-locations";
+  executable = true;
+  text = ''
+    #!${pkgs.nushell}/bin/nu
+    def --wrapped main [...args] {
+      $env.GTK_MODULES = $"${bridge}/lib/gtk-3.0/modules/libsession-appearance.so:($env.GTK_MODULES? | default "")"
+      ${if providerPackage == null then "" else ''$env.GIO_EXTRA_MODULES = $"${providerPackage}/lib/gio/modules:($env.GIO_EXTRA_MODULES? | default "")"''}
+      exec ${binary}/bin/lumen-network-locations ...$args
+    }
+  '';
+}

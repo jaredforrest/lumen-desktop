@@ -11,7 +11,7 @@ Rows expose semantic menu-item roles, enabled and checked states, shortcut descr
 The native fixture uses an actual private same-process XWayland window and DBusMenu exporter, matched by PID and native window ID through the installed registrar. It tests dynamic checked/disabled/shortcut rows, same-ID unchanged-label revisions, nested and overflow travel, actual client input, stale pointer and assistive references, exporter replacement and exact owner dispatch. This protocol coverage does not imply that applications without an export provider expose their menus. Escape depth and other keyboard policy are project interaction choices; external-reference exact timing and geometry are not claimed.
 
 ```sh
-PYTHONWARNINGS=error nix develop --command desktop-test-python tests/desktop/menu_keyboard_input.py --launcher /path/to/lumen-desktop-shell --sway /path/to/sway --pointer-tool /path/to/wlrctl --output /tmp/menu-keyboard-evidence
+nix develop --command lumen-menu-native-fixture keyboard --launcher /path/to/lumen-desktop-shell --sway /path/to/sway --pointer-tool /path/to/wlrctl --at-spi-prefix /path/to/at-spi-prefix --exporter /path/to/lumen-menu-exporter-fixture --output /tmp/menu-keyboard-evidence
 ```
 
 Add `--effects` for the effects compositor. Both variants run in CI and retain painted nested-card and overflow captures, producer events, native identities, accessibility trees and logs. Bridge unit tests also verify revision freshness after refresh and equality across uint wrap.

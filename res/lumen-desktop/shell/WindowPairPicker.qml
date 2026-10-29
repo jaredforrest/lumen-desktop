@@ -74,7 +74,7 @@ PanelWindow {
     }
     Timer {interval:2000;running:root.visible;repeat:true;onTriggered:root.send("status")}
     Process {id:worker;stdinEnabled:true
-        command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("window_pair.py").toString().replace(/^file:\/\//,"")]
+        command:["lumen-window-pair"]
         onStarted:write(JSON.stringify(root.request)+"\n")
         stdout:StdioCollector {onStreamFinished:{
             if(root.request.id!==root.sourceId)return;

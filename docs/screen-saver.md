@@ -34,7 +34,8 @@ rather than guessing from window names, process names or a stored setting.
 
 ```
 nix flake check --print-build-logs --option abort-on-warn true
-nix develop --command desktop-test-python tests/desktop/screen_saver_native.py \
+nix build .#test-screen-saver-fixture -o artifacts/screen-saver-fixture
+nix develop --command artifacts/screen-saver-fixture/bin/lumen-screen-saver-fixture \
   --launcher "$(nix build .#shell --no-link --print-out-paths)/bin/lumen-desktop-shell" \
   --sway "$(nix build .#compositor-basic --no-link --print-out-paths)/bin/sway" \
   --pointer-tool "$(nix build .#test-pointer --no-link --print-out-paths)/bin/wlrctl" \

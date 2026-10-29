@@ -12,7 +12,7 @@ Item {
     function apply(row,action){if(!busy)request({action:action,id:row.id,revision:row.revision,confirmed:true});}
     function request(value){
         error="";message="";worker.request=JSON.stringify(value);
-        worker.command=[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("portal_permissions.py").toString().replace(/^file:\/\//,"")];worker.running=true;
+        worker.command=["lumen-portal-permissions"];worker.running=true;
     }
     onActiveChanged:if(active)refresh()
     Component.onCompleted:if(active)refresh()

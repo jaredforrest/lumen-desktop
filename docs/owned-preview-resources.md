@@ -1,8 +1,8 @@
 # Owned preview resources
 
 Files and Quick Look use `OwnedPreviewState.qml` and the dedicated persistent
-`owned_preview.py` worker. Folder listings and file operations have a separate
-process. Each request captures a sequence, source path, page, selected device and
+`lumen-owned-preview-rust-wip` worker. Folder listings and file operations use
+`lumen-files-rust-wip`. Each request captures a sequence, source path, page, selected device and
 inode when available, and an observed source token. Paging retains that token;
 explicit selection/show observes a fresh source. Replies from retired or replaced
 requests cannot publish a resource.
@@ -46,15 +46,15 @@ blocked consumer keeps its old resource pinned. A new capture starts its own
 request deadline after the retirement phase, and no stale request is retried. A later worker cleans only
 dead process/start-identity snapshot directories, preserving other live owners.
 
-The older `files.py` preview endpoint and `file_preview.preview` remain read-only
+The Files preview endpoint and `lumen-file-preview` remain read-only
 helpers; their raw path-based response is not the owned UI resource-lifetime API.
 Folder listings and external Open/OCR/subject-extraction actions do not acquire
 this immutable-reader guarantee. This batch does not claim immutable external
 application handoff or cross-reboot identity.
 
-`test_owned_preview.py` checks source metadata, exact selected identity, symlink
+The `file-surfaces` Rust tests check source metadata, exact selected identity, symlink
 refusal, provider token/page scope, resource bounds, independent owners and
-rendered-cache retention. `owned_preview_input.py` uses installed components on
+rendered-cache retention. The Rust 2024 `lumen-owned-preview-fixture` uses installed components on
 both compositors, private synthetic directories/media and a private bus. It
 holds actual Image/MediaPlayer source activation and cooperative source retirement, replaces the source after
 the real reply, and verifies original image pixels and video duration. It also
@@ -112,7 +112,7 @@ attach to another selection.
 Unavailable responses distinguish `unsupported`, `policy_limit`,
 `source_changed`, `permission_denied`, `application_unavailable`,
 `provider_timeout`, `provider_failure`, `dispatch_failed`, `dispatch_unknown`, `canceled`, `busy` and invalid requests.
-An Open acknowledgement timeout is unknown and is never retried automatically. A known content/preview Python timeout has the timeout reason; an ambiguous child termination,
+An Open acknowledgement timeout is unknown and is never retried automatically. A known content/preview helper timeout has the timeout reason; an ambiguous child termination,
 including status 137, remains a provider failure. Neither policy limits nor
 unsupported formats imply that the original was opened. The 64 MiB source bound,
 32 MiB inline-image bound and conservative changed-original PDF paging refusal

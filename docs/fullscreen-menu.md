@@ -18,7 +18,8 @@ A single read-only observer obtains visible workspace and fullscreen-container s
 The 500 ms leave delay and one-pixel trigger are explicit project interaction policy, not measured external reference values. Exact reference animation, timing and geometry remain unverified.
 
 ```sh
-nix develop --command desktop-test-python tests/desktop/fullscreen_menu_native.py --launcher /absolute/path/to/lumen-desktop-shell --sway /absolute/path/to/sway --pointer-tool /absolute/path/to/wlrctl --output /absolute/new/evidence-directory
+nix build .#test-fullscreen-menu-fixture -o artifacts/fullscreen-menu-fixture
+nix develop --command nu tests/ci/run-native.nu fullscreen_menu_native -- artifacts/fullscreen-menu-fixture/bin/lumen-fullscreen-menu-fixture --launcher /absolute/path/to/lumen-desktop-shell --sway /absolute/path/to/sway --pointer-tool /absolute/path/to/wlrctl --source . --output /absolute/new/evidence-directory
 ```
 
 The fixture uses two private outputs, a real native client and actual pointer/keyboard input. It checks old-snapshot startup, all four desktop/fullscreen policies, presented pixels, app input, keyboard invocation, menu interaction, live preference updates, workspace/global modes and removal of the fullscreen output. Use `--effects` for the effects compositor; it explicitly requests genuine software GLES. Evidence includes captures, native state and pointer measurements. Unit tests additionally cover inactive workspaces and structural markers; settings tests use the real Nix evaluator and disposable sources.

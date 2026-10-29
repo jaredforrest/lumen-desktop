@@ -7,7 +7,7 @@ QtObject {
     function unavailable(){state={available:false,enabled:false,locked:true,outputs:[]};}
     property Process observer:Process {
         running:true
-        command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("window_group_selector.py").toString().replace(/^file:\/\//,""),"watch"]
+        command:["lumen-group-control","watch"]
         stdout:SplitParser {onRead:data=>{try{const value=JSON.parse(data);root.state=value;expiry.restart();}catch(error){root.unavailable();}}}
         onExited:{root.unavailable();retry.restart();}
     }

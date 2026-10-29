@@ -35,10 +35,11 @@ Reproduce validation:
 ```sh
 nix flake check --print-build-logs --option abort-on-warn true
 nix build .#shell --out-link /tmp/lumen-status-shell
-LUMEN_TEST_SHELL_LAUNCHER=/tmp/lumen-status-shell/bin/lumen-desktop-shell nix develop --command desktop-test-python tests/desktop/test_status_clock_qml.py
+nix build .#checks.x86_64-linux.offscreen-qml
 nix build .#compositor-basic --out-link /tmp/lumen-status-compositor
 nix build .#test-pointer --out-link /tmp/lumen-status-pointer
-nix develop --command desktop-test-python tests/desktop/status_clock_input.py --launcher /tmp/lumen-status-shell/bin/lumen-desktop-shell --sway /tmp/lumen-status-compositor/bin/sway --pointer-tool /tmp/lumen-status-pointer/bin/wlrctl --output /tmp/lumen-status-evidence
+nix build .#test-status-clock-fixture --out-link /tmp/lumen-status-fixture
+nix develop --command /tmp/lumen-status-fixture/bin/lumen-status-clock-fixture --launcher /tmp/lumen-status-shell/bin/lumen-desktop-shell --sway /tmp/lumen-status-compositor/bin/sway --pointer-tool /tmp/lumen-status-pointer/bin/wlrctl --output /tmp/lumen-status-evidence
 ```
 
 The native fixture uses an isolated compositor and synthetic availability; it

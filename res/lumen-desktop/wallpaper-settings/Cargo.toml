@@ -1,0 +1,15 @@
+[package]
+name = "lumen-wallpaper-settings"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde_json = "1"
+sha2 = "0.10"
+libc = "0.2"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+
+[[test]]
+name = "process"
+path = "tests/process.rs"
+harness = false

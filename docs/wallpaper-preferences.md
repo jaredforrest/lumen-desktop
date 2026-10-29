@@ -40,8 +40,8 @@ silently claiming the background changed. Reopen/refresh to inspect actual statu
 
 ```
 nix flake check --print-build-logs --option abort-on-warn true
-nix build .#shell .#compositor-basic .#test-pointer
-nix develop --command desktop-test-python tests/desktop/wallpaper_settings_native.py \
+nix build .#shell .#compositor-basic .#test-pointer .#test-wallpaper-settings-fixture
+nix develop --command "$(nix build .#test-wallpaper-settings-fixture --no-link --print-out-paths)/bin/lumen-wallpaper-settings-fixture" \
   --launcher "$(nix build .#shell --no-link --print-out-paths)/bin/lumen-desktop-shell" \
   --sway "$(nix build .#compositor-basic --no-link --print-out-paths)/bin/sway" \
   --pointer-tool "$(nix build .#test-pointer --no-link --print-out-paths)/bin/wlrctl" \

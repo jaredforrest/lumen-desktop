@@ -1,0 +1,7 @@
+
+ function historyFind(item,predicate){if(!item)return null;if(predicate(item))return item;for(const child of item.children || []){const found=historyFind(child,predicate);if(found)return found;}return null;}
+ function historyLauncher(){for(const bar of Object.values(root.bars)){const item=bar.historyAuditLauncher();if(item)return item;}return null;}
+ IpcHandler {target:"historyAudit"
+  function status():string {const launcher=root.historyLauncher();const recent=launcher?historyFind(launcher,node=>node.objectName==="search-history-state"):null;const settingsRecent=historyFind(settingsWindow.contentItem,node=>node.objectName==="search-history-state");return JSON.stringify({menus:Object.values(root.bars).map(bar=>bar.menu),visible:!!launcher && launcher.visible,query:launcher?launcher.queryText:"",index:launcher?launcher.historyIndex:-1,history:recent?recent.queries:[],busy:recent?recent.busy:false,enabled:recent?recent.enabled:false,provider:launcher?launcher.provider:"",settingsVisible:settingsWindow.visible,settingsPage:settingsWindow.page,settingsBusy:settingsRecent?settingsRecent.busy:false,settingsError:settingsRecent?settingsRecent.error:""});}
+  function button(text:string):string {const item=historyFind(settingsWindow.contentItem,node=>node.text===text && node.visible);if(!item)return "{}";const point=item.mapToItem(settingsWindow.contentItem,item.width/2,item.height/2);return JSON.stringify({x:point.x,y:point.y,enabled:item.enabled});}
+ }

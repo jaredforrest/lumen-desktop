@@ -25,7 +25,7 @@ A replaced path, ambiguous hard links, or invalid/unsafe identity never
 degrades to a path-only selection. Desktop placement keys preserve exact decimal
 identities and distinguish actual hard links by their existing name suffix.
 
-`test_file_identity.py` exercises real listing serialization through a JavaScript
+Identity acceptance exercises real listing serialization through a JavaScript
 JSON round-trip, exact original/replacement preview guards, canonical boundaries,
 legacy compatibility, tag writes guarded before mutation, and both shared
 JavaScript models. Synthetic stat values above `2^60` make the precision defect

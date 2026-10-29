@@ -13,7 +13,7 @@ QtObject {
     function dockVisible(output){return Model.visible(routing,output,Quickshell.screens);}
     property Process observer:Process {
         running:true
-        command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("display_spaces.py").toString().replace(/^file:\/\//,"")]
+        command:[Quickshell.env("LUMEN_DISPLAY_SPACES_BIN") || "lumen-display-spaces"]
         stdout:SplitParser {onRead:data=>{try{if(data.length>262144){root.unavailable();return;}root.accept(JSON.parse(data));}catch(error){root.unavailable();}}}
         onExited:{root.unavailable();retry.restart();}
     }

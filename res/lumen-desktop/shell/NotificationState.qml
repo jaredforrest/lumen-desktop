@@ -53,7 +53,7 @@ Item {
     Timer {id:actionTimer;property var data;interval:80;onTriggered:root.command(data)}
     Process {
         id:transport
-        command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Quickshell.env("LUMEN_NOTIFICATION_HELPER"),"watch",String(root.transportEpoch)]
+        command:[Quickshell.env("LUMEN_NOTIFICATION_HELPER"),"watch",String(root.transportEpoch)]
         running:true;stdinEnabled:true
         stdout:SplitParser {onRead:line=>root.applyState(line)}
         onExited:(code,status)=>{root.clearTransport(true);reconnect.restart();}

@@ -8,31 +8,33 @@ The shared application runner uses private Linux user, PID, mount, network, IPC 
 
 Every launch has an explicit private `--user-data-dir`. Host profiles, accounts, buses, audio/camera devices and printers are absent. Only a synthetic loopback HTTP server is reachable. Effects runs opt into the shared validated software-graphics device capability; physical rendering and capture devices remain absent. Origin permissions, browser sandbox and download/trust policy stay real. Onboarding and the default-browser startup check are separately disclosed exclusions.
 
+The separate `browser-fonts` Rust 2024 fixture replaces the former Python font audit. Inside a disposable `/home/fixture` and `/artifacts` boundary, pass `--browser`, `--profile`, `--output` and `--cases` (a JSON array with explicit `name`, `family`, `text`, `expectedFamilies` and `expectedGlyphCount`). It checks Chromium's actual platform-font selection for every case and saves a painted PNG plus observations. The fixture package's build runs its validation tests; running a particular font policy still requires the corresponding explicit case file and installed font input.
+
 The diagnostic pipe observes browser/page/provider state; it never grants permissions, chooses files or performs UI actions. A persistent full-US Wayland keyboard and native pointer exercise those actions. Exact profile files are read-only witnesses, with history checked after actual native browser exit rather than assuming immediate database flush. Native frame ownership and chooser parent identity are checked separately.
 
 ## Reproduce
 
-Start from a committed checkout. Build the pinned dependencies, and supply the installed browser's immutable executable explicitly:
+Start from a committed checkout in the pinned development shell (`nix develop`). Build the pinned dependencies, and supply the installed browser's immutable executable explicitly:
 
-```sh
-lumen_browser_launcher=$(nix build .#shell --no-link --print-out-paths)
-lumen_browser_compositor=$(nix build .#compositor-basic --no-link --print-out-paths)
-lumen_browser_pointer=$(nix build .#test-pointer --no-link --print-out-paths)
-lumen_browser_keyboard=$(nix build .#test-physical-keyboard --no-link --print-out-paths)
-lumen_browser_accessibility=$(nix build .#test-screen-reader-atspi --no-link --print-out-paths)
-lumen_browser_software=$(nix build .#test-application-software-driver --no-link --print-out-paths)
-lumen_browser_font=$(nix build .#test-application-font --no-link --print-out-paths)
+```nu
+let launcher = (nix build .#shell --no-link --print-out-paths | str trim)
+let compositor = (nix build .#compositor-basic --no-link --print-out-paths | str trim)
+let pointer = (nix build .#test-pointer --no-link --print-out-paths | str trim)
+let keyboard = (nix build .#test-physical-keyboard --no-link --print-out-paths | str trim)
+let accessibility = (nix build .#test-screen-reader-atspi --no-link --print-out-paths | str trim)
+let software = (nix build .#test-application-software-driver --no-link --print-out-paths | str trim)
+let font = (nix build .#test-application-font --no-link --print-out-paths | str trim)
+let fixture = (nix build .#test-browser-workflows-fixture --no-link --print-out-paths | str trim)
 
-bash tests/ci/run-native.sh browser_workflows_input \
-  nix develop --command desktop-test-python tests/desktop/browser_workflows_input.py \
+^nu tests/ci/run-native.nu browser_workflows_basic -- ($fixture | path join bin lumen-browser-workflows-fixture) \
   --browser /nix/store/EXPLICIT-BROWSER/bin/brave \
-  --launcher "$lumen_browser_launcher/bin/lumen-desktop-shell" \
-  --sway "$lumen_browser_compositor/bin/sway" \
-  --pointer-tool "$lumen_browser_pointer/bin/wlrctl" \
-  --keyboard-tool "$lumen_browser_keyboard/bin/lumen-test-physical-keyboard" \
-  --font-directory "$lumen_browser_font/share/fonts/truetype" \
-  --at-spi-prefix "$lumen_browser_accessibility" \
-  --software-driver "$lumen_browser_software" \
+  --launcher ($launcher | path join bin lumen-desktop-shell) \
+  --sway ($compositor | path join bin sway) \
+  --pointer-tool ($pointer | path join bin wlrctl) \
+  --keyboard-tool ($keyboard | path join bin lumen-test-physical-keyboard) \
+  --font-directory ($font | path join share fonts truetype) \
+  --at-spi-prefix $accessibility \
+  --software-driver $software \
   --workflow basic --output artifacts/browser-basic
 ```
 
@@ -51,7 +53,7 @@ Overwrite cancel/commit, read-only errors and an actual disconnected mount remai
 
 ## Automatic and namespace checks
 
-`nix flake check` runs the pure invocation, inventory, physical-map, read-only SQLite, actual loopback server, subprocess pipe and ambient-entry rejection regressions. Namespace syscalls are a separate native prerequisite: run `tests/desktop/application_isolation_native.py --output <fresh-directory>` through the pinned development runtime and native warning wrapper. The pure `test_browser_isolation.py` only checks safe preflight and must remain usable in restricted build sandboxes. Optional application runs require the explicit browser dependency and are not inferred from passing unit or namespace checks.
+`nix flake check` runs the pure invocation, inventory, physical-map, read-only SQLite, actual loopback server, subprocess pipe and ambient-entry rejection regressions. The Rust application-isolation check covers safe preflight and allocator policy in restricted build sandboxes. Namespace syscalls are a separate native prerequisite: run `lumen-application-isolation probe --source . --output <fresh-directory>` from the pinned development shell through the native warning wrapper. Optional application runs require the explicit browser dependency and are not inferred from passing unit or namespace checks.
 
 Page-requested fullscreen remains unaccepted: a painted-frame and protocol trace found new window geometry committed against the old buffer, followed by resized buffers without another geometry request. The declared effective bounds therefore remain smaller than the output. The discrepancy is present before diagnostic readback. Browser fullscreen uses the correct painted bounds. Logical fullscreen flags alone cannot close the page-requested action; changing compositor geometry to conceal this sequence is not an accepted repair.
 

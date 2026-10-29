@@ -25,6 +25,7 @@ Flickable {
     signal bandCommitted(var selection)
     signal bandCanceled(string reason)
     signal chosen(string path, bool directory)
+    signal snapshotRestored()
     clip: true; contentWidth: columnRow.width; contentHeight: height
     property int resizingIndex:-1
     property int resizeEpoch:0
@@ -37,9 +38,11 @@ Flickable {
     function restoreSnapshot(value){pendingSnapshot=value;Qt.callLater(applySnapshot);}
     function applySnapshot(){
         if(!pendingSnapshot)return;
+        if(!visible){pendingSnapshot=null;snapshotRestored();return;}
         contentX=Math.max(0,Math.min(pendingSnapshot.x || 0,contentWidth-width));
-        columns.forEach((column,index)=>{const saved=(pendingSnapshot.columns || []).find(c=>c.path===column.path),item=columnRepeater.itemAt(index);if(!saved || !item || column.loaded===false)return;const list=item.listView,i=HistoryModel.locate(column.rows,saved.anchor);if(i>=0)list.positionViewAtIndex(i,ListView.Beginning);list.contentY=Math.max(0,Math.min(i>=0?list.contentY+(saved.delta || 0):saved.offset || 0,list.contentHeight-list.height));});
-        if(columns.every(column=>column.loaded!==false))pendingSnapshot=null;
+        let waiting=false;
+        columns.forEach((column,index)=>{const saved=(pendingSnapshot.columns || []).find(c=>c.path===column.path),item=columnRepeater.itemAt(index);if(!saved)return;if(!item || column.loaded===false){waiting=true;return;}const list=item.listView;if(column.rows.length>0 && list.contentHeight===0){waiting=true;return;}const i=HistoryModel.locate(column.rows,saved.anchor);if(i>=0)list.positionViewAtIndex(i,ListView.Beginning);list.contentY=Math.max(0,Math.min(i>=0?list.contentY+(saved.delta || 0):saved.offset || 0,list.contentHeight-list.height));});
+        if(!waiting && columns.every(column=>column.loaded!==false)){pendingSnapshot=null;snapshotRestored();}
     }
     onColumnsChanged:Qt.callLater(applySnapshot)
     onColumnPathKeyChanged:{resizeEpoch++;resizingIndex=-1;Qt.callLater(()=>{if(pendingSnapshot)applySnapshot();else if(resizingIndex<0)contentX=Math.max(0,contentWidth-width);});}
@@ -79,6 +82,7 @@ Flickable {
                     id:columnList;objectName:"files-column-"+parent.modelData.path
                     anchors {top:parent.top;topMargin:30;left:parent.left;right:parent.right;rightMargin:8;bottom:parent.bottom;bottomMargin:12}
                     clip:true; model:parent.modelData.rows; ScrollBar.vertical:DesktopScrollBar {id:columnScrollBar}
+                    onContentHeightChanged:Qt.callLater(root.applySnapshot)
                     delegate:AbstractButton {
                         required property var modelData
                         readonly property bool selected:ListView.view.parent.modelData.path===root.selectionFolder?root.selectedPaths.includes(modelData.path):modelData.path===root.currentPath || root.columns.some(c=>c.path===modelData.path)

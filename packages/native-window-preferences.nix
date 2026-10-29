@@ -1,25 +1,27 @@
 { pkgs, package, app }:
 let
-  appearanceAdapter = pkgs.runCommand "native-window-appearance-adapter" {} ''
-    mkdir -p "$out"
-    cp ${../res/lumen-desktop/native_window_preferences.py} "$out/native_window_preferences.py"
-    cp ${../res/lumen-desktop/brave-appearance.json} "$out/brave-appearance.json"
+  appearanceAdapter = pkgs.callPackage ./native-window-preferences-rust.nix { };
+  rewriteDesktopEntries = pkgs.writeText "lumen-native-window-desktop-entries.nu" ''
+    def main [output: string, original: string, app: string] {
+      for entry in (glob $"($output)/share/applications/*.desktop") {
+        let source = (^${pkgs.coreutils}/bin/readlink -f $entry | str trim)
+        ^${pkgs.coreutils}/bin/cp --remove-destination $source $entry
+        ^${pkgs.coreutils}/bin/chmod u+w $entry
+        let content = (open --raw $entry | str replace --all $"($original)/bin/" $"($output)/bin/")
+        let updated = if $app == "gimp" {
+          $content | str replace --all '/bin/gimp-3.2' '/bin/gimp'
+        } else { $content }
+        $updated | save --raw --force $entry
+      }
+    }
   '';
 in pkgs.symlinkJoin {
   name = "${package.name}-native-window-frame";
   paths = [ package ] ++ pkgs.lib.optional (package ? man) package.man;
   nativeBuildInputs = [ pkgs.makeWrapper ];
   postBuild = ''
-    wrapProgram "$out/bin/${package.meta.mainProgram}" --run '${pkgs.python3}/bin/python3 ${appearanceAdapter}/native_window_preferences.py ${app} "$@"'
-    # Some upstream desktop entries use an absolute executable path.
-    for entry in "$out"/share/applications/*.desktop; do
-      [ -e "$entry" ] || continue
-      cp --remove-destination "$(readlink -f "$entry")" "$entry"
-      substituteInPlace "$entry" --replace-quiet '${package}/bin/' "$out/bin/"
-      ${pkgs.lib.optionalString (app == "gimp") ''
-        substituteInPlace "$entry" --replace-quiet '/bin/gimp-3.2' '/bin/gimp'
-      ''}
-    done
+    wrapProgram "$out/bin/${package.meta.mainProgram}" --run '${appearanceAdapter}/bin/lumen-native-window-preferences ${app} "$@"'
+    ${pkgs.nushell}/bin/nu ${rewriteDesktopEntries} "$out" '${package}' '${app}'
   '';
   meta = package.meta // { outputsToInstall = [ "out" ]; };
 }
