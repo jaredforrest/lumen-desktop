@@ -26,7 +26,7 @@ fn start_time(pid: &str) -> Result<String> {
 }
 fn driver() -> Result<()> {
     wait("actual user manager", || Ok(user(&["show-environment"])?.status.success()))?;
-    checked(&["start", "graphical-session.target"])?;
+    checked(&["start", "recovery-test-session.target"])?;
     checked(&["start", "recovery-client.service"])?;
     let client=property("recovery-client.service","MainPID")?;
     require(client!="0","Client process missing")?;

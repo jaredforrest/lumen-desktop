@@ -44,6 +44,7 @@ let
     inherit system;
     modules = [ (nixpkgs + "/nixos/modules/virtualisation/qemu-vm.nix") ({ lib, ... }: {
       system.stateVersion = "26.05";
+      nix.enable = false;
       networking.hostName = "recovery-policy";
       networking.useDHCP = false;
       users.users.fixture = { isNormalUser = true; uid = 1000; linger = true; hashedPassword = "!"; };
@@ -55,7 +56,12 @@ let
         qemu.options = [ "-machine accel=tcg" ];
         qemu.networkingOptions = lib.mkForce [ "-nic none" ];
       };
-      systemd.user.targets.graphical-session = { description = "Disposable graphical session boundary"; };
+      systemd.user.targets.recovery-test-session = {
+        description = "Disposable graphical session owner";
+        requires = [ "graphical-session.target" ];
+        after = [ "graphical-session.target" ];
+        unitConfig.PartOf = [ "graphical-session.target" ];
+      };
       systemd.user.services.lumen-desktop-shell = unit shell "attempts";
       systemd.user.services.recovery-disabled = unit disabledShell "disabled-attempts";
       systemd.user.services.lumen-desktop-recovery = {
