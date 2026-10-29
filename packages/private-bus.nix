@@ -7,7 +7,9 @@ pkgs.runCommand "lumen-private-dbus-run-session" {
 } ''
   mkdir -p "$out/bin"
   rustc --edition=2024 -D warnings ${./private-bus.rs} -o "$out/bin/dbus-run-session"
-  "$out/bin/dbus-run-session" -- ${pkgs.coreutils}/bin/printf '%s\n' true false 000 'a b' '"quoted"' > arguments
-  printf '%s\n' true false 000 'a b' '"quoted"' > expected
+  rustc --edition=2024 -D warnings --test ${./private-bus.rs} -o bus-options-test
+  ./bus-options-test
+  "$out/bin/dbus-run-session" -- ${pkgs.coreutils}/bin/printf '%s\n' true false 000 'a b' '"quoted"' --config-file=child --dbus-daemon=child > arguments
+  printf '%s\n' true false 000 'a b' '"quoted"' --config-file=child --dbus-daemon=child > expected
   cmp arguments expected
 ''
