@@ -72,6 +72,9 @@
             substituteInPlace sesman/chansrv/chansrv.c --replace-fail \
               'config_path = XRDP_CFG_PATH "/sesman.ini";' \
               'config_path = "/run/fixture/xrdp/sesman.ini";'
+            substituteInPlace xrdp/xrdp_wm.c --replace-fail \
+              'tconfig_load_gfx(XRDP_CFG_PATH "/gfx.toml",' \
+              'tconfig_load_gfx("/run/fixture/xrdp/gfx.toml",'
           '';
         });
         test-remote-x11vnc = pkgs.symlinkJoin {
