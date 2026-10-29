@@ -16,20 +16,7 @@
       testBusConfig = pkgs.writeText "lumen-test-session.conf" ''
         <busconfig><type>session</type><listen>unix:tmpdir=/tmp</listen><auth>EXTERNAL</auth><policy context="default"><allow send_destination="*"/><allow receive_sender="*"/><allow own="*"/></policy></busconfig>
       '';
-      privateBus = pkgs.writeTextFile {
-        name = "lumen-private-dbus-run-session";
-        destination = "/bin/dbus-run-session";
-        executable = true;
-        text = ''
-          #!${pkgs.nushell}/bin/nu
-          def --wrapped main [...args: string] {
-            if ($args | any {|argument| $argument | str starts-with "--config-file=" }) {
-              exec ${pkgs.dbus}/bin/dbus-run-session ...$args
-            }
-            exec ${pkgs.dbus}/bin/dbus-run-session --config-file=${testBusConfig} ...$args
-          }
-        '';
-      };
+      privateBus = import ./packages/private-bus.nix { inherit pkgs testBusConfig; };
       browserPipeChild = import ./packages/browser-pipe-child.nix { inherit pkgs; };
     in {
       nixosModules.default = import ./modules/desktop.nix;
