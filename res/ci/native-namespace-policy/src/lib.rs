@@ -46,10 +46,18 @@ pub fn profile_for(executable: &str) -> Result<(String, String), String> {
     let rest = executable
         .strip_prefix("/nix/store/")
         .ok_or("Exact immutable Nix unshare required")?;
-    let (hash, version) = rest.split_once("-util-linux-")
-        .and_then(|(hash, rest)| rest.strip_suffix("/bin/unshare").map(|version| (hash, version)))
-        .or_else(|| rest.split_once("-bubblewrap-")
-            .and_then(|(hash, rest)| rest.strip_suffix("/bin/bwrap").map(|version| (hash, version))))
+    let (hash, version) = rest
+        .split_once("-util-linux-")
+        .and_then(|(hash, rest)| {
+            rest.strip_suffix("/bin/unshare")
+                .map(|version| (hash, version))
+        })
+        .or_else(|| {
+            rest.split_once("-bubblewrap-").and_then(|(hash, rest)| {
+                rest.strip_suffix("/bin/bwrap")
+                    .map(|version| (hash, version))
+            })
+        })
         .ok_or("Exact immutable namespace executable required")?;
     if hash.len() != 32
         || !hash
@@ -295,7 +303,9 @@ fn run_profile(operation: &str, output: &str, executable: &str) -> Result<(), St
     match operation {
         "prepare" => {
             let info = fs::metadata(executable).map_err(|error| error.to_string())?;
-            if !info.is_file() || info.mode() & 0o111 == 0 { return Err("Immutable namespace executable missing".into()); }
+            if !info.is_file() || info.mode() & 0o111 == 0 {
+                return Err("Immutable namespace executable missing".into());
+            }
             let (name, text) = profile_for(executable)?;
             fs::create_dir_all(out.parent().ok_or("Invalid artifact path")?)
                 .map_err(|error| error.to_string())?;
@@ -377,14 +387,26 @@ fn run_profile(operation: &str, output: &str, executable: &str) -> Result<(), St
     Ok(())
 }
 
-fn for_each_profile(mut action: impl FnMut(&str, &str) -> Result<(), String>) -> Result<(), String> {
+fn for_each_profile(
+    mut action: impl FnMut(&str, &str) -> Result<(), String>,
+) -> Result<(), String> {
     let mut errors = Vec::new();
-    for (name, executable) in [("bwrap", env!("LUMEN_BWRAP_BIN")), ("unshare", env!("LUMEN_UNSHARE_BIN"))] {
-        let result = fs::canonicalize(executable).map_err(|error| error.to_string())
+    for (name, executable) in [
+        ("bwrap", env!("LUMEN_BWRAP_BIN")),
+        ("unshare", env!("LUMEN_UNSHARE_BIN")),
+    ] {
+        let result = fs::canonicalize(executable)
+            .map_err(|error| error.to_string())
             .and_then(|path| action(name, path.to_str().ok_or("Invalid immutable executable")?));
-        if let Err(error) = result { errors.push(format!("{name}: {error}")); }
+        if let Err(error) = result {
+            errors.push(format!("{name}: {error}"));
+        }
     }
-    if errors.is_empty() { Ok(()) } else { Err(errors.join("; ")) }
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("; "))
+    }
 }
 
 pub fn run(operation: &str, output: &str) -> Result<(), String> {
@@ -392,32 +414,61 @@ pub fn run(operation: &str, output: &str) -> Result<(), String> {
     let out = out_path(output)?;
     match operation {
         "prepare" => {
-            fs::create_dir_all(out.parent().ok_or("Invalid artifact path")?).map_err(|error| error.to_string())?;
+            fs::create_dir_all(out.parent().ok_or("Invalid artifact path")?)
+                .map_err(|error| error.to_string())?;
             fs::create_dir(&out).map_err(|error| error.to_string())?;
-            fs::set_permissions(&out, fs::Permissions::from_mode(0o700)).map_err(|error| error.to_string())?;
+            fs::set_permissions(&out, fs::Permissions::from_mode(0o700))
+                .map_err(|error| error.to_string())?;
             let before = parameters(Path::new("/proc/sys"))?;
-            for_each_profile(|name, executable| run_profile("prepare", out.join(name).to_str().ok_or("Invalid policy artifact")?, executable))?;
+            for_each_profile(|name, executable| {
+                run_profile(
+                    "prepare",
+                    out.join(name).to_str().ok_or("Invalid policy artifact")?,
+                    executable,
+                )
+            })?;
             let source = env::current_dir().map_err(|error| error.to_string())?;
             let probe = out.join("isolation-probe");
             let status = Command::new(env!("LUMEN_TIMEOUT_BIN"))
                 .args(["60", env!("LUMEN_ISOLATION_BIN"), "probe", "--source"])
-                .arg(source).arg("--output").arg(probe)
-                .status().map_err(|error| error.to_string())?;
+                .arg(source)
+                .arg("--output")
+                .arg(probe)
+                .status()
+                .map_err(|error| error.to_string())?;
             let after = parameters(Path::new("/proc/sys"))?;
-            save_record(&out, &json!({"profiles":["bwrap","unshare"],"parametersBefore":before,"parametersAfter":after,"isolationProbePassed":status.success()}))?;
-            if before != after { return Err("Global namespace controls changed during real isolation probe".into()); }
-            if !status.success() { return Err(format!("Actual namespace isolation probe failed: {status}")); }
-            println!("Actual default and private-PTY isolation probes passed under exact executable policies");
+            save_record(
+                &out,
+                &json!({"profiles":["bwrap","unshare"],"parametersBefore":before,"parametersAfter":after,"isolationProbePassed":status.success()}),
+            )?;
+            if before != after {
+                return Err("Global namespace controls changed during real isolation probe".into());
+            }
+            if !status.success() {
+                return Err(format!("Actual namespace isolation probe failed: {status}"));
+            }
+            println!(
+                "Actual default and private-PTY isolation probes passed under exact executable policies"
+            );
             Ok(())
         }
         "cleanup" => {
-            if !out.exists() { return Ok(()); }
+            if !out.exists() {
+                return Ok(());
+            }
             let info = fs::symlink_metadata(&out).map_err(|error| error.to_string())?;
-            if !info.is_dir() || info.uid() != unsafe { libc::getuid() } || info.mode() & 0o077 != 0 {
+            if !info.is_dir() || info.uid() != unsafe { libc::getuid() } || info.mode() & 0o077 != 0
+            {
                 return Err("Policy artifact ownership changed".into());
             }
             // Always attempt both removals, even if one saved profile was damaged.
-            for_each_profile(|name, executable| run_profile("cleanup", out.join(name).to_str().ok_or("Invalid policy artifact")?, executable))
+            for_each_profile(|name, executable| {
+                run_profile(
+                    "cleanup",
+                    out.join(name).to_str().ok_or("Invalid policy artifact")?,
+                    executable,
+                )
+            })
         }
         _ => Err("Expected prepare or cleanup".into()),
     }
@@ -489,7 +540,12 @@ mod tests {
         let path = format!("/nix/store/{}-bubblewrap-0.11.0/bin/bwrap", "b".repeat(32));
         let (_, text) = profile_for(&path).unwrap();
         assert!(text.contains(&format!("\"{path}\"")) && !text.contains('*'));
-        for wrong in [path.replace("/bin/bwrap", "/bin/unshare"), path.replace("-bubblewrap-", "-other-"), format!("{path}/../bwrap"), "/usr/bin/bwrap".into()] {
+        for wrong in [
+            path.replace("/bin/bwrap", "/bin/unshare"),
+            path.replace("-bubblewrap-", "-other-"),
+            format!("{path}/../bwrap"),
+            "/usr/bin/bwrap".into(),
+        ] {
             assert!(profile_for(&wrong).is_err());
         }
     }
@@ -499,8 +555,13 @@ mod tests {
         let error = for_each_profile(|name, executable| {
             attempts.push(name.to_owned());
             assert!(profile_for(executable).is_ok());
-            if name == "bwrap" { Err("retained failure".into()) } else { Ok(()) }
-        }).unwrap_err();
+            if name == "bwrap" {
+                Err("retained failure".into())
+            } else {
+                Ok(())
+            }
+        })
+        .unwrap_err();
         assert_eq!(attempts, ["bwrap", "unshare"]);
         assert!(error.contains("bwrap: retained failure"));
     }
