@@ -24,6 +24,17 @@ class FilePreferences(unittest.TestCase):
             files.handle({'action':'save-preferences','preferences':{'sidebarWidth':120,'collapsedSidebarGroups':[]}})
             self.assertEqual(files.handle({'action':'preferences'})['preferences']['view'],'list')
 
+    def test_split_sizes_survive_reload_and_invalid_edits_preserve_existing_bytes(self):
+        with tempfile.TemporaryDirectory() as directory,patch.dict(os.environ,{'XDG_STATE_HOME':directory}):
+            files.handle({'action':'save-preferences','preferences':{'previewWidth':320,'columnWidths':[240,280,420],'sort':'size'}})
+            source=Path(directory)/'lumen-desktop/session/files.json';original=source.read_bytes()
+            self.assertEqual(files.handle({'action':'preferences'})['preferences']['columnWidths'],[240,280,420])
+            for invalid in ({'previewWidth':True},{'previewWidth':159},{'previewWidth':601},{'columnWidths':[True]},{'columnWidths':[159]},{'columnWidths':[601]},{'columnWidths':[240]*17},{'columnWidths':{}},{'columnWidths':[240.5]}):
+                with self.subTest(invalid=invalid),self.assertRaises(ValueError):files.handle({'action':'save-preferences','preferences':invalid})
+                self.assertEqual(source.read_bytes(),original)
+            files.handle({'action':'save-preferences','preferences':{'previewWidth':160,'columnWidths':[]}})
+            self.assertEqual(files.handle({'action':'preferences'})['preferences'],{'previewWidth':160,'columnWidths':[],'sort':'size'})
+
     def test_validated_merge_persists_and_invalid_edits_leave_bytes_unchanged(self):
         with tempfile.TemporaryDirectory() as directory,patch.dict(os.environ,{'XDG_STATE_HOME':directory}):
             files.handle({'action':'save-preferences','preferences':{'view':'list','descending':True,'hidden':True}})

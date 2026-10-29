@@ -129,6 +129,11 @@ FloatingWindow {
     function editSidebar(action){let items=sidebarFavorites.slice();const index=sidebarEditIndex;if(index<0 || index>=items.length)return;if(action==="remove")items.splice(index,1);else {const target=index+(action==="up"?-1:1);if(target<0 || target>=items.length)return;const swap=items[index];items[index]=items[target];items[target]=swap;}service.favorites=items;sidebarActions.close();}
     function addSidebar(){if(service.path==="trash:" || sidebarFavorites.some(item=>item.path===service.path) || sidebarFavorites.length>=32)return;service.favorites=sidebarFavorites.concat([{name:service.path.split("/").filter(Boolean).pop() || "Computer",path:service.path}]);}
     property bool previewOpen:false
+    property int previewDragWidth:-1
+    readonly property var previewLimits:LayoutModel.previewLimits(width-sidebarWidth-24,Theme.textScale)
+    readonly property bool previewVisible:previewOpen && previewLimits.enabled
+    readonly property string previewMessage:previewOpen && !previewLimits.enabled?"Preview hidden: widen this window to keep both panes usable.":""
+    readonly property int previewWidth:LayoutModel.previewWidth(previewDragWidth>=0?previewDragWidth:service.previewWidth,width-sidebarWidth-24,Theme.textScale)
     readonly property var current:service.rows[selected] || null
     property int sidebarDragWidth:-1
     readonly property int sidebarMaximum:LayoutModel.sidebarMaximum(width)
@@ -360,6 +365,9 @@ FloatingWindow {
                     required property var modelData;width:27;height:30
                     enabled:!root.service.busy && (modelData.action==="back"?root.service.historyIndex>0:root.service.historyIndex<root.service.history.length-1)
                     Accessible.name:modelData.label
+                    Accessible.description:modelData.action==="preview" && !root.previewLimits.enabled?"Widen this window to show the preview pane":""
+                    ToolTip.visible:hovered && modelData.action==="preview" && !root.previewLimits.enabled
+                    ToolTip.text:"Widen this window to show the preview pane"
                     onClicked:root.service.back(modelData.action==="back"?-1:1)
                     background:Rectangle {radius:6;color:parent.hovered || parent.activeFocus?Theme.colors.hover:"transparent"}
                     contentItem:Item {SystemGlyph {anchors.centerIn:parent;width:17;height:17;name:modelData.icon;opacity:parent.parent.enabled?1:0.3}}
@@ -375,6 +383,9 @@ FloatingWindow {
                 AbstractButton {
                     required property var modelData;width:30;height:30
                     Accessible.name:modelData.label
+                    Accessible.description:modelData.action==="preview" && !root.previewLimits.enabled?"Widen this window to show the preview pane":""
+                    ToolTip.visible:hovered && modelData.action==="preview" && !root.previewLimits.enabled
+                    ToolTip.text:"Widen this window to show the preview pane"
                     onClicked:{if(modelData.action==="grid")root.service.viewMode="grid";else if(modelData.action==="list")root.service.viewMode="list";else if(modelData.action==="preview")root.previewOpen=!root.previewOpen;else {actions.x=root.width-230;actions.y=48;actions.open();}}
                     background:Rectangle {radius:7;color:parent.hovered || parent.activeFocus || (parent.modelData.action==="list" && root.listMode) || (parent.modelData.action==="grid" && !root.listMode) || (parent.modelData.action==="preview" && root.previewOpen)?Theme.selection:"transparent"}
                     contentItem:Item {SystemGlyph {anchors.centerIn:parent;width:17;height:17;name:modelData.icon}}
@@ -469,12 +480,13 @@ FloatingWindow {
         }
         Timer {id:filterDelay;interval:220;onTriggered:{root.service.query=filter.text;root.service.refresh();}}
         PanelLabel {
-            id:message;x:root.sidebarWidth+14;y:103+root.tabHeight;width:parent.width-x-14;height:visible?48:0
-            visible:root.service.error!=="" || root.service.warning!==""
-            text:root.service.error || root.service.warning;wrapMode:Text.WrapAnywhere;textFormat:Text.PlainText;font.pixelSize:Theme.textRole("label");color:Theme.colors.muted;elide:Text.ElideRight;maximumLineCount:3
-            MouseArea {anchors.fill:parent;onClicked:errorDetails.open()}
-            Accessible.name:"Operation details: "+text
-            Accessible.onPressAction:errorDetails.open()
+            id:message;x:root.sidebarWidth+14;y:103+root.tabHeight;width:parent.width-x-14;height:visible?Math.max(48,Math.ceil(messageMetrics.height)*3):0
+            visible:root.service.error!=="" || root.service.warning!=="" || root.previewMessage!==""
+            text:root.service.error || root.service.warning || root.previewMessage;wrapMode:Text.WrapAnywhere;textFormat:Text.PlainText;font.pixelSize:Theme.textRole("label");color:Theme.colors.muted;elide:Text.ElideRight;maximumLineCount:3
+            MouseArea {anchors.fill:parent;enabled:root.service.error!=="" || root.service.warning!=="";onClicked:errorDetails.open()}
+            FontMetrics {id:messageMetrics;font.family:Theme.font;font.pixelSize:Theme.textRole("label")}
+            Accessible.name:(root.service.error || root.service.warning?"Operation details: ":"")+text
+            Accessible.onPressAction:if(root.service.error || root.service.warning)errorDetails.open()
         }
         Popup {id:errorDetails;modal:true;focus:true;width:Math.min(600,content.width-40);height:Math.min(400,content.height-40);anchors.centerIn:parent;padding:18
             background:Rectangle {radius:12;color:Theme.colors.background;border.color:Theme.outline}
@@ -488,7 +500,7 @@ FloatingWindow {
         }
         Item {
             id:files;x:root.sidebarWidth+10;y:message.visible?message.y+message.height+8:105+root.tabHeight
-            width:parent.width-x-10-(root.previewOpen?Math.min(280,(parent.width-root.sidebarWidth)*0.43):0)
+            width:parent.width-x-(root.previewVisible?22+root.previewWidth:10)
             height:parent.height-y-64-(root.footerHeight-20)-(Theme.textRole("body")-13)-(root.service.currentJob?40:0)
             enabled:!root.service.busy
             Row {
@@ -541,7 +553,7 @@ FloatingWindow {
             }
             FilesBandSelection {objectName:"files-list-band-selection";parent:list;anchors.fill:parent;view:list;rows:root.service.rows;selectedPaths:root.selectedPaths;currentIndex:root.selected;anchorIndex:root.selectionAnchor;contextKey:root.bandContext;permitted:root.bandPermitted && list.visible;rightInset:listScrollBar.visible?listScrollBar.width:0;onBegan:root.cancelPendingPresentation();onPreviewed:paths=>root.bandPreviewPaths=paths;onCommitted:value=>root.commitBand(value);onCanceled:reason=>root.cancelBand(reason)}
             FilesBandSelection {objectName:"files-grid-band-selection";parent:grid;anchors.fill:parent;view:grid;rows:root.service.rows;selectedPaths:root.selectedPaths;currentIndex:root.selected;anchorIndex:root.selectionAnchor;contextKey:root.bandContext;permitted:root.bandPermitted && grid.visible;rightInset:gridScrollBar.visible?gridScrollBar.width:0;onBegan:root.cancelPendingPresentation();onPreviewed:paths=>root.bandPreviewPaths=paths;onCommitted:value=>root.commitBand(value);onCanceled:reason=>root.cancelBand(reason)}
-            ColumnView {id:columnView;selectedPaths:root.bandPreviewPaths===null?root.selectedPaths:root.bandPreviewPaths;bandBasePaths:root.selectedPaths;bandRows:root.service.rows;bandPermitted:root.bandPermitted;bandContext:root.bandContext;bandCurrent:root.selected;bandAnchor:root.selectionAnchor;selectionFolder:root.service.path;onBandBegan:root.cancelPendingPresentation();onBandPreviewed:paths=>root.bandPreviewPaths=paths;onBandCommitted:value=>root.commitBand(value);onBandCanceled:reason=>root.cancelBand(reason);selectionActive:root.selectionActive;dropCoordinator:fileDrop;visible:root.columnsMode;anchors.fill:parent;columns:root.service.columns;currentPath:root.current?root.current.path:"";onChosen:(path,directory)=>{if(directory)root.navigate(path);else {const index=root.service.rows.findIndex(r=>r.path===path);if(index>=0)root.choose(index,0);else {root.service.nextSelection=path;root.navigate(path.slice(0,path.lastIndexOf("/")) || "/");}}}}
+            ColumnView {id:columnView;objectName:"files-column-view";preferredWidths:root.service.columnWidths || [];onWidthCommitted:(index,value)=>{const widths=(root.service.columnWidths || []).slice();while(widths.length<=index)widths.push(240);widths[index]=value;root.service.columnWidths=widths;};selectedPaths:root.bandPreviewPaths===null?root.selectedPaths:root.bandPreviewPaths;bandBasePaths:root.selectedPaths;bandRows:root.service.rows;bandPermitted:root.bandPermitted;bandContext:root.bandContext;bandCurrent:root.selected;bandAnchor:root.selectionAnchor;selectionFolder:root.service.path;onBandBegan:root.cancelPendingPresentation();onBandPreviewed:paths=>root.bandPreviewPaths=paths;onBandCommitted:value=>root.commitBand(value);onBandCanceled:reason=>root.cancelBand(reason);selectionActive:root.selectionActive;dropCoordinator:fileDrop;visible:root.columnsMode;anchors.fill:parent;columns:root.service.columns;currentPath:root.current?root.current.path:"";onChosen:(path,directory)=>{if(directory)root.navigate(path);else {const index=root.service.rows.findIndex(r=>r.path===path);if(index>=0)root.choose(index,0);else {root.service.nextSelection=path;root.navigate(path.slice(0,path.lastIndexOf("/")) || "/");}}}}
             Item {visible:root.galleryMode;anchors.fill:parent
                 FilePreview {resourceRetirement:root.service.previewResourceRetirement;x:12;y:0;width:parent.width-24;height:Math.max(60,parent.height-118);result:root.current?root.service.preview:{text:"Select an item"};active:root.visible && root.galleryMode;loading:root.service.previewBusy;onPageRequested:number=>root.service.requestPreview(root.current.path,number)}
                 ListView {id:galleryStrip;objectName:"files-gallery-view";anchors.bottom:parent.bottom;width:parent.width;height:104+(Theme.textRole("metadata")-11)*3;orientation:ListView.Horizontal;clip:true;spacing:5;model:root.service.rows;ScrollBar.horizontal:DesktopScrollBar {id:galleryScrollBar}
@@ -560,7 +572,7 @@ Accessible.name:FileLinks.accessible(modelData);Accessible.selected:root.isSelec
             PanelLabel {anchors.centerIn:parent;visible:root.service.rows.length===0;text:root.service.busy?"Loading…":root.service.query?"No matching items":"This folder is empty";color:Theme.colors.muted}
         }
         Item {
-            id:previewPane;visible:root.previewOpen;x:files.x+files.width+8;y:files.y;width:parent.width-x-14;height:files.height
+            id:previewPane;visible:root.previewVisible;x:files.x+files.width+8;y:files.y;width:parent.width-x-14;height:files.height
             Rectangle {width:1;height:parent.height;color:Theme.hairline}
             Column {
                 x:12;width:parent.width-12;spacing:10
@@ -574,6 +586,11 @@ Accessible.name:FileLinks.accessible(modelData);Accessible.selected:root.isSelec
                 }
                 PanelLabel {visible:!!root.service.preview.truncated;text:"Preview shortened";font.pixelSize:Theme.textRole("caption");color:Theme.colors.muted}
             }
+        }
+        SplitResizeHandle {objectName:"files-preview-resize";label:"Preview width";direction:-1;visible:root.previewVisible && root.previewLimits.maximum>root.previewLimits.minimum;x:previewPane.x-4;y:previewPane.y;height:previewPane.height;value:root.previewWidth;minimum:root.previewLimits.minimum;maximum:root.previewLimits.maximum
+            onPreviewRequested:value=>root.previewDragWidth=value
+            onCommitted:value=>{root.service.previewWidth=value;root.previewDragWidth=-1;}
+            onCancelled:root.previewDragWidth=-1
         }
         Flickable {
             id:pathbar;onContentWidthChanged:Qt.callLater(()=>contentX=Math.max(0,contentWidth-width));x:root.sidebarWidth+12;y:parent.height-57-(root.footerHeight-20);width:parent.width-x-12;height:25+(Theme.textRole("body")-13);contentWidth:crumbs.width;clip:true

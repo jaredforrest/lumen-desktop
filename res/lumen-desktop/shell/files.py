@@ -120,10 +120,16 @@ def handle(data):
             if not isinstance(prefs,dict):prefs={}
             if action=='save-preferences':
                 incoming=data.get('preferences',{})
-                allowed={'view':['grid','list','columns','gallery'],'sort':['name','modified','size','kind'],'descending':[True,False],'hidden':[True,False],'foldersFirst':[True,False],'groupBy':['none','kind'],'favorites':None,'sidebarWidth':None,'collapsedSidebarGroups':None}
+                allowed={'view':['grid','list','columns','gallery'],'sort':['name','modified','size','kind'],'descending':[True,False],'hidden':[True,False],'foldersFirst':[True,False],'groupBy':['none','kind'],'favorites':None,'sidebarWidth':None,'previewWidth':None,'columnWidths':None,'collapsedSidebarGroups':None}
                 if not isinstance(incoming,dict) or any(key not in allowed for key in incoming):
                     raise ValueError('Unknown file preference')
                 for key,value in incoming.items():
+                    if key=='previewWidth':
+                        if type(value) is not int or not 160<=value<=600:raise ValueError('Preview width must be between 160 and 600 pixels')
+                        continue
+                    if key=='columnWidths':
+                        if not isinstance(value,list) or len(value)>16 or any(type(width) is not int or not 160<=width<=600 for width in value):raise ValueError('Choose at most 16 column widths between 160 and 600 pixels')
+                        continue
                     if key=='sidebarWidth':
                         if type(value) is not int or not 120<=value<=360:raise ValueError('Sidebar width must be between 120 and 360 pixels')
                         continue

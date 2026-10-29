@@ -1,11 +1,14 @@
 import QtQuick
 import QtQuick.Controls
 import "FilesHistoryModel.js" as HistoryModel
+import "FileLayoutModel.js" as LayoutModel
 import "FileLinks.js" as FileLinks
 import "FilesSelectionModel.js" as SelectionModel
 Flickable {
     id: root
     property bool selectionActive:true
+    property var preferredWidths:[]
+    signal widthCommitted(int index,int value)
     property var columns: []
     required property var dropCoordinator
     property string currentPath: ""
@@ -23,6 +26,11 @@ Flickable {
     signal bandCanceled(string reason)
     signal chosen(string path, bool directory)
     clip: true; contentWidth: columnRow.width; contentHeight: height
+    property int resizingIndex:-1
+    property int resizeEpoch:0
+    property real resizeOriginX:0
+    readonly property string columnPathKey:columns.map(column=>column.path).join("\u0000")
+    function clampOffset(value){return Math.max(0,Math.min(value,Math.max(0,contentWidth-width)));}
     property var pendingSnapshot:null
     function snapshot(){return {x:contentX,columns:columns.map((column,index)=>{const item=columnRepeater.itemAt(index);if(!item)return {path:column.path,offset:0};const list=item.listView;const row=list.indexAt(1,list.contentY+1);const delegate=row>=0?list.itemAtIndex(row):null;return {path:column.path,offset:list.contentY,anchor:HistoryModel.ref(column.rows[row]),delta:delegate?Math.max(0,list.contentY-delegate.y):0};})};}
     function ensureVisible(path){columns.forEach((column,index)=>{const item=columnRepeater.itemAt(index),row=column.rows.findIndex(r=>r.path===path);if(item && row>=0){item.listView.positionViewAtIndex(row,ListView.Contain);contentX=Math.max(0,Math.min(item.x,contentWidth-width));}});}
@@ -34,7 +42,8 @@ Flickable {
         if(columns.every(column=>column.loaded!==false))pendingSnapshot=null;
     }
     onColumnsChanged:Qt.callLater(applySnapshot)
-    onContentWidthChanged: Qt.callLater(()=>{if(pendingSnapshot)applySnapshot();else contentX=Math.max(0,contentWidth-width);})
+    onColumnPathKeyChanged:{resizeEpoch++;resizingIndex=-1;Qt.callLater(()=>{if(pendingSnapshot)applySnapshot();else if(resizingIndex<0)contentX=Math.max(0,contentWidth-width);});}
+    onContentWidthChanged:Qt.callLater(()=>{if(pendingSnapshot)applySnapshot();else contentX=clampOffset(contentX);})
     ScrollBar.horizontal: DesktopScrollBar {}
     Row {
         id: columnRow; height: root.height
@@ -44,8 +53,15 @@ Flickable {
             Item {
                 required property var modelData; required property int index
                 property alias listView:columnList
-                width: Math.max(200,Math.min(260,root.width/2)); height: columnRow.height
-                Rectangle {anchors.right:parent.right;width:1;height:parent.height;color:Theme.hairline}
+                id:columnPane
+                property int dragWidth:-1
+                width:LayoutModel.columnWidth(dragWidth>=0?dragWidth:root.preferredWidths[index],root.width,Theme.textScale);height:columnRow.height
+                SplitResizeHandle {objectName:"files-column-resize-"+columnPane.index;label:"Column "+(columnPane.index+1)+" width";x:parent.width-width;height:parent.height;z:5;value:columnPane.width;minimum:Math.ceil(200*Theme.textScale);maximum:Math.max(minimum,Math.min(600,Math.floor(root.width)));visible:maximum>minimum
+                    onGestureBegan:{root.resizeEpoch++;root.resizingIndex=columnPane.index;root.resizeOriginX=root.contentX;}
+                    onPreviewRequested:value=>columnPane.dragWidth=value
+                    onCommitted:value=>{root.widthCommitted(columnPane.index,value);columnPane.dragWidth=-1;root.resizingIndex=-1;}
+                    onCancelled:{const active=root.resizingIndex===columnPane.index,epoch=root.resizeEpoch,origin=root.resizeOriginX;columnPane.dragWidth=-1;if(active){root.resizingIndex=-1;Qt.callLater(()=>{if(root.resizeEpoch===epoch && root.resizingIndex<0)root.contentX=root.clampOffset(origin);});}}
+                }
                 PanelLabel {x:10;y:3;width:parent.width-20;height:24;text:modelData.name;textFormat:Text.PlainText;font.weight:Font.DemiBold;font.pixelSize:Theme.textRole("metadata");color:Theme.colors.muted}
                 FilesBandSelection {
                     objectName:"files-column-band-"+columnList.parent.modelData.path
@@ -61,7 +77,7 @@ Flickable {
                 }
                 ListView {
                     id:columnList;objectName:"files-column-"+parent.modelData.path
-                    anchors {top:parent.top;topMargin:30;left:parent.left;right:parent.right;bottom:parent.bottom;bottomMargin:12}
+                    anchors {top:parent.top;topMargin:30;left:parent.left;right:parent.right;rightMargin:8;bottom:parent.bottom;bottomMargin:12}
                     clip:true; model:parent.modelData.rows; ScrollBar.vertical:DesktopScrollBar {id:columnScrollBar}
                     delegate:AbstractButton {
                         required property var modelData

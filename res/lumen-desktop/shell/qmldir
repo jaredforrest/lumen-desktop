@@ -102,6 +102,7 @@ ApplicationLifecycleState 1.0 ApplicationLifecycleState.qml
 DocumentTabs 1.0 DocumentTabs.qml
 SidebarGroup 1.0 SidebarGroup.qml
 SidebarResizeHandle 1.0 SidebarResizeHandle.qml
+SplitResizeHandle 1.0 SplitResizeHandle.qml
 
 StatusStrip 1.0 StatusStrip.qml
 ClockSettings 1.0 ClockSettings.qml

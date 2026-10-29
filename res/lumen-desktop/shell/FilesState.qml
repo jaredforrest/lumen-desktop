@@ -27,6 +27,10 @@ Item {
     property bool hidden:false
     property var favorites:null
     property int sidebarWidth:190
+    property int previewWidth:240
+    property var columnWidths:[]
+    onPreviewWidthChanged:savePreferences()
+    onColumnWidthsChanged:savePreferences()
     property var collapsedSidebarGroups:[]
     onSidebarWidthChanged:savePreferences()
     onCollapsedSidebarGroupsChanged:savePreferences()
@@ -40,7 +44,7 @@ Item {
     property var columnRequests:({})
     property bool restoringPresentation:false
     function restoreView(value){restoringPresentation=true;viewMode=value;restoringPresentation=false;}
-    function savePreferences(){if(preferencesLoaded && persistViewPreferences && !restoringPresentation)send("save-preferences",{preferences:{view:viewMode,sort:sort,descending:descending,hidden:hidden,foldersFirst:foldersFirst,groupBy:groupBy,favorites:favorites,sidebarWidth:sidebarWidth,collapsedSidebarGroups:collapsedSidebarGroups}});}
+    function savePreferences(){if(preferencesLoaded && persistViewPreferences && !restoringPresentation)send("save-preferences",{preferences:{view:viewMode,sort:sort,descending:descending,hidden:hidden,foldersFirst:foldersFirst,groupBy:groupBy,favorites:favorites,sidebarWidth:sidebarWidth,previewWidth:previewWidth,columnWidths:columnWidths,collapsedSidebarGroups:collapsedSidebarGroups}});}
     function loadColumns(){
         columnRequests={};columns=[];if(viewMode!=="columns" || path==="trash:")return;
         const ancestors=breadcrumbs.slice(-3);columns=ancestors.map(c=>({path:c.path,name:c.name,rows:[],loaded:false}));
@@ -140,7 +144,7 @@ Item {
                 const data=JSON.parse(line);
                 if(data.action==="info"){root.informationReady(data.info || {error:data.error});return;}
                 if(["rename-preview","rename-confirm","rename-cancel"].includes(data.action)){root.batchRenameReady(data);if(data.action==="rename-confirm")root.refresh();return;}
-                if(data.action==="preferences"){const p=data.preferences || {};root.viewMode=p.view || "grid";root.sort=p.sort || "name";root.descending=!!p.descending;root.hidden=!!p.hidden;root.foldersFirst=p.foldersFirst!==false;root.groupBy=p.groupBy || "none";root.favorites=p.favorites===undefined?null:p.favorites;root.sidebarWidth=Number.isInteger(p.sidebarWidth)?Math.max(120,Math.min(360,p.sidebarWidth)):190;root.collapsedSidebarGroups=Array.isArray(p.collapsedSidebarGroups)?p.collapsedSidebarGroups.filter(group=>["favourites","locations"].includes(group)):[];root.preferencesLoaded=true;root.refresh();return;}
+                if(data.action==="preferences"){root.restoringPresentation=true;const p=data.preferences || {};root.viewMode=p.view || "grid";root.sort=p.sort || "name";root.descending=!!p.descending;root.hidden=!!p.hidden;root.foldersFirst=p.foldersFirst!==false;root.groupBy=p.groupBy || "none";root.favorites=p.favorites===undefined?null:p.favorites;root.sidebarWidth=Number.isInteger(p.sidebarWidth)?Math.max(120,Math.min(360,p.sidebarWidth)):190;root.previewWidth=Number.isInteger(p.previewWidth)?Math.max(160,Math.min(600,p.previewWidth)):240;root.columnWidths=Array.isArray(p.columnWidths) && p.columnWidths.length<=16?p.columnWidths.map(value=>Number.isInteger(value)?Math.max(160,Math.min(600,value)):240):[];root.collapsedSidebarGroups=Array.isArray(p.collapsedSidebarGroups)?p.collapsedSidebarGroups.filter(group=>["favourites","locations"].includes(group)):[];root.preferencesLoaded=true;root.restoringPresentation=false;root.refresh();return;}
                 if(data.action==="save-preferences")return;
                 if(data.action==="column-list"){if(data.id in root.columnRequests){const columns=root.columns.slice();const i=root.columnRequests[data.id];columns[i]=Object.assign({},columns[i],{rows:data.rows || [],error:data.error || "",loaded:true});root.columns=columns;}return;}
                 if(data.event==="changed"){watchRefresh.restart();return;}
