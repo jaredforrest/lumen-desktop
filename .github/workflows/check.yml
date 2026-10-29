@@ -247,11 +247,14 @@ jobs:
       - run: nix develop --command nu tests/ci/run-native.nu provider_save_namespace_prepare -- lumen-native-namespace-policy prepare --output artifacts/provider-save-namespace
       - run: nix develop --command nu tests/ci/run-native.nu provider_save_integrity -- "$PWD/artifacts/provider-integrity-fixture/bin/provider-save-integrity" --wordcraft "$PWD/artifacts/wordcraft/bin/wordcraft-cli" --gridcraft "$PWD/artifacts/gridcraft/bin/gridcraft-cli" --deckcraft "$PWD/artifacts/deckcraft/bin/deckcraft-cli" --output artifacts/provider-save-integrity
       - run: PATH="$PWD/artifacts/application-isolation/bin:$PATH" nix develop --command nu tests/ci/run-native.nu document_capabilities -- "$PWD/artifacts/provider-integrity-fixture/bin/document-capabilities" --writer "$PWD/artifacts/wordcraft/bin/wordcraft-cli" --sheet "$PWD/artifacts/gridcraft/bin/gridcraft-cli" --slides "$PWD/artifacts/deckcraft/bin/deckcraft-cli" --pdf-tools "$PWD/artifacts/office-pdf-tools" --output artifacts/document-capabilities
+      - run: PATH="$PWD/artifacts/application-isolation/bin:$PATH" nix develop --command nu tests/ci/run-native.nu word_durable_history -- "$PWD/artifacts/provider-integrity-fixture/bin/word-durable-history" --writer "$PWD/artifacts/wordcraft/bin/wordcraft-cli" --output artifacts/word-durable-history
+      - run: PATH="$PWD/artifacts/application-isolation/bin:$PATH" nix develop --command nu tests/ci/run-native.nu word_history_capacity -- "$PWD/artifacts/provider-integrity-fixture/bin/word-durable-history" --capacity-probe --writer "$PWD/artifacts/wordcraft/bin/wordcraft-cli" --output artifacts/word-history-capacity
       - run: |
           for backend in basic effects; do
             compositor=provider-compositor
             flags=()
             if [[ "$backend" == effects ]]; then compositor=provider-compositor-effects; flags+=(--effects); fi
+            nix develop --command nu tests/ci/run-native.nu "word_history_${backend}" -- "$PWD/artifacts/provider-integrity-fixture/bin/office-native-workflows" "${flags[@]}" --app writer --history-probe --writer "$PWD/artifacts/wordcraft/bin/wordcraft" --sheet "$PWD/artifacts/gridcraft/bin/gridcraft" --slides "$PWD/artifacts/deckcraft/bin/deckcraft" --sway "$PWD/artifacts/$compositor/bin/sway" --keyboard-tool "$PWD/artifacts/provider-keyboard/bin/lumen-test-physical-keyboard" --pointer-tool "$PWD/artifacts/provider-pointer/bin/wlrctl" --software-driver "$PWD/artifacts/provider-software-driver" --dialog-tools "$PWD/artifacts/provider-dialog-tools" --at-spi-prefix "$PWD/artifacts/provider-atspi" --output "artifacts/word-history-$backend"
             for format in docx odt; do
               nix develop --command nu tests/ci/run-native.nu "provider_copy_${backend}_${format}" -- "$PWD/artifacts/provider-integrity-fixture/bin/office-native-workflows" "${flags[@]}" --app writer --copy-export-probe --copy-export-format "$format" --writer "$PWD/artifacts/wordcraft/bin/wordcraft" --sheet "$PWD/artifacts/gridcraft/bin/gridcraft" --slides "$PWD/artifacts/deckcraft/bin/deckcraft" --sway "$PWD/artifacts/$compositor/bin/sway" --keyboard-tool "$PWD/artifacts/provider-keyboard/bin/lumen-test-physical-keyboard" --pointer-tool "$PWD/artifacts/provider-pointer/bin/wlrctl" --software-driver "$PWD/artifacts/provider-software-driver" --dialog-tools "$PWD/artifacts/provider-dialog-tools" --at-spi-prefix "$PWD/artifacts/provider-atspi" --output "artifacts/provider-copy-$backend-$format"
             done
@@ -266,6 +269,9 @@ jobs:
             artifacts/provider-save-namespace
             artifacts/provider-save-integrity
             artifacts/document-capabilities
+            artifacts/word-durable-history
+            artifacts/word-history-*
+            artifacts/native-command-logs/word*
             artifacts/provider-copy-*
             artifacts/provider-software-effects-kernel
             artifacts/native-command-logs/provider*

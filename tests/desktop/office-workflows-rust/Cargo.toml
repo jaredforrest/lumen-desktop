@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+lumen-application-isolation = { path = "../application-isolation" }
 base64 = "0.22"
 libc = "0.2"
 png = "0.17"

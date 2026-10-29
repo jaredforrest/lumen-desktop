@@ -18,6 +18,8 @@ use std::time::{Duration, Instant};
 use zbus::blocking::Proxy;
 #[path = "office-native-workflows/atspi.rs"]
 mod atspi;
+#[path = "office-native-workflows/history.rs"]
+mod history;
 
 fn fail(message: impl Into<String>) -> Box<dyn std::error::Error> {
     error(message)
@@ -87,6 +89,7 @@ struct Options {
     new_saveas: bool,
     picker_ownership: bool,
     copy_export_probe: bool,
+    history_probe: bool,
     copy_export_format: String,
     at_spi_prefix: Option<PathBuf>,
     document_probe: bool,
@@ -120,6 +123,7 @@ impl Options {
         let mut new_saveas = false;
         let mut picker_ownership = false;
         let mut copy_export_probe = false;
+        let mut history_probe = false;
         let mut copy_export_format = "docx".to_owned();
         let mut at_spi_prefix = env::var_os("LUMEN_TEST_AT_SPI").map(PathBuf::from);
         let mut document_probe = false;
@@ -173,6 +177,7 @@ impl Options {
                 Some("--new-saveas") => new_saveas = true,
                 Some("--picker-ownership") => picker_ownership = true,
                 Some("--copy-export-probe") => copy_export_probe = true,
+                Some("--history-probe") => history_probe = true,
                 Some("--copy-export-format") => copy_export_format = args.next().ok_or("Missing copy export format")?.to_string_lossy().into_owned(),
                 Some("--at-spi-prefix") => at_spi_prefix = Some(PathBuf::from(args.next().ok_or("Missing AT-SPI prefix")?)),
                 Some("--document-probe") => document_probe = true,
@@ -265,6 +270,7 @@ impl Options {
         )?;
         ensure(!picker_ownership || (app == "writer" && dialog_tools.is_some() && !new_saveas && !close_probe && writer_close_outcome == "cancel"), "Picker ownership requires writer and private dialog tools")?;
         ensure(!copy_export_probe || (app == "writer" && dialog_tools.is_some() && at_spi_prefix.is_some() && !picker_ownership && !new_saveas && !close_probe && writer_close_outcome == "cancel"), "Copy export requires writer, private chooser and AT-SPI")?;
+        ensure(!history_probe || (app == "writer" && dialog_tools.is_some() && at_spi_prefix.is_some() && !copy_export_probe && !picker_ownership && !new_saveas && !close_probe && !document_probe && !pdf_output && writer_close_outcome == "cancel"), "History requires its own document provider, private bus and accessibility fixture")?;
         ensure(["docx","odt"].contains(&copy_export_format.as_str()), "Copy export format must be docx or odt")?;
         ensure([pdf_viewer.is_some(),xdg_tools.is_some(),mime_data.is_some()].into_iter().all(|value|value==pdf_viewer.is_some()),"PDF viewer requires browser, XDG tools and MIME data together")?;
         ensure(!document_probe || (app == "writer" && dialog_tools.is_some() && pdf_tools.is_some() && !new_saveas && !picker_ownership && !close_probe && writer_close_outcome == "cancel"),"Document Print probe requires writer, private chooser and PDF tools")?;
@@ -291,6 +297,7 @@ impl Options {
             new_saveas,
             picker_ownership,
             copy_export_probe,
+            history_probe,
             copy_export_format,
             at_spi_prefix,
             document_probe,
@@ -368,7 +375,7 @@ fn outer(mut options: Options) -> Result<()> {
     let executable = if current.starts_with(&options.source) {
         Path::new("/source").join(current.strip_prefix(&options.source)?)
     } else {
-        current
+        current.clone()
     };
     let boundary = env::var_os("PATH")
         .and_then(|value| {
@@ -423,6 +430,7 @@ fn outer(mut options: Options) -> Result<()> {
     }
     if options.picker_ownership { cmd.arg("--picker-ownership"); }
     if options.copy_export_probe { cmd.arg("--copy-export-probe").arg("--copy-export-format").arg(&options.copy_export_format); }
+    if options.history_probe { cmd.arg("--history-probe"); }
     if let Some(path) = &options.at_spi_prefix { cmd.arg("--at-spi-prefix").arg(path); }
     if options.document_probe { cmd.arg("--document-probe"); }
     if options.pdf_output { cmd.arg("--pdf-output"); }
@@ -441,7 +449,13 @@ fn outer(mut options: Options) -> Result<()> {
         cmd.arg("--slides-close-outcome")
             .arg(&options.slides_close_outcome);
     }
+    let frozen = lumen_application_isolation::provenance::FrozenSource::new(
+        &options.source,
+        &options.source.join("tests/desktop/office-workflows-rust/src/bin/office-native-workflows.rs"),
+        &[current.clone(), options.writer.clone(), options.sheet.clone(), options.slides.clone(), options.sway.clone(), options.keyboard_tool.clone(), options.pointer_tool.clone()],
+    ).map_err(|error| fail(error.to_string()))?;
     let status = cmd.status()?;
+    frozen.finish(&options.output, status.code().unwrap_or(1)).map_err(|error| fail(error.to_string()))?;
     ensure(
         status.success(),
         format!("Native office workflow failed: {status}"),
@@ -525,6 +539,7 @@ impl Native {
             "tests/desktop/office-workflows-rust/src/live.rs",
             "tests/desktop/office-workflows-rust/src/keyboard.rs",
             "tests/desktop/office-workflows-rust/src/bin/office-native-workflows/atspi.rs",
+            "tests/desktop/office-workflows-rust/src/bin/office-native-workflows/history.rs",
         ] {
             let path = Path::new("/source").join(name);
             test_sources.insert(name.to_owned(), sha(&path)?);
@@ -882,7 +897,7 @@ impl Native {
             self.set_fact("privateChooser", chooser.facts.clone());
             self.chooser = Some(chooser);
         }
-        if self.options.copy_export_probe { self.start_atspi()?; }
+        if self.options.copy_export_probe || self.options.history_probe { self.start_atspi()?; }
         if let (Some(browser),Some(xdg),Some(mime))=(&self.options.pdf_viewer,&self.options.xdg_tools,&self.options.mime_data) {
             let helper=env::current_exe()?.with_file_name("office-pdf-viewer");
             let facts=lumen_office_workflows::pdf_viewer::configure(&mut self.env,browser,xdg,mime,&helper)?;
@@ -2179,12 +2194,14 @@ impl Native {
 
 fn run(mut fixture: Native) -> Result<()> {
     let before = fixture.start()?;
-    match fixture.options.app.as_str() {
+    if fixture.options.history_probe {
+        fixture.history()?;
+    } else { match fixture.options.app.as_str() {
         "writer" => fixture.writer_basic(&before)?,
         "sheet" => fixture.sheet_basic(&before)?,
         "slides" => fixture.slides_basic(&before)?,
         _ => unreachable!(),
-    };
+    }; }
     if fixture.options.new_saveas {
         fixture.new_saveas()?;
     }

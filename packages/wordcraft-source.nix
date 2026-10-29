@@ -16,9 +16,11 @@ in pkgs.rustPlatform.buildRustPackage {
     hash = "sha256-yJk5hzvvjwJXJkZFc/dO+Llf70w7xZnoX7zI3ifIuoY=";
   };
   cargoHash = "sha256-OljEFWaPOT3nmWU/xVTcbn3ePAdEYkhG6/U4ysVG9Kc=";
-  patches = [ ./patches/wordcraft-print-failure.patch ./patches/wordcraft-version-ownership.patch ./patches/wordcraft-atomic-output.patch ./patches/wordcraft-chooser-ownership.patch ./patches/wordcraft-export-copy.patch ];
+  patches = [ ./patches/wordcraft-print-failure.patch ./patches/wordcraft-version-ownership.patch ./patches/wordcraft-atomic-output.patch ./patches/wordcraft-chooser-ownership.patch ./patches/wordcraft-export-copy.patch ./patches/wordcraft-durable-history.patch ];
   postPatch = ''
     cp ${../res/office/atomic_output.rs} crates/engine/src/lumen_atomic_output.rs
+    cp ${../res/office/word_history.rs} crates/engine/src/lumen_history.rs
+    cp ${../res/office/word_history_ui.rs} crates/ui-egui/src/history_ui.rs
   '';
   nativeBuildInputs = [ pkgs.pkg-config ];
   buildInputs = [ pkgs.wayland pkgs.libxkbcommon pkgs.libGL pkgs.alsa-lib ];
@@ -29,6 +31,8 @@ in pkgs.rustPlatform.buildRustPackage {
     cargo test --offline --profile release --target ${pkgs.stdenv.hostPlatform.rust.rustcTarget} --package wordcraft-engine --lib lumen_atomic_output -j "$NIX_BUILD_CORES"
     cargo test --offline --profile release --target ${pkgs.stdenv.hostPlatform.rust.rustcTarget} --package wordcraft-engine --lib document_versions_ownership -j "$NIX_BUILD_CORES"
     cargo test --offline --profile release --target ${pkgs.stdenv.hostPlatform.rust.rustcTarget} --package wordcraft-engine --lib copy_confirmation -j "$NIX_BUILD_CORES"
+    cargo test --offline --profile release --target ${pkgs.stdenv.hostPlatform.rust.rustcTarget} --package wordcraft-engine --lib persistent_history -j "$NIX_BUILD_CORES"
+    cargo test --offline --profile release --target ${pkgs.stdenv.hostPlatform.rust.rustcTarget} --package wordcraft-ui-egui --lib persistent_history -j "$NIX_BUILD_CORES"
   '';
   CRAFT_FONTS_DIR = fonts;
   CRAFT_FONTS_REQUIRED = "1";

@@ -207,3 +207,8 @@ additionally retain the complete document, identity, revision, path, dirty state
 and selection across refusal, and exercise legitimate outline and image output.
 These checks establish format honesty and source preservation, not complete
 cross-format fidelity or a new format engine.
+
+A separate persistent local-history capability is now provided by the packaged
+`file.history` extension and its document-owned Version History browser. It does
+not change these historical `file.versions` observations. See
+[word-local-history.md](word-local-history.md) for its limits and separate proof.

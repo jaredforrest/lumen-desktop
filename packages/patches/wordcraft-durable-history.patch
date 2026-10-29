@@ -1,0 +1,174 @@
+diff --git a/crates/engine/src/catalog.rs b/crates/engine/src/catalog.rs
+index af1a32a..df81beb 100644
+--- a/crates/engine/src/catalog.rs
++++ b/crates/engine/src/catalog.rs
+@@ -24,7 +24,7 @@ File|Backstage|Protect Document|file.protect
+ File|Backstage|Inspect Document|file.inspect
+ File|Backstage|Check Accessibility|file.accessibility
+ File|Backstage|Check Compatibility|file.compatibility
+-File|Backstage|Version History|file.versions
++File|Backstage|Version History|file.history
+ File|Backstage|Recover Unsaved|file.recover
+ File|Backstage|New from Template|file.newFromTemplate
+ File|Backstage|Save as Template|file.saveTemplate
+diff --git a/crates/engine/src/cmd/tools.rs b/crates/engine/src/cmd/tools.rs
+index c50b8e7..b58208c 100644
+--- a/crates/engine/src/cmd/tools.rs
++++ b/crates/engine/src/cmd/tools.rs
+@@ -108,6 +108,12 @@ pub fn specs() -> Vec<CommandSpec> {
+             s.run("review.restrict", &json!({"mode": mode}))
+         })
+         .params(r#"{"mode": "none|readOnly|comments|trackedChanges"}"#),
++        CommandSpec::new("file.history", "Persistent Version History", "File › Info", |s,v| {
++            #[cfg(target_os = "linux")]
++            { crate::lumen_history::command(s,v) }
++            #[cfg(not(target_os = "linux"))]
++            { let _=(s,v);Err(CmdError::Failed("Persistent local history is unavailable on this platform".into())) }
++        }).params(r#"{"action"?: "list|capture|preview|restore", "id"?: string, "label"?: string, "document"?: number, "revision"?: number, "allowDiscard"?: bool, "historyPassword"?: string}"#).pure(),
+         CommandSpec::new("file.versions", "Version History", "File › Info", |s, v| {
+             if let Some(label) = p::str(v, "save") {
+                 s.versions.push((label.to_string(), super::now_iso(), s.doc.clone()));
+diff --git a/crates/engine/src/lib.rs b/crates/engine/src/lib.rs
+index 79e70b3..008da33 100644
+--- a/crates/engine/src/lib.rs
++++ b/crates/engine/src/lib.rs
+@@ -6,6 +6,8 @@
+ //! CLI, the JSON control channel and the MCP server all call [`Session::run`].
+ #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
+ 
++#[cfg(target_os = "linux")]
++mod lumen_history;
+ pub mod catalog;
+ #[cfg(not(target_arch = "wasm32"))]
+ mod lumen_atomic_output;
+diff --git a/crates/ui-egui/src/backstage.rs b/crates/ui-egui/src/backstage.rs
+index 23aeed1..7384ddf 100644
+--- a/crates/ui-egui/src/backstage.rs
++++ b/crates/ui-egui/src/backstage.rs
+@@ -267,6 +267,8 @@ fn open_page(app: &mut WordApp, ui: &mut Ui) {
+ fn info_page(app: &mut WordApp, ui: &mut Ui) {
+     heading(ui, "Info");
+     let info = app.session.run("file.info", &json!({})).unwrap_or_default();
++    if ui.button("Version History…").clicked() {app.open_history();}
++    ui.add_space(12.0);
+     ui.columns(2, |cols| {
+         let ui = &mut cols[0];
+         ui.label(egui::RichText::new(tl!("Properties")).font(semibold(15.0)));
+diff --git a/crates/ui-egui/src/canvas.rs b/crates/ui-egui/src/canvas.rs
+index 0c8fa7f..de04ca1 100644
+--- a/crates/ui-egui/src/canvas.rs
++++ b/crates/ui-egui/src/canvas.rs
+@@ -717,7 +717,7 @@ pub fn show(app: &mut WordApp, ui: &mut Ui) {
+     }
+     crate::table_pen::cursor(app, ui, &resp);
+     // While "Save changes?" is up, keys answer it rather than edit the document behind it.
+-    if app.canvas.focused && !matches!(app.dialog, Some(crate::dialogs::Dialog::SaveChanges { .. } | crate::dialogs::Dialog::FormatLoss { .. })) {
++    if app.canvas.focused && !matches!(app.dialog, Some(crate::dialogs::Dialog::SaveChanges { .. } | crate::dialogs::Dialog::FormatLoss { .. } | crate::dialogs::Dialog::VersionHistory { .. })) {
+         crate::keys::canvas_events(app, ui.ctx());
+     }
+     let _ = origin;
+diff --git a/crates/ui-egui/src/dialogs.rs b/crates/ui-egui/src/dialogs.rs
+index c9c9018..a936053 100644
+--- a/crates/ui-egui/src/dialogs.rs
++++ b/crates/ui-egui/src/dialogs.rs
+@@ -168,6 +168,7 @@ pub enum Dialog {
+     /// Finish & Merge replaces the document (see [`WordApp::run`]); `then` runs once it is
+     /// answered (`ui.saveChanges`), and only while the document it asked about
+     /// (`Session::document_id`) is still the one open.
++    VersionHistory { state: crate::history_ui::HistoryDialog },
+     FormatLoss { request: u64, format: String, copy: bool, loses_password: bool },
+     SaveChanges {
+         name: String,
+@@ -639,6 +640,7 @@ impl Dialog {
+             Dialog::PasteSpecial { .. } => "pasteSpecial",
+             Dialog::About { .. } => "about",
+             Dialog::SaveChanges { .. } => "saveChanges",
++            Dialog::VersionHistory { .. } => "versionHistory",
+             Dialog::FormatLoss { .. } => "formatLoss",
+             Dialog::RecipientList { .. } => "recipientList",
+             Dialog::InsertMergeField { .. } => "insertMergeField",
+@@ -928,6 +930,7 @@ pub fn show(app: &mut WordApp, ctx: &egui::Context) {
+         Dialog::PasteSpecial { .. } => "Paste Special",
+         Dialog::About { .. } => "About WordCraft",
+         Dialog::SaveChanges { .. } => "WordCraft",
++        Dialog::VersionHistory { .. } => "Version History",
+         Dialog::FormatLoss { .. } => "Confirm Conversion",
+         Dialog::RecipientList { .. } => "Recipient List",
+         Dialog::InsertMergeField { .. } => "Insert Merge Field",
+@@ -942,19 +945,21 @@ pub fn show(app: &mut WordApp, ctx: &egui::Context) {
+         Dialog::DefineList { .. } => "Define New Multilevel List",
+         Dialog::TrackOptions { .. } => "Track Changes Options",
+     };
+-    egui::Window::new(tl!(title))
++    let window=egui::Window::new(tl!(title))
+         .id(egui::Id::new(("dialog", title)))
+         .collapsible(false)
+         .resizable(false)
+         .anchor(egui::Align2::CENTER_CENTER, vec2(0.0, -40.0))
+-        .open(&mut open)
+-        .show(ctx, |ui| {
++        .open(&mut open);
++    let window=if matches!(&d,Dialog::VersionHistory {..}) {window.fixed_size(egui::vec2((ctx.content_rect().width()-48.0).clamp(280.0,540.0),(ctx.content_rect().height()-120.0).clamp(200.0,640.0)))}else{window};
++    window.show(ctx, |ui| {
+             ui.set_min_width(340.0);
+             close = body(app, ui, &mut d);
+         });
+     if open && !close {
+         app.dialog = Some(d);
+     } else {
++        if matches!(&d,Dialog::VersionHistory {..}) {app.history_owner=None;}
+         if let Dialog::FormatLoss { request, .. } = &d { let _ = app.answer_conversion(*request, false); }
+         app.canvas.want_focus = true;
+     }
+@@ -1644,6 +1649,7 @@ fn body(app: &mut WordApp, ui: &mut Ui, d: &mut Dialog) -> bool {
+             let (ok, cancel) = buttons(ui, tl!("Close"));
+             ok || cancel
+         }
++        Dialog::VersionHistory { state } => crate::history_ui::body(app,ui,state),
+         Dialog::FormatLoss { request, format, copy, loses_password } => {
+             ui.label(egui::RichText::new(format!("Convert to {format}?" )).font(semibold(15.0)));
+             ui.label(tl!("This format may not preserve all document features, formatting or review information."));
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index 35d1227..4e26a92 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -13,6 +13,7 @@ macro_rules! tl {
+     };
+ }
+ 
++mod history_ui;
+ pub mod backstage;
+ pub mod canvas;
+ pub mod chrome;
+@@ -210,6 +211,7 @@ pub struct WordApp {
+     file_dialog: Option<file_dialogs::PendingDialog>,
+     conversion: Option<file_dialogs::PendingConversion>,
+     conversion_serial: u64,
++    history_owner: Option<history_ui::HistoryOwner>,
+     /// File › Info: the property field being typed in and the document revision after its last
+     /// keystroke, so one visit's keystrokes make a single undo step (and anything else in
+     /// between, such as an Undo, starts a new one).
+@@ -275,6 +277,7 @@ impl WordApp {
+             file_dialog: None,
+             conversion: None,
+             conversion_serial: 0,
++            history_owner: None,
+             info_editing: None,
+         }
+     }
+@@ -549,6 +552,7 @@ impl WordApp {
+         if let Some(what) = req.get("open").and_then(Value::as_str) {
+             match what {
+                 "openFile" => self.open_dialog(),
++                "history" => self.open_history(),
+                 "saveAs" => {
+                     self.save_as_dialog();
+                 }
+@@ -807,6 +811,7 @@ impl WordApp {
+         read_aloud::poll(self, ctx);
+         self.clear_stale_change_picture();
+         self.poll_conversion();
++        history_ui::retire_if_detached(self);
+         let _ = self.poll_file_dialog();
+         self.drain_inbox();
+         self.autosave_tick(now_ms());
