@@ -165,11 +165,17 @@ class NixSettingsTest(unittest.TestCase):
     def test_window_preferences_are_typed(self):
         self.assertEqual(settings.transaction('windows',{'titlebarDoubleClick':'zoom'},merge=True)['windows']['titlebarDoubleClick'],'zoom')
         values=settings.transaction('windows',{'tileMargins':False,'titlebarDoubleClick':'minimize'})
-        self.assertEqual(values['windows'],{'tileMargins':False,'titlebarDoubleClick':'minimize','tileGap':8,'edgeTiling':True,'optionTiling':True,'topEdgeFill':True,'topEdgeOverview':True})
+        self.assertEqual(values['windows'],{'tileMargins':False,'titlebarDoubleClick':'minimize','tileGap':8,'edgeTiling':True,'optionTiling':True,'topEdgeFill':True,'topEdgeOverview':True,'rememberOwnedGeometry':False})
         original=self.source.read_bytes()
-        for value in ({'tileMargins':1},{'titlebarDoubleClick':'invented'},{'tileGap':-1},{'tileGap':33},{'tileGap':True},{'edgeTiling':1},{'optionTiling':'true'}):
+        for value in ({'tileMargins':1},{'titlebarDoubleClick':'invented'},{'tileGap':-1},{'tileGap':33},{'tileGap':True},{'edgeTiling':1},{'optionTiling':'true'},{'rememberOwnedGeometry':1},{'rememberOwnedGeometry':'true'}):
             with self.subTest(value=value),self.assertRaises(ValueError):settings.transaction('windows',value,merge=True)
             self.assertEqual(self.source.read_bytes(),original)
+
+    def test_owned_geometry_opt_in_survives_unrelated_edits_and_runtime_loss(self):
+        self.assertIs(settings.transaction('windows',{'rememberOwnedGeometry':True},merge=True)['windows']['rememberOwnedGeometry'],True)
+        self.assertIs(settings.transaction('windows',{'tileGap':12},merge=True)['windows']['rememberOwnedGeometry'],True)
+        (settings.runtime()/'current').unlink()
+        self.assertIs(settings.transaction()['windows']['rememberOwnedGeometry'],True)
 
     def test_invalid_value_preserves_source_and_active_bundle(self):
         settings.transaction()
