@@ -436,7 +436,7 @@ fn rdp(f: &mut Harness) -> Result<()> {
     )
 }
 fn focus_app(f: &Harness, app: &str) -> Result<Value> {
-    let node = nodes(&f.tree()?).into_iter().find(|node| node["app_id"] == app).ok_or("Interaction window absent")?;
+    let node = wait("interaction window mapping", || Ok(nodes(&f.tree()?).into_iter().find(|node| node["app_id"] == app)))?;
     let id = node["id"].as_u64().ok_or("Interaction window identity")?;
     f.ipc(&[&format!("[con_id={id}] focus")])?;
     Ok(node)
