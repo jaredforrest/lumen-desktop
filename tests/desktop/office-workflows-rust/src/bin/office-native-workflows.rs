@@ -82,7 +82,14 @@ struct Options {
     effects: bool,
     close_probe: bool,
     new_saveas: bool,
+    picker_ownership: bool,
+    document_probe: bool,
+    pdf_output: bool,
     dialog_tools: Option<PathBuf>,
+    pdf_viewer: Option<PathBuf>,
+    xdg_tools: Option<PathBuf>,
+    mime_data: Option<PathBuf>,
+    pdf_tools: Option<PathBuf>,
     sheet_close_outcome: String,
     slides_close_outcome: String,
     writer_close_outcome: String,
@@ -105,7 +112,14 @@ impl Options {
         let mut effects = false;
         let mut close_probe = false;
         let mut new_saveas = false;
+        let mut picker_ownership = false;
+        let mut document_probe = false;
+        let mut pdf_output = false;
         let mut dialog_tools = None;
+        let mut pdf_viewer = None;
+        let mut xdg_tools = None;
+        let mut mime_data = None;
+        let mut pdf_tools = None;
         let mut sheet_close_outcome = String::new();
         let mut slides_close_outcome = String::new();
         let mut writer_close_outcome = "cancel".to_owned();
@@ -148,9 +162,16 @@ impl Options {
                 Some("--effects") => effects = true,
                 Some("--close-probe") => close_probe = true,
                 Some("--new-saveas") => new_saveas = true,
+                Some("--picker-ownership") => picker_ownership = true,
+                Some("--document-probe") => document_probe = true,
+                Some("--pdf-output") => pdf_output = true,
                 Some("--dialog-tools") => {
                     dialog_tools = Some(PathBuf::from(args.next().ok_or("Missing dialog tools")?))
                 }
+                Some("--pdf-viewer") => pdf_viewer = Some(PathBuf::from(args.next().ok_or("Missing PDF viewer")?)),
+                Some("--xdg-tools") => xdg_tools = Some(PathBuf::from(args.next().ok_or("Missing XDG tools")?)),
+                Some("--mime-data") => mime_data = Some(PathBuf::from(args.next().ok_or("Missing MIME data")?)),
+                Some("--pdf-tools") => pdf_tools = Some(PathBuf::from(args.next().ok_or("Missing PDF tools")?)),
                 Some("--sheet-close-outcome") => {
                     sheet_close_outcome = args
                         .next()
@@ -230,6 +251,10 @@ impl Options {
                     && writer_close_outcome == "cancel"),
             "New SaveAs requires private dialog tools and a separate lifecycle scenario",
         )?;
+        ensure(!picker_ownership || (app == "writer" && dialog_tools.is_some() && !new_saveas && !close_probe && writer_close_outcome == "cancel"), "Picker ownership requires writer and private dialog tools")?;
+        ensure([pdf_viewer.is_some(),xdg_tools.is_some(),mime_data.is_some()].into_iter().all(|value|value==pdf_viewer.is_some()),"PDF viewer requires browser, XDG tools and MIME data together")?;
+        ensure(!document_probe || (app == "writer" && dialog_tools.is_some() && pdf_tools.is_some() && !new_saveas && !picker_ownership && !close_probe && writer_close_outcome == "cancel"),"Document Print probe requires writer, private chooser and PDF tools")?;
+        ensure(!pdf_output || (["sheet","slides"].contains(&app.as_str()) && dialog_tools.is_some() && pdf_tools.is_some() && !new_saveas && !close_probe),"PDF output probe requires sheet/slides, private chooser and PDF tools")?;
         let current = env::current_dir()?;
         let output = output.ok_or("--output required")?;
         Ok(Self {
@@ -250,7 +275,14 @@ impl Options {
             effects,
             close_probe,
             new_saveas,
+            picker_ownership,
+            document_probe,
+            pdf_output,
             dialog_tools,
+            pdf_viewer,
+            xdg_tools,
+            mime_data,
+            pdf_tools,
             sheet_close_outcome,
             slides_close_outcome,
             writer_close_outcome,
@@ -372,9 +404,16 @@ fn outer(mut options: Options) -> Result<()> {
     if options.new_saveas {
         cmd.arg("--new-saveas");
     }
+    if options.picker_ownership { cmd.arg("--picker-ownership"); }
+    if options.document_probe { cmd.arg("--document-probe"); }
+    if options.pdf_output { cmd.arg("--pdf-output"); }
     if let Some(path) = &options.dialog_tools {
         cmd.arg("--dialog-tools").arg(path);
     }
+    if let Some(path) = &options.pdf_viewer { cmd.arg("--pdf-viewer").arg(path); }
+    if let Some(path) = &options.xdg_tools { cmd.arg("--xdg-tools").arg(path); }
+    if let Some(path) = &options.mime_data { cmd.arg("--mime-data").arg(path); }
+    if let Some(path) = &options.pdf_tools { cmd.arg("--pdf-tools").arg(path); }
     if !options.sheet_close_outcome.is_empty() {
         cmd.arg("--sheet-close-outcome")
             .arg(&options.sheet_close_outcome);
@@ -795,6 +834,11 @@ impl Native {
             self.set_fact("privateChooser", chooser.facts.clone());
             self.chooser = Some(chooser);
         }
+        if let (Some(browser),Some(xdg),Some(mime))=(&self.options.pdf_viewer,&self.options.xdg_tools,&self.options.mime_data) {
+            let helper=env::current_exe()?.with_file_name("office-pdf-viewer");
+            let facts=lumen_office_workflows::pdf_viewer::configure(&mut self.env,browser,xdg,mime,&helper)?;
+            self.set_fact("pdfViewer",facts);
+        }
         self.keyboard = Some(PhysicalKeyboard::start(
             &self.options.keyboard_tool,
             &self.env,
@@ -992,7 +1036,7 @@ impl Native {
         self.set_fact("savedDocument", saved);
         self.checks.push("Physical keyboard edit stays dirty until explicit Save and appears in independently parsed DOCX".into());
         self.reopen_saved()?;
-        if !self.options.new_saveas {
+        if !self.options.new_saveas && !self.options.picker_ownership && !self.options.document_probe {
             self.writer_close()?;
         }
         Ok(())
@@ -1165,7 +1209,9 @@ impl Native {
         Ok(())
     }
     fn app_ui(&mut self) -> Result<Value> {
-        if self.options.app == "slides" {
+        if self.options.app == "writer" {
+            self.tool("ui_inspect", None)
+        } else if self.options.app == "slides" {
             self.tool("call_app", Some(json!({"method":"ui.inspect"})))
         } else {
             Ok(serde_json::from_str(&self.command(
@@ -1651,6 +1697,327 @@ impl Native {
         self.checks.push("Later explicit SaveAs persists complete new document, preserves original source and permits clean native close".into());
         Ok(())
     }
+    fn picker_capture(&mut self) -> Result<Value> {
+        let content = live::snapshot(self.control.as_mut().ok_or("Control unavailable")?, "writer")?;
+        Ok(json!({"content":content,"info":self.control_command("file.info")?}))
+    }
+    fn picker_same(&mut self, expected: &Value, source_hash: &str) -> Result<()> {
+        let actual = self.picker_capture()?;
+        ensure(actual["content"] == expected["content"] && actual["info"]["path"] == expected["info"]["path"] && actual["info"]["dirty"] == expected["info"]["dirty"] && sha(&self.source)? == source_hash, "Late chooser changed the active document or saved source")
+    }
+    fn picker_reopen(&mut self) -> Result<()> {
+        self.tool("open_document", Some(json!({"path":self.source})))?;
+        wait("owned source reopens cleanly", || {
+            let info = self.control_command("file.info")?;
+            Ok((info["path"] == self.source.display().to_string() && info["dirty"] == false).then_some(()))
+        })
+    }
+    fn picker_ask(&mut self, opening: bool) -> Result<Value> {
+        wait("exact document owns focus before chooser", || {
+            let native = self.native()?;
+            Ok(native.filter(|row| row["id"] == self.window["id"] && row["focused"] == true))
+        })?;
+        if opening { self.key(&["-M","ctrl","-k","o","-m","ctrl"])?; }
+        else { self.key(&["-k","F12"])?; }
+        let node = self.chooser()?;
+        let ui = self.app_ui()?;
+        if let Some(open) = ui.get("fileDialogOpen") { ensure(open == true, "Provider did not acknowledge pending chooser")?; }
+        self.set_fact("chooserOwnerLastPending",json!({"window":node,"ui":ui}));
+        Ok(node)
+    }
+    fn picker_choose(&mut self, node: &Value, target: &Path, opening: bool) -> Result<Value> {
+        self.key(&["-M","ctrl","-k","l","-m","ctrl"])?;
+        self.key(&["-M","ctrl","-k","a","-m","ctrl"])?;
+        self.key(&["--",target.to_str().ok_or("Chooser target path")?])?;
+        if opening { self.key(&["-k","Tab"])?; }
+        self.key(&["-k","Return"])?;
+        self.chooser_absent(&node["id"])?;
+        wait("provider acknowledges chooser callback",||{
+            let value = self.app_ui()?;
+            Ok((value["fileDialogOpen"] == false).then_some(value))
+        })
+    }
+    fn picker_ownership(&mut self) -> Result<()> {
+        ensure(self.chooser.is_some() && self.options.app == "writer", "Private writer chooser required")?;
+        let original_hash = sha(&self.source)?;
+        let replaced = self.picker_ask(false)?;
+        self.tool("new_document", None)?;
+        self.control.as_mut().ok_or("Control unavailable")?.command("writer","text.insert",Some(json!({"text":"Replacement content must never be saved by an old picker"})))?;
+        let expected = self.picker_capture()?;
+        let target = self.out("refused-replacement.docx");
+        let ui = self.picker_choose(&replaced,&target,false)?;
+        let after = self.picker_capture()?;
+        self.set_fact("chooserReplacement",json!({"before":expected,"after":after,"outputExists":target.exists(),"ui":ui}));
+        ensure(!target.exists() && ui["status"].as_str().unwrap_or("").to_lowercase().contains("document changed"),"Late SaveAs failed to refuse replacement")?;
+        self.picker_same(&expected,&original_hash)?;
+        self.checks.push("Late physical SaveAs refuses replacement before output and preserves unsaved content".into());
+        self.picker_reopen()?;
+        let edited = self.picker_ask(false)?;
+        self.control.as_mut().ok_or("Control unavailable")?.command("writer","ui.backstage",Some(json!({"value":true,"page":"export"})))?;
+        ensure(self.app_ui()?["ui"]["backstage"] == true,"Backstage did not open while chooser pending")?;
+        self.control.as_mut().ok_or("Control unavailable")?.command("writer","text.insert",Some(json!({"text":"Revision while native chooser is open"})))?;
+        let expected=self.picker_capture()?;let target=self.out("refused-revision.docx");
+        let ui=self.picker_choose(&edited,&target,false)?;
+        ensure(!target.exists() && ui["status"].as_str().unwrap_or("").to_lowercase().contains("document changed") && ui["ui"]["backstage"] == false,"Late SaveAs failed to reveal refusal outside Backstage")?;
+        self.picker_same(&expected,&original_hash)?;
+        self.screenshot("chooser-owner-refusal-visible.png")?;
+        self.checks.push("Late physical SaveAs refuses newer edits and preserves dirty document".into());
+        self.picker_reopen()?;
+        let canceled=self.picker_ask(false)?;
+        self.tool("new_document",None)?;
+        self.control.as_mut().ok_or("Control unavailable")?.command("writer","text.insert",Some(json!({"text":"Cancellation preserves this newer document"})))?;
+        let expected=self.picker_capture()?;
+        self.key(&["-k","Escape"])?;self.chooser_absent(&canceled["id"])?;self.picker_same(&expected,&original_hash)?;
+        self.checks.push("Canceling a stale native chooser preserves replacement content and path".into());
+        self.picker_reopen()?;
+        let opened=self.picker_ask(true)?;
+        self.tool("new_document",None)?;
+        self.control.as_mut().ok_or("Control unavailable")?.command("writer","text.insert",Some(json!({"text":"Open must not prompt to replace this bystander"})))?;
+        let expected=self.picker_capture()?;let source=self.source.clone();let ui=self.picker_choose(&opened,&source,true)?;
+        ensure(ui["dialog"].is_null() && ui["status"].as_str().unwrap_or("").to_lowercase().contains("document changed"),"Late Open touched bystander")?;
+        self.picker_same(&expected,&original_hash)?;
+        self.checks.push("Late physical Open refuses stale owner without a bystander Save Changes prompt".into());
+        self.picker_reopen()?;
+        let legitimate=self.picker_ask(false)?;let target=self.out("legitimate-copy.docx");
+        self.picker_choose(&legitimate,&target,false)?;
+        wait("same-owner SaveAs writes a copy",||Ok(target.is_file().then_some(())))?;
+        ensure(formats::writer(&target)? == formats::writer(&self.source)? && sha(&self.source)? == original_hash,"Legitimate SaveAs changed content or original")?;
+        let info=self.control_command("file.info")?;
+        ensure(info["path"] == target.display().to_string() && info["dirty"] == false,"Legitimate SaveAs did not adopt copy cleanly")?;
+        self.set_fact("chooserLegitimateCopy",json!({"path":target,"sha256":sha(&target)?,"document":formats::writer(&target)?}));
+        self.checks.push("Legitimate same-owner SaveAs persists independently parsed complete content".into());
+        let failed=self.picker_ask(false)?;let expected=self.picker_capture()?;
+        let known=self.owned_choosers()?.into_iter().map(|row|row["id"].clone()).collect::<Vec<_>>();
+        self.key(&["-M","ctrl","-k","l","-m","ctrl"])?;
+        self.key(&["-M","ctrl","-k","a","-m","ctrl"])?;
+        self.key(&["--","/source/nonexistent-chooser-output-folder/refused.docx"])?;
+        self.key(&["-k","Return"])?;
+        let error=wait("native chooser presents unavailable destination error",||Ok(self.owned_choosers()?.into_iter().find(|row|!known.contains(&row["id"]))))?;
+        self.screenshot("chooser-owner-destination-error.png")?;
+        self.key(&["-k","Escape"])?;self.chooser_absent(&error["id"])?;
+        self.key(&["-k","Escape"])?;self.chooser_absent(&failed["id"])?;
+        self.picker_same(&expected,&original_hash)?;
+        self.checks.push("Unavailable native SaveAs destination remains a chooser error and Cancel preserves content".into());
+        let canceled=self.picker_ask(false)?;let expected=self.picker_capture()?;
+        self.key(&["-k","Escape"])?;self.chooser_absent(&canceled["id"])?;self.picker_same(&expected,&original_hash)?;
+        self.checks.push("Ordinary SaveAs Cancel preserves the current content and path".into());
+        self.screenshot("chooser-owner-final.png")?;
+        Ok(())
+    }
+    fn print_pdf_files(&self) -> Result<Vec<PathBuf>> {
+        Ok(fs::read_dir("/tmp")?.filter_map(|row|row.ok().map(|r|r.path())).filter(|path|path.file_name().is_some_and(|name|name.to_string_lossy().starts_with("wordcraft-print-") && name.to_string_lossy().ends_with(".pdf"))).collect())
+    }
+    fn viewer_choosers(&self,viewer_pid:i64,viewer_id:&Value)->Result<Vec<Value>> {
+        let backend=self.facts["privateChooser"]["backendPid"].as_i64().ok_or("Private chooser PID missing")?;
+        let tree=self.tree()?;let mut all=Vec::new();nodes(&tree,&mut all);
+        Ok(all.into_iter().filter(|row|row["id"]!=*viewer_id && (row["pid"]==viewer_pid || row["pid"]==backend) && ["con","floating_con"].contains(&row["type"].as_str().unwrap_or(""))).cloned().collect())
+    }
+    fn document_probe(&mut self) -> Result<()> {
+        ensure(self.options.app == "writer" && self.chooser.is_some(),"Writer private Print probe required")?;
+        let original=sha(&self.source)?;
+        let before_ui=self.app_ui()?;self.set_fact("printBefore",before_ui);
+        self.key(&["-M","ctrl","-k","p","-m","ctrl"])?;
+        let print=wait("physical Print opens provider Print page",||{
+            let ui=self.app_ui()?;
+            Ok((ui["ui"]["backstage"]==true && ui["ui"]["backstagePage"]=="print").then_some(ui))
+        })?;
+        self.set_fact("printAfter",print);self.screenshot("print-page.png")?;
+        ensure(sha(&self.source)?==original,"Print page mutated saved source")?;
+        self.pointer_start()?;
+        if self.options.pdf_viewer.is_some() {
+            self.pointer_events(400.0,169.0,&["p","r"])?;
+            let viewer=wait("configured PDF browser maps",||{
+                let tree=self.tree()?;let mut all=Vec::new();nodes(&tree,&mut all);
+                Ok(all.into_iter().find(|row|["brave-browser","brave"].contains(&row["app_id"].as_str().unwrap_or("")) && row["pid"].as_i64().is_some()).cloned())
+            })?;
+            let pdf=wait("print handoff retains a single temporary PDF",||{
+                let files=self.print_pdf_files()?;Ok((files.len()==1).then(||files[0].clone()))
+            })?;
+            ensure(formats::package_kind(&pdf)=="pdf","Print handoff did not produce a PDF")?;
+            let pid=viewer["pid"].as_i64().ok_or("Viewer PID missing")?;
+            let cmdline=fs::read(format!("/proc/{pid}/cmdline"))?;
+            save(&self.out("viewer-cmdline.json"),&json!({"pid":pid,"args":cmdline.split(|byte|*byte==0).filter(|part|!part.is_empty()).map(|part|String::from_utf8_lossy(part).to_string()).collect::<Vec<_>>(),"pdf":pdf}))?;
+            let pdf_argument=pdf.to_string_lossy();
+            ensure(cmdline.split(|byte|*byte==0).any(|part|part==pdf_argument.as_bytes() || part.strip_suffix(pdf_argument.as_bytes()).is_some_and(|prefix|prefix.last()==Some(&b' '))),"Browser process does not own the exact print PDF")?;
+            self.screenshot("print-viewer.png")?;
+            let (width,height,nonblack)=rasters::nonblack_pixels(&self.out("print-viewer.png"))?;
+            ensure(nonblack>width*height/4,"PDF viewer paint is blank")?;
+            self.set_fact("actualPdfViewer",json!({"native":viewer,"executable":fs::read_link(format!("/proc/{pid}/exe"))?,"path":pdf,"sha256":sha(&pdf)?,"paintedNonBlackPixels":nonblack}));
+            self.checks.push("Configured retained browser maps with the exact temporary print PDF after delayed Rust handoff".into());
+            self.key(&["-M","ctrl","-k","p","-m","ctrl"])?;
+            thread::sleep(Duration::from_millis(700));
+            self.screenshot("viewer-print-preview.png")?;
+            ensure(!rasters::compare_rasters(&[self.out("print-viewer.png")],&[self.out("viewer-print-preview.png")])?.is_empty(),"Browser Print preview did not visibly open")?;
+            self.key(&["-k","Escape"])?;
+            thread::sleep(Duration::from_millis(350));
+            self.screenshot("viewer-print-after-escape.png")?;
+            self.checks.push("Retained PDF viewer opens a physical Print preview and Escape cancels it".into());
+            let open_viewer_save=|this:&mut Self|->Result<Value>{
+                this.key(&["-M","ctrl","-k","p","-m","ctrl"])?;
+                thread::sleep(Duration::from_millis(500));
+                this.pointer_events(1150.0,726.0,&["p","r"])?;
+                wait("exact viewer Print Save chooser maps",||Ok(this.viewer_choosers(pid,&viewer["id"])?.into_iter().find(|row|row["focused"]==true)))
+            };
+            let absent=|this:&mut Self,id:&Value|->Result<()> {wait("captured viewer Save chooser retires",||Ok((!this.viewer_choosers(pid,&viewer["id"])?.iter().any(|row|row["id"]==*id)).then_some(())))};
+            let first=open_viewer_save(self)?;
+            self.key(&["-k","Escape"])?;absent(self,&first["id"])?;
+            ensure(sha(&self.source)?==original && formats::package_kind(&pdf)=="pdf","Viewer Print Save cancellation changed source or temporary PDF")?;
+            self.checks.push("Viewer Print Save chooser cancellation preserves source and print PDF".into());
+            let second=open_viewer_save(self)?;
+            let known=self.viewer_choosers(pid,&viewer["id"])?.into_iter().map(|row|row["id"].clone()).collect::<Vec<_>>();
+            self.key(&["-M","ctrl","-k","l","-m","ctrl"])?;self.key(&["-M","ctrl","-k","a","-m","ctrl"])?;
+            self.key(&["--","/source/nonexistent-viewer-print-folder/failed.pdf"])?;self.key(&["-k","Return"])?;
+            let error=wait("viewer Print Save unavailable destination error",||Ok(self.viewer_choosers(pid,&viewer["id"])?.into_iter().find(|row|!known.contains(&row["id"]))))?;
+            self.screenshot("viewer-print-unavailable.png")?;
+            self.key(&["-k","Escape"])?;absent(self,&error["id"])?;
+            self.key(&["-k","Escape"])?;absent(self,&second["id"])?;
+            ensure(sha(&self.source)?==original,"Viewer Print Save unavailable destination changed source")?;
+            self.checks.push("Viewer Print Save unavailable destination exposes owned error and cancels".into());
+            let third=open_viewer_save(self)?;let printed=self.out("viewer-printed.pdf");
+            self.key(&["-M","ctrl","-k","l","-m","ctrl"])?;self.key(&["-M","ctrl","-k","a","-m","ctrl"])?;
+            self.key(&["--",printed.to_str().ok_or("Printed PDF path")?])?;self.key(&["-k","Return"])?;
+            absent(self,&third["id"])?;wait("viewer Print Save PDF publication",||Ok(printed.is_file().then_some(())))?;
+            ensure(formats::package_kind(&printed)=="pdf" && sha(&self.source)?==original,"Viewer Print Save failed or changed source")?;
+            let pdf_tools=self.options.pdf_tools.as_ref().ok_or("PDF tools required")?;
+            let text=self.command(pdf_tools.join("bin/pdftotext").to_str().ok_or("PDF text tool")?,&[printed.to_str().ok_or("Printed PDF")?,"-"])?;
+            ensure(text.contains("Workflow heading") && text.contains("Second section."),"Viewer Print Save omitted document content")?;
+            self.set_fact("nativePrintedPdf",json!({"path":printed,"sha256":sha(&printed)?,"text":text}));
+            self.checks.push("Viewer Print Save produces independently parsed PDF content without source mutation".into());
+            self.command("swaymsg",&[&format!("[con_id={}]",viewer["id"]),"kill"])?;
+            wait("captured PDF viewer closes",||{
+                let tree=self.tree()?;let mut all=Vec::new();nodes(&tree,&mut all);
+                Ok((!all.into_iter().any(|row|row["id"]==viewer["id"])).then_some(()))
+            })?;
+        } else {
+            self.pointer_events(400.0,169.0,&["p","r"])?;
+            wait("unavailable PDF viewer exposes document status",||Ok((self.app_ui()?["ui"]["backstage"]==false).then_some(())))?;
+            let log=fs::read_to_string(self.out("wordcraft.log"))?;
+            ensure(log.to_lowercase().contains("print failed:") && self.print_pdf_files()?.is_empty() && sha(&self.source)?==original,"Failed PDF viewer handoff did not expose failure and clean temporary PDF")?;
+            self.checks.push("Unavailable viewer failure exposes document status and removes temporary PDF".into());
+        }
+        self.key(&["-k","Escape"])?;
+        wait("Escape dismisses provider Print page",||Ok((self.app_ui()?["ui"]["backstage"]==false).then_some(())))?;
+        let after_ui=self.app_ui()?;self.set_fact("printAfterEscape",after_ui);
+        ensure(sha(&self.source)?==original,"Print handoff changed source")?;
+        self.checks.push("Physical Print invocation and Escape preserve the captured saved source".into());
+        let pdf_tools=self.options.pdf_tools.as_ref().ok_or("PDF tools required")?.clone();
+        let info=pdf_tools.join("bin/pdfinfo");let text=pdf_tools.join("bin/pdftotext");
+        executable(&info)?;executable(&text)?;
+        let mut baseline=Vec::new();
+        for row in fs::read_dir(&self.options.output)? {let path=row?.path();if path.extension().is_some_and(|v|v=="pdf"){baseline.push((path.clone(),sha(&path)?));}}
+        let open_pdf=|this:&mut Self|->Result<Value>{
+            this.key(&["-M","ctrl","-k","p","-m","ctrl"])?;
+            wait("Print page before PDF export",||Ok((this.app_ui()?["ui"]["backstagePage"]=="print").then_some(())))?;
+            this.pointer_events(400.0,272.0,&["p","r"])?;this.chooser()
+        };
+        let first=open_pdf(self)?;self.screenshot("print-pdf-cancel.png")?;
+        self.key(&["-k","Escape"])?;self.chooser_absent(&first["id"])?;
+        ensure(sha(&self.source)?==original && baseline.iter().all(|(path,hash)|sha(path).ok().as_ref()==Some(hash)),"PDF chooser Cancel mutated source or existing output")?;
+        self.checks.push("Physical PDF export chooser cancellation preserves source and output".into());
+        let second=open_pdf(self)?;let known=self.owned_choosers()?.into_iter().map(|row|row["id"].clone()).collect::<Vec<_>>();
+        self.key(&["-M","ctrl","-k","l","-m","ctrl"])?;self.key(&["-M","ctrl","-k","a","-m","ctrl"])?;
+        self.key(&["--","/source/nonexistent-print-folder/failed.pdf"])?;self.key(&["-k","Return"])?;
+        let error=wait("owned PDF chooser reports unavailable destination",||Ok(self.owned_choosers()?.into_iter().find(|row|!known.contains(&row["id"]))))?;
+        self.screenshot("print-pdf-unavailable.png")?;
+        self.key(&["-k","Escape"])?;self.chooser_absent(&error["id"])?;
+        self.key(&["-k","Escape"])?;self.chooser_absent(&second["id"])?;
+        ensure(sha(&self.source)?==original,"Unavailable PDF destination changed source")?;
+        self.checks.push("Unavailable PDF destination remains an owned chooser error".into());
+        let third=open_pdf(self)?;let target=self.out("print-copy.pdf");
+        self.key(&["-M","ctrl","-k","l","-m","ctrl"])?;self.key(&["-M","ctrl","-k","a","-m","ctrl"])?;
+        self.key(&["--",target.to_str().ok_or("PDF path")?])?;self.key(&["-k","Return"])?;self.chooser_absent(&third["id"])?;
+        wait("explicit PDF copy publication",||Ok(target.is_file().then_some(())))?;
+        ensure(formats::package_kind(&target)=="pdf" && sha(&self.source)?==original,"PDF export missing or source changed")?;
+        let pdf_text=self.command(text.to_str().ok_or("PDF text tool")?,&[target.to_str().ok_or("PDF path")?,"-"])?;
+        let metadata=self.command(info.to_str().ok_or("PDF info tool")?,&[target.to_str().ok_or("PDF path")?])?;
+        ensure(pdf_text.contains("Workflow heading") && pdf_text.contains("Second section.") && metadata.contains("Pages:"),"Independent PDF content missing")?;
+        self.set_fact("nativePdfCopy",json!({"path":target,"sha256":sha(&target)?,"text":pdf_text,"metadata":metadata}));
+        self.checks.push("Print-page PDF chooser publishes independently parsed content without source mutation".into());
+        self.key(&["-k","Escape"])?;
+        Ok(())
+    }
+    fn provider_pdf_open(&mut self)->Result<Value> {
+        self.key(&["-M","ctrl","-k","p","-m","ctrl"])?;
+        if self.options.app=="slides" {
+            let ui=wait("presentation Print to PDF dialog",||{
+                let ui=self.app_ui()?;Ok((!ui["dialog"].is_null()).then_some(ui))
+            })?;
+            self.set_fact("providerPrintOptions",ui);
+            self.screenshot("provider-print-options.png")?;
+            // The isolated compositor fixes the presentation window at 1440x1000.
+            // The painted dialog's Save PDF button is centered at this point.
+            self.pointer_events(854.0,528.0,&["p","r"])?;
+        }
+        self.chooser()
+    }
+    fn pdf_output(&mut self)->Result<()> {
+        ensure(self.chooser.is_some() && ["sheet","slides"].contains(&self.options.app.as_str()),"Private provider PDF chooser required")?;
+        self.pointer_start()?;
+        let original=sha(&self.source)?;
+        let first=self.provider_pdf_open()?;
+        self.screenshot("provider-pdf-cancel.png")?;
+        self.key(&["-k","Escape"])?;self.chooser_absent(&first["id"])?;
+        ensure(self.owned_choosers()?.is_empty() && sha(&self.source)?==original && !self.out("provider-print-copy.pdf").exists(),"PDF chooser Cancel mutated source or output")?;
+        self.checks.push("Provider Print to PDF native chooser cancels without output or source mutation".into());
+        let second=self.provider_pdf_open()?;
+        let known=self.owned_choosers()?.into_iter().map(|row|row["id"].clone()).collect::<Vec<_>>();
+        self.key(&["-M","ctrl","-k","l","-m","ctrl"])?;self.key(&["-M","ctrl","-k","a","-m","ctrl"])?;
+        self.key(&["--","/source/nonexistent-provider-output-folder/failed.pdf"])?;self.key(&["-k","Return"])?;
+        let error=wait("provider PDF destination error",||Ok(self.owned_choosers()?.into_iter().find(|row|!known.contains(&row["id"]))))?;
+        self.screenshot("provider-pdf-error.png")?;
+        self.key(&["-k","Escape"])?;self.chooser_absent(&error["id"])?;
+        self.key(&["-k","Escape"])?;self.chooser_absent(&second["id"])?;
+        ensure(sha(&self.source)?==original,"Unavailable PDF destination mutated source")?;
+        self.checks.push("Unavailable provider PDF destination remains an owned chooser error".into());
+        let third=self.provider_pdf_open()?;let target=self.out("provider-print-copy.pdf");
+        self.key(&["-M","ctrl","-k","l","-m","ctrl"])?;self.key(&["-M","ctrl","-k","a","-m","ctrl"])?;
+        self.key(&["--",target.to_str().ok_or("PDF target")?])?;self.key(&["-k","Return"])?;self.chooser_absent(&third["id"])?;
+        wait("provider PDF publication",||Ok(target.is_file().then_some(())))?;
+        ensure(formats::package_kind(&target)=="pdf" && sha(&self.source)?==original,"Provider PDF output missing or source changed")?;
+        let tools=self.options.pdf_tools.as_ref().ok_or("PDF tools required")?;
+        let text=tools.join("bin/pdftotext");let info=tools.join("bin/pdfinfo");
+        executable(&text)?;executable(&info)?;
+        let contents=self.command(text.to_str().ok_or("PDF text tool")?,&[target.to_str().ok_or("PDF target")?,"-"])?;
+        let metadata=self.command(info.to_str().ok_or("PDF info tool")?,&[target.to_str().ok_or("PDF target")?])?;
+        let expected=if self.options.app=="sheet" {["60","#NAME?"]} else {["Synthetic title","Second slide"]};
+        ensure(expected.iter().all(|marker|contents.contains(marker)) && metadata.contains("Pages:"),"Independent provider PDF content missing")?;
+        self.set_fact("providerPrintedPdf",json!({"path":target,"sha256":sha(&target)?,"text":contents,"metadata":metadata}));
+        self.checks.push("Provider Print to PDF Save publishes independently parsed content without source mutation".into());
+        if self.options.app=="slides" {
+            self.key(&["-M","ctrl","-k","p","-m","ctrl"])?;
+            wait("presentation Save PDF control before revision",||Ok((!self.app_ui()?["dialog"].is_null()).then_some(())))?;
+            self.pointer_events(854.0,528.0,&["p"])?;
+            self.control.as_mut().ok_or("Control unavailable")?.command("slides","slide.notes",Some(json!({"index":0,"text":"Revision while captured PDF control is held"})))?;
+            wait("changed presentation retires Print dialog",||Ok(self.app_ui()?["dialog"].is_null().then_some(())))?;
+            let before=live::snapshot(self.control.as_mut().ok_or("Control unavailable")?,"slides")?;
+            self.pointer_events(854.0,528.0,&["r"])?;
+            let after=live::snapshot(self.control.as_mut().ok_or("Control unavailable")?,"slides")?;
+            ensure(before==after && self.owned_choosers()?.is_empty() && sha(&self.source)?==original,"Held Save PDF release after revision mutated document")?;
+            self.checks.push("Presentation revision retires a held PDF action before release".into());
+            self.key(&["-M","ctrl","-k","p","-m","ctrl"])?;
+            wait("presentation Save PDF control before replacement",||Ok((!self.app_ui()?["dialog"].is_null()).then_some(())))?;
+            self.pointer_events(854.0,528.0,&["p"])?;
+            self.tool("new_presentation",None)?;
+            wait("replacement presentation retires old Print dialog",||Ok(self.app_ui()?["dialog"].is_null().then_some(())))?;
+            let before=live::snapshot(self.control.as_mut().ok_or("Control unavailable")?,"slides")?;
+            self.pointer_events(854.0,528.0,&["r"])?;
+            let after=live::snapshot(self.control.as_mut().ok_or("Control unavailable")?,"slides")?;
+            ensure(before==after && self.owned_choosers()?.is_empty() && sha(&self.source)?==original && self.control_command("document.inspect")?["path"]!=self.source.display().to_string(),"Held Save PDF release after replacement touched bystander")?;
+            self.checks.push("Replacing presentation retires held PDF action without opening a chooser".into());
+            self.control.as_mut().ok_or("Control unavailable")?.command("slides","slide.hide",Some(json!({"index":0,"hidden":true})))?;
+            let before=live::snapshot(self.control.as_mut().ok_or("Control unavailable")?,"slides")?;
+            let picker=self.provider_pdf_open()?;let empty=self.out("no-printable-pages.pdf");
+            self.key(&["-M","ctrl","-k","l","-m","ctrl"])?;self.key(&["-M","ctrl","-k","a","-m","ctrl"])?;
+            self.key(&["--",empty.to_str().ok_or("Empty PDF path")?])?;self.key(&["-k","Return"])?;
+            self.chooser_absent(&picker["id"])?;
+            wait("PDF renderer reports no printable slides",||Ok(self.app_ui()?["status"].as_str().unwrap_or("").to_lowercase().contains("no slides").then_some(())))?;
+            self.screenshot("provider-pdf-no-pages-error.png")?;
+            ensure(!empty.exists() && sha(&self.source)?==original && live::snapshot(self.control.as_mut().ok_or("Control unavailable")?,"slides")?==before,"No-page PDF error published output or changed document")?;
+            self.key(&["-k","Escape"])?;
+            self.checks.push("No printable pages reports provider error before output publication".into());
+        }
+        Ok(())
+    }
 }
 
 fn run(mut fixture: Native) -> Result<()> {
@@ -1664,6 +2031,9 @@ fn run(mut fixture: Native) -> Result<()> {
     if fixture.options.new_saveas {
         fixture.new_saveas()?;
     }
+    if fixture.options.picker_ownership { fixture.picker_ownership()?; }
+    if fixture.options.document_probe { fixture.document_probe()?; }
+    if fixture.options.pdf_output { fixture.pdf_output()?; }
     if (fixture.options.close_probe
         || !fixture.options.sheet_close_outcome.is_empty()
         || !fixture.options.slides_close_outcome.is_empty())

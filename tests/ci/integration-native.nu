@@ -56,18 +56,24 @@ def main [] {
     build test-spaces-placement-fixture spaces-placement-fixture
     build test-notification-native-fixture notification-native-fixture
     build test-desktop-policy-fixture desktop-policy-fixture
+    build file-surfaces-rust-wip file-surfaces-rust-wip
+    build test-owned-font-config owned-font-config
+    build test-owned-geometry-legacy-compositor compositor-legacy
     build test-menu-exporter-fixture menu-exporter-fixture
     build test-menu-native-fixture menu-native-fixture
     build test-lifecycle-native-fixture lifecycle-native-fixture
     build test-capture-observation-shim capture-observation-shim
     build test-application-isolation application-isolation-package
     build test-force-quit-native force-quit-native
+    build test-application-control application-control
+    build test-application-software-driver software-driver
     build test-transport-frame-fixture transport-frame-fixture
     build network-connectivity network-connectivity-client
     build test-network-connectivity-provider-fixture network-connectivity-provider-fixture
     let shell = (artifact 'shell-package/bin/lumen-desktop-shell')
     let basic = (artifact 'compositor/bin/sway')
     let effects = (artifact 'compositor-effects/bin/sway')
+    let legacy = (artifact 'compositor-legacy/bin/sway')
     let pointer = (artifact 'pointer/bin/wlrctl')
     let lock = (artifact 'session-lock/bin/lumen-test-session-lock')
     let client = (artifact 'window-relationships-client/bin/lumen-test-window-relationships')
@@ -122,6 +128,7 @@ def main [] {
         let sway = (artifact $'($compositor)/bin/sway')
         ^nu tests/ci/run-native.nu $'owned_preview_input_($compositor)' -- (artifact 'preview-input-fixtures/bin/lumen-owned-preview-fixture') ...$flags --launcher $shell --sway $sway --output $'artifacts/owned-preview-($compositor)'
         ^nu tests/ci/run-native.nu $'preview_actions_input_($compositor)' -- (artifact 'preview-input-fixtures/bin/lumen-preview-actions-fixture') ...$flags --launcher $shell --sway $sway --pointer-tool $pointer --output $'artifacts/preview-actions-($compositor)'
+        ^nu tests/ci/run-native.nu $'image_markup_input_($compositor)' -- (artifact 'preview-input-fixtures/bin/lumen-image-markup-fixture') ...$flags --launcher $shell --sway $sway --pointer-tool $pointer --keyboard (artifact 'physical-keyboard/bin/lumen-test-physical-keyboard') --output $'artifacts/image-markup-($compositor)'
         ^nu tests/ci/run-native.nu $'files_history_($compositor)' -- (artifact 'files-layout-fixture/bin/lumen-files-layout-fixture') --history ...$flags --launcher $shell --sway $sway --pointer-tool $pointer --output $'artifacts/files-history-($compositor)'
         ^nu tests/ci/run-native.nu $'batch_rename_($compositor)' -- (artifact 'batch-rename-fixture/bin/lumen-batch-rename-fixture') ...$flags --launcher $shell --sway $sway --pointer-tool $pointer --output $'artifacts/batch-rename-($compositor)'
         ^nu tests/ci/run-native.nu $'trash_confirmation_($compositor)' -- (artifact 'trash-confirmation-fixture/bin/lumen-trash-confirmation-fixture') ...$flags --launcher $shell --sway $sway --pointer-tool $pointer --output $'artifacts/trash-confirmation-($compositor)'
@@ -140,6 +147,9 @@ def main [] {
         ^nu tests/ci/run-native.nu $'widget_catalogue_($compositor)' -- (artifact 'widget-catalogue-fixture/bin/lumen-widget-catalogue-fixture') ...$flags --launcher $shell --sway $sway --pointer-tool $pointer --source $env.PWD --output $'artifacts/widget-catalogue-($compositor)'
         ^nu tests/ci/run-native.nu $'dialog_lifetime_($compositor)' -- (artifact 'dialog-lifetime-fixture/bin/lumen-dialog-lifetime-fixture') ...$flags --sway $sway --client $client --output $'artifacts/dialog-manager-lifetime-($compositor)'
         ^nu tests/ci/run-native.nu $'desktop_lifecycle_($compositor)' -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') lifecycle ...$flags --launcher $shell --sway $sway --pointer-tool $pointer --output $'artifacts/desktop-lifecycle-($compositor)'
+        for scenario in [owned-inactive owned-inactive-native] {
+            ^nu tests/ci/run-native.nu $'($scenario)_($compositor)' -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') $scenario ...$flags --launcher $shell --sway $sway --keyboard (artifact 'physical-keyboard/bin/lumen-test-physical-keyboard') --output $'artifacts/($scenario)-($compositor)'
+        }
         ^nu tests/ci/run-native.nu $'window_relationships_($compositor)' -- (artifact 'window-relationships-fixture/bin/lumen-window-relationships-fixture') ...$flags --sway $sway --client $client --keyboard wtype --state-bin (artifact 'desktop-state/bin/lumen-desktop-state') --output $'artifacts/window-relationships-($compositor)'
         ^nu tests/ci/run-native.nu $'xwayland_relationships_($compositor)' -- (artifact 'xwayland-relationships-fixture/bin/lumen-xwayland-relationships-fixture') ...$flags --sway $sway --client (artifact 'xwayland-relationships-client/bin/lumen-test-xwayland-relationships') --keyboard (artifact 'physical-keyboard/bin/lumen-test-physical-keyboard') --xwayland (artifact 'xwayland-server/bin/Xwayland') --output $'artifacts/xwayland-relationships-($compositor)'
         ^nu tests/ci/run-native.nu $'xwayland_no_xres_($compositor)' -- (artifact 'xwayland-relationships-fixture/bin/lumen-xwayland-relationships-fixture') ...$flags --sway $sway --client (artifact 'xwayland-relationships-client/bin/lumen-test-xwayland-relationships') --keyboard (artifact 'physical-keyboard/bin/lumen-test-physical-keyboard') --xwayland (artifact 'xwayland-server/bin/Xwayland') --without-xres --output $'artifacts/xwayland-no-xres-($compositor)'
@@ -188,6 +198,8 @@ def main [] {
     ^nu tests/ci/run-native.nu notification_recovery_effects -- (artifact 'notification-native-fixture/bin/lumen-notification-native-fixture') recovery --launcher $shell --sway $effects --effects --output artifacts/notification-recovery-effects
     ^nu tests/ci/run-native.nu notification_lock_basic -- (artifact 'notification-native-fixture/bin/lumen-notification-native-fixture') lock --launcher $shell --sway $basic --lock-client $lock --frame-tool (artifact 'transport-frame-fixture/bin/lumen-transport-frame-fixture') --output artifacts/notification-lock-basic
     ^nu tests/ci/run-native.nu notification_lock_effects -- (artifact 'notification-native-fixture/bin/lumen-notification-native-fixture') lock --launcher $shell --sway $effects --lock-client $lock --frame-tool (artifact 'transport-frame-fixture/bin/lumen-transport-frame-fixture') --effects --output artifacts/notification-lock-effects
+    ^nu tests/ci/run-native.nu focus_presentation_basic -- (artifact 'notification-native-fixture/bin/lumen-notification-native-fixture') focus-presentation --launcher $shell --sway $basic --output artifacts/focus-expiry-presentation-basic
+    ^nu tests/ci/run-native.nu focus_presentation_effects -- (artifact 'notification-native-fixture/bin/lumen-notification-native-fixture') focus-presentation --launcher $shell --sway $effects --effects --output artifacts/focus-expiry-presentation-effects
     ^nu tests/ci/run-native.nu desktop_native_drag -- (artifact 'desktop-surface-fixture/bin/lumen-desktop-surface-fixture') drag --launcher $shell --sway $basic --pointer-tool $pointer --output artifacts/file-drag
     for mode in [light dark] {
         for frame in [off on] {
@@ -217,9 +229,48 @@ def main [] {
     ^nu tests/ci/run-native.nu interaction_regression -- (artifact 'dock-interaction-fixture/bin/lumen-dock-interaction-fixture') interaction --launcher $shell --sway $basic --pointer-tool $pointer --source $env.PWD --output artifacts/interactions
     ^nu tests/ci/run-native.nu accessibility_protocol -- (artifact 'accessibility-protocol-fixture/bin/lumen-accessibility-protocol-fixture') --launcher $shell --sway $basic --at-spi-prefix $atspi --output artifacts/accessibility --full-shell
     ^nu tests/ci/run-native.nu force_quit_surface -- (artifact 'force-quit-native/bin/lumen-force-quit-native') --sway $basic --wtype wtype --shell-source ($env.PWD | path join res lumen-desktop shell) --output artifacts/force-quit
+    ^nu tests/ci/run-native.nu force_quit_broker -- (artifact 'force-quit-native/bin/lumen-force-quit-native') --acceptance --broker (artifact 'application-control/bin/lumen-application-control') --sway $basic --wtype wtype --keyboard (artifact 'physical-keyboard/bin/lumen-test-physical-keyboard') --shell-source ($env.PWD | path join res lumen-desktop shell) --output artifacts/force-quit-native-basic
+    ^nu tests/ci/run-native.nu force_quit_broker_effects -- (artifact 'force-quit-native/bin/lumen-force-quit-native') --acceptance --broker (artifact 'application-control/bin/lumen-application-control') --sway $effects --wtype wtype --keyboard (artifact 'physical-keyboard/bin/lumen-test-physical-keyboard') --shell-source ($env.PWD | path join res lumen-desktop shell) --software-driver (artifact 'software-driver') --effects --output artifacts/force-quit-native-effects
     ^nu tests/ci/run-native.nu spaces_placement -- (artifact 'spaces-placement-fixture/bin/lumen-spaces-placement-fixture') --launcher $shell --sway $basic --output artifacts/spaces
     ^nu tests/ci/run-native.nu application_desktops_basic -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') application --launcher $shell --sway $basic --client $client --output artifacts/application-desktops-basic
     ^nu tests/ci/run-native.nu application_desktops_effects -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') application --launcher $shell --sway $effects --client $client --effects --output artifacts/application-desktops-effects
+    ^nu tests/ci/run-native.nu display_spaces_native -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') display --launcher $shell --sway $basic --client $client --output artifacts/display-spaces-native
+    for variant in [basic effects] {
+        let sway = if $variant == 'effects' { $effects } else { $basic }
+        let flags = if $variant == 'effects' { ['--effects'] } else { [] }
+        ^nu tests/ci/run-native.nu $'pointer_retirement_($variant)' -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') pointer-retirement --launcher $shell --sway $sway --pointer-tool $pointer ...$flags --output $'artifacts/pointer-retirement-($variant)'
+        let motion_output = ($env.PWD | path join artifacts $'reduced-motion-($variant)')
+        mkdir $motion_output
+        ^chmod 700 $motion_output
+        let isolated_graphics = if $variant == 'effects' { ['--software-graphics'] } else { [] }
+        ^nu tests/ci/run-native.nu $'reduced_motion_($variant)' -- (artifact 'application-isolation-package/bin/lumen-application-isolation') run --source $env.PWD --output $motion_output ...$isolated_graphics -- ((artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') | path expand) reduced-motion --launcher ($shell | path expand) --sway ($sway | path expand) --keyboard ((artifact 'physical-keyboard/bin/lumen-test-physical-keyboard') | path expand) --pointer-tool ($pointer | path expand) --font-config ((artifact 'owned-font-config') | path expand) --software-driver ((artifact 'software-driver') | path expand) ...$flags --output /artifacts
+        ^nu tests/ci/run-native.nu $'window_controls_($variant)' -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') window-controls --launcher $shell --sway $sway --pointer-tool $pointer --client (artifact 'constraint-client/bin/lumen-test-constraint-client') ...$flags --output $'artifacts/window-controls-($variant)'
+        ^nu tests/ci/run-native.nu $'minimized_dock_($variant)' -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') minimized-dock --launcher $shell --sway $sway --pointer-tool $pointer ...$flags --output $'artifacts/minimized-dock-($variant)'
+        ^nu tests/ci/run-native.nu $'owned_typography_($variant)' -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') typography --launcher $shell --sway $sway --font-config (artifact 'owned-font-config') ...$flags --output $'artifacts/owned-typography-native-($variant)'
+        ^nu tests/ci/run-native.nu $'desktop_typography_($variant)' -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') desktop-typography --launcher $shell --sway $sway --pointer-tool $pointer --font-config (artifact 'owned-font-config') ...$flags --output $'artifacts/desktop-typography-native-($variant)'
+        ^nu tests/ci/run-native.nu $'semantic_state_($variant)' -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') semantic-state --launcher $shell --sway $sway --pointer-tool $pointer --font-config (artifact 'owned-font-config') ...$flags --output $'artifacts/semantic-state-native-($variant)'
+        ^nu tests/ci/run-native.nu $'live_overlay_appearance_($variant)' -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') live-overlay-appearance --launcher $shell --sway $sway --font-config (artifact 'owned-font-config') ...$flags --output $'artifacts/live-overlay-appearance-($variant)'
+        ^nu tests/ci/run-native.nu $'utility_typography_($variant)' -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') utility-typography --launcher $shell --sway $sway --font-config (artifact 'owned-font-config') ...$flags --output $'artifacts/owned-utility-native-($variant)'
+        ^nu tests/ci/run-native.nu $'calendar_detail_typography_($variant)' -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') calendar-detail-typography --launcher $shell --sway $sway --font-config (artifact 'owned-font-config') ...$flags --output $'artifacts/calendar-detail-native-($variant)'
+        ^nu tests/ci/run-native.nu $'overview_typography_($variant)' -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') overview-typography --launcher $shell --sway $sway --font-config (artifact 'owned-font-config') ...$flags --output $'artifacts/overview-typography-native-($variant)'
+        ^nu tests/ci/run-native.nu $'dock_motion_($variant)' -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') dock-motion --launcher $shell --sway $sway --pointer-tool $pointer --font-config (artifact 'owned-font-config') ...$flags --output $'artifacts/dock-motion-($variant)'
+        ^nu tests/ci/run-native.nu $'folder_stack_($variant)' -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') folder-stack --launcher $shell --sway $sway --client (artifact 'file-surfaces-rust-wip/bin/lumen-files-rust-wip') --pointer-tool $pointer --font-config (artifact 'owned-font-config') ...$flags --output $'artifacts/folder-stack-($variant)'
+        ^nu tests/ci/run-native.nu $'launcher_typography_($variant)' -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') launcher-typography --launcher $shell --sway $sway --keyboard (artifact 'physical-keyboard/bin/lumen-test-physical-keyboard') --pointer-tool $pointer --font-config (artifact 'owned-font-config') ...$flags --output $'artifacts/launcher-typography-native-($variant)'
+        ^nu tests/ci/run-native.nu $'shared_control_typography_($variant)' -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') shared-control-typography --launcher $shell --sway $sway --keyboard (artifact 'physical-keyboard/bin/lumen-test-physical-keyboard') --pointer-tool $pointer --font-config (artifact 'owned-font-config') ...$flags --output $'artifacts/shared-control-native-($variant)'
+        for scenario in [resize-hit-targets resize-hit-targets-rapid] {
+            ^nu tests/ci/run-native.nu $'($scenario)_($variant)' -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') $scenario --launcher $shell --sway $sway --client (artifact 'force-quit-native/bin/resize-hit-target-client') --pointer-tool $pointer --font-config (artifact 'owned-font-config') ...$flags --output $'artifacts/($scenario)-($variant)'
+        }
+        for scenario in [dock-offer dock-offer-busy] {
+            ^nu tests/ci/run-native.nu $'($scenario)_($variant)' -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') $scenario --launcher $shell --sway $sway --pointer-tool $pointer ...$flags --output $'artifacts/($scenario)-($variant)'
+        }
+    }
+    for variant in [modern legacy] {
+        let sway = if $variant == 'legacy' { $legacy } else { $basic }
+        let suffix = if $variant == 'legacy' { '-legacy' } else { '' }
+        ^nu tests/ci/run-native.nu $'display_recovery_($variant)' -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') $'display-recovery($suffix)' --launcher $shell --sway $sway --output $'artifacts/display-spaces-recovery-($variant)'
+        ^nu tests/ci/run-native.nu $'owned_geometry_($variant)' -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') $'owned-geometry($suffix)' --launcher $shell --sway $sway --pointer-tool $pointer --output $'artifacts/owned-geometry-($variant)'
+        ^nu tests/ci/run-native.nu $'owned_components_($variant)' -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') $'owned-components($suffix)' --launcher $shell --sway $sway --output $'artifacts/owned-components-($variant)'
+    }
     ^nu tests/ci/run-native.nu application_lifecycle -- (artifact 'lifecycle-native-fixture/bin/lumen-lifecycle-native-fixture') lifecycle --launcher $shell --sway $basic --output artifacts/application-lifecycle
     ^nu tests/ci/run-native.nu session_end -- (artifact 'lifecycle-native-fixture/bin/lumen-lifecycle-native-fixture') session --launcher $shell --sway $basic --output artifacts/session-end
     ^nu tests/ci/run-native.nu session_end_effects -- (artifact 'lifecycle-native-fixture/bin/lumen-lifecycle-native-fixture') session --launcher $shell --sway $effects --effects --output artifacts/session-end-effects

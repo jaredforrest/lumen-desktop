@@ -18,11 +18,10 @@ changed path, limited listing or unreadable-item count never authorizes pruning.
 Partial rows remain available for display. Placement edits wait for a complete
 listing; failed refreshes preserve the last durable placement snapshot.
 
-`tests/desktop/desktop_typography_native.py` exercises the production surface
-against disposable real files in the full application namespace. It accepts the
-same pinned launcher, compositor, physical keyboard, pointer, fontconfig and
-software-driver arguments as `overview_typography_native.py`; add `--effects`
-for the effects compositor. CI runs both through `tests/ci/run-native.sh` and
+`tests/desktop/desktop-policy-rust/src/desktop_typography.rs` exercises the production surface
+against disposable real files in a private compositor. The Rust 2024 fixture accepts
+the pinned launcher, compositor, and pointer tool, with `--effects` for the effects compositor.
+CI runs both through `tests/ci/run-native.nu` and
 retains desktop-typography-native artifacts. The corpus covers four text scales,
 light/dark presentation, normal/constrained outputs, actual caption ink and input
 masks, directional navigation, stack/Quick Look dispatch, listing failure and a

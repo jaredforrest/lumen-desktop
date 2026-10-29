@@ -42,6 +42,8 @@
         default = session.shellLauncher;
         shell = session.shellLauncher;
         desktop-state = session.desktopState;
+        spaces = import ./packages/spaces.nix { inherit pkgs; };
+        window-geometry = import ./packages/window-geometry.nix { inherit pkgs; };
         appearance-runtime = pkgs.callPackage ./packages/appearance-rust.nix { };
         network-locations = session.networkLocations;
         network-connectivity = pkgs.callPackage ./packages/network-connectivity.nix { };
@@ -146,6 +148,7 @@
         test-application-isolation = import ./tests/desktop/application-isolation { inherit pkgs; };
         test-speech-transport-fixture = import ./tests/desktop/speech-transport-rust { inherit pkgs; };
         test-force-quit-native = import ./tests/desktop/force-quit-native { inherit pkgs; };
+        test-application-control = pkgs.callPackage ./packages/application-control.nix { };
         test-input-pane-fixture = import ./tests/desktop/input-pane-rust { inherit pkgs; };
         test-transport-frame-fixture = import ./tests/desktop/transport-frame-rust { inherit pkgs; };
         test-portal-permission-provider-fixture = import ./tests/desktop/portal-permission-provider-rust { inherit pkgs; };

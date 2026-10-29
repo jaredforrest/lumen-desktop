@@ -20,6 +20,7 @@ chrono = "0.4"
 getrandom = "0.4"
 gio = "0.21"
 hex = "0.4"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 libc = "0.2"
 mime_guess = "2"
 notify = "8.2"

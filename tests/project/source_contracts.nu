@@ -4,7 +4,7 @@ def main [root: path] {
     let forbidden = '(?i)' + $brand
     let machine_path = '/home/' + 'jalio'
     mut errors = []
-    for path in (glob $'($root)/**/*' --no-dir --no-symlink --exclude [**/.git/** **/__pycache__/**]) {
+    for path in (glob $'($root)/**/*' --no-dir --no-symlink --exclude [**/.git/** **/__pycache__/** **/artifacts/** **/target/**]) {
         let relative = ($path | str replace $'($root)/' '')
         if ($relative =~ $forbidden) {
             $errors = ($errors | append $'Branded path: ($relative)')
@@ -19,6 +19,15 @@ def main [root: path] {
         }
         if ($path | str ends-with '.py') {
             $errors = ($errors | append $'First-party Python source restored: ($relative)')
+        }
+        if (['.sh' '.bash' '.fish' '.ps1' '.lua' '.rb' '.pl'] | any {|suffix| $path | str ends-with $suffix }) {
+            $errors = ($errors | append $'Unapproved script source restored: ($relative)')
+        }
+        if ($path | str ends-with '.cjs') and $relative != 'res/lumen-desktop/global-menu/menu-adapter.cjs' {
+            $errors = ($errors | append $'JavaScript outside the Electron adapter: ($relative)')
+        }
+        if ($path | str ends-with '.js') and not ($relative | str starts-with 'res/lumen-desktop/shell/') {
+            $errors = ($errors | append $'JavaScript outside QML models: ($relative)')
         }
         if (['.cpp' '.cc' '.cxx' '.hpp' '.hh' '.hxx'] | any {|suffix| $path | str ends-with $suffix }) {
             $errors = ($errors | append $'First-party C++ source restored: ($relative)')
@@ -138,6 +147,6 @@ def main [root: path] {
     if not ($errors | is-empty) {
         error make {msg: ($errors | str join (char nl))}
     }
-    'PASS: neutral source, Rust-only runtime, no first-party Python or C++, local Nix imports, semantic labels, artifact retention and publication boundary' | print
+    'PASS: neutral source, Rust/Nushell runtime with scoped QML and Electron JavaScript, no first-party Python or C++, local Nix imports, semantic labels, artifact retention and publication boundary' | print
     'passed' | save --force $env.out
 }

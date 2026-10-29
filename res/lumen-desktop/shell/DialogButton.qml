@@ -7,11 +7,12 @@ AbstractButton {
     property bool destructive: false
     property bool defaultAction: primary && !destructive
     readonly property color actionColor: destructive ? Theme.errorText : Theme.colors.accent
-    function anotherButtonOwnsReturn() {
+    function anotherControlOwnsReturn() {
         let item=control.Window.window?control.Window.window.activeFocusItem:null;
         while(item){
             if(item===control)return false;
             if(item instanceof AbstractButton)return true;
+            if(item instanceof TextInput || item instanceof TextEdit || item instanceof TextField || item instanceof TextArea)return true;
             item=item.parent;
         }
         return false;
@@ -19,7 +20,7 @@ AbstractButton {
     Accessible.name: text
     Keys.onReturnPressed: if (enabled) clicked()
     Keys.onEnterPressed: if (enabled) clicked()
-    Shortcut {sequence:"Return";context:Qt.WindowShortcut;enabled:control.defaultAction && control.enabled && control.visible && !control.activeFocus && !control.anotherButtonOwnsReturn();onActivated:control.clicked()}
+    Shortcut {sequence:"Return";context:Qt.WindowShortcut;enabled:control.defaultAction && control.enabled && control.visible && !control.activeFocus && !control.anotherControlOwnsReturn();onActivated:control.clicked()}
     implicitHeight: Math.max(28,label.implicitHeight+12)
     implicitWidth: Math.max(80, label.implicitWidth + 28)
     opacity: enabled ? 1 : 0.45

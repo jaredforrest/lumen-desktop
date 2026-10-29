@@ -26,16 +26,14 @@ short severity prefix while preserving callers' raw `text`, semantic colours and
 existing accessible name/announcement. The prefix is ignored as a separate
 accessibility child to avoid duplicating the message.
 
-`semantic_state_paint.py` captures genuine production Qt frames in a complete
-private namespace. Eight mode/contrast/width combinations cover message wrapping,
-painted semantic foreground contrast, switch position, connection subtitle and
-disabled action context. It retains grayscale, protanopia and deuteranopia
-transforms. These are diagnostic software transforms, not human usability or
-clinical vision validation. The non-hue assertion checks visible severity text,
-not a simulated-colour difference alone.
+`semantic_state_paint.nu` and its QML fixture capture genuine production Qt
+frames using disposable home and runtime paths. Eight mode/contrast/width
+combinations cover message wrapping, painted semantic foreground contrast,
+switch position, connection subtitle and disabled action context. The non-hue
+assertion checks visible severity text and painted foreground pixels.
 
-`semantic_state_native.py` uses the same namespace boundary with a real private
-compositor and physical keyboard protocol client. Across four mode/contrast
+`desktop-policy-rust/src/semantic_state.rs` uses a real private compositor,
+pointer protocol, and physical keyboard protocol client. Across four mode/contrast
 combinations it toggles the actual switch and connection control, verifies the
 positional/textual state, refuses an unavailable control, preserves the disabled
 action and checks the unchanged native window. No external application, account,
@@ -46,7 +44,7 @@ The switch indicator also had a reproduced boundary gap: 26 of 64 actual
 resolved mode/accent/contrast/on-off frames had a white indicator boundary below
 3:1 against the track. The white optical thumb is retained; a one-pixel outline
 uses the existing contrasting foreground selector for the actual track fill.
-`switch_indicator_paint.py` verifies the boundary is genuinely painted before
+`switch_indicator_paint.nu` verifies the boundary is genuinely painted before
 counting its contrast. Rectangle border getters have defaults even when no
 border is drawn, so metadata alone cannot establish that evidence. All 64
 combinations retain their original dimensions and on/off positions. This is an

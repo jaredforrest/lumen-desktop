@@ -1,6 +1,6 @@
 # Disposable vault compatibility test
 
-`tests/desktop/disposable_vault.py` exercises the packaged web client and CLI
+`tests/desktop/browser-workflows-rust/src/bin/disposable-vault.rs` exercises the packaged web client and CLI
 against a private compatibility server. Test dependencies are optional flake
 outputs and do not install or configure a desktop service.
 
@@ -8,8 +8,8 @@ The fixture enters separate user, process, network, mount, IPC and host-name
 namespaces, detaches the original root and drops capabilities. Its source and
 store mounts are read-only. The account, vault, browser profile, CLI session,
 certificate authority and private keys live only in the private temporary home.
-Only loopback networking is available. A bounded HTTPS front end supplies HSTS;
-Python, Node and the browser verify a certificate trusted in that temporary
+Only loopback networking is available. A bounded Rust HTTPS front end supplies HSTS;
+Rust, Node and the browser verify a certificate trusted in that temporary
 home. Browser diagnostics use inherited pipes. There is no host CA change,
 certificate-verification override, hardware access or live vault access.
 
@@ -20,13 +20,12 @@ synthetic login, syncs, locks, refuses item access while locked, unlocks and rea
 the edited item, trashes it, syncs and logs out. Credentials remain in memory
 or the private home. A sentinel audit runs after child cleanup on success and
 failure; a reflected credential or private key removes the offending material
-and fails acceptance. Six regression cases cover reflection, private key output,
-actual CLI timeout diagnostics and cleanup after an earlier failure.
+and fails acceptance. Rust unit tests cover reflection, private key output,
+nonregular artifacts, nested redaction and actual CLI timeout diagnostics.
 
-Acceptance requires a successful frozen-source receipt as well as `result.json`.
-A result from a source-changing run is diagnostic evidence only. Runtime server
-warnings are retained explicitly; builds use `abort-on-warn` and Python warnings
-are errors.
+Acceptance requires the Rust unit tests, the isolated transport receipt, and
+the isolated `result.json` with credential audit. Runtime server warnings are
+retained explicitly; CI builds use `abort-on-warn`.
 
 This is backend and CLI compatibility coverage. Desktop password entry,
 desktop lock/unlock, browser extension and autofill, biometric unlock, provider

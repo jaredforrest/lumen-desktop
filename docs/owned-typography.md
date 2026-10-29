@@ -7,9 +7,8 @@ Files, its columns and Calendar use these roles for ordinary text. Files grows t
 The actual QML corpus renders 128 cases: both windows, all four presentations, 480×320 and 1060×720, light/dark, and four supported text scales. It requires the actual Qt-resolved default family, correct text bindings, nonblank frames, year line bounds, date-mark contrast, timed-event line bounds and focused date/sidebar reachability. Native acceptance separately uses physical keys for search/filter, date navigation and Escape cancellation at 150% in small windows on both supported compositor variants. No account, volume discovery, host font directory or personal document is used.
 
 ```sh
-nix build .#shell --out-link /tmp/lumen-type-shell
-nix build .#test-owned-font-config --out-link /tmp/lumen-type-fonts
-bash tests/ci/run-native.sh owned_typography_qml nix develop --command desktop-test-python tests/desktop/owned_typography_qml.py --launcher /tmp/lumen-type-shell/bin/lumen-desktop-shell --font-config /tmp/lumen-type-fonts --output /tmp/lumen-type-frames
+nu tests/desktop/test_typography_cases.nu
+nu tests/desktop/owned_typography_qml.nu
 ```
 
-Fresh output directories and clean frozen source are required. The namespace wrapper records hashes/revision and rejects source changes during acceptance. `--font-config` must resolve to an immutable font configuration; optional `--font-family` selects the requested family and `--expected-resolved-family` verifies an intentional consumer alias (defaults to the requested family). The public font configuration includes the bundled default family and declared fallback; personalized font policy remains consumer-owned and requires its own acceptance. The software offscreen corpus does not claim physical input or native-mask coverage. Native fixture arguments and retained artifacts are wired into the main check workflow.
+The Nu runner builds the pinned Rust Files backend and owned font configuration, creates a private directory for each run, and checks every segment's font, focus, image dimensions and painted text pixels. The public font configuration includes the bundled default family and declared fallback; personalized font policy remains consumer-owned and requires its own acceptance. The software offscreen corpus does not claim physical input or native-mask coverage. Native fixture arguments and retained artifacts are wired into the main check workflow.

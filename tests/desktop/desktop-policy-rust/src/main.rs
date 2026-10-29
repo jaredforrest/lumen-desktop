@@ -1,13 +1,36 @@
 //! Shared native compositor, Overview, pointer, keyboard, and backend harness.
 mod application;
+mod display;
+mod display_recovery;
 mod lifecycle;
+mod owned_geometry;
+mod owned_inactive;
+mod screen_saver_queue;
+mod typography;
+mod desktop_typography;
+mod dock_offer;
+mod semantic_state;
+mod live_overlay;
+mod utility_typography;
+mod calendar_detail_typography;
+mod overview_typography;
+mod folder_stack;
+mod launcher_typography;
+mod physical_keyboard;
+mod resize_hit_targets;
+mod shared_control_typography;
+mod dock_motion;
+mod reduced_motion;
+mod pointer_retirement;
+mod window_controls;
+mod minimized_dock;
 
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::error::Error;
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::{PermissionsExt, symlink};
 use std::os::unix::process::CommandExt;
@@ -180,6 +203,9 @@ struct Options {
     sway: PathBuf,
     client: Option<PathBuf>,
     pointer: Option<PathBuf>,
+    keyboard: Option<PathBuf>,
+    font_config: Option<PathBuf>,
+    software_driver: Option<PathBuf>,
     effects: bool,
     output: PathBuf,
 }
@@ -190,12 +216,15 @@ impl Options {
         let mut sway = None;
         let mut client = None;
         let mut pointer = None;
+        let mut keyboard = None;
+        let mut font_config = None;
+        let mut software_driver = None;
         let mut effects = false;
         let mut output = None;
         let mut args = env::args_os().skip(1);
         while let Some(arg) = args.next() {
             match arg.to_str() {
-                Some("application" | "lifecycle") => {
+                Some("application" | "lifecycle" | "display" | "display-recovery" | "display-recovery-legacy" | "owned-geometry" | "owned-geometry-legacy" | "owned-components" | "owned-components-legacy" | "owned-inactive" | "owned-inactive-native" | "typography" | "desktop-typography" | "utility-typography" | "calendar-detail-typography" | "overview-typography" | "folder-stack" | "launcher-typography" | "shared-control-typography" | "resize-hit-targets" | "resize-hit-targets-rapid" | "dock-motion" | "reduced-motion" | "pointer-retirement" | "window-controls" | "minimized-dock" | "dock-offer" | "dock-offer-busy" | "semantic-state" | "live-overlay-appearance") => {
                     scenario = Some(arg.to_string_lossy().into_owned())
                 }
                 Some("--launcher") => {
@@ -208,6 +237,9 @@ impl Options {
                 Some("--pointer-tool") => {
                     pointer = Some(PathBuf::from(args.next().ok_or("Missing pointer")?))
                 }
+                Some("--keyboard") => keyboard = Some(PathBuf::from(args.next().ok_or("Missing keyboard")?)),
+                Some("--font-config") => font_config = Some(PathBuf::from(args.next().ok_or("Missing font config")?)),
+                Some("--software-driver") => software_driver = Some(PathBuf::from(args.next().ok_or("Missing software driver")?)),
                 Some("--effects") => effects = true,
                 Some("--output") => {
                     output = Some(PathBuf::from(args.next().ok_or("Missing output")?))
@@ -227,6 +259,9 @@ impl Options {
             sway: sway.ok_or("Missing sway")?.canonicalize()?,
             client: client.map(|p| p.canonicalize()).transpose()?,
             pointer: pointer.map(|p| p.canonicalize()).transpose()?,
+            keyboard: keyboard.map(|p| p.canonicalize()).transpose()?,
+            font_config: font_config.map(|p| p.canonicalize()).transpose()?,
+            software_driver: software_driver.map(|p| p.canonicalize()).transpose()?,
             effects,
             output,
         })
@@ -384,11 +419,23 @@ impl Context {
         })
     }
     fn ipc(&self, method: &str, args: &[&str]) -> Result<String> {
-        let target = if self.opt.scenario == "application" {
-            "membershipAudit"
-        } else {
-            "desktopAudit"
-        };
+        let target = if self.opt.scenario == "application" { "membershipAudit" }
+            else if self.opt.scenario.starts_with("display-recovery") { "displaySpaceRecovery" }
+            else if self.opt.scenario.starts_with("owned-geometry") { "ownedGeometryAudit" }
+            else if self.opt.scenario.starts_with("owned-components") { "ownedComponentsAudit" }
+            else if self.opt.scenario == "typography" { "ownedText" }
+            else if self.opt.scenario == "desktop-typography" { "desktopText" }
+            else if self.opt.scenario == "semantic-state" { "semantic" }
+            else if self.opt.scenario == "live-overlay-appearance" { "liveOverlay" }
+            else if self.opt.scenario == "utility-typography" { "utilityTypography" }
+            else if self.opt.scenario == "calendar-detail-typography" { "calendarDetails" }
+            else if self.opt.scenario == "overview-typography" { "overviewText" }
+            else if self.opt.scenario == "folder-stack" { "stackAudit" }
+            else if self.opt.scenario == "launcher-typography" { "launcherText" }
+            else if self.opt.scenario == "shared-control-typography" { "sharedTypography" }
+            else if self.opt.scenario == "dock-motion" { "dockAudit" }
+            else if self.opt.scenario == "reduced-motion" { "motionAudit" }
+            else { "desktopAudit" };
         let qml = path(&self.qml);
         let mut all = vec!["-p", qml.as_str(), "ipc", "call", target, method];
         all.extend_from_slice(args);
@@ -400,7 +447,7 @@ impl Context {
         Ok(state)
     }
     fn picture(&self, name: &str) -> Result<()> {
-        self.call("grim", &[&path(&self.opt.output.join(name))])?;
+        self.call(option_env!("LUMEN_GRIM").unwrap_or("grim"), &[&path(&self.opt.output.join(name))])?;
         Ok(())
     }
     fn key(&self, args: &[&str]) -> Result<()> {
@@ -460,7 +507,7 @@ impl Context {
     }
 }
 fn setup(opt: Options) -> Result<Context> {
-    fs::create_dir(&opt.output)?;
+    if !opt.output.exists() { fs::create_dir(&opt.output)?; }
     let repo = env::current_dir()?;
     let original_socket = env::var("SWAYSOCK").ok();
     let root = Private::new()?;
@@ -509,6 +556,18 @@ fn setup(opt: Options) -> Result<Context> {
     ] {
         vars.insert(key.into(), value.into());
     }
+    if opt.scenario == "desktop-typography" || opt.scenario == "semantic-state" || opt.scenario == "live-overlay-appearance" || opt.scenario == "utility-typography" || opt.scenario == "calendar-detail-typography" || opt.scenario == "overview-typography" || opt.scenario == "launcher-typography" || opt.scenario == "shared-control-typography" || opt.scenario == "dock-motion" || opt.scenario == "reduced-motion" {
+        vars.insert("WLR_HEADLESS_OUTPUTS".into(), "1".into());
+    }
+    if let Some(font_config) = &opt.font_config {
+        need(font_config.starts_with("/nix/store") && font_config.is_file(), "Pinned font configuration required")?;
+        vars.insert("FONTCONFIG_FILE".into(), path(font_config));
+    }
+    if let Some(driver) = &opt.software_driver {
+        vars.insert("LIBGL_DRIVERS_PATH".into(), path(&driver.join("lib/dri")));
+        vars.insert("__EGL_VENDOR_LIBRARY_FILENAMES".into(), path(&driver.join("share/glvnd/egl_vendor.d/50_mesa.json")));
+        vars.insert("MESA_LOADER_DRIVER_OVERRIDE".into(), "llvmpipe".into());
+    }
     let swaymsg = opt
         .sway
         .parent()
@@ -538,7 +597,7 @@ fn setup(opt: Options) -> Result<Context> {
         ),
     )?;
     let log = File::create(ctx.opt.output.join("bus.log"))?;
-    let mut bus = Command::new("dbus-daemon")
+    let mut bus = Command::new(option_env!("LUMEN_DBUS_DAEMON").unwrap_or("dbus-daemon"))
         .args([
             "--nofork",
             "--print-address=1",
@@ -562,7 +621,15 @@ fn setup(opt: Options) -> Result<Context> {
     ctx.children.push(ChildProcess(bus));
     ctx.vars.insert("DBUS_SESSION_BUS_ADDRESS".into(), address);
     let config = ctx.root.0.join("sway.conf");
-    let source = if ctx.opt.scenario == "application" {
+    let source = if ctx.opt.scenario == "reduced-motion" {
+        "output HEADLESS-1 resolution 1100x800\noutput * bg #29445b solid_color\nfocus_follows_mouse no\nbindsym Mod4+1 workspace number 1\nbindsym Mod4+2 workspace number 2\n"
+    } else if ctx.opt.scenario == "shared-control-typography" {
+        "output HEADLESS-1 resolution 900x700 position 0 0\noutput * bg #29445b solid_color\nxwayland disable\nseat seat0 fallback true\nfocus_follows_mouse no\nfor_window [all] floating enable, border normal 1\n"
+    } else if ctx.opt.scenario.starts_with("resize-hit-targets") {
+        "output HEADLESS-1 resolution 1600x1200 position 0 0 scale 1\noutput HEADLESS-2 resolution 1600x1200 position 1600 0 scale 1.5\nxwayland disable\nseat seat0 fallback true\nfocus_follows_mouse no\ndefault_floating_border normal 2\nfor_window [all] floating enable\n"
+    } else if ctx.opt.scenario.starts_with("owned-") {
+        "output HEADLESS-1 resolution 1280x900 position 0 0\noutput HEADLESS-2 resolution 1000x800 position 1280 0\nseat seat0 fallback true\nxwayland disable\nfocus_follows_mouse no\nfloating_modifier Mod4 normal\nfor_window [all] floating enable, border normal 1\n"
+    } else if ctx.opt.scenario == "application" || ctx.opt.scenario.starts_with("display") {
         "output HEADLESS-1 resolution 1280x900 position 0 0\noutput HEADLESS-2 resolution 1024x768 position 1280 0\nseat seat0 fallback true\nxwayland disable\nfocus_follows_mouse no\nfor_window [all] floating enable, border pixel 0\n"
     } else {
         "output HEADLESS-1 resolution 1440x1000 position 0 0\noutput HEADLESS-2 resolution 1280x900 position 1440 0\nseat seat0 fallback true\nfocus_follows_mouse no\nxwayland disable\nfor_window [all] floating enable, border pixel 0\n"
@@ -602,20 +669,115 @@ fn setup(opt: Options) -> Result<Context> {
         &ctx.repo.join("res/lumen-desktop"),
         &ctx.root.0.join("assets"),
     )?;
-    let scene = if ctx.opt.scenario == "application" {
-        include_str!("../application.qml")
-    } else {
-        include_str!("../lifecycle.qml")
-    };
+    if ctx.opt.scenario == "typography" {
+        let documents = ctx.root.0.join("Documents");
+        fs::create_dir(&documents)?;
+        fs::write(documents.join("An ordinary document.txt"), "Private fixture unchanged\n")?;
+        fs::write(documents.join("Another document.txt"), "Second private document\n")?;
+        ctx.vars.insert("LUMEN_FIXTURE_DOCUMENTS".into(), path(&documents));
+        save(&ctx.root.0.join("appearance.json"), &json!({"font":palette["font"],"palette":palette["light"],"preferences":{"textScale":1.5,"reduceMotion":true,"reduceTransparency":true}}))?;
+    }
+    if ctx.opt.scenario == "desktop-typography" {
+        desktop_typography::prepare(&mut ctx, &palette)?;
+    }
+    let scene = if ctx.opt.scenario == "application" { include_str!("../application.qml") }
+        else if ctx.opt.scenario.starts_with("display-recovery") { include_str!("../display_recovery.qml") }
+        else if ctx.opt.scenario.starts_with("owned-geometry") { include_str!("../owned_geometry.qml") }
+        else if ctx.opt.scenario.starts_with("owned-components") { include_str!("../owned_components.qml") }
+        else if ctx.opt.scenario.starts_with("owned-inactive") { include_str!("../owned_inactive.qml") }
+        else if ctx.opt.scenario == "typography" { include_str!("../typography.qml") }
+        else if ctx.opt.scenario == "desktop-typography" { include_str!("../desktop_typography.qml") }
+        else if ctx.opt.scenario == "semantic-state" { include_str!("../semantic_state.qml") }
+        else if ctx.opt.scenario == "live-overlay-appearance" { include_str!("../live_overlay.qml") }
+        else if ctx.opt.scenario == "utility-typography" { include_str!("../utility_typography.qml") }
+        else if ctx.opt.scenario == "calendar-detail-typography" { include_str!("../calendar_detail_typography.qml") }
+        else if ctx.opt.scenario == "overview-typography" { include_str!("../overview_typography.qml") }
+        else if ctx.opt.scenario == "folder-stack" { include_str!("../folder_stack.qml") }
+        else if ctx.opt.scenario == "launcher-typography" { include_str!("../launcher_typography.qml") }
+        else if ctx.opt.scenario == "shared-control-typography" { include_str!("../shared_control_typography.qml") }
+        else if ctx.opt.scenario == "dock-motion" { include_str!("../dock_motion.qml") }
+        else if ctx.opt.scenario == "reduced-motion" { include_str!("../reduced_motion.qml") }
+        else if ctx.opt.scenario == "pointer-retirement" { include_str!("../pointer_retirement.qml") }
+        else { include_str!("../lifecycle.qml") };
     fs::write(&ctx.qml, scene)?;
     Ok(ctx)
 }
 fn main() -> Result<()> {
+    if env::args().nth(1).as_deref() == Some("captured-directory-facts") {
+        use std::os::unix::fs::MetadataExt;
+        let target = PathBuf::from(env::args_os().nth(2).ok_or("Missing captured directory")?);
+        let facts = fs::metadata(target)?;
+        println!("{}", json!([facts.dev().to_string(),facts.ino().to_string(),facts.mode().to_string(),
+            facts.size().to_string(),(facts.mtime() as i128*1_000_000_000+facts.mtime_nsec() as i128).to_string(),
+            (facts.ctime() as i128*1_000_000_000+facts.ctime_nsec() as i128).to_string()]));
+        return Ok(());
+    }
+    if env::args_os().next().and_then(|path| PathBuf::from(path).file_name().map(|name| name.to_owned()))
+        .is_some_and(|name| name == "lumen-screen-saver") {
+        return screen_saver_queue::provider();
+    }
+    if env::args().nth(1).as_deref() == Some("screen-saver-release") {
+        return screen_saver_queue::release();
+    }
+    if env::args().nth(1).as_deref()==Some("set") {
+        let args=env::args().skip(1).collect::<Vec<_>>();
+        need(args.len()==3 && args[1]=="spaces","Unexpected display settings capture")?;
+        let value:Value=serde_json::from_str(&args[2])?;
+        let target=env::var("LUMEN_DISPLAY_SETTINGS_CAPTURE")?;
+        let mut file=OpenOptions::new().create(true).append(true).open(target)?;
+        writeln!(file,"{}",json!({"section":"spaces","value":value}))?;
+        println!("{}",json!({"ok":true}));
+        return Ok(());
+    }
     let opt = Options::parse()?;
     let scenario = opt.scenario.clone();
     let mut ctx = setup(opt)?;
     if scenario == "application" {
         application::run(&mut ctx)
+    } else if scenario == "display" {
+        display::run(&mut ctx)
+    } else if scenario.starts_with("display-recovery") {
+        display_recovery::run(&mut ctx,scenario.ends_with("legacy"))
+    } else if scenario.starts_with("owned-geometry") {
+        owned_geometry::run(&mut ctx,scenario.ends_with("legacy"))
+    } else if scenario.starts_with("owned-components") {
+        owned_geometry::components(&mut ctx,scenario.ends_with("legacy"))
+    } else if scenario.starts_with("owned-inactive") {
+        owned_inactive::run(&mut ctx,scenario.ends_with("native"))
+    } else if scenario == "typography" {
+        typography::run(&mut ctx)
+    } else if scenario == "desktop-typography" {
+        desktop_typography::run(&mut ctx)
+    } else if scenario == "semantic-state" {
+        semantic_state::run(&mut ctx)
+    } else if scenario == "live-overlay-appearance" {
+        live_overlay::run(&mut ctx)
+    } else if scenario == "utility-typography" {
+        utility_typography::run(&mut ctx)
+    } else if scenario == "calendar-detail-typography" {
+        calendar_detail_typography::run(&mut ctx)
+    } else if scenario == "overview-typography" {
+        overview_typography::run(&mut ctx)
+    } else if scenario == "folder-stack" {
+        folder_stack::run(&mut ctx)
+    } else if scenario == "launcher-typography" {
+        launcher_typography::run(&mut ctx)
+    } else if scenario == "shared-control-typography" {
+        shared_control_typography::run(&mut ctx)
+    } else if scenario.starts_with("resize-hit-targets") {
+        resize_hit_targets::run(&mut ctx, scenario.ends_with("rapid"))
+    } else if scenario == "dock-motion" {
+        dock_motion::run(&mut ctx)
+    } else if scenario == "reduced-motion" {
+        reduced_motion::run(&mut ctx)
+    } else if scenario == "pointer-retirement" {
+        pointer_retirement::run(&mut ctx)
+    } else if scenario == "window-controls" {
+        window_controls::run(&mut ctx)
+    } else if scenario == "minimized-dock" {
+        minimized_dock::run(&mut ctx)
+    } else if scenario.starts_with("dock-offer") {
+        dock_offer::run(&mut ctx)
     } else {
         lifecycle::run(&mut ctx)
     }

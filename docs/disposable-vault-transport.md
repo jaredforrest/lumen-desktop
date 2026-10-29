@@ -16,7 +16,7 @@ The surrounding disposable PID namespace still owns final failure cleanup.
 Only expected peer reset, broken pipe and TLS EOF disconnects are handled as
 normal disconnects. Unexpected handler exceptions retain server diagnostics.
 
-`tests/desktop/vault_transport_native.py` is an explicit CI namespace test, not a
+`tests/desktop/browser-workflows-rust/src/bin/vault-transport-native.rs` is an explicit CI namespace test, not a
 Nix-build unit test. It generates a private certificate with the immutable TLS
 tool, starts only private loopback listeners, and proves:
 
@@ -25,7 +25,7 @@ tool, starts only private loopback listeners, and proves:
 - An incomplete HTTPS request body expires through the socket read timeout.
 - Explicit shutdown interrupts an incomplete body and joins all owned workers.
 
-Every server child has an independent parent watchdog and is reaped on failure.
+The private backend and transport workers are reaped on failure.
 Retained receipts contain timings and lifecycle facts, not certificates or keys.
 This transport regression does not claim browser/vault feature acceptance; the
 separate compatibility harness tests that boundary.

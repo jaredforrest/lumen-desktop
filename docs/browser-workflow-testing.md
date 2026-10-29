@@ -8,6 +8,8 @@ The shared application runner uses private Linux user, PID, mount, network, IPC 
 
 Every launch has an explicit private `--user-data-dir`. Host profiles, accounts, buses, audio/camera devices and printers are absent. Only a synthetic loopback HTTP server is reachable. Effects runs opt into the shared validated software-graphics device capability; physical rendering and capture devices remain absent. Origin permissions, browser sandbox and download/trust policy stay real. Onboarding and the default-browser startup check are separately disclosed exclusions.
 
+The separate `browser-fonts` Rust 2024 fixture replaces the former Python font audit. Inside a disposable `/home/fixture` and `/artifacts` boundary, pass `--browser`, `--profile`, `--output` and `--cases` (a JSON array with explicit `name`, `family`, `text`, `expectedFamilies` and `expectedGlyphCount`). It checks Chromium's actual platform-font selection for every case and saves a painted PNG plus observations. The fixture package's build runs its validation tests; running a particular font policy still requires the corresponding explicit case file and installed font input.
+
 The diagnostic pipe observes browser/page/provider state; it never grants permissions, chooses files or performs UI actions. A persistent full-US Wayland keyboard and native pointer exercise those actions. Exact profile files are read-only witnesses, with history checked after actual native browser exit rather than assuming immediate database flush. Native frame ownership and chooser parent identity are checked separately.
 
 ## Reproduce

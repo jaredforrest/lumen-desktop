@@ -136,9 +136,9 @@ PanelWindow {
     Process {id:actionWorker;stdinEnabled:true;property var request:({});property bool received:false
         command:[Quickshell.env("LUMEN_FILES_BIN") || "lumen-files-rust-wip"]
         onStarted:{received=false;write(JSON.stringify(request)+"\n");}
-        stdout:StdioCollector {onStreamFinished:{
-            let result;try{result=JSON.parse(text);}catch(e){result={error:"The folder action provider is unavailable"};}
-            actionWorker.received=true;const captured=root.actionIntent;root.actionIntent=null;
+        stdout:SplitParser {onRead:line=>{
+            let result;try{result=JSON.parse(line);}catch(e){result={error:"The folder action provider is unavailable"};}
+            actionWorker.received=true;actionWorker.running=false;const captured=root.actionIntent;root.actionIntent=null;
             if(result.error){if(root.valid(captured))root.error=result.error;else root.reportFailure(result.error);return;}
             if(!root.valid(captured) || (!captured.footer && root.rows[root.selected]!==captured.row))return;
             if(result.folder){root.visible=false;root.shell.openFiles(result.folder,result.expectedFacts);}

@@ -1,4 +1,4 @@
-use lumen_spaces::{Policy,Result,windows,reconcile_membership};
+use lumen_spaces::{Policy,Result,windows,reconcile_membership,display_runtime};
 use serde_json::{Value,json};
 use sha2::{Digest,Sha256};
 use std::collections::HashSet;
@@ -24,7 +24,10 @@ fn command(command:&str)->Result<()> {
 }
 fn refresh(policy:&mut Policy)->Result<()>{
     let workspaces=sway(&["-t","get_workspaces"])?;let outputs=sway(&["-t","get_outputs"])?;
-    policy.reconcile(workspaces.as_array().ok_or("Invalid compositor workspaces")?,outputs.as_array().ok_or("Invalid compositor outputs")?)
+    policy.reconcile(workspaces.as_array().ok_or("Invalid compositor workspaces")?,outputs.as_array().ok_or("Invalid compositor outputs")?)?;
+    policy.display_status=Some(display_runtime::synchronize(policy,&mut |args|sway(args),None)
+        .unwrap_or_else(|error|json!({"available":false,"applied":false,"error":error})));
+    Ok(())
 }
 fn epoch(path:&Path)->Result<String>{
     let metadata=fs::symlink_metadata(path).map_err(|e|e.to_string())?;
@@ -62,7 +65,7 @@ fn run_watch(mut policy:Policy)->Result<()>{
     let path=socket()?;let expected=epoch(&path)?;
     let mut events=UnixStream::connect(&path).map_err(|e|e.to_string())?;
     events.set_read_timeout(Some(Duration::from_secs(5))).map_err(|e|e.to_string())?;
-    send(&mut events,2,"[\"window\",\"workspace\",\"output\"]")?;
+    send(&mut events,2,"[\"window\",\"workspace\",\"output\",\"tick\"]")?;
     let (kind,ack)=receive(&mut events)?;
     if kind!=2||ack["success"]!=true{return Err("Compositor subscription failed".into());}
     refresh(&mut policy)?;
@@ -77,7 +80,7 @@ fn run_watch(mut policy:Policy)->Result<()>{
         if epoch(&path)?!=expected{return Err("Compositor session changed".into());}
         let ready=status>0;let event=if ready{receive(&mut events)?.1}else{Value::Null};
         policy.begin()?;
-        if !ready&&policy.state["managed_sticky"].as_object().is_none_or(|m|m.is_empty())&&!policy.state["assignments"].as_object().is_some_and(|a|a.values().any(|item|item["kind"]=="all")){policy.release();continue;}
+        // Refresh also observes settings changes and renews captured display registrations.
         refresh(&mut policy)?;
         if event["change"]=="focus"&&event["current"]["type"]=="workspace"{if let Some(id)=event["current"]["id"].as_i64(){policy.focus(id)?;}}
         let node=&event["container"];
@@ -120,7 +123,12 @@ fn run()->Result<()> {
                 let key=policy.current.get(&ws["id"].as_i64().ok_or("Invalid desktop id")?).ok_or("Unknown desktop")?;
                 let index=order.iter().position(|item|item==key).ok_or("Unknown desktop")?;
                 let target=if direction=="previous"{index.checked_sub(1)}else{index.checked_add(1).filter(|next|*next<order.len())};
-                if let Some(target)=target{let name=policy.state["desktops"][&order[target]]["name"].as_str().ok_or("Unknown desktop")?;let _:Value=sway(&[&format!("workspace {}",json!(name))])?;}
+                if let Some(target)=target{
+                    let desktop=policy.desktop(&order[target],true)?;
+                    let operation=display_runtime::activation(&policy,&desktop,&mut |args|sway(args))?
+                        .unwrap_or_else(||format!("workspace {}",json!(desktop["name"])));
+                    command(&operation)?;
+                }
             }
         },
         _=>return Err("Unsupported desktop command".into()),

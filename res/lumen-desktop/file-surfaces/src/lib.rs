@@ -2,6 +2,7 @@
 pub mod captured;
 pub mod files;
 pub mod line_service;
+pub mod markup;
 pub mod preview;
 pub mod requests;
 pub mod search;

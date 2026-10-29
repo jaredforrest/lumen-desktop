@@ -6,6 +6,6 @@ pkgs.rustPlatform.buildRustPackage {
   cargoLock.lockFile = ./Cargo.lock;
   postInstall = ''
     mkdir -p "$out/share/lumen-notification-native-fixture"
-    cp lock.qml recovery.qml "$out/share/lumen-notification-native-fixture/"
+    cp lock.qml recovery.qml focus_presentation.qml "$out/share/lumen-notification-native-fixture/"
   '';
 }

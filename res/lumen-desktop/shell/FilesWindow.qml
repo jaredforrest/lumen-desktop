@@ -256,7 +256,7 @@ FloatingWindow {
     Item {
         layer.enabled:!Theme.nativeWindowFrame && GraphicsInfo.api !== GraphicsInfo.Software
         layer.effect:MultiEffect {maskEnabled:true;maskSource:windowMask}
-        id:content;anchors.fill:parent;focus:true
+        id:content;objectName:"files-keyboard-content";anchors.fill:parent;focus:true
         Keys.onPressed:event=>{
             const ctrl=event.modifiers & Qt.ControlModifier,shift=event.modifiers & Qt.ShiftModifier,alt=event.modifiers & Qt.AltModifier;
             let handled=true;

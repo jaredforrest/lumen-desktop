@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
   "suite": "disposable-vault-compatibility",
-  "test": "tests/desktop/disposable_vault.py",
-  "transport_test": "tests/desktop/vault_transport_native.py",
-  "diagnostic_boundary_test": "tests/desktop/test_vault_artifacts.py",
+  "test": "tests/desktop/browser-workflows-rust/src/bin/disposable-vault.rs",
+  "transport_test": "tests/desktop/browser-workflows-rust/src/bin/vault-transport-native.rs",
+  "diagnostic_boundary_test": "tests/desktop/browser-workflows-rust/src/vault_artifacts.rs",
   "required_receipts": [
     "Successful result.json with credential audit and retained warning observations",
-    "Frozen source and dependency receipt with exitCode 0",
+    "Successful Rust diagnostic-boundary unit tests",
     "Successful isolated stalled-peer transport receipt"
   ],
   "implemented_acceptance_cases": [
@@ -20,7 +20,6 @@
     "Trash the item, synchronize and log out"
   ],
   "not_established": [
-    "Initial web signup form interaction",
     "Desktop client password entry, lock and unlock",
     "Browser extension and autofill integration",
     "Biometric unlock",

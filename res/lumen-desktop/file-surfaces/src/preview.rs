@@ -1,6 +1,7 @@
 //! Owned preview session shared by Files, Search, and Quick Look.
 use crate::captured::{Captured, Facts, Unavailable};
 use crate::line_service::LineService;
+use crate::markup;
 use crate::requests::PreviewRequests;
 use crate::snapshots::Snapshots;
 use serde_json::{Value, json};
@@ -352,6 +353,21 @@ impl PreviewSession {
                             result["subjectFacts"] = json!(Facts::read(Path::new(subject))?.wire());
                         }
                     }
+                    result
+                }
+                "image-markup-info" | "image-markup" => {
+                    let resource = selected.resource.as_deref().ok_or_else(|| {
+                        unavailable("unsupported", "This preview cannot be annotated")
+                    })?;
+                    let validate = || self.actions.selected(capability).map(|_| ());
+                    validate()?;
+                    let result = if operation == "image-markup-info" {
+                        let value=markup::describe(resource)?;
+                        validate()?;
+                        value
+                    } else {
+                        markup::save(resource, &selected.path, parameters, cancel, &validate)?
+                    };
                     result
                 }
                 _ => return Err(unavailable("invalid_request", "Unsupported preview action")),

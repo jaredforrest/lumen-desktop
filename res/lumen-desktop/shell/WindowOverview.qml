@@ -11,7 +11,7 @@ FloatingWindow {
     FontMetrics {id:titleMetrics;font.family:Theme.font;font.pixelSize:Theme.textRole("label")}
     FontMetrics {id:metadataMetrics;font.family:Theme.font;font.pixelSize:Theme.textRole("metadata")}
     FontMetrics {id:captionMetrics;font.family:Theme.font;font.pixelSize:Theme.textRole("caption")}
-    readonly property real cardHeight:Math.max(100,13+Math.max(38,Math.ceil(titleMetrics.height*2))+10+Math.ceil(metadataMetrics.height)+Math.max(22,Math.ceil(captionMetrics.height)+8)+3)
+    readonly property real cardHeight:Math.max(100,13+Math.max(38,Math.ceil(titleMetrics.height*2)+8)+10+Math.ceil(metadataMetrics.height)+Math.max(22,Math.ceil(captionMetrics.height)+8)+3)
     property var windows:[]
     property var workspaces:[]
     property var outputs:[]
@@ -122,7 +122,7 @@ FloatingWindow {
                 background:Rectangle {radius:12;color:Theme.colors.surface;border.width:parent.index===root.selected?2:1;border.color:parent.index===root.selected?Theme.colors.accent:Theme.hairline}
                 contentItem:Item {
                     SystemGlyph {x:12;y:15;width:24;height:24;name:"screen";ink:Theme.colors.accent}
-                    PanelLabel {id:cardTitle;objectName:"overview-card-title";x:46;y:13;width:parent.width-58;height:Math.max(38,Math.ceil(titleMetrics.height*2));text:modelData.title;textFormat:Text.PlainText;wrapMode:Text.Wrap;maximumLineCount:2;font.weight:Font.DemiBold;font.pixelSize:Theme.textRole("label")}
+                    PanelLabel {id:cardTitle;objectName:"overview-card-title";x:46;y:13;width:parent.width-58;height:Math.max(38,Math.ceil(titleMetrics.height*2)+8);text:modelData.title;textFormat:Text.PlainText;wrapMode:Text.Wrap;maximumLineCount:2;font.weight:Font.DemiBold;font.pixelSize:Theme.textRole("label")}
                     GroupDragHandle {sourceLabel:windowCard.modelData.title;objectName:"group-drag-"+windowCard.modelData.id;x:parent.width-88;y:parent.height-height-2;controller:root.shell.groupMembershipDrag;sourceFactory:()=>root.captureGroupWindow(windowCard.modelData);enabled:!!root.captureGroupWindow(windowCard.modelData)}
                     PanelLabel {id:cardDesktop;objectName:"overview-card-desktop";x:12;y:cardTitle.y+cardTitle.height+10;width:parent.width-24;text:modelData.workspace==="__i3_scratch"?"Minimised":modelData.workspaceLabel || "Desktop "+modelData.workspace;textFormat:Text.PlainText;color:Theme.colors.muted;font.pixelSize:Theme.textRole("metadata")}
                 }

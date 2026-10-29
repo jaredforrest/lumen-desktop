@@ -26,7 +26,7 @@ Column {
     PanelLabel {visible:!!(root.error || root.state.error);width:parent.width;wrapMode:Text.WordWrap;text:root.error || root.state.error || "";color:Theme.colors.muted}
     Process {
         id:worker;stdinEnabled:true
-        command:[Quickshell.env("GLOBAL_MENU_PYTHON") || "python3",Qt.resolvedUrl("display_space_settings.py").toString().replace(/^file:\/\//,"")]
+        command:[Quickshell.env("LUMEN_DISPLAY_SPACES_BIN") || "lumen-display-spaces","set"]
         onStarted:write(JSON.stringify(root.request)+"\n")
         stdout:StdioCollector {onStreamFinished:{try{root.error=JSON.parse(text).error || "";}catch(error){root.error="Display preferences did not respond.";}}}
         onExited:(code,status)=>{if(code!==0)root.error="Display preferences could not be applied.";}

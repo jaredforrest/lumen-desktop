@@ -1,7 +1,7 @@
 # Native frame hit-target acceptance
 
-`tests/desktop/resize_hit_targets_native.py` exercises all four frame edges and
-four corners with an unmodified physical pointer protocol client. It reconstructs
+`tests/desktop/desktop-policy-rust/src/resize_hit_targets.rs` exercises all four frame edges and
+four corners with a Rust 2024 GTK pointer protocol client. It reconstructs
 the outer rectangle from actual native content/decorations and samples the
 centre of the advertised logical border. It does not invent an outside-frame
 target width or claim measured reference-system parity.
@@ -26,7 +26,7 @@ size and configure serial. Older commits cannot overwrite that size, and the
 guard ends on the matching or later serial, not merely on button release. The
 existing serial-wrap and pending-dimension checks remain in one implementation.
 
-`--rapid` sends two half-motions then release without waiting for the client
+`resize-hit-targets-rapid` sends two half-motions then release without waiting for the client
 between motions. Its 34 checks retain the original hard geometry/ownership
 assertions and add a later client-authored resize to prove the guard releases.
 Both variants run in CI; existing rapid Fill/Zoom restoration checks remain

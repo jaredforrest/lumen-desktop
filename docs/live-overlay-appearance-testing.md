@@ -1,6 +1,6 @@
 # Live overlay appearance acceptance
 
-`live_overlay_appearance_native.py` complements the existing six utility-window
+The Rust 2024 `live-overlay-appearance` fixture complements the existing six utility-window
 palette test and seven-family transparency test. It keeps the production
 application launcher, application switcher, Window Overview, Control Centre and
 Notification Centre open while atomically replacing the watched appearance file.
@@ -17,11 +17,10 @@ updates, physical Escape closes those surfaces; the focused Control Centre
 settings button and notification card dispatch only their captured private
 observer actions. No external application, settings or notification action runs.
 
-The runner uses a frozen source boundary and a disposable user/PID/mount/network
-namespace, private activation-free D-Bus, private HOME and fixed synthetic
+The runner uses a private compositor session and HOME with fixed synthetic
 provider state. Production component code is copied unchanged. Only the Overview
-status backend and brightness discovery are replaced with hashed, fixed,
-read-only synthetic providers. A missing private Bluetooth service is expected
+status backend and brightness discovery are replaced with fixed,
+read-only Rust providers. A missing private Bluetooth service is expected
 and does not imply missing physical hardware. Effects acceptance explicitly uses
 the established software graphics capability; ordinary acceptance exposes no
 graphics device. Every owned child is reaped.

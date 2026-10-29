@@ -19,3 +19,7 @@ path = "src/bin/owned.rs"
 [[bin]]
 name = "lumen-preview-actions-fixture"
 path = "src/bin/actions.rs"
+
+[[bin]]
+name = "lumen-image-markup-fixture"
+path = "src/bin/markup.rs"

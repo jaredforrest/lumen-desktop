@@ -1,6 +1,7 @@
 //! Isolated native notification lock and recovery acceptance.
 mod lock;
 mod recovery;
+mod focus_presentation;
 
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -216,7 +217,7 @@ impl Options {
         let mut args = env::args_os().skip(1);
         while let Some(arg) = args.next() {
             match arg.to_str() {
-                Some("lock" | "recovery") => scenario = Some(arg.to_string_lossy().into_owned()),
+                Some("lock" | "recovery" | "focus-presentation") => scenario = Some(arg.to_string_lossy().into_owned()),
                 Some("--output") => {
                     output = Some(PathBuf::from(args.next().ok_or("Missing output")?))
                 }
@@ -436,10 +437,11 @@ impl Fixture {
             .then_some(()))
         })?;
         copy_tree(&fixture.assets, &fixture.private.join("assets"))?;
-        let scene = if fixture.options.scenario == "lock" {
-            include_str!("../lock.qml")
-        } else {
-            include_str!("../recovery.qml")
+        let scene = match fixture.options.scenario.as_str() {
+            "lock" => include_str!("../lock.qml"),
+            "recovery" => include_str!("../recovery.qml"),
+            "focus-presentation" => include_str!("../focus_presentation.qml"),
+            _ => return Err(fail("Unknown notification scenario")),
         };
         fixture.qml = fixture.private.join("fixture.qml");
         fs::write(&fixture.qml, scene)?;
@@ -570,6 +572,7 @@ fn main() -> Result<()> {
     match fixture.options.scenario.as_str() {
         "lock" => lock::run(&mut fixture),
         "recovery" => recovery::run(&mut fixture),
+        "focus-presentation" => focus_presentation::run(&mut fixture),
         _ => Err(fail("Unknown scenario")),
     }
 }

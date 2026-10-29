@@ -11,6 +11,8 @@ pub mod presentation;
 pub mod profile;
 pub mod protocol;
 pub mod server;
+pub mod vault_artifacts;
+pub mod vault_https;
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error + Send + Sync>>;
 pub fn fail(message: impl Into<String>) -> Box<dyn std::error::Error + Send + Sync> {

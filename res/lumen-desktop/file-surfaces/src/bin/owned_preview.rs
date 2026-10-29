@@ -175,7 +175,7 @@ fn response(
             if let Some(target) = target {
                 if let Some(worker) = workers.lock().unwrap().get(&target) {
                     accepted = worker.capability == request["capability"].as_str().unwrap_or("")
-                        && matches!(worker.operation.as_str(), "ocr" | "cutout");
+                        && matches!(worker.operation.as_str(), "ocr" | "cutout" | "image-markup");
                     if accepted {
                         worker.cancel.store(true, Ordering::SeqCst);
                     }

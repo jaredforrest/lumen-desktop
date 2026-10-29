@@ -241,4 +241,31 @@ mod tests {
         fs::write(&path, br#"{"harnessPassed":true,"installedTools":{}}"#).unwrap();
         assert!(generate(&path, &[]).is_err());
     }
+
+    #[test]
+    fn native_evidence_is_scoped_to_the_exact_provider() {
+        let directory = tempfile::tempdir().unwrap();
+        let cli = directory.path().join("cli.json");
+        let gui = directory.path().join("sheet.json");
+        fs::write(&cli, serde_json::to_vec(&json!({
+            "harnessPassed": true,
+            "installedTools": {
+                "/nix/store/fake-wordcraft-0.5.0/bin/wordcraft-cli": "aaa",
+                "/nix/store/fake-gridcraft-0.5.0/bin/gridcraft-cli": "bbb",
+                "/nix/store/fake-deckcraft-0.5.0/bin/deckcraft-cli": "ccc"
+            },
+            "capabilities": []
+        })).unwrap()).unwrap();
+        fs::write(&gui, serde_json::to_vec(&json!({
+            "passed": true,
+            "facts": {"native": {"executable": "/nix/store/fake/bin/.gridcraft-native"}},
+            "checks": ["PDF Save", "PDF chooser Cancel"]
+        })).unwrap()).unwrap();
+        let result = generate(&cli, &[gui]).unwrap();
+        let records = result["records"].as_array().unwrap();
+        let sheet = records.iter().find(|record| record["provider_app_id"] == "ai.storyteller.gridcraft" && record["capability_id"] == "WF-OFFICE-01").unwrap();
+        assert!(sheet["supported_actions"].as_array().unwrap().contains(&json!("PDF Save")));
+        assert!(!records.iter().any(|record| record["provider_app_id"] != "ai.storyteller.gridcraft" && record["supported_actions"].as_array().is_some_and(|actions| actions.contains(&json!("PDF Save")))));
+        assert!(records.iter().all(|record| record["scope_complete"] == false));
+    }
 }

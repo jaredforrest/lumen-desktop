@@ -36,23 +36,25 @@ with a directory-durability acknowledgement failure is reported as saved with a
 warning. Export has no interactive cancel-after-confirmation promise; preview
 teardown requests cooperative cancellation and waits for the owned action worker.
 
-`test_image_markup.py` exercises actual disposable filesystem copies, original
+The Rust `file-surfaces/src/markup.rs` tests exercise actual disposable filesystem copies, original
 bytes, collisions, source replacement/retirement, failure cleanup, denied/missing
 folders, unsupported special files, header pixel limits, raster work and parent
-alias retargeting. `test_image_markup_qml.py` runs the production editor in actual
+alias retargeting. `image_markup_qml.nu` runs the production editor in actual
 Qt and checks captured requests, cancellation, stale acknowledgements and resource
-source clearing. `image_markup_input.py` uses an installed Quick Look, actual
-pointer controls, a private accessibility bus for read-only chooser field bounds,
-and the shared acknowledged physical keyboard. It never sets text or dispatches
-an accessibility action. Fixtures use synthetic images and private HOME/XDG/bus
-state; no account, live clipboard or host document is used.
+source clearing. The Rust 2024 `lumen-image-markup-fixture` uses installed Quick Look,
+actual pointer controls, the native Save chooser, and acknowledged physical keyboard
+events. It checks filename collision, immutable source export, stale held Save release,
+and painted and exported JPEG/WebP orientation pixels. The private chooser has a fixed
+598×472 content geometry in the test compositor; the fixture fails if that geometry
+changes. Fixtures use synthetic images and private HOME/XDG/bus state; no account,
+live clipboard or host document is used.
 
 The scoped pinned Qt runtime also retires its retained pointer-button state when
 the actual focused surface is destroyed. Ordinary pointer leave and drag paths
 are unchanged. The native fixture holds Save while the selected preview changes,
 then checks fresh hover, drawing and button controls after physical release.
 
-`qt_pointer_retirement_input.py` separately exercises two simultaneous buttons,
+The Rust 2024 `pointer-retirement` native scenario separately exercises two simultaneous buttons,
 last-button retirement, ordinary held movement, old-surface teardown after a new
 press, and actual pointer-device teardown in a private compositor. The replacement
 Wayland client library is built against the exact pinned Qt private headers with

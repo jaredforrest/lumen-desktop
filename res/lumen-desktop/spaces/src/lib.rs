@@ -7,6 +7,7 @@ use std::os::unix::fs::{DirBuilderExt,OpenOptionsExt};
 use std::path::PathBuf;
 use uuid::Uuid;
 pub mod groups;
+pub mod display_runtime;
 
 pub type Result<T> = std::result::Result<T,String>;
 fn string<'a>(value:&'a Value,key:&str)->Result<&'a str>{value[key].as_str().ok_or_else(||format!("Missing {key}"))}
@@ -16,11 +17,12 @@ fn new_id()->String{Uuid::new_v4().to_string()}
 
 pub struct Policy{
     pub path:PathBuf,pub state:Value,pub current:HashMap<i64,String>,pub outputs:BTreeMap<String,String>,pub workspaces:Vec<Value>,
+    pub display_status:Option<Value>,pub display_packet:Option<Value>,pub display_generation:Option<Value>,
     lock:Option<File>,
 }
 impl Policy{
     pub fn open(path:PathBuf)->Result<Self>{
-        let mut policy=Self{path,state:default_state(),current:HashMap::new(),outputs:BTreeMap::new(),workspaces:Vec::new(),lock:None};
+        let mut policy=Self{path,state:default_state(),current:HashMap::new(),outputs:BTreeMap::new(),workspaces:Vec::new(),display_status:None,display_packet:None,display_generation:None,lock:None};
         policy.lock()?;policy.reload()?;Ok(policy)
     }
     pub fn begin(&mut self)->Result<()>{self.lock()?;self.reload()}
@@ -56,10 +58,7 @@ impl Policy{
             .or_else(||node["window_properties"]["class"].as_str().filter(|v|!v.is_empty()).map(|v|format!("x11:{v}")))
     }
     pub fn display(output:&Value)->Result<String>{
-        let identity=["make","model","serial"].map(|key|output[key].as_str().unwrap_or(""));
-        if identity.iter().all(|value|!value.is_empty())&&!matches!(identity[2],"Unknown"|"0"){
-            Ok(format!("display:{}",json!(identity)))
-        }else{Ok(format!("connector:{}",string(output,"name")?))}
+        display_policy::display_identity(output)
     }
     pub fn reconcile(&mut self,workspaces:&[Value],outputs:&[Value])->Result<()>{
         let before=self.state.clone();self.outputs.clear();
@@ -95,6 +94,22 @@ impl Policy{
         let mut keys=self.state["desktops"].as_object().into_iter().flat_map(|items|items.iter()).filter(|(key,item)|{
             (live.contains(key)||item["persistent"]==true)&&output.is_none_or(|o|item["output"]==o)
         }).map(|(key,_)|key.clone()).collect::<Vec<_>>();
+        if self.state["display_separate"]==false {
+            if let Some(cohorts)=self.state["display_cohorts"].as_array() {
+                let mut cohorts=cohorts.clone();
+                if self.state["auto_reorder"]==true {
+                    cohorts.sort_by_key(|cohort| -cohort["members"].as_object().into_iter().flat_map(|members|members.values())
+                        .filter_map(|key|key.as_str()).map(|key|self.state["desktops"][key]["recent"].as_i64().unwrap_or(0)).max().unwrap_or(0));
+                }
+                let mut grouped=Vec::new();
+                for key in cohorts.iter().flat_map(|cohort|cohort["members"].as_object().into_iter().flat_map(|members|members.values())) {
+                    if let Some(key)=key.as_str() { if keys.iter().any(|item|item==key) && !grouped.iter().any(|item|item==key) { grouped.push(key.to_owned()); } }
+                }
+                let rest=keys.into_iter().filter(|key|!grouped.contains(key)).collect::<Vec<_>>();
+                grouped.extend(rest);
+                return grouped;
+            }
+        }
         let recent=self.state["auto_reorder"]==true;
         keys.sort_by_key(|key|{let item=&self.state["desktops"][key];(if recent{-item["recent"].as_i64().unwrap_or(0)}else{item["ordinal"].as_i64().unwrap_or(0)},item["ordinal"].as_i64().unwrap_or(0))});keys
     }
@@ -121,6 +136,20 @@ impl Policy{
         self.require_revision(revision)?;let connector=self.outputs.get(output_id).ok_or("The desktop display is disconnected")?;
         let current=self.order(Some(connector));
         if order.len()!=current.len()||order.iter().collect::<HashSet<_>>()!=current.iter().collect::<HashSet<_>>(){return Err("Manual order must contain every desktop on this display exactly once".into());}
+        if self.state["display_separate"]==false {
+            let cohorts=self.state["display_cohorts"].as_array().cloned().unwrap_or_default();
+            let mut mapped=Vec::new();
+            for key in order {
+                let cohort=cohorts.iter().find(|cohort|cohort["members"][output_id]==*key)
+                    .ok_or("Display contexts changed; refresh before reordering")?;
+                mapped.push(cohort.clone());
+            }
+            let ids=mapped.iter().filter_map(|cohort|cohort["id"].as_str().map(ToOwned::to_owned)).collect::<HashSet<_>>();
+            mapped.extend(cohorts.iter().filter(|cohort|!cohort["id"].as_str().is_some_and(|id|ids.contains(id))).cloned());
+            self.state["display_cohorts"]=json!(mapped);
+            self.state["auto_reorder"]=json!(false);
+            return self.save();
+        }
         let mut slots=current.iter().map(|key|self.state["desktops"][key]["ordinal"].as_i64().unwrap_or(0)).collect::<Vec<_>>();slots.sort();
         for (key,slot) in order.iter().zip(slots){self.state["desktops"][key]["ordinal"]=json!(slot);}
         self.state["auto_reorder"]=json!(false);self.save()
@@ -149,7 +178,7 @@ impl Policy{
         }}else if kind=="display"{if let Some(connector)=self.outputs.get(target){if let Some(ws)=self.workspaces.iter().find(|ws|ws["output"]==*connector&&ws["visible"]==true){return json!({"status":"available","workspace":ws["name"]});}}}
         json!({"status":"unavailable","reason":"Assignment target is unavailable","fallback":"keep-current-placement","assignment":assignment})
     }
-    pub fn status(&self)->Value{json!({"desktops":self.state["desktops"],"order":self.order(None),"assignments":self.state["assignments"],"auto_reorder":self.state["auto_reorder"],"capabilities":{"all_desktops":{"supported":true,"scope":"current-display","window_kind":"independent-floating"}},"outputs":self.outputs})}
+    pub fn status(&self)->Value{json!({"desktops":self.state["desktops"],"order":self.order(None),"assignments":self.state["assignments"],"auto_reorder":self.state["auto_reorder"],"displaySpaces":self.display_status,"capabilities":{"all_desktops":{"supported":true,"scope":"current-display","window_kind":"independent-floating"}},"outputs":self.outputs})}
 }
 
 pub fn windows(tree:&Value)->Vec<Value>{
@@ -277,3 +306,4 @@ mod tests{
         drop(policy);fs::remove_dir_all(root).unwrap();
     }
 }
+pub mod display_policy;

@@ -16,6 +16,8 @@ use std::time::{Duration, Instant};
 use tempfile::TempDir;
 use walkdir::WalkDir;
 
+pub mod keyboard;
+
 pub type Result<T> = std::result::Result<T, Box<dyn Error>>;
 pub fn fail(message: impl Into<String>) -> Box<dyn Error> {
     message.into().into()

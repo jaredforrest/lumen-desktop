@@ -454,6 +454,28 @@ mod tests {
     }
 
     #[test]
+    fn captured_listing_refuses_a_retargeted_directory_after_anchored_scan() {
+        use std::sync::atomic::{AtomicBool,Ordering};
+        let root=tempfile::tempdir().unwrap();
+        let selected=root.path().join("selected");
+        fs::create_dir(&selected).unwrap();fs::write(selected.join("original.txt"),"original").unwrap();
+        let expected=Facts::read(&selected).unwrap().wire();
+        let switched=AtomicBool::new(false);
+        let inspect=|request:&Value|{
+            if !switched.swap(true,Ordering::SeqCst){
+                fs::rename(&selected,root.path().join("retired")).unwrap();
+                fs::create_dir(&selected).unwrap();
+                fs::write(selected.join("replacement.txt"),"replacement").unwrap();
+            }
+            let info=fs::symlink_metadata(request["path"].as_str().unwrap()).unwrap();
+            Ok(json!({"identity":"fixture","renameFollow":"none","tags":[],"supported":true,"error":"",
+                "linkState":{"directory":info.is_dir(),"link":false,"linkStatus":"ok","linkError":""}}))
+        };
+        assert!(listing(&json!({"path":selected,"expectedFacts":expected}),inspect,||Ok(json!([]))).is_err());
+        assert!(switched.load(Ordering::SeqCst));
+    }
+
+    #[test]
     fn preferences_reject_invalid_destination_without_changing_saved_state() {
         let root = tempfile::tempdir().unwrap();
         preferences(

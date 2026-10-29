@@ -4,6 +4,7 @@ pub mod dialogs;
 pub mod formats;
 pub mod keyboard;
 pub mod live;
+pub mod pdf_viewer;
 pub mod rasters;
 
 pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;

@@ -168,6 +168,8 @@ let
         $env.LUMEN_FILE_SERVICE = "1"
         $env.LUMEN_FILE_JOBS_BIN = "${fileJobsRust}/bin/lumen-file-jobs"
         $env.LUMEN_FILES_BIN = "${fileSurfacesRust}/bin/lumen-files-rust-wip"
+        $env.LUMEN_DISPLAY_SPACES_BIN = "${spacesRust}/bin/lumen-display-spaces"
+        $env.LUMEN_NIX_SETTINGS_BIN = "${nixSettings}/bin/lumen-nix-settings"
         $env.LUMEN_SEARCH_BIN = "${fileSurfacesRust}/bin/lumen-search-rust-wip"
         $env.LUMEN_OWNED_PREVIEW_BIN = "${fileSurfacesRust}/bin/lumen-owned-preview-rust-wip"
         $env.LUMEN_FILE_PREVIEW_BIN = "${filePreviewRust}/bin/lumen-file-preview"

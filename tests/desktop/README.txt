@@ -1,8 +1,9 @@
 Desktop validation
 
-Remaining GI backend suite (Python must provide gi and dbus):
-  dbus-run-session -- python3 -m unittest discover -s tests/desktop -p 'test_*.py'
-Use a private bus: notification tests must not compete with the installed daemon.
+Desktop checks use Rust 2024 fixtures and Nushell runners. Run
+  nix develop --command nu tests/ci/integration-native.nu
+for private compositor and D-Bus acceptance. The GI binding fixtures test
+third-party Python libraries through Rust and use a private session bus.
 
 Installed shell smoke (normal desktop account, Rust 2024):
   nix build .#test-installed-smoke-fixture --out-link artifacts/installed-smoke-fixture
@@ -38,7 +39,7 @@ windows across workspaces, reversible fill, disabled utility actions, scale 2,
 rounded corner pixels, shadow pixels and GTK/Qt/Electron window loading.
 The optional full application path currently reaches an existing Obsidian
 Electron button-color assertion (gray where green is expected) in both the
-former Python fixture and the Rust fixture; the CI core suite passes.
+earlier fixture and the Rust fixture; the CI core suite passes.
 
 The Rust installed-shell fixture additionally accepts --sway /candidate/bin/sway --effects
 and --assets /candidate/res/lumen-desktop/shell for a not-yet-installed shell.

@@ -11,6 +11,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
+mod acceptance;
 fn fail(message: impl Into<String>) -> Box<dyn Error> {
     message.into().into()
 }
@@ -21,6 +22,11 @@ struct Options {
     source: PathBuf,
     output: PathBuf,
     inside: bool,
+    acceptance: bool,
+    broker: Option<PathBuf>,
+    effects: bool,
+    software_driver: Option<PathBuf>,
+    keyboard: Option<PathBuf>,
 }
 fn options() -> Result<Options> {
     let mut sway = None;
@@ -28,6 +34,11 @@ fn options() -> Result<Options> {
     let mut source = None;
     let mut output = None;
     let mut inside = false;
+    let mut acceptance = false;
+    let mut broker = None;
+    let mut effects = false;
+    let mut software_driver = None;
+    let mut keyboard = None;
     let mut args = env::args_os().skip(1);
     while let Some(arg) = args.next() {
         match arg.to_str() {
@@ -42,6 +53,11 @@ fn options() -> Result<Options> {
                 output = Some(PathBuf::from(args.next().ok_or("Missing output path")?))
             }
             Some("--inside") => inside = true,
+            Some("--acceptance") => acceptance = true,
+            Some("--broker") => broker = Some(PathBuf::from(args.next().ok_or("Missing broker path")?)),
+            Some("--effects") => effects = true,
+            Some("--software-driver") => software_driver = Some(PathBuf::from(args.next().ok_or("Missing software driver")?)),
+            Some("--keyboard") => keyboard = Some(PathBuf::from(args.next().ok_or("Missing physical keyboard")?)),
             _ => return Err(fail("Unknown Force Quit fixture option")),
         }
     }
@@ -51,6 +67,11 @@ fn options() -> Result<Options> {
         source: source.ok_or("Missing shell source")?,
         output: output.ok_or("Missing output")?,
         inside,
+        acceptance,
+        broker,
+        effects,
+        software_driver,
+        keyboard,
     })
 }
 
@@ -153,6 +174,7 @@ fn stop(children: &mut [Child]) {
 }
 
 fn inside(options: Options) -> Result<()> {
+    if options.acceptance { return acceptance::run(options); }
     let source = fs::canonicalize(options.source)?;
     if !source.join("ForceQuitDialog.qml").is_file() {
         return Err(fail("Production Force Quit source required"));
@@ -354,6 +376,11 @@ fn main_inner() -> Result<i32> {
         .arg("--output")
         .arg(&options.output)
         .arg("--inside");
+    if options.acceptance { child.arg("--acceptance"); }
+    if let Some(broker) = options.broker { child.arg("--broker").arg(broker); }
+    if options.effects { child.arg("--effects"); }
+    if let Some(software_driver) = options.software_driver { child.arg("--software-driver").arg(software_driver); }
+    if let Some(keyboard) = options.keyboard { child.arg("--keyboard").arg(keyboard); }
     Ok(child.status()?.code().unwrap_or(1))
 }
 fn main() {

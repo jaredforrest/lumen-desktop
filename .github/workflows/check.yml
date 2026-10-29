@@ -29,6 +29,29 @@ jobs:
       - run: nix develop --command gitleaks git . --redact=100
       - run: nix develop --command nu tests/ci/run-native.nu namespace_policy_prepare -- lumen-native-namespace-policy prepare --output artifacts/native-namespace-policy
       - run: nix develop --command nu tests/ci/integration-smoke.nu
+      - run: nix develop --command nu tests/desktop/image_markup_qml.nu
+      - run: nix develop --command nu tests/desktop/typography_roles.nu
+      - run: nix develop --command nu tests/desktop/test_typography_cases.nu
+      - run: nix develop --command nu tests/desktop/owned_typography_qml.nu
+      - run: nix develop --command nu tests/desktop/owned_utility_typography_qml.nu
+      - run: nix develop --command nu tests/desktop/document_tabs_typography.nu
+      - run: nix develop --command nu tests/desktop/overview_typography_qml.nu
+      - run: nix develop --command nu tests/desktop/calendar_detail_typography_qml.nu
+      - run: nix develop --command nu tests/desktop/shared_control_typography_qml.nu
+      - run: nix develop --command nu tests/desktop/launcher_typography_qml.nu
+      - run: nix develop --command nu tests/desktop/network_health_presentation.nu
+      - run: nix develop --command nu tests/desktop/display_spaces_model.nu
+      - run: nix develop --command nu tests/desktop/display_spaces_wire.nu
+      - run: nix develop --command nu tests/desktop/owned_focus.nu
+      - run: nix develop --command nu tests/desktop/minimized_window_model.nu
+      - run: nix develop --command nu tests/desktop/screen_saver_queue.nu
+      - run: nix develop --command nu tests/desktop/folder_stack_model.nu
+      - run: nix develop --command nu tests/desktop/desktop_navigation_model.nu
+      - run: nix develop --command nu tests/desktop/captured_directory_qml.nu
+      - run: nix develop --command nu tests/desktop/files_listing_checkpoint.nu
+      - run: nix develop --command nu tests/desktop/dock_calendar_corpus.nu
+      - run: nix develop --command nu tests/desktop/switch_indicator_paint.nu
+      - run: nix develop --command nu tests/desktop/semantic_state_paint.nu
       - run: nix develop --command nu tests/ci/integration-effects.nu
       - run: nix develop --command nu tests/ci/integration-native.nu
       - run: nix develop --command nu tests/ci/integration-network.nu
@@ -102,6 +125,7 @@ jobs:
             artifacts/resize-hit-targets-*
             artifacts/resize-rapid-*
             artifacts/owned-geometry-*
+            artifacts/owned-components-*
             artifacts/minimized-dock-*
             artifacts/icon-grid
             artifacts/content-clipping-*
@@ -136,6 +160,7 @@ jobs:
             artifacts/live-transparency-*
             artifacts/spaces
             artifacts/display-spaces-*
+            artifacts/pointer-retirement-*
             artifacts/application-desktops-*
             artifacts/network-connectivity-provider
             artifacts/power-provider
@@ -178,12 +203,12 @@ jobs:
           nix build .#test-vault-browser -o artifacts/vault-browser --option abort-on-warn true
           nix build .#test-vault-tools -o artifacts/vault-tools --option abort-on-warn true
           nix build .#test-owned-font-config -o artifacts/vault-fonts --option abort-on-warn true
-      - run: python3 -W error tests/desktop/test_vault_artifacts.py
-      - run: bash tests/ci/run-native.sh vault_namespace_prepare nix develop --command desktop-test-python tests/ci/native_namespace_policy.py prepare --output artifacts/vault-namespace
-      - run: bash tests/ci/run-native.sh vault_transport_native nix develop --command desktop-test-python tests/desktop/vault_transport_native.py --tls-tool "$PWD/artifacts/vault-tools/bin/openssl" --output artifacts/vault-transport
-      - run: bash tests/ci/run-native.sh vault_compatibility nix develop --command desktop-test-python tests/desktop/disposable_vault.py --server "$PWD/artifacts/vault-server/bin/vaultwarden" --web "$PWD/artifacts/vault-web/share/vaultwarden/vault" --cli "$PWD/artifacts/vault-cli/bin/bw" --browser "$PWD/artifacts/vault-browser/bin/brave" --bus "$PWD/artifacts/vault-tools/bin/dbus-daemon" --tls-tool "$PWD/artifacts/vault-tools/bin/openssl" --trust-tool "$PWD/artifacts/vault-tools/bin/certutil" --font-config "$PWD/artifacts/vault-fonts" --output artifacts/vault-compatibility
+          nix build .#test-browser-workflows-fixture -o artifacts/vault-fixture --option abort-on-warn true
+      - run: nix develop --command nu tests/ci/run-native.nu vault_namespace_prepare -- lumen-native-namespace-policy prepare --output artifacts/vault-namespace
+      - run: nix develop --command nu tests/ci/run-native.nu vault_transport_native -- "$PWD/artifacts/vault-fixture/bin/vault-transport-native" --tls-tool "$PWD/artifacts/vault-tools/bin/openssl" --output artifacts/vault-transport
+      - run: nix develop --command nu tests/ci/run-native.nu vault_compatibility -- "$PWD/artifacts/vault-fixture/bin/disposable-vault" --server "$PWD/artifacts/vault-server/bin/vaultwarden" --web "$PWD/artifacts/vault-web/share/vaultwarden/vault" --cli "$PWD/artifacts/vault-cli/bin/bw" --browser "$PWD/artifacts/vault-browser/bin/brave" --bus "$PWD/artifacts/vault-tools/bin/dbus-daemon" --tls-tool "$PWD/artifacts/vault-tools/bin/openssl" --trust-tool "$PWD/artifacts/vault-tools/bin/certutil" --font-config "$PWD/artifacts/vault-fonts" --output artifacts/vault-compatibility
       - if: always()
-        run: bash tests/ci/run-native.sh vault_namespace_cleanup nix develop --command desktop-test-python tests/ci/native_namespace_policy.py cleanup --output artifacts/vault-namespace
+        run: nix develop --command nu tests/ci/run-native.nu vault_namespace_cleanup -- lumen-native-namespace-policy cleanup --output artifacts/vault-namespace
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -206,17 +231,20 @@ jobs:
           nix build .#wordcraft --out-link artifacts/wordcraft --option abort-on-warn true
           nix build .#gridcraft --out-link artifacts/gridcraft --option abort-on-warn true
           nix build .#deckcraft --out-link artifacts/deckcraft --option abort-on-warn true
-      - run: bash tests/ci/run-native.sh provider_save_namespace_prepare nix develop --command desktop-test-python tests/ci/native_namespace_policy.py prepare --output artifacts/provider-save-namespace
-      - run: bash tests/ci/run-native.sh provider_atomic_save nix develop --command desktop-test-python tests/desktop/provider_atomic_save.py --wordcraft "$PWD/artifacts/wordcraft/bin/wordcraft-cli" --gridcraft "$PWD/artifacts/gridcraft/bin/gridcraft-cli" --deckcraft "$PWD/artifacts/deckcraft/bin/deckcraft-cli" --output artifacts/provider-atomic-save
-      - run: bash tests/ci/run-native.sh provider_output_formats nix develop --command desktop-test-python tests/desktop/deck_format_truthfulness.py --slides "$PWD/artifacts/deckcraft/bin/deckcraft-cli" --output artifacts/provider-output-formats
+          nix build .#test-office-workflows-fixture --out-link artifacts/provider-integrity-fixture --option abort-on-warn true
+          nix build .#test-office-tools --out-link artifacts/office-pdf-tools --option abort-on-warn true
+          nix build .#test-application-isolation --out-link artifacts/application-isolation --option abort-on-warn true
+      - run: nix develop --command nu tests/ci/run-native.nu provider_save_namespace_prepare -- lumen-native-namespace-policy prepare --output artifacts/provider-save-namespace
+      - run: nix develop --command nu tests/ci/run-native.nu provider_save_integrity -- "$PWD/artifacts/provider-integrity-fixture/bin/provider-save-integrity" --wordcraft "$PWD/artifacts/wordcraft/bin/wordcraft-cli" --gridcraft "$PWD/artifacts/gridcraft/bin/gridcraft-cli" --deckcraft "$PWD/artifacts/deckcraft/bin/deckcraft-cli" --output artifacts/provider-save-integrity
+      - run: PATH="$PWD/artifacts/application-isolation/bin:$PATH" nix develop --command nu tests/ci/run-native.nu document_capabilities -- "$PWD/artifacts/provider-integrity-fixture/bin/document-capabilities" --writer "$PWD/artifacts/wordcraft/bin/wordcraft-cli" --sheet "$PWD/artifacts/gridcraft/bin/gridcraft-cli" --slides "$PWD/artifacts/deckcraft/bin/deckcraft-cli" --pdf-tools "$PWD/artifacts/office-pdf-tools" --output artifacts/document-capabilities
       - if: always()
-        run: bash tests/ci/run-native.sh provider_save_namespace_cleanup nix develop --command desktop-test-python tests/ci/native_namespace_policy.py cleanup --output artifacts/provider-save-namespace
+        run: nix develop --command nu tests/ci/run-native.nu provider_save_namespace_cleanup -- lumen-native-namespace-policy cleanup --output artifacts/provider-save-namespace
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: provider-save-integrity
           path: |
             artifacts/provider-save-namespace
-            artifacts/provider-atomic-save
-            artifacts/provider-output-formats
+            artifacts/provider-save-integrity
+            artifacts/document-capabilities
             artifacts/native-command-logs/provider*
