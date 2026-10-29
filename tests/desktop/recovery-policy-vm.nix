@@ -78,7 +78,7 @@ let
       };
       systemd.services.recovery-policy-acceptance = {
         wantedBy = [ "multi-user.target" ]; after = [ "user@1000.service" ]; wants = [ "user@1000.service" ];
-        serviceConfig = { Type = "oneshot"; ExecStart = "${driver}/bin/lumen-recovery-policy driver"; StandardOutput = "journal+console"; StandardError = "journal+console"; };
+        serviceConfig = { Type = "oneshot"; ExecStart = "${driver}/bin/lumen-recovery-policy driver"; StandardOutput = "tty"; StandardError = "tty"; TTYPath = "/dev/ttyS0"; };
       };
     }) ];
   };
