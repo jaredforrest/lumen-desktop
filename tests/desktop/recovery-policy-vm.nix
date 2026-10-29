@@ -51,7 +51,8 @@ let
         graphics = false; memorySize = 1024; cores = 2; diskSize = 1024;
         useNixStoreImage = true; mountHostNixStore = false; writableStore = false;
         sharedDirectories = lib.mkForce {};
-        qemu.forceAccel = "tcg";
+        qemu.forceAccel = false;
+        qemu.options = [ "-machine accel=tcg" ];
         qemu.networkingOptions = lib.mkForce [ "-nic none" ];
       };
       systemd.user.targets.graphical-session = { description = "Disposable graphical session boundary"; };
