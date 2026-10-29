@@ -90,6 +90,7 @@ pub fn run(ctx: &mut Context) -> Result<()> {
     let addition=r#"
     property alias fixturePointer:pointerArea
     property alias fixtureTip:tip
+    property alias fixtureTipLifecycle:tooltipLifecycle
     property alias fixtureTipWindow:fixtureTooltipWindow
     function fixtureTiles(){
         const result=[];
