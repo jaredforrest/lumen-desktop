@@ -74,7 +74,14 @@
               'config_path = "/run/fixture/xrdp/sesman.ini";'
           '';
         });
-        test-remote-x11vnc = pkgs.x11vnc;
+        test-remote-x11vnc = pkgs.symlinkJoin {
+          name = "lumen-private-x11vnc";
+          paths = [ pkgs.x11vnc ];
+          nativeBuildInputs = [ pkgs.makeWrapper ];
+          postBuild = ''
+            wrapProgram $out/bin/x11vnc --unset WAYLAND_DISPLAY --set XDG_SESSION_TYPE x11
+          '';
+        };
         test-remote-adapter = pkgs.callPackage ./packages/remote-desktop.nix { };
         test-remote-vnc-server = pkgs.wayvnc;
         test-remote-rdp-server = pkgs.freerdp;
