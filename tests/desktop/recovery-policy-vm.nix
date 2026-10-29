@@ -20,7 +20,10 @@ let
   };
   home = consumer.config.home-manager.users.fixture { config = {}; lib = nixpkgs.lib; };
   shell = home.systemd.user.services.lumen-desktop-shell;
-  fallback = home.systemd.user.services.lumen-desktop-recovery;
+  fallback = (nixpkgs.lib.evalModules { modules = [ ({ lib, ... }: {
+    options.value = lib.mkOption { type = lib.types.attrs; };
+    config.value = home.systemd.user.services.lumen-desktop-recovery;
+  }) ]; }).config.value;
   disabled = (consumer.extendModules { modules = [ {services.lumen-desktop.integrations.shellRecovery.enableFallback = false;} ]; }).config;
   disabledHome = disabled.home-manager.users.fixture { config = {}; lib = nixpkgs.lib; };
   disabledShell = disabledHome.systemd.user.services.lumen-desktop-shell;
