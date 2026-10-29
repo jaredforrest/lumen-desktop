@@ -50,7 +50,7 @@ ShellRoot {
     D.Dock { id: dock; shell: stub; screen: Quickshell.screens[0] }
     IpcHandler {
         target: "dockAudit"
-        function applyPins(value:string):string {settings.setPreference("dockPins",JSON.parse(value));return JSON.stringify({applying:settings.applying});}
+        function applyPins(value:string):string {settings.setPreference("dockPins",value.split("|"));return JSON.stringify({applying:settings.applying});}
         function pollSettings():string {settings.refresh();return JSON.stringify({started:settings.busy,applying:settings.applying});}
         function status(): string {
             return JSON.stringify({keys:stub.referenceDock.map(x=>x.key),separators:stub.referenceDock.map(x=>x.separatorBefore),

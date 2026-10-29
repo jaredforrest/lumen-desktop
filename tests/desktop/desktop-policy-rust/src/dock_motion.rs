@@ -9,6 +9,10 @@ fn settings_request(ctx: &Context, method: &str, args: &[&str]) -> Result<Value>
     fs::write(ctx.opt.output.join(format!("ipc-{method}.txt")),&reply)?;
     serde_json::from_str(&reply).map_err(|error|fail(format!("Dock {method} returned {reply:?}: {error}")))
 }
+fn pin_argument(pins: &[impl AsRef<str>]) -> Result<String> {
+    need(pins.iter().all(|pin|!pin.as_ref().is_empty() && pin.as_ref().chars().all(|c|c.is_ascii_alphanumeric() || c=='-')),"Synthetic pin identifiers must fit the bounded IPC alphabet")?;
+    Ok(pins.iter().map(AsRef::as_ref).collect::<Vec<_>>().join("|"))
+}
 fn keys(row: &Value) -> Result<Vec<String>> {
     Ok(row["keys"].as_array().ok_or("Missing Dock keys")?.iter()
         .map(|v| v.as_str().unwrap_or("").to_owned()).collect())
@@ -154,12 +158,12 @@ pub fn run(ctx: &mut Context) -> Result<()> {
     let changed_pins=vec!["fixture-c","fixture-b","fixture-a","unknown-retained"];
     point(ctx,"a")?;ctx.press()?;
     wait("Held apply negative press",||Ok((state(ctx)?["pressed"]==true).then_some(())))?;
-    let applied=settings_request(ctx,"applyPins",&[&serde_json::to_string(&changed_pins)?])?;
+    let applied=settings_request(ctx,"applyPins",&[&pin_argument(&changed_pins)?])?;
     need(applied["applying"]==true,"An actual explicit edit must classify as applying")?;
     let retired=wait("Held changed preferences retire capture",||{let row=state(ctx)?;Ok((row["busy"]==false && pins(&row)?==changed_pins && row["pressedKey"]=="" && row["intentValid"]==false && row["dragging"]==false).then_some(row))})?;
     ctx.move_pointer(center(ctx,"c")?)?;ctx.release()?;
     need(writes(ctx)?.len()==1 && state(ctx)?["activations"].as_array().is_some_and(Vec::is_empty),"Changed-capture release must never retarget or write")?;
-    ctx.ipc("applyPins",&[&serde_json::to_string(&original_pins)?])?;
+    settings_request(ctx,"applyPins",&[&pin_argument(&original_pins)?])?;
     wait("Restore explicit private pin edit",||{let row=state(ctx)?;Ok((row["busy"]==false && pins(&row)?==original_pins).then_some(()))})?;
     let intentional=writes(ctx)?;
     need(intentional.len()==2 && intentional[0]["value"]==json!(changed_pins) && intentional[1]["value"]==json!(original_pins),"Only the two explicit negative-case edits are permitted")?;
