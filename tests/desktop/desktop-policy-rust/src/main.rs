@@ -641,9 +641,12 @@ fn setup(opt: Options) -> Result<Context> {
     };
     fs::write(&config, source)?;
     let sway = path(&ctx.opt.sway);
+    let config_path=path(&config);
+    let mut sway_args=vec!["--unsupported-gpu", "-c",config_path.as_str()];
+    if ctx.opt.effects {sway_args.push("-d");}
     ctx.launch(
         &sway,
-        &["--unsupported-gpu", "-c", &path(&config)],
+        &sway_args,
         "sway.log",
         false,
     )?;
@@ -660,6 +663,12 @@ fn setup(opt: Options) -> Result<Context> {
                 .and_then(|p| p.file_name().map(|n| n.to_string_lossy().into_owned())))
         })?,
     );
+    if ctx.opt.effects && ctx.opt.software_driver.is_some(){
+        let log=fs::read_to_string(ctx.opt.output.join("sway.log"))?;
+        let observed=log.lines().filter(|line|{let lower=line.to_lowercase();lower.contains("renderer") && (lower.contains("llvmpipe") || lower.contains("softpipe"))}).collect::<Vec<_>>();
+        need(!observed.is_empty(),"Pinned effects renderer did not report an actual software renderer")?;
+        save(&ctx.opt.output.join("renderer.json"),&json!({"software":true,"observedRendererLines":observed,"driver":ctx.opt.software_driver}))?;
+    }
     ctx.checked("focus output HEADLESS-1; workspace \"1\"; move workspace to output HEADLESS-1")?;
     let palette = load(&ctx.repo.join("res/lumen-desktop/appearance/palette.json"))?;
     save(
