@@ -2,6 +2,7 @@
 pkgs.runCommand "lumen-private-dbus-run-session" {
   nativeBuildInputs = [ pkgs.rustc pkgs.stdenv.cc ];
   LUMEN_DBUS_RUN_SESSION = "${pkgs.dbus}/bin/dbus-run-session";
+  LUMEN_DBUS_DAEMON = "${pkgs.dbus}/bin/dbus-daemon";
   LUMEN_DBUS_TEST_CONFIG = testBusConfig;
 } ''
   mkdir -p "$out/bin"
