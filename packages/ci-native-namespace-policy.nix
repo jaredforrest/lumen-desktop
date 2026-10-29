@@ -5,4 +5,7 @@ pkgs.rustPlatform.buildRustPackage {
   src = ../res/ci/native-namespace-policy;
   cargoLock.lockFile = ../res/ci/native-namespace-policy/Cargo.lock;
   LUMEN_TIMEOUT_BIN = "${pkgs.coreutils}/bin/timeout";
+  LUMEN_BWRAP_BIN = "${pkgs.bubblewrap}/bin/bwrap";
+  LUMEN_UNSHARE_BIN = "${pkgs.util-linux}/bin/unshare";
+  LUMEN_ISOLATION_BIN = "${import ../tests/desktop/application-isolation { inherit pkgs; }}/bin/lumen-application-isolation";
 }
