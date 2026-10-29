@@ -444,6 +444,11 @@ fn focus_app(f: &Harness, app: &str) -> Result<Value> {
 fn chord(f: &mut Harness, key: &str) -> Result<()> {
     f.keyboard.as_mut().ok_or("Keyboard")?.key(&["-M", "ctrl", "-k", key, "-m", "ctrl"])
 }
+fn focus_viewer(f: &mut Harness) -> Result<()> {
+    focus_app(f, "org.remmina.Remmina")?;
+    let row = wait("remote drawing surface", || Ok(f.semantics()?.into_iter().find(|row| row["role"] == "drawing area" && row["states"]["focusable"] == true)))?;
+    f.focus(&row)
+}
 fn fullscreen_key(f: &mut Harness) -> Result<()> {
     let keyboard = f.keyboard.as_mut().ok_or("Keyboard")?;
     keyboard.send("k", 88, 1)?;
@@ -463,6 +468,7 @@ fn interactions(f: &mut Harness) -> Result<()> {
     f.capture("viewer-fullscreen.png")?;
     fullscreen_key(f)?;
     let exited = wait("viewer fullscreen exit", || Ok(nodes(&f.tree()?).into_iter().find(|node| node["app_id"] == "org.remmina.Remmina" && node["fullscreen_mode"] == 0)))?;
+    focus_viewer(f)?;
     chord(f, "a")?;
     chord(f, "c")?;
     pause(1500);
@@ -479,7 +485,7 @@ fn interactions(f: &mut Harness) -> Result<()> {
     chord(f, "a")?;
     chord(f, "c")?;
     pause(1500);
-    focus_app(f, "org.remmina.Remmina")?;
+    focus_viewer(f)?;
     chord(f, "a")?;
     chord(f, "v")?;
     pause(1500);
