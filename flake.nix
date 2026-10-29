@@ -64,6 +64,17 @@
         session-recovery = import ./packages/session-recovery.nix { inherit pkgs; };
         test-session-recovery-fixture = import ./tests/desktop/session-recovery-rust { inherit pkgs; };
         test-audio-provider = pkgs.pulseaudio;
+        remote-client = import ./packages/remote-client.nix { inherit pkgs; };
+        test-remote-client = import ./packages/remote-client.nix { inherit pkgs; };
+        test-remote-client-fixture = import ./tests/desktop/remote-client-rust { inherit pkgs; };
+        test-remote-adapter = pkgs.callPackage ./packages/remote-desktop.nix { };
+        test-remote-vnc-server = pkgs.wayvnc;
+        test-remote-rdp-server = pkgs.freerdp;
+        test-remote-ssh-server = pkgs.openssh;
+        test-remote-tls-tools = pkgs.openssl;
+        test-remote-secret-service = pkgs.gnome-keyring;
+        test-remote-icons = pkgs.adwaita-icon-theme;
+        test-remote-xserver = pkgs.xorg-server;
         test-vault-server = pkgs.vaultwarden;
         test-vault-web = pkgs.vaultwarden.webvault;
         test-vault-cli = pkgs.bitwarden-cli;
@@ -202,6 +213,7 @@
         capture-observation-shim = import ./tests/desktop/capture-observation-shim { inherit pkgs; };
         gi-deprecation-rust = import ./tests/desktop/gi-deprecation-rust { inherit pkgs; };
         application-isolation = import ./tests/desktop/application-isolation { inherit pkgs; };
+        remote-peer-identity = import ./tests/desktop/remote-peer-identity-rust { inherit pkgs; };
         file-jobs-rust = import ./packages/file-jobs-rust.nix { inherit pkgs; };
         ci-native-namespace-policy = import ./packages/ci-native-namespace-policy.nix { inherit pkgs; };
         office-capability-records = import ./packages/office-capability-records.nix { inherit pkgs; };

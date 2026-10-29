@@ -9,25 +9,43 @@
 #include <xkbcommon/xkbcommon.h>
 #include "virtual-keyboard-unstable-v1-client-protocol.h"
 
+struct state;
+struct seat_candidate {struct state *state;struct wl_seat *seat;};
 struct state {
+ const char *requested_seat;
+ struct seat_candidate candidates[16];
+ size_t candidate_count;
  struct wl_display *display;
  struct wl_seat *seat;
  struct zwp_virtual_keyboard_manager_v1 *manager;
 };
+static void seat_capabilities(void *data,struct wl_seat *seat,uint32_t capabilities) {(void)data;(void)seat;(void)capabilities;}
+static void seat_name(void *data,struct wl_seat *seat,const char *name) {
+ struct seat_candidate *candidate=data;
+ if(!strcmp(name,candidate->state->requested_seat))candidate->state->seat=seat;
+}
+static const struct wl_seat_listener seat_listener={seat_capabilities,seat_name};
 static void global(void *data, struct wl_registry *registry, uint32_t name,
  const char *interface, uint32_t version) {
  struct state *state=data;
- if(!strcmp(interface,wl_seat_interface.name))state->seat=wl_registry_bind(registry,name,&wl_seat_interface,version<7?version:7);
+ if(!strcmp(interface,wl_seat_interface.name)){
+  if(!state->requested_seat)state->seat=wl_registry_bind(registry,name,&wl_seat_interface,version<7?version:7);
+  else {
+   if(state->candidate_count>=16){fprintf(stderr,"private seat limit exceeded\n");exit(1);}
+   struct seat_candidate *candidate=&state->candidates[state->candidate_count++];candidate->state=state;candidate->seat=wl_registry_bind(registry,name,&wl_seat_interface,version<7?version:7);
+   wl_seat_add_listener(candidate->seat,&seat_listener,candidate);
+  }
+ }
  else if(!strcmp(interface,zwp_virtual_keyboard_manager_v1_interface.name))state->manager=wl_registry_bind(registry,name,&zwp_virtual_keyboard_manager_v1_interface,1);
 }
 static void removed(void *data,struct wl_registry *registry,uint32_t name) {(void)data;(void)registry;(void)name;}
 static const struct wl_registry_listener listener={global,removed};
 int main(void) {
- struct state state={0};state.display=wl_display_connect(NULL);
+ struct state state={0};state.requested_seat=getenv("LUMEN_TEST_SEAT");state.display=wl_display_connect(NULL);
  if(!state.display){fprintf(stderr,"private display unavailable\n");return 1;}
  struct wl_registry *registry=wl_display_get_registry(state.display);
  wl_registry_add_listener(registry,&listener,&state);
- if(wl_display_roundtrip(state.display)<0 || !state.seat || !state.manager){fprintf(stderr,"private virtual keyboard unavailable\n");return 1;}
+ if(wl_display_roundtrip(state.display)<0 || wl_display_roundtrip(state.display)<0 || !state.seat || !state.manager){fprintf(stderr,"private virtual keyboard unavailable\n");return 1;}
  struct zwp_virtual_keyboard_v1 *keyboard=zwp_virtual_keyboard_manager_v1_create_virtual_keyboard(state.manager,state.seat);
  struct xkb_context *context=xkb_context_new(XKB_CONTEXT_NO_FLAGS);
  struct xkb_rule_names names={.layout="us"};
@@ -59,6 +77,6 @@ int main(void) {
   printf("ack %u\n",serial);fflush(stdout);
  }
  zwp_virtual_keyboard_v1_modifiers(keyboard,0,0,0,0);
- zwp_virtual_keyboard_v1_destroy(keyboard);zwp_virtual_keyboard_manager_v1_destroy(state.manager);wl_seat_destroy(state.seat);wl_registry_destroy(registry);wl_display_roundtrip(state.display);wl_display_disconnect(state.display);
+ zwp_virtual_keyboard_v1_destroy(keyboard);zwp_virtual_keyboard_manager_v1_destroy(state.manager);if(state.requested_seat){for(size_t i=0;i<state.candidate_count;i++)wl_seat_destroy(state.candidates[i].seat);}else wl_seat_destroy(state.seat);wl_registry_destroy(registry);wl_display_roundtrip(state.display);wl_display_disconnect(state.display);
  return result;
 }

@@ -1,0 +1,36 @@
+--- a/plugins/rdp/rdp_plugin.c
++++ b/plugins/rdp/rdp_plugin.c
+@@ -405,10 +405,8 @@
+ 	 * with connection and certificate parameters */
+ 
+ 	gchar *hostport;
+-	gchar *s;
+ 	gchar *host;
+ 	gchar *cert_host;
+-	gint cert_port;
+ 	gint port;
+ 
+ 	rfContext *rfi = GET_PLUGIN_DATA(gp);
+@@ -426,7 +424,6 @@
+ 	REMMINA_PLUGIN_DEBUG("protocol_plugin_start_direct_tunnel() returned %s", hostport);
+ 
+ 	cert_host = host;
+-	cert_port = port;
+ 
+ 	if (!rfi->is_reconnecting) {
+ 		/* settings->CertificateName and settings->ServerHostname is created
+@@ -434,13 +431,7 @@
+ 
+ 		freerdp_settings_set_string(rfi->clientContext.context.settings, FreeRDP_ServerHostname, host);
+ 
+-		if (cert_port == 3389) {
+-			freerdp_settings_set_string(rfi->clientContext.context.settings, FreeRDP_CertificateName, cert_host);
+-		} else {
+-			s = g_strdup_printf("%s:%d", cert_host, cert_port);
+-			freerdp_settings_set_string(rfi->clientContext.context.settings, FreeRDP_CertificateName, s);
+-			g_free(s);
+-		}
++		freerdp_settings_set_string(rfi->clientContext.context.settings, FreeRDP_CertificateName, cert_host);
+ 	}
+ 
+ 	REMMINA_PLUGIN_DEBUG("Tunnel has been optionally initialized. Now connecting to %s:%d", host, port);

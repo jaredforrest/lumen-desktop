@@ -1,0 +1,4 @@
+[package]
+name = "lumen-remote-peer-identity-check"
+version = "0.1.0"
+edition = "2024"

@@ -1,0 +1,36 @@
+--- a/src/libvncclient/tls_openssl.c
++++ b/src/libvncclient/tls_openssl.c
+@@ -26,6 +26,24 @@
+ #include <openssl/ssl.h>
+ #include <openssl/x509.h>
+ #include <openssl/rand.h>
++#ifdef _WIN32
++#include <winsock2.h>
++#include <ws2tcpip.h>
++#else
++#include <arpa/inet.h>
++#endif
++
++/* A numeric address must match an IP SAN, never a DNS SAN or common name. */
++int lumen_vnc_set_peer_identity(X509_VERIFY_PARAM *parameter,
++                                             const char *host) {
++    unsigned char address[16];
++    if (!parameter || !host || !host[0]) return 0;
++    if (inet_pton(AF_INET, host, address) == 1 ||
++        inet_pton(AF_INET6, host, address) == 1)
++        return X509_VERIFY_PARAM_set1_ip_asc(parameter, host);
++    return X509_VERIFY_PARAM_set1_host(parameter, host, 0);
++}
++
+ 
+ #include "tls.h"
+ 
+@@ -319,7 +337,7 @@
+     else if (verify_crls == rfbX509CrlVerifyAll)
+       X509_VERIFY_PARAM_set_flags(param, X509_V_FLAG_CRL_CHECK | X509_V_FLAG_CRL_CHECK_ALL);
+ 
+-    if(!X509_VERIFY_PARAM_set1_host(param, client->serverHost, strlen(client->serverHost)))
++    if(!lumen_vnc_set_peer_identity(param, client->serverHost))
+     {
+       rfbClientLog("Could not set server name for verification.\n");
+       goto error_free_ctx;

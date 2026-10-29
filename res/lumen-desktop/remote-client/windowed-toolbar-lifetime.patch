@@ -1,0 +1,18 @@
+--- a/src/rcw.c
++++ b/src/rcw.c
+@@ -3978,11 +3978,11 @@
+ 	GdkRectangle rec_monref;
+ 	int area_width = 0, area_height = 0;
+ 	GtkWidget* tboverlay = priv->overlay_ftb_fr;
++
++	if (!priv->multi_mon || !GTK_IS_WIDGET(tboverlay)) {
++		return;
++	}
+ 	GdkDisplay* d = gtk_widget_get_display(tboverlay);
+-
+-	if (!priv->multi_mon) {
+-		return;
+-	}
+ 
+ 	if (remmina_pref.toolbar_fix_position_multimon == FALSE) {
+ 		REMMINA_DEBUG("Toolbar position adjustment not active");
