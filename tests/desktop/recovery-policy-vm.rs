@@ -1,6 +1,6 @@
 //! Real disposable systemd user-manager restart-policy acceptance.
-use std::{env, fs, io::{self, Write}, os::{fd::AsRawFd, unix::fs::FileExt}, path::Path, process::{Command, Output}, thread, time::{Duration, Instant}};
-unsafe extern "C" { fn tcdrain(fd: i32) -> i32; }
+use std::{env, fs, io::{self, Write}, os::{fd::AsRawFd, unix::fs::{FileExt, MetadataExt}}, path::Path, process::{Command, Output}, thread, time::{Duration, Instant}};
+unsafe extern "C" { fn tcdrain(fd: i32) -> i32; fn geteuid() -> u32; }
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 const HOME: &str = "/home/fixture";
 fn require(ok: bool, message: &str) -> Result<()> { if ok { Ok(()) } else { Err(message.into()) } }
@@ -24,6 +24,17 @@ fn count(path: &str) -> u32 { fs::read_to_string(path).ok().and_then(|s|s.parse(
 fn start_time(pid: &str) -> Result<String> {
     let stat=fs::read_to_string(format!("/proc/{pid}/stat"))?;
     Ok(stat.rsplit_once(") ").ok_or("Process status malformed")?.1.split_whitespace().nth(19).ok_or("Missing process start time")?.into())
+}
+fn inspect_filesystem() -> Result<()> {
+    println!("FILESYSTEM_DIAGNOSTIC uid={}",unsafe {geteuid()});
+    for name in ["/etc", "/etc/static", "/etc/systemd", "/etc/systemd/user", "/etc/systemd/user/recovery-test-session.target", "/etc/systemd/user/graphical-session.target", "/nix", "/nix/store"] {
+        match fs::metadata(name) {
+            Ok(info)=>println!("FILESYSTEM_DIAGNOSTIC {name}: uid={} gid={} mode={:o} link={:?}",info.uid(),info.gid(),info.mode(),fs::read_link(name)),
+            Err(error)=>println!("FILESYSTEM_DIAGNOSTIC {name}: {error}"),
+        }
+        if name.ends_with(".target") {println!("FILESYSTEM_READ {name}: {:?}",fs::read_to_string(name));}
+    }
+    Ok(())
 }
 fn driver() -> Result<()> {
     wait("actual user manager", || Ok(user(&["show-environment"])?.status.success()))?;
@@ -71,6 +82,7 @@ fn run() -> Result<()> {
             std::process::exit(7);
         }
         [mode] if mode=="client" => loop {thread::sleep(Duration::from_secs(1));},
+        [mode] if mode=="filesystem" => inspect_filesystem(),
         [mode] if mode=="driver" => {
             require(fs::read_to_string("/etc/lumen-recovery-policy-fixture")?=="disposable-recovery-policy\n", "Disposable VM marker missing")?;
             let result=driver();
@@ -79,8 +91,10 @@ fn run() -> Result<()> {
                 Err(error)=>{
                     eprintln!("LUMEN_RECOVERY_POLICY_FAIL: {error}");
                     for name in ["recovery-test-session.target", "graphical-session.target", "lumen-desktop-shell.service"] {
-                        if let Ok(output)=user(&["show", name, "--property=RefuseManualStart,ActiveState,LoadState,Result"]) { eprintln!("UNIT_DIAGNOSTIC {name}: {}{}",String::from_utf8_lossy(&output.stdout),String::from_utf8_lossy(&output.stderr)); }
+                        if let Ok(output)=user(&["show", name, "--property=RefuseManualStart,ActiveState,LoadState,LoadError,Result"]) { eprintln!("UNIT_DIAGNOSTIC {name}: {}{}",String::from_utf8_lossy(&output.stdout),String::from_utf8_lossy(&output.stderr)); }
                     }
+                    if let Ok(output)=user(&["show", "--property=UnitPath", "--value"]) {eprintln!("UNIT_PATH_DIAGNOSTIC: {}",String::from_utf8_lossy(&output.stdout));}
+                    if let Ok(output)=Command::new(env!("VM_RUNUSER")).args(["-u", "fixture", "--"]).arg(env::current_exe()?).arg("filesystem").output() {eprintln!("{}{}",String::from_utf8_lossy(&output.stdout),String::from_utf8_lossy(&output.stderr));}
                     if let Ok(output)=Command::new(env!("VM_JOURNALCTL")).args(["-b", "--no-pager", "-n", "100"]).output() { eprintln!("JOURNAL_DIAGNOSTIC:\n{}",String::from_utf8_lossy(&output.stdout)); }
                 }
             }
