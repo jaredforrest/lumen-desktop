@@ -12,6 +12,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "dockFolders":[{"path":"/synthetic/folder","view":"list"}],"dockFiles":[]});
     let mut data: Value = if store.exists() { serde_json::from_slice(&fs::read(&store)?)? } else { initial };
     let args = env::args().skip(1).collect::<Vec<_>>();
+    // Keep actual read/edit process lifetimes observable across IPC round trips.
+    std::thread::sleep(std::time::Duration::from_millis(180));
     match args.as_slice() {
         [flag] if flag == "--settings" => (),
         [flag, key, value] if flag == "--set" => {

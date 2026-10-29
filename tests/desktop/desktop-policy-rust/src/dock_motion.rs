@@ -50,8 +50,8 @@ fn drag(ctx: &mut Context, source: &str, target: &str) -> Result<()> {
     point(ctx,source)?;
     ctx.press()?;
     wait("Dock held pointer", || Ok((state(ctx)?["pressed"]==true).then_some(())))?;
-    let read=settings_request(ctx,"pollSettings",&[])?;
-    need(read["started"]==true && read["applying"]==false,"Actual read-only poll must not be an edit")?;
+    settings_request(ctx,"pollSettings",&[])?;
+    wait("Actual held read running",|| {let row=state(ctx)?;Ok((row["busy"]==true && row["applying"]==false).then_some(row))})?;
     wait("Dock held refresh complete",|| {let row=state(ctx)?;Ok((row["busy"]==false).then_some(row))})?;
     let held=state(ctx)?;
     need(held["pressed"]==true && held["pressedKey"]==source && held["intentValid"]==true,"A read-only poll invalidated the physically captured Dock press")?;
@@ -158,8 +158,8 @@ pub fn run(ctx: &mut Context) -> Result<()> {
     let changed_pins=vec!["fixture-c","fixture-b","fixture-a","unknown-retained"];
     point(ctx,"a")?;ctx.press()?;
     wait("Held apply negative press",||Ok((state(ctx)?["pressed"]==true).then_some(())))?;
-    let applied=settings_request(ctx,"applyPins",&[&pin_argument(&changed_pins)?])?;
-    need(applied["applying"]==true,"An actual explicit edit must classify as applying")?;
+    settings_request(ctx,"applyPins",&[&pin_argument(&changed_pins)?])?;
+    let applied=wait("Actual held edit applying",|| {let row=state(ctx)?;Ok((row["busy"]==true && row["applying"]==true).then_some(row))})?;
     let retired=wait("Held changed preferences retire capture",||{let row=state(ctx)?;Ok((row["busy"]==false && pins(&row)?==changed_pins && row["pressedKey"]=="" && row["intentValid"]==false && row["dragging"]==false).then_some(row))})?;
     ctx.move_pointer(center(ctx,"c")?)?;ctx.release()?;
     need(writes(ctx)?.len()==1 && state(ctx)?["activations"].as_array().is_some_and(Vec::is_empty),"Changed-capture release must never retarget or write")?;

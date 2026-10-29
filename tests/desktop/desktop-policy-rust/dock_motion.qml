@@ -58,7 +58,7 @@ ShellRoot {
                 pressedKey:dock.pressedKey,pressIntent:dock.pressIntent?dock.pressIntent.item.key:"",intentValid:!!dock.dragIntentValid(),pointerEvents:audit.pointerEvents,dragging:dock.dragging,hovered:dock.hovered,pointerSlot:dock.pointerSlot,
                 contains:dock.fixturePointer.containsMouse,pressed:dock.fixturePointer.pressed,
                 tip:dock.fixtureTip.text,tipVisible:dock.fixtureTipWindow.visible,tiles:dock.fixtureTiles(),
-                activations:stub.activations,busy:settings.busy,ready:settings.available,pins:settings.preferences.dockPins});
+                activations:stub.activations,busy:settings.busy,applying:settings.applying,ready:settings.available,pins:settings.preferences.dockPins});
         }
     }
 }
