@@ -326,24 +326,7 @@ fn edit(request: &Value, s: &Snapshot) -> Result<Value> {
     }
     Err("The consumer did not publish the requested effective shortcut. Previous settings restored; the effective map remains unconfirmed. No successful apply is claimed.".into())
 }
-fn run() -> Result<Value> {
-    let mut input = String::new();
-    std::io::BufReader::new(std::io::stdin().take(65537))
-        .read_line(&mut input)
-        .map_err(|e| e.to_string())?;
-    if input.len() > 65536 {
-        return Err("Shortcut request is too large".into());
-    }
-    let request: Value = serde_json::from_str(&input).map_err(|e| e.to_string())?;
-    let object = request
-        .as_object()
-        .ok_or("Shortcut request must be an object")?;
-    if object
-        .keys()
-        .any(|key| !["action", "id", "chord", "generation"].contains(&key.as_str()))
-    {
-        return Err("Unknown shortcut request field".into());
-    }
+fn transaction_lock() -> Result<fs::File> {
     let file = fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -362,6 +345,27 @@ fn run() -> Result<Value> {
     if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
         return Err("Another shortcut transaction is in progress; retry after it finishes".into());
     }
+    Ok(file)
+}
+fn run() -> Result<Value> {
+    let mut input = String::new();
+    std::io::BufReader::new(std::io::stdin().take(65537))
+        .read_line(&mut input)
+        .map_err(|e| e.to_string())?;
+    if input.len() > 65536 {
+        return Err("Shortcut request is too large".into());
+    }
+    let request: Value = serde_json::from_str(&input).map_err(|e| e.to_string())?;
+    let object = request
+        .as_object()
+        .ok_or("Shortcut request must be an object")?;
+    if object
+        .keys()
+        .any(|key| !["action", "id", "chord", "generation"].contains(&key.as_str()))
+    {
+        return Err("Unknown shortcut request field".into());
+    }
+    let _lock = transaction_lock()?;
     let snapshot = snapshot()?;
     if request["action"] == "status" {
         Ok(status(&snapshot))
@@ -379,7 +383,9 @@ fn main() {
                 .map(|s| status(&s))
                 .unwrap_or(json!({"available":false,"editable":false,"bindings":[]}));
             value["error"] = json!(error);
-            value["editable"] = json!(false);
+            if transaction_lock().is_err() {
+                value["editable"] = json!(false);
+            }
             println!("{value}");
             std::process::exit(1);
         }
