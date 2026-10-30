@@ -13,9 +13,93 @@ use std::{
 };
 unsafe extern "C" {
     fn kill(pid: i32, signal: i32) -> i32;
+    fn prctl(option: i32, ...) -> i32;
+    fn waitpid(pid: i32, status: *mut i32, options: i32) -> i32;
+}
+struct Subreaper(i32);
+impl Subreaper {
+    fn new() -> std::io::Result<Self> {
+        let mut previous = 0_i32;
+        if unsafe { prctl(37, &mut previous as *mut i32) } != 0 || unsafe { prctl(36, 1_i32) } != 0
+        {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(Self(previous))
+    }
+}
+impl Drop for Subreaper {
+    fn drop(&mut self) {
+        unsafe {
+            prctl(36, self.0);
+        }
+    }
+}
+fn reap_providers(root: &std::path::Path, group: u32) -> Result<(), Box<dyn std::error::Error>> {
+    let identities = fs::read_to_string(root.join("identities")).unwrap_or_default();
+    let mut diagnostics = String::new();
+    for line in identities.lines() {
+        let fields = line.split_whitespace().collect::<Vec<_>>();
+        if fields.len() != 2 {
+            return Err("Malformed owned provider identity ledger".into());
+        }
+        let pid = fields[0].parse::<i32>()?;
+        let start = fields[1].parse::<u64>()?;
+        let end = Instant::now() + Duration::from_secs(2);
+        let mut signalled = false;
+        loop {
+            let stat = fs::read_to_string(format!("/proc/{pid}/stat")).unwrap_or_default();
+            diagnostics.push_str(&format!("pid={pid} expectedStart={start} stat={stat}\n"));
+            fs::write(root.join("teardown-proc-stat.log"), &diagnostics)?;
+            let mut status = 0;
+            let waited = unsafe { waitpid(pid, &mut status, 1) };
+            if waited == pid {
+                break;
+            }
+            if waited < 0 {
+                if !std::path::Path::new(&format!("/proc/{pid}")).exists() {
+                    break;
+                }
+                return Err(format!("Recorded provider {pid} still exists but is not an adopted child; refusing to signal it. {diagnostics}").into());
+            }
+            // An unreaped direct child cannot have its PID reused. Still bind
+            // the adopted process to the stub's captured start time and group
+            // before signalling; unrelated processes are never targeted.
+            let values = stat
+                .rsplit_once(')')
+                .ok_or("Owned provider stat missing")?
+                .1
+                .split_whitespace()
+                .collect::<Vec<_>>();
+            if values.get(1).and_then(|s| s.parse::<u32>().ok()) != Some(std::process::id())
+                || values.get(2).and_then(|s| s.parse::<u32>().ok()) != Some(group)
+                || values.get(19).and_then(|s| s.parse::<u64>().ok()) != Some(start)
+            {
+                return Err(format!(
+                    "Adopted provider identity changed; refusing to signal it. {diagnostics}"
+                )
+                .into());
+            }
+            if !signalled {
+                if unsafe { kill(pid, 9) } != 0 {
+                    return Err(std::io::Error::last_os_error().into());
+                }
+                signalled = true;
+            }
+            if Instant::now() >= end {
+                return Err(format!("Owned provider reap deadline exceeded. {diagnostics}").into());
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            !std::path::Path::new(&format!("/proc/{pid}")).exists(),
+            "Owned provider remains after exact waitpid: {diagnostics}"
+        );
+    }
+    Ok(())
 }
 #[test]
 fn native_focus_transport() {
+    let _subreaper = Subreaper::new().expect("Owned provider subreaper unavailable");
     let source = PathBuf::from(file!()).canonicalize().unwrap();
     let repo = source.parent().unwrap().parent().unwrap().parent().unwrap();
     let component = env::var_os("LUMEN_NATIVE_FOCUS_COMPONENT")
@@ -104,19 +188,15 @@ fn native_focus_transport() {
                     break status;
                 }
                 if Instant::now() > end {
-                    unsafe {
-                        kill(-(child.id() as i32), 9);
-                    };
+                    child.kill()?;
                     break child.wait()?;
                 }
                 thread::sleep(Duration::from_millis(10));
             };
-            // All spawned processes belong to this private group; reap the shell before
-            // checking provider PIDs and retain its complete bounded diagnostic output.
-            unsafe {
-                kill(-(child.id() as i32), 9);
-            };
+            // The shell can exit before its final worker. Adopt that exact
+            // recorded child and reap it ourselves, independent of sandbox PID 1.
             let _ = child.wait();
+            let teardown = reap_providers(&root, child.id());
             let stdout = stdout.join().unwrap()?;
             let stderr = stderr.join().unwrap()?;
             let log = format!(
@@ -127,7 +207,13 @@ fn native_focus_transport() {
             if let Ok(artifacts) = env::var("LUMEN_NATIVE_FOCUS_ARTIFACTS") {
                 fs::create_dir_all(&artifacts)?;
                 fs::write(PathBuf::from(&artifacts).join(format!("{mode}.log")), &log)?;
-                for name in ["starts", "requests", "overlapping-owned-child"] {
+                for name in [
+                    "starts",
+                    "requests",
+                    "identities",
+                    "teardown-proc-stat.log",
+                    "overlapping-owned-child",
+                ] {
                     if root.join(name).exists() {
                         fs::copy(
                             root.join(name),
@@ -136,6 +222,7 @@ fn native_focus_transport() {
                     }
                 }
             }
+            teardown?;
             assert!(
                 status.success()
                     && log.contains(&format!("PASS native focus transport {mode}"))

@@ -30,6 +30,18 @@ fn main() {
         }
     }
     let generation = previous.lines().count();
+    let stat = fs::read_to_string("/proc/self/stat").unwrap();
+    let start = stat
+        .rsplit_once(')')
+        .unwrap()
+        .1
+        .split_whitespace()
+        .nth(19)
+        .unwrap();
+    append(
+        root.join("identities"),
+        &format!("{} {start}", std::process::id()),
+    );
     append(starts, &std::process::id().to_string());
     let mode = if generation == 0 {
         env::var("LUMEN_NATIVE_FOCUS_MODE").unwrap()
