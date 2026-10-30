@@ -53,7 +53,7 @@ Flickable {
     function applySnapshot(){
         if(!pendingSnapshot)return;
         if(!visible){pendingSnapshot=null;snapshotRestored();return;}
-        contentX=Math.max(0,Math.min(pendingSnapshot.x || 0,contentWidth-width));
+        contentX=clampOffset(Number.isFinite(pendingSnapshot.x)?pendingSnapshot.x:contentWidth-width);
         let waiting=false;
         columns.forEach((column,index)=>{const saved=(pendingSnapshot.columns || []).find(c=>c.path===column.path),item=columnRepeater.itemAt(index);if(!saved)return;if(!item || column.loaded===false){waiting=true;return;}const list=item.listView;if(column.rows.length>0 && list.contentHeight===0){waiting=true;return;}const i=HistoryModel.locate(column.rows,saved.anchor);if(i>=0)list.positionViewAtIndex(i,ListView.Beginning);list.contentY=Math.max(0,Math.min(i>=0?list.contentY+(saved.delta || 0):saved.offset || 0,list.contentHeight-list.height));});
         if(!waiting && columns.every(column=>column.loaded!==false)){pendingSnapshot=null;snapshotRestored();}

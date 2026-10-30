@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 import Quickshell
 import "LUMEN_ASSETS" as D
 ShellRoot {
@@ -17,6 +18,9 @@ ShellRoot {
  D.FilesWindow {id:files;shell:stub;service:service;visible:true}
  function check(value,message){if(!value)throw Error(message+" phase="+phase);}
  function select(){files.choose(0,0);check(files.selectedPaths.length===1,"Selection missing");}
+ function walk(item){let result=[item];for(const child of item.children || [])result=result.concat(walk(child));return result;}
+ function columns(){return walk(files.contentItem).find(item=>item.objectName==="files-column-view");}
+ function folderRevealed(){const view=columns(),list=walk(view).find(item=>item.objectName==="files-column-"+service.path),label=list?walk(list).find(item=>item.text==="selected.txt"):null;if(!label)return false;const point=label.mapToItem(view,0,0);return point.x>=-1 && point.x+label.width<=view.width+1;}
  Timer {interval:60;running:true;repeat:true;onTriggered:{try {
   if(++ticks>240)throw Error("Files layout timeout phase="+phase+" busy="+service.busy+" error="+service.error);
   if(!service.ready || service.busy)return;
@@ -48,6 +52,9 @@ ShellRoot {
    check(files.groupCollapsed("favourites") && files.groupCollapsed("locations"),"Groups did not collapse");check(service.path===base+"/Third" && files.selectedPaths[0]===base+"/Third/selected.txt","Sidebar operation navigated/lost selection");
    phase=9;return;
   }
-  if(phase===9){check(service.sidebarWidth===340,"Narrow clamp overwrote saved width");files.collapseSidebar("favourites",false);files.collapseSidebar("locations",false);check(files.selectedPaths.length===1,"Expand lost selection");console.log("FILES_LAYOUT_PASS");Qt.quit();}
+  if(phase===9){check(service.sidebarWidth===340,"Narrow clamp overwrote saved width");files.collapseSidebar("favourites",false);files.collapseSidebar("locations",false);check(files.selectedPaths.length===1,"Expand lost selection");files.implicitWidth=480;files.implicitHeight=320;const native=files.contentItem.Window.window;native.width=480;native.height=320;service.viewMode="columns";phase=10;return;}
+  if(phase===10){if(!service.columns.length || service.columns.some(column=>column.loaded===false))return;check(folderRevealed(),"Current folder not revealed after switching columns");columns().restoreSnapshot({x:0,columns:[]});phase=11;return;}
+  if(phase===11){check(columns().contentX===0,"Explicit column history viewport was overridden");service.navigate(base+"/Second");phase=12;return;}
+  if(phase===12){if(service.path!==base+"/Second" || !service.columns.length || service.columns.some(column=>column.loaded===false))return;check(folderRevealed(),"New folder not revealed after asynchronous column navigation");console.log("FILES_LAYOUT_PASS");Qt.quit();}
  }catch(error){console.error("FILES_LAYOUT_FAIL "+error);Qt.quit();}}}
 }
