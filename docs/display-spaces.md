@@ -48,3 +48,7 @@ Settings edits use the existing explicit settings compiler. Runtime observations
 never write the consumer configuration. Display-space behavior belongs to the
 public desktop; monitor choices and whether to enable linking belong to its
 consumer.
+
+Overview's captured window-card and accessible-handle movement is described in
+[Guarded desktop transfer](guarded-desktop-transfer.md), including family movement,
+Window Group reconciliation and explicit refusal boundaries.
