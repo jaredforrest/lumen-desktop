@@ -70,7 +70,12 @@ fn target(f: &Fixture, tree: &Value, name: &str) -> Result<Value> {
         &json!({"logicalId":format!("x11-transfer-{name}"),"name":name,"id":live.map(|row|row["id"].clone()),"output":live.map(|row|row["output"].clone()).unwrap_or(json!("HEADLESS-1"))}),
     )?)
 }
-fn capture(f: &Fixture, node: &Value, name: &str, forged: bool) -> Result<String> {
+struct Captured {
+    tree: Value,
+    snapshot: Value,
+    command: String,
+}
+fn capture(f: &Fixture, node: &Value, name: &str, forged: bool) -> Result<Captured> {
     let tree = stable(f)?;
     let source = if forged {
         let current = find_node(&tree, &|candidate| candidate["id"] == node["id"])
@@ -79,20 +84,29 @@ fn capture(f: &Fixture, node: &Value, name: &str, forged: bool) -> Result<String
     } else {
         policy::source(&tree, &node["id"])?
     };
-    Ok(policy::command(
-        &policy::snapshot(&tree)?,
-        &source,
-        &target(f, &tree, name)?,
-    )?)
+    let snapshot = policy::snapshot(&tree)?;
+    let command = policy::command(&snapshot, &source, &target(f, &tree, name)?)?;
+    Ok(Captured {
+        tree,
+        snapshot,
+        command,
+    })
 }
-fn refuse(f: &Fixture, command: &str, label: &str) -> Result<()> {
+fn refuse(f: &Fixture, captured: &Captured, label: &str, fresh: bool) -> Result<()> {
     let before = stable(f)?;
+    if fresh {
+        require(
+            policy::snapshot(&before)? == captured.snapshot,
+            "Role-refusal packet must bind the immediately-before native snapshot",
+        )?;
+    }
+    let command = &captured.command;
     let (status, raw) = f.call(&["-r", command])?;
     let reply: Value = serde_json::from_str(&raw)?;
     let after = f.tree()?;
     save(
         label,
-        &json!({"command":command,"status":status.code(),"reply":reply,"before":before,"after":after}),
+        &json!({"command":command,"capturedSnapshot":captured.snapshot,"requiresFreshSnapshot":fresh,"status":status.code(),"reply":reply,"before":before,"after":after}),
     )?;
     require(
         !status.success()
@@ -123,12 +137,28 @@ fn current(f: &Fixture) -> Result<String> {
 fn identity(node: &Value) -> Value {
     json!({"id":node["id"],"pid":node["pid"],"foreign":node["foreign_toplevel_identifier"],"xid":node["window"],"parent":node["lumen_relationships"]["parent"]})
 }
+fn floating(node: &Value) -> Result<bool> {
+    match node["floating"].as_str() {
+        Some("user_on" | "auto_on") => Ok(true),
+        Some("user_off" | "auto_off") => Ok(false),
+        _ => Err(fail("Unknown native floating classification")),
+    }
+}
 fn move_family(f: &mut Fixture, name: &str, child: bool, label: &str) -> Result<()> {
-    let root = f.mapped(0, 0)?;
-    let before_child = if child { Some(f.mapped(0, 1)?) } else { None };
+    let root_identity = f.mapped(0, 0)?;
+    let child_identity = if child { Some(f.mapped(0, 1)?) } else { None };
+    let captured = capture(f, &root_identity, name, false)?;
+    let root = find_node(&captured.tree, &|node| node["id"] == root_identity["id"])
+        .ok_or("Captured root preimage missing")?;
+    let before_child = child_identity
+        .as_ref()
+        .map(|identity| {
+            find_node(&captured.tree, &|node| node["id"] == identity["id"])
+                .ok_or_else(|| fail("Captured child preimage missing"))
+        })
+        .transpose()?;
     let visible = current(f)?;
-    let command = capture(f, &root, name, false)?;
-    let reply = f.ipc(&command)?;
+    let reply = f.ipc(&captured.command)?;
     require(
         reply
             .as_array()
@@ -147,10 +177,26 @@ fn move_family(f: &mut Fixture, name: &str, child: bool, label: &str) -> Result<
         "Transfer replaced native root identity",
     )?;
     require(
+        floating(&root)? == floating(&after)?,
+        "Transfer changed native root layout role",
+    )?;
+    if floating(&root)? {
+        for size in ["width", "height"] {
+            require(
+                root["rect"][size] == after["rect"][size],
+                "Floating root dimensions changed",
+            )?;
+        }
+    }
+    require(
         current(f)? == visible,
         "Transfer activated destination workspace",
     )?;
     if let (Some(before), Some(after_child)) = (&before_child, &after_child) {
+        require(
+            floating(before)? && floating(after_child)?,
+            "Transfer changed floating child layout role",
+        )?;
         require(
             identity(before) == identity(after_child),
             "Transfer replaced native child identity/parent",
@@ -171,7 +217,7 @@ fn move_family(f: &mut Fixture, name: &str, child: bool, label: &str) -> Result<
     }
     save(
         label,
-        &json!({"rootBefore":root,"rootAfter":after,"childBefore":before_child,"childAfter":after_child,"focusedWorkspaceBefore":visible,"focusedWorkspaceAfter":current(f)?}),
+        &json!({"capturedSnapshot":captured.snapshot,"command":captured.command,"rootBefore":root,"rootAfter":after,"childBefore":before_child,"childAfter":after_child,"focusedWorkspaceBefore":visible,"focusedWorkspaceAfter":current(f)?}),
     )
 }
 fn projection_command(node: &Value, enabled: bool) -> Result<String> {
@@ -260,7 +306,7 @@ pub(super) fn run(f: &mut Fixture, options: &Options) -> Result<()> {
     let current_root = f.mapped(0, 0)?;
     let stale = capture(f, &current_root, "transfer-stale", false)?;
     ipc!(f, "[con_id={}] resize set 540 330", i(&root, "id")?)?;
-    refuse(f, &stale, "stale-root-frame")?;
+    refuse(f, &stale, "stale-root-frame", false)?;
     let current_root = f.mapped(0, 0)?;
     let stale = capture(f, &current_root, "transfer-stale", false)?;
     ipc!(
@@ -268,7 +314,7 @@ pub(super) fn run(f: &mut Fixture, options: &Options) -> Result<()> {
         "[con_id={}] resize set 340 210",
         i(&f.mapped(0, 1)?, "id")?
     )?;
-    refuse(f, &stale, "stale-child-frame")?;
+    refuse(f, &stale, "stale-child-frame", false)?;
     f.checks.push(
         "Captured X11 root and descendant geometry races refuse with full native tree unchanged",
     );
@@ -285,7 +331,7 @@ pub(super) fn run(f: &mut Fixture, options: &Options) -> Result<()> {
         )?;
         let current_root = f.mapped(0, 0)?;
         let forged = capture(f, &current_root, "transfer-projected", true)?;
-        refuse(f, &forged, label)?;
+        refuse(f, &forged, label, true)?;
         let node = f.mapped(0, index)?;
         f.ipc(&projection_command(&node, false)?)?;
         wait("explicit projection cleared", || {
@@ -321,7 +367,7 @@ pub(super) fn run(f: &mut Fixture, options: &Options) -> Result<()> {
     )?;
     let current_root = f.mapped(0, 0)?;
     let forged = capture(f, &current_root, "transfer-cross-pid", true)?;
-    refuse(f, &forged, "cross-pid-child")?;
+    refuse(f, &forged, "cross-pid-child", true)?;
     f.checks.push("Actual unsupported cross-PID transient edge refuses status and forged fresh native transfer without mutation");
     f.command(1, "unmap", 1, 0)?;
     f.node_wait("cross-process child retired", |node| node.is_none(), 1, 1)?;
@@ -336,7 +382,7 @@ pub(super) fn run(f: &mut Fixture, options: &Options) -> Result<()> {
         identity(&old) != identity(&replacement),
         "Replacement did not change native identity",
     )?;
-    refuse(f, &stale, "retired-replaced-root")?;
+    refuse(f, &stale, "retired-replaced-root", false)?;
     f.checks.push("Closed/replaced X11 capture cannot transfer its replacement through stale immutable authority");
     Ok(())
 }
