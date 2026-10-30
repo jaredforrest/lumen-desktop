@@ -216,7 +216,12 @@ fn edit(request: &Value, s: &Snapshot) -> Result<Value> {
     if snapshot()?.generation != s.generation {
         return Err("Shortcut configuration changed before saving; retry".into());
     }
-    settings(&["set", "shortcuts", &next.to_string()])?;
+    settings(&[
+        "compare-set",
+        "shortcuts",
+        &previous.to_string(),
+        &next.to_string(),
+    ])?;
     let deadline = Instant::now() + Duration::from_secs(5);
     while Instant::now() < deadline {
         if confirms(id, chord) {
@@ -227,9 +232,20 @@ fn edit(request: &Value, s: &Snapshot) -> Result<Value> {
         }
         thread::sleep(Duration::from_millis(50));
     }
-    let rollback = settings(&["set", "shortcuts", &previous.to_string()]);
+    if settings(&["read"])?["shortcuts"] != next || snapshot()?.generation != s.generation {
+        return Err("Shortcut settings or the effective map changed concurrently; rollback stopped to preserve the newer configuration. Inspect it before retrying.".into());
+    }
+    let rollback = settings(&[
+        "compare-set",
+        "shortcuts",
+        &next.to_string(),
+        &previous.to_string(),
+    ]);
     if rollback.is_err() {
         return Err("The effective map did not confirm this edit, and settings rollback failed. Inspect configuration before retrying.".into());
+    }
+    if settings(&["read"])?["shortcuts"] != previous || snapshot()?.generation != s.generation {
+        return Err("Rollback could not confirm the previous settings and effective map. Inspect configuration before retrying.".into());
     }
     Err("The consumer did not publish the requested effective shortcut. Previous settings restored; the effective map remains unconfirmed. No successful apply is claimed.".into())
 }

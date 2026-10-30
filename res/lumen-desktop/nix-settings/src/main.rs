@@ -300,7 +300,7 @@ fn git(repo: &Path, args: &[&str]) -> SettingsResult<String> {
     Ok(String::from_utf8_lossy(&output.stdout).trim().into())
 }
 
-fn git_transaction(section: &str, value: Value, application: Option<&str>, merge: bool) -> SettingsResult<Value> {
+fn git_transaction(section: &str, value: Value, application: Option<&str>, merge: bool, expected: Option<&Value>) -> SettingsResult<Value> {
     let _guard = lock()?;
     if !SECTIONS.contains(&section) { return Err("Unsupported Nix settings section".into()); }
     let source = PathBuf::from(required_env("LUMEN_NIX_SETTINGS_SOURCE")?);
@@ -314,6 +314,7 @@ fn git_transaction(section: &str, value: Value, application: Option<&str>, merge
     let previous = git(&repo, &["rev-parse","HEAD"])?;
     let original = fs::read(&source).map_err(|e| e.to_string())?;
     let mut values = json_file(&build(&source)?.join("settings.json"))?;
+    if expected.is_some_and(|expected| values[section] != *expected) { return Err("Settings changed concurrently; edit was not applied".into()); }
     if let Some(app) = application {
         if section != "applicationPreferences" || values[section].get(app).is_none() {
             return Err("Unsupported application preferences".into());
@@ -391,10 +392,10 @@ fn git_transaction(section: &str, value: Value, application: Option<&str>, merge
     Ok(result)
 }
 
-fn set(section: &str, mut value: Value, application: Option<&str>, merge: bool) -> SettingsResult<Value> {
+fn set(section: &str, mut value: Value, application: Option<&str>, merge: bool, expected: Option<&Value>) -> SettingsResult<Value> {
     if section == "menuBar" { value = normalize_menu(value)?; }
     if env::var_os("LUMEN_NIX_SETTINGS_DEPLOY").is_some_and(|item| !item.is_empty()) {
-        return git_transaction(section, value, application, merge);
+        return git_transaction(section, value, application, merge, expected);
     }
     let _guard = lock()?;
     if !SECTIONS.contains(&section) {
@@ -407,6 +408,7 @@ fn set(section: &str, mut value: Value, application: Option<&str>, merge: bool) 
         return Err("The Nix source changed during evaluation; retry the edit".into());
     }
     let mut values = json_file(&current.join("settings.json"))?;
+    if expected.is_some_and(|expected| values[section] != *expected) { return Err("Settings changed concurrently; edit was not applied".into()); }
     if let Some(app) = application {
         if section != "applicationPreferences" || values[section].get(app).is_none() {
             return Err("Unsupported application preferences".into());
@@ -486,17 +488,21 @@ fn run() -> SettingsResult<Value> {
         [command, section, value] if command == "set" => set(
             section,
             serde_json::from_str(value).map_err(|error| error.to_string())?,
-            None, false,
+            None, false, None,
         ),
         [command, section, value] if command == "patch" => set(
             section,
             serde_json::from_str(value).map_err(|error| error.to_string())?,
-            None, true,
+            None, true, None,
         ),
         [command, app, value] if command == "set-application" => set(
             "applicationPreferences",
             serde_json::from_str(value).map_err(|error| error.to_string())?,
-            Some(app), false,
+            Some(app), false, None,
+        ),
+        [command, section, expected, value] if command == "compare-set" => set(
+            section, serde_json::from_str(value).map_err(|error|error.to_string())?, None, false,
+            Some(&serde_json::from_str(expected).map_err(|error|error.to_string())?),
         ),
         [command] if command == "apply" => Err(
             "Manual configuration edits require a NixOS rebuild and authenticated activation."
