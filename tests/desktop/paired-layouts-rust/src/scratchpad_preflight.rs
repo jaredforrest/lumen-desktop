@@ -32,6 +32,11 @@ pub fn run(fixture:&Fixture<'_>,first:i64,second:i64,ordinary:i64)->Result<()> {
     fixture.yes(&format!("[con_id={ordinary}] scratchpad show"))?;
     let restored=fixture.required(ordinary)?;
     require(restored["pid"]==before["pid"]&&restored["app_id"]==before["app_id"]&&fixture.workspace(ordinary)?==workspace&&fixture.box_rect(ordinary)?==rectangle,"Ordinary raw scratchpad/show did not preserve identity/placement")?;
-    fs::write(fixture.options.output.join("scratchpad-preflight-result.json"),serde_json::to_vec_pretty(&json!({"passed":true,"checks":4,"effects":fixture.options.effects,"parent":parent,"ordinaryBefore":before,"ordinaryHidden":hidden,"ordinaryRestored":restored,"scope":"Exact parent/member/survivor CMD_INVALID with whole-tree and focus unchanged; ordinary raw scratchpad/show positive"}))?)?;
+    // Showing a scratchpad window retains its native scratch membership. Clear
+    // that fixture-owned membership before the shared paired lifecycle reuses it.
+    fixture.yes(&format!("[con_id={ordinary}] move container to workspace {}",serde_json::to_string(&workspace)?))?;
+    let cleaned=fixture.required(ordinary)?;
+    require(cleaned["scratchpad_state"]==before["scratchpad_state"]&&cleaned["pid"]==before["pid"]&&cleaned["app_id"]==before["app_id"]&&fixture.workspace(ordinary)?==workspace&&fixture.box_rect(ordinary)?==rectangle,"Scratchpad fixture cleanup did not restore original eligibility/placement")?;
+    fs::write(fixture.options.output.join("scratchpad-preflight-result.json"),serde_json::to_vec_pretty(&json!({"passed":true,"checks":4,"effects":fixture.options.effects,"parent":parent,"ordinaryBefore":before,"ordinaryHidden":hidden,"ordinaryRestored":restored,"ordinaryCleaned":cleaned,"scope":"Exact parent/member/survivor CMD_INVALID with whole-tree and focus unchanged; ordinary raw scratchpad/show positive followed by explicit fixture-owned scratch-membership cleanup"}))?)?;
     println!("PASS paired raw scratchpad preflight and ordinary positive");Ok(())
 }
