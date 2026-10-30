@@ -12,8 +12,8 @@ Symlinks, sockets, FIFOs and devices are never copied
 or dereferenced. Descriptor-relative traversal and no-follow opens keep parent
 replacement and leaf symlink replacement from redirecting reads.
 
-The snapshot is published by rename only after completion. The limits are100,000
-files, two GiB including the manifests,200,000 enumerated entries and128 directory
+The snapshot is published by rename only after completion. The limits are 100,000
+files, two GiB including the manifests, 200,000 enumerated entries and 128 directory
 levels. An exceeded budget fails staging clearly and removes its incomplete
 temporary tree. File copies stop after at most the remaining byte budget plus
 one detection byte, including when a source grows. This is a bounded diagnostic
