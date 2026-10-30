@@ -97,7 +97,7 @@
  static void container_move_to_container(struct sway_container *container,
 --- /dev/null
 +++ b/sway/commands/lumen_space_transfer.c
-@@ -0,0 +1,211 @@
+@@ -0,0 +1,221 @@
 +/* Captured transfer preflight and dispatch share one compositor callback. */
 +#include <inttypes.h>
 +#include <json.h>
@@ -292,15 +292,25 @@
 +  struct sway_container *child=family.members[i];lumen_space_transfer_move(child,target);
 +  container_floating_translate(child,family.x[i]+dx-child->pending.x,family.y[i]+dy-child->pending.y);
 + }
-+ /* A moved focused member must not keep keyboard focus on a hidden target.
-+  * Other seats and layer-surface focus remain untouched. Restore only after
-+  * the complete family has left, so no sibling can become an interim target. */
++ /* Repair only this family's active or layer-return focus after every member
++  * has left. Raw history updates preserve the layer's actual keyboard input. */
 + struct sway_seat *seat;
 + wl_list_for_each(seat,&server.input->seats,link){
 +  struct sway_node *focus=seat_get_focus(seat);
++  bool layer_return=!focus && seat->focused_layer;
++  if(layer_return)focus=seat_get_focus_inactive(seat,&root->node);
 +  for(unsigned i=0;focus && i<family.count;i++){
 +   if(focus==&family.members[i]->node){
-+    seat_set_focus(seat,seat_get_focus_inactive(seat,&origin->node));break;
++    struct sway_node *next=seat_get_focus_inactive(seat,&origin->node);
++    if(layer_return){
++     if(next && next->type==N_CONTAINER){
++      struct sway_container *parent=next->sway_container->pending.parent;
++      while(parent){seat_set_raw_focus(seat,&parent->node);parent=parent->pending.parent;}
++     }
++     seat_set_raw_focus(seat,&origin->node);
++     if(next && next->type==N_CONTAINER)seat_set_raw_focus(seat,next);
++    }else seat_set_focus(seat,next);
++    break;
 +   }
 +  }
 + }
