@@ -9,6 +9,7 @@ let
       ./desktop-settings-schema.nix
       ./shortcut-preferences-type.nix
       ../config/application-profiles.nix
+      ../config/prism-preferences.nix
     ];
   };
   schema = "${schemaSource}/packages/desktop-settings-schema.nix";
