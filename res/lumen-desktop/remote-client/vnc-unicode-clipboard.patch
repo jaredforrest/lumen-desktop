@@ -139,7 +139,7 @@
  		cl->GotCursorShape = remmina_plugin_vnc_rfb_cursor_shape;
  		cl->Bell = remmina_plugin_vnc_rfb_bell;
  		cl->HandleTextChat = remmina_plugin_vnc_rfb_chat;
-@@ -1665,26 +1708,15 @@
+@@ -1665,26 +1708,16 @@
  {
  	TRACE_CALL(__func__);
  	RemminaPluginVncData *gpdata = GET_PLUGIN_DATA(gp);
@@ -158,6 +158,7 @@
 +		gchar *hash = g_compute_checksum_for_string(G_CHECKSUM_SHA256, text, -1);
 +		gboolean echo = g_strcmp0(hash, gpdata->clipboard_remote_hash) == 0;
 +		g_free(hash);
++		g_clear_pointer(&gpdata->clipboard_remote_hash, g_free);
 +		if (echo)
  			return;
 -		g_date_time_unref(gpdata->clipboard_timer);
@@ -172,7 +173,7 @@
  	}
  }
  
-@@ -1833,7 +1865,7 @@
+@@ -1833,7 +1866,7 @@
  		gpdata->vnc_buffer = NULL;
  	}
  	g_ptr_array_free(gpdata->pressed_keys, TRUE);
@@ -181,7 +182,7 @@
  	remmina_plugin_vnc_event_free_all(gp);
  	g_queue_free(gpdata->vnc_event_queue);
  	pthread_mutex_destroy(&gpdata->vnc_event_queue_mutex);
-@@ -2053,7 +2085,7 @@
+@@ -2053,7 +2086,7 @@
  	g_signal_connect(G_OBJECT(gpdata->drawing_area), "size-allocate", G_CALLBACK(remmina_plugin_vnc_on_size_allocate), gp);
  #endif
  	gpdata->auth_first = TRUE;
