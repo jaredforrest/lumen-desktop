@@ -2,15 +2,15 @@
 def main [launcher: string, basic: string, effects: string] {
     let root = $env.PWD
     ^nix build .#test-group-presentation-environment --out-link artifacts/group-presentation-environment --option abort-on-warn true --option eval-cache false
-    let environment = ((artifacts/group-presentation-environment | path expand) | path join bin env)
-    let tools = ((artifacts/group-presentation-environment | path expand) | path join bin)
-    let boundary = ((artifacts/application-isolation-package | path expand) | path join bin lumen-application-isolation)
-    let fixture = ((artifacts/native-groups-fixture | path expand) | path join bin lumen-native-groups-fixture)
-    let font = (artifacts/owned-font-config | path expand)
-    let driver = (artifacts/software-driver | path expand)
-    let client = ((artifacts/window-relationships-client | path expand) | path join bin lumen-test-window-relationships)
-    let pointer = ((artifacts/pointer | path expand) | path join bin wlrctl)
-    let locker = ((artifacts/session-lock | path expand) | path join bin lumen-test-session-lock)
+    let environment = (('artifacts/group-presentation-environment' | path expand) | path join bin env)
+    let tools = (('artifacts/group-presentation-environment' | path expand) | path join bin)
+    let boundary = (('artifacts/application-isolation-package' | path expand) | path join bin lumen-application-isolation)
+    let fixture = (('artifacts/native-groups-fixture' | path expand) | path join bin lumen-native-groups-fixture)
+    let font = ('artifacts/owned-font-config' | path expand)
+    let driver = ('artifacts/software-driver' | path expand)
+    let client = (('artifacts/window-relationships-client' | path expand) | path join bin lumen-test-window-relationships)
+    let pointer = (('artifacts/pointer' | path expand) | path join bin wlrctl)
+    let locker = (('artifacts/session-lock' | path expand) | path join bin lumen-test-session-lock)
     let pinned_launcher = ($launcher | path expand)
     for case in [
         {name: basic, provider: ($basic | path expand), flags: []}
