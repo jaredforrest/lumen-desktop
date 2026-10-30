@@ -68,8 +68,10 @@ The public VNC client registers the upstream UTF-8 callback, sends extended
 clipboard text through its supported API, and requests deferred selections only
 when the peer advertises Request support. Its legacy path converts representable
 Latin-1 text losslessly and displays an explicit warning instead of replacing
-unsupported characters. The `legacy-clipboard` workflow uses stock x11vnc, which
-registers only the legacy cut-text callback. It proves representable fallback,
+unsupported characters. The `legacy-clipboard` workflow uses x11vnc, which
+registers only the legacy cut-text callback. Its test package corrects the X11
+TARGETS property's type to ATOM; it adds no UTF-8 RFB capability. The stock server
+failure is retained separately. The repaired server proves representable fallback,
 visible unsupported-text rejection, unchanged remote text and process identity,
 and continued physical input. This legacy test uses unencrypted RFB only inside
 the private loopback namespace; it is not an encrypted transport acceptance.

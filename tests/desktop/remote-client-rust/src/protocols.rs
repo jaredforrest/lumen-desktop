@@ -673,7 +673,7 @@ fn legacy_clipboard(f: &mut Harness) -> Result<()> {
     save(
         &f.out.join("legacy-clipboard-acceptance.json"),
         &json!({
-        "protocol":"VNC", "actualServer":"stock x11vnc", "transport":"unencrypted RFB inside disposable loopback namespace only",
+        "protocol":"VNC", "actualServer":"x11vnc with X11 TARGETS property type repair; legacy RFB capabilities unchanged", "transport":"unencrypted RFB inside disposable loopback namespace only",
         "independentDisplays":true, "representableLatin1Source":LEGACY, "representableReceipt":before_reject,
         "unrepresentableSource":LOCAL_TEXT, "rejection":warning, "unchangedReceipt":unchanged,
         "connectionInputReceipt":f.safe_target()?, "remoteTargetIdentityRetained":true,
