@@ -46,7 +46,9 @@ fn child() {
     let exporter_rx=lines(&mut exporter);
     writeln!(exporter.stdin.as_mut().unwrap(),"{}",json!([{"xid":23,"menu":{"id":0,"props":{},"children":[{"id":7,"props":{"label":"Save","enabled":true,"visible":true},"children":[]}]}}])).unwrap();
     read_until(&exporter_rx,|value|value["registered"]==true);
-    let state=read_until(&bridge_rx,|value|value["supported"]==true);
+    // Registrar discovery can precede asynchronous layout delivery. Wait for
+    // the exported command, rather than treating support alone as a layout.
+    let state=read_until(&bridge_rx,|value|value["supported"]==true && value["menu"]["children"][0]["id"]==7);
     assert_eq!(state["title"],"Editor");assert_eq!(state["menu"]["children"][0]["label"],"Save");
     assert_eq!(state["revision"],1);assert_eq!(state["outputName"],"DP-1");
     assert_eq!(state["contextAppName"],"codex");assert_eq!(state["contextWindowId"],77);

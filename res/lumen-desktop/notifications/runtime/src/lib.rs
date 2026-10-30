@@ -406,8 +406,10 @@ impl Core {
         fs::write(&file,&raw).unwrap();
         let core=Core::new(root.clone(),BTreeMap::new(),false).unwrap();
         assert_eq!(core.rows.iter().map(|r|r.id).collect::<Vec<_>>(),vec![7,8]);
-        let backup=fs::read_dir(&root).unwrap().filter_map(|e|e.ok().map(|e|e.path()))
-            .find(|p|p.extension().is_some_and(|ext|ext=="json") && p!=&file).unwrap();
+        let backups:Vec<_>=fs::read_dir(&root).unwrap().map(|entry|entry.unwrap().path())
+            .filter(|path|path.file_name().unwrap().to_str().is_some_and(|name|name.starts_with("history-invalid-") && name.ends_with(".json"))).collect();
+        assert_eq!(backups.len(),1,"Exactly one invalid-history quarantine must be created");
+        let backup=&backups[0];
         assert_eq!(fs::read(&backup).unwrap(),raw.as_bytes());
         assert_eq!(fs::metadata(&backup).unwrap().permissions().mode()&0o777,0o600);
         assert_eq!(fs::read(backup.with_extension("images").join("image-8.png")).unwrap(),b"attachment fixture");
