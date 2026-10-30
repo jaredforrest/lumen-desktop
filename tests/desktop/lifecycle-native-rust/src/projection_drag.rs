@@ -306,6 +306,7 @@ pub(super) fn run(f: &mut Fixture, id: u64) -> Result<()> {
         "Off-origin edge gesture previewed/committed a structural layout action",
     )?;
     request(f, &format!("workspace {original}"), None)?;
+    request(f, &format!("[con_id={id}] move position 300 200"), None)?;
     let normal = view(f, id)?;
     let start = (
         number(&normal, "rect", "x")? + number(&normal, "rect", "width")? - 50,
