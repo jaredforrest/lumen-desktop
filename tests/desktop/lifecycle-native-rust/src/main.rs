@@ -20,7 +20,7 @@ fn main() -> Result<()> {
         "recovery" => recovery::run(options),
         "mru" => mru::run(options),
         "window-mru" | "window-mru-baseline" => window_mru::run(options),
-        "identity" => identity::run(options),
+        "identity" | "identity-absent" => identity::run(options),
         _ => Err("Unknown scenario".into()),
     }
 }

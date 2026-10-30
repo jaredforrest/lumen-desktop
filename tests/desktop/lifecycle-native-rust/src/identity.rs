@@ -70,14 +70,8 @@ fn start_observer(f: &mut Fixture, name: &str, epoch: &str) -> Result<(usize, st
     Ok((index, path))
 }
 pub fn run(options: Options) -> Result<()> {
+    let absent = options.scenario == "identity-absent";
     let mut f = Fixture::new(options)?;
-    let wire = fs::canonicalize(
-        env::var_os("LUMEN_IDENTITY_WIRE").ok_or("Pinned LUMEN_IDENTITY_WIRE client required")?,
-    )?;
-    require(
-        wire.starts_with("/nix/store") && wire.is_file(),
-        "Immutable identity wire client required",
-    )?;
     let directory = f.options.output.join("owned-client");
     fs::create_dir(&directory)?;
     let client = f.sibling("lifecycle-client")?;
@@ -95,6 +89,31 @@ pub fn run(options: Options) -> Result<()> {
         let ids = expected(&f, pid)?;
         Ok((ids.len() == 2).then_some(ids))
     })?;
+    if absent {
+        let (observer, path) = start_observer(&mut f, "observer-absent", "missing-capability")?;
+        let value = wait("missing optional capability remains empty", || {
+            let value = state(&f, &path)?;
+            let rows = value["windows"].as_array().ok_or("Observer windows")?;
+            Ok(
+                (rows.len() == ids.len() && rows.iter().all(|row| row["identifier"] == ""))
+                    .then_some(value),
+            )
+        })?;
+        save(&f.options.output.join("missing-capability.json"), &value)?;
+        f.stop(observer)?;
+        f.stop(owner)?;
+        return save(
+            &f.options.output.join("result.json"),
+            &json!({"passed":true,"missingCapability":true,"ownedPid":pid,"scope":"Actual patched Quickshell connected to an older provider exposes empty optional identifiers for all owned windows; switcher fallback separately covered by actual command fixture"}),
+        );
+    }
+    let wire = fs::canonicalize(
+        env::var_os("LUMEN_IDENTITY_WIRE").ok_or("Pinned LUMEN_IDENTITY_WIRE client required")?,
+    )?;
+    require(
+        wire.starts_with("/nix/store") && wire.is_file(),
+        "Immutable identity wire client required",
+    )?;
     let mut wire_clients = Vec::new();
     for (target_number, target) in ids.iter().enumerate() {
         for connection in 0..2 {
