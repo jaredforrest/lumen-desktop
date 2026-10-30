@@ -6,6 +6,14 @@ const IDS: [&str; 3] = ["org.example.MruA", "org.example.MruB", "org.example.Mru
 fn state(f: &Fixture) -> Result<Value> {
     f.state("mruAudit", "last-mru.json")
 }
+fn physical(f:&Fixture,key:&str)->Result<()>{
+    wait_true("switcher owns keyboard before physical decision",||{
+        let current=state(f)?;
+        save(&f.options.output.join("mru-keyboard-readiness.json"),&current)?;
+        Ok(current["switcher"]["keyboardReady"]==true)
+    })?;
+    f.call("wtype",&["-k",key])?;Ok(())
+}
 fn ordered(value: &Value, key: &str) -> Vec<String> {
     value[key]
         .as_array()
@@ -158,7 +166,7 @@ pub fn run(options: Options) -> Result<()> {
         "Switcher relative order differs before restart",
     )?;
     order(&f, &expected)?;
-    f.call("wtype", &["-k", "Escape"])?;
+    physical(&f,"Escape")?;
     wait_true("physical Escape closes preview", || {
         Ok(state(&f)?["switcher"]["visible"] == false)
     })?;
@@ -211,7 +219,7 @@ pub fn run(options: Options) -> Result<()> {
     let preview = selected(&f, IDS[1])?;
     let commits = preview["commits"].as_u64().ok_or("Switcher commit count")?;
     order(&f, &expected)?;
-    f.call("wtype", &["-k", "Return"])?;
+    physical(&f,"Return")?;
     wait_true("physical commit reopens retained owner", || {
         Ok(client(&f, 1)?["windows"] == 2 && state(&f)?["active"] == IDS[1])
     })?;
@@ -243,7 +251,7 @@ pub fn run(options: Options) -> Result<()> {
             .as_array()
             .is_some_and(|rows| !rows.iter().any(|row| row["appId"] == IDS[2])))
     })?;
-    f.call("wtype", &["-k", "Return"])?;
+    physical(&f,"Return")?;
     wait_true("stale physical commit fails closed", || {
         let v = state(&f)?;
         Ok(v["switcher"]["visible"] == false
