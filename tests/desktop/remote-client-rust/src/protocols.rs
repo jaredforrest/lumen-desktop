@@ -555,6 +555,8 @@ fn legacy_clipboard(f: &mut Harness) -> Result<()> {
         f.o.tool("x11vnc").join("bin/x11vnc"),
         &["-storepasswd", &f.password, &s(&password_file)],
     )?;
+    // The disposable Xvfb has no login/display manager whose windows need protection.
+    f.env.insert("X11VNC_AVOID_WINDOWS".into(), "never".into());
     f.launch_s(
         f.o.tool("x11vnc").join("bin/x11vnc"),
         &[
@@ -574,6 +576,7 @@ fn legacy_clipboard(f: &mut Harness) -> Result<()> {
         ],
         "legacy-x11vnc.log",
     )?;
+    f.env.remove("X11VNC_AVOID_WINDOWS");
     wait("private legacy VNC server", || {
         Ok(
             TcpStream::connect_timeout(&"127.0.0.1:5906".parse()?, Duration::from_millis(100))
@@ -591,6 +594,11 @@ fn legacy_clipboard(f: &mut Harness) -> Result<()> {
     wait("actual authenticated legacy viewer", || {
         Ok(f.log("remmina.log")
             .contains("Connect signal emitted")
+            .then_some(()))
+    })?;
+    wait("actual legacy X11 selection owner readiness", || {
+        Ok(f.log("legacy-x11vnc.log")
+            .contains("created selwin:")
             .then_some(()))
     })?;
     let original = f.safe_target()?;
