@@ -249,7 +249,59 @@ fn projection_command(node: &Value, enabled: bool) -> Result<String> {
         if enabled { "on" } else { "off" }
     ))
 }
+fn initialize_display_policy(f: &Fixture) -> Result<()> {
+    let mut query = |args: &[&str]| -> lumen_spaces::Result<Value> {
+        let mut raw_args = vec!["-r"];
+        raw_args.extend_from_slice(args);
+        let (status, raw) = f.call(&raw_args).map_err(|error| error.to_string())?;
+        if !status.success() {
+            return Err(format!(
+                "Native initialization query failed: {status}: {raw}"
+            ));
+        }
+        serde_json::from_str(&raw).map_err(|error| error.to_string())
+    };
+    let version = query(&["-t", "get_version"])?;
+    let before = query(&["-t", "get_tree"])?;
+    save(
+        "runtime-before-registration",
+        &json!({"version":version,"tree":before}),
+    )?;
+    require(
+        version["space_transfer_guard"] == 3 && before["space_transfer_guard"] == 3,
+        "Native transfer capability must be advertised before fixture registration",
+    )?;
+    require(
+        before["window_groups"]["locked"] == false,
+        "Fixture session must be unlocked",
+    )?;
+    let workspaces = query(&["-t", "get_workspaces"])?;
+    let outputs = query(&["-t", "get_outputs"])?;
+    let mut policy =
+        lumen_spaces::Policy::open(PathBuf::from("/artifacts/transfer-desktop-policy.json"))?;
+    policy.reconcile(
+        workspaces.as_array().ok_or("Workspace array missing")?,
+        outputs.as_array().ok_or("Output array missing")?,
+    )?;
+    let registration = lumen_spaces::display_runtime::synchronize(
+        &mut policy,
+        &mut query,
+        Some(json!({"separateDisplays":true,"primaryDisplay":null})),
+    )?;
+    let after = query(&["-t", "get_tree"])?;
+    save(
+        "runtime-after-registration",
+        &json!({"registration":registration,"tree":after}),
+    )?;
+    require(
+        registration["applied"] == true && after["display_spaces"]["available"] == true,
+        "Production display registration must establish an available independent session",
+    )?;
+    policy::snapshot(&after)?;
+    Ok(())
+}
 pub(super) fn run(f: &mut Fixture, options: &Options) -> Result<()> {
+    initialize_display_policy(f)?;
     let root = f.mapped(0, 0)?;
     if options.without_xres {
         require(
