@@ -14,6 +14,8 @@ in (import ../../packages/owned-rust.nix { inherit pkgs; }) {
   src = ./typography-probe-rust;
   cargoLock.lockFile = ./typography-probe-rust/Cargo.lock;
   LUMEN_TYPOGRAPHY_QML = "${pkgs.qt6.qtdeclarative}/bin/qml";
+  LUMEN_TYPOGRAPHY_QML_IMPORT_PATH = "${pkgs.qt6.qtdeclarative}/lib/qt-6/qml";
+  LUMEN_TYPOGRAPHY_QT_PLUGIN_PATH = "${pkgs.qt6.qtbase}/lib/qt-6/plugins:${pkgs.qt6.qtdeclarative}/lib/qt-6/plugins";
   LUMEN_TYPOGRAPHY_QT_VERSION = pkgs.qt6.qtbase.version;
   LUMEN_TYPOGRAPHY_FONTCONFIG = "${fontConfig}";
 }
