@@ -279,7 +279,14 @@ impl Native {
         self.keyboard.as_mut().ok_or("keyboard")?.key(values)
     }
     fn navigate(&mut self, url: &str) -> Result<()> {
-        self.focus_main()?;
+        if self.keyboard_route_active {
+            ensure(
+                self.current_main()?["focused"] == true,
+                "Keyboard-only navigation lost captured main window focus",
+            )?;
+        } else {
+            self.focus_main()?;
+        }
         self.key(&["-M", "ctrl", "-k", "l", "-m", "ctrl"])?;
         self.key(&[url])?;
         self.key(&["-k", "Return"])
