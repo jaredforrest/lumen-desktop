@@ -40,7 +40,12 @@ The Rust `word-durable-history` fixture exercises the installed provider through
 stdio sessions, including process reopen, preview, consent, invalid/stale restore,
 undo, busy/special entries, archive protection and source-byte preservation. Its
 separate `--capacity-probe` checks byte-based eviction, oversized capture refusal,
-oversized pre-restore recovery refusal and oversized archive reads. Rust source
+oversized pre-restore recovery refusal and oversized archive reads. Ordinary
+protocol calls retain a ten-second deadline; only this explicit large-document
+capacity corpus uses a bounded 45-second deadline per call. It is a functional
+storage test, not a responsiveness benchmark. Private JSON-lines receipts retain
+command identity, request/response byte counts, phase and elapsed time, including
+deadline failures, without recording document or password payloads. Rust source
 tests separately cover count retention, permissions, changed targets, captured
 UI ownership and stable decision controls with long recovery content.
 

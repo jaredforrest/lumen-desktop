@@ -4,11 +4,14 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
     env,
-    fs::{self, File},
+    fs::{self, File, OpenOptions},
     io::{Read, Write},
     os::{
         fd::AsRawFd,
-        unix::{fs::PermissionsExt, process::CommandExt},
+        unix::{
+            fs::{OpenOptionsExt, PermissionsExt},
+            process::CommandExt,
+        },
     },
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
@@ -59,6 +62,8 @@ struct Provider {
     index: usize,
     facts: Vec<Value>,
     closed: bool,
+    trace: PathBuf,
+    timeout: Duration,
 }
 impl Provider {
     fn start(writer: &Path, out: &Path, index: usize) -> Result<Self> {
@@ -75,18 +80,29 @@ impl Provider {
             index,
             facts: Vec::new(),
             closed: false,
+            trace: out.join(format!("provider-{index}-rpc.jsonl")),
+            timeout: Duration::from_secs(10),
         };
         result.rpc("initialize",json!({"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"disposable-history-acceptance","version":"1"}}),META)?;
         Ok(result)
     }
     fn rpc(&mut self, method: &str, params: Value, budget: usize) -> Result<Value> {
         self.serial += 1;
+        let started = Instant::now();
+        let command = params["arguments"]["command"]
+            .as_str()
+            .unwrap_or(method)
+            .to_owned();
         let bytes = serde_json::to_vec(
             &json!({"jsonrpc":"2.0","id":self.serial,"method":method,"params":params}),
         )?;
         // Requests can contain the explicit large synthetic capacity document. Poll writes as
         // well as reads, so an unresponsive provider cannot block the fixture on a full pipe.
-        let deadline = Instant::now() + Duration::from_secs(10);
+        let deadline = Instant::now() + self.timeout;
+        record_rpc(
+            &self.trace,
+            json!({"serial":self.serial,"command":command,"phase":"request","requestBytes":bytes.len(),"responseBudget":budget,"deadlineSeconds":self.timeout.as_secs()}),
+        )?;
         let input = self.child.stdin.as_mut().ok_or("Provider input closed")?;
         let fd = input.as_raw_fd();
         let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
@@ -98,7 +114,16 @@ impl Provider {
         frame.push(b'\n');
         let mut offset = 0;
         while offset < frame.len() {
-            wait_fd(fd, libc::POLLOUT, deadline)?;
+            if let Err(failure) = wait_fd(fd, libc::POLLOUT, deadline) {
+                record_rpc(
+                    &self.trace,
+                    json!({"serial":self.serial,"command":command,"phase":"request-failed","writtenBytes":offset,"requestBytes":frame.len(),"elapsedMs":started.elapsed().as_millis()}),
+                )?;
+                return Err(error(format!(
+                    "{failure}; {command} request wrote {offset}/{} bytes",
+                    frame.len()
+                )));
+            }
             match input.write(&frame[offset..]) {
                 Ok(0) => return Err(error("Provider input closed")),
                 Ok(n) => offset += n,
@@ -106,10 +131,23 @@ impl Provider {
                 Err(e) => return Err(e.into()),
             }
         }
+        record_rpc(
+            &self.trace,
+            json!({"serial":self.serial,"command":command,"phase":"response","requestBytes":frame.len(),"responseBudget":budget,"elapsedMs":started.elapsed().as_millis(),"deadlineSeconds":self.timeout.as_secs()}),
+        )?;
         let output = self.child.stdout.as_mut().ok_or("Provider output closed")?;
         let mut response = Vec::new();
         loop {
-            wait_fd(output.as_raw_fd(), libc::POLLIN, deadline)?;
+            if let Err(failure) = wait_fd(output.as_raw_fd(), libc::POLLIN, deadline) {
+                record_rpc(
+                    &self.trace,
+                    json!({"serial":self.serial,"command":command,"phase":"response-failed","receivedBytes":response.len(),"elapsedMs":started.elapsed().as_millis()}),
+                )?;
+                return Err(error(format!(
+                    "{failure}; {command} response received {} bytes",
+                    response.len()
+                )));
+            }
             let mut chunk = [0u8; 65536];
             let size = output.read(&mut chunk)?;
             ensure(size > 0, "Provider exited before response")?;
@@ -127,6 +165,10 @@ impl Provider {
         ensure(
             reply["jsonrpc"] == "2.0" && reply["id"] == self.serial && reply.get("error").is_none(),
             "Unexpected provider response envelope",
+        )?;
+        record_rpc(
+            &self.trace,
+            json!({"serial":self.serial,"command":command,"phase":"complete","requestBytes":frame.len(),"responseBytes":response.len(),"elapsedMs":started.elapsed().as_millis(),"deadlineSeconds":self.timeout.as_secs()}),
         )?;
         Ok(reply["result"].clone())
     }
@@ -198,6 +240,17 @@ impl Drop for Provider {
         }
     }
 }
+fn record_rpc(path: &Path, value: Value) -> Result<()> {
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .mode(0o600)
+        .open(path)?;
+    serde_json::to_writer(&mut file, &value)?;
+    file.write_all(b"\n")?;
+    Ok(())
+}
+
 fn wait_fd(fd: i32, events: i16, deadline: Instant) -> Result<()> {
     let remaining = deadline.saturating_duration_since(Instant::now());
     ensure(!remaining.is_zero(), "Bounded provider response deadline")?;
@@ -419,6 +472,10 @@ fn capacity(
     facts: &mut Vec<Value>,
 ) -> Result<Vec<&'static str>> {
     let mut p = Provider::start(&o.writer, &o.output, 0)?;
+    // This explicit 32 MiB capacity corpus is not a responsiveness benchmark.
+    // Retain the ordinary ten-second protocol deadline everywhere else, and
+    // keep large-document calls bounded under slower hosted CPUs.
+    p.timeout = Duration::from_secs(45);
     p.cmd("document.setText", json!({"text":ORIGINAL}))?;
     p.cmd("file.save", json!({"path":source}))?;
     let source_hash = digest(source)?;
