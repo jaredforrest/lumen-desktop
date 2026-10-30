@@ -130,7 +130,15 @@ pub fn run(ctx:&mut Context)->Result<()> {
     need(row["tooltip"]["pixelSize"]==17,format!("Tooltip text scale missing: {row}"))?;
     let painted=paint(ctx,pid,"Shared Controls",&row["tooltip"],"brightness")?;
     cases.push(json!({"kind":"Brightness","state":row,"painted":painted}));
-    keyboard.key("Escape")?;wait("brightness dismissal",||Ok((state(ctx)?["visible"]==false).then_some(())))?;
+    keyboard.key("Escape")?;
+    let dismissed_tip=wait("brightness supplementary help dismissal",||{
+        let row=state(ctx)?;
+        Ok((row["tooltip"]["opened"]==false).then_some(row))
+    })?;
+    save(&ctx.opt.output.join("brightness-tooltip-dismissed.json"),&dismissed_tip)?;
+    need(dismissed_tip["visible"]==true && dismissed_tip["active"]==true,"Supplementary help dismissal also closed its owner")?;
+    cases.push(json!({"kind":"BrightnessTooltipDismissal","state":dismissed_tip}));
+    keyboard.key("Escape")?;wait("brightness owner dismissal after help",||Ok((state(ctx)?["visible"]==false).then_some(())))?;
     ctx.ipc("returnCase", &["reconnect"])?;wait("reconnect window",||active(ctx))?;
     ctx.ipc("focus", &["Default input"])?;focused(ctx,"Default input")?;
     let log_path=ctx.opt.output.join("shared-control-shell.log");
