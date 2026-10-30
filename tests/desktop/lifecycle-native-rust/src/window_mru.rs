@@ -388,9 +388,39 @@ pub fn run(options: Options) -> Result<()> {
             .find(|r| r["id"] != first && r["id"] != second && r["id"] != replacement)
             .map(|r| r["id"].clone()))
     })?;
-    // GTK may request activation while showing the replacement. Restore the
-    // captured pre-decision owner before testing old Return dispatch.
-    focus(&f, &other_id)?;
+    // The overlay still owns exclusive keyboard focus. Ask the compositor to
+    // restore the exact underlying owner without treating its focused flag as
+    // visible native focus until the physical decision releases that overlay.
+    let before_restore = f.tree()?;
+    require(
+        nodes(&f, OTHER)?
+            .iter()
+            .any(|row| row["id"] == other_id && row["pid"] == f.processes[other].0.id()),
+        "Underlying source container no longer belongs to the captured client",
+    )?;
+    let restore_reply: Value = serde_json::from_str(&f.call(
+        "swaymsg",
+        &[
+            "-r",
+            &format!(
+                "[con_id={}]",
+                other_id.as_u64().ok_or("Underlying source conID")?
+            ),
+            "focus",
+        ],
+    )?)?;
+    require(
+        restore_reply
+            .as_array()
+            .is_some_and(|rows| !rows.is_empty() && rows.iter().all(|row| row["success"] == true)),
+        "Compositor rejected exact underlying source focus",
+    )?;
+    save(
+        &f.options
+            .output
+            .join("window-mru-exclusive-source-restore.json"),
+        &json!({"sourceConId":other_id,"sourcePid":f.processes[other].0.id(),"before":before_restore,"reply":restore_reply,"after":f.tree()?,"switcher":state(&f)?["switcher"]}),
+    )?;
     physical(&f, "Return")?;
     wait_true(
         "same-process replacement rejects stale physical commit",
@@ -398,7 +428,8 @@ pub fn run(options: Options) -> Result<()> {
             let status = state(&f)?;
             Ok(status["switcher"]["visible"] == false
                 && status["switcher"]["commits"] == commits
-                && status["switcher"]["phase"] == "cancelled")
+                && status["switcher"]["phase"] == "cancelled"
+                && focused(&f)?["id"] == other_id)
         },
     )?;
     require(
