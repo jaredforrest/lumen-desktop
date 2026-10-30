@@ -110,6 +110,9 @@ fn run(options: &Options) -> Result<()> {
     symlink(env::current_exe()?, root.join("bin/lumen-nix-settings"))?;
     symlink(validator, root.join("bin/lumen-shortcuts"))?;
     let mut values = private_environment()?;
+    let installed=launcher_environment(&options.launcher)?;
+    for key in ["QML_IMPORT_PATH","QT_PLUGIN_PATH","LUMEN_DESKTOP_ASSETS"] {if let Some(value)=installed.get(key){values.insert(key.into(),value.clone());}}
+    values.insert("FONTCONFIG_FILE".into(),options.fontconfig.display().to_string());
     values.insert(
         "XDG_RUNTIME_DIR".into(),
         root.join("runtime").display().to_string(),
@@ -118,7 +121,7 @@ fn run(options: &Options) -> Result<()> {
         "XDG_CONFIG_HOME".into(),
         root.join("config").display().to_string(),
     );
-    values.insert("PATH".into(), root.join("bin").display().to_string());
+    values.insert("PATH".into(),format!("{}:{}",root.join("bin").display(),installed.get("PATH").ok_or("Installed PATH")?));
     values.insert("SHORTCUT_FIXTURE_ROOT".into(), root.display().to_string());
     values.insert(
         "SHORTCUT_FIXTURE_MANIFEST".into(),
@@ -262,6 +265,20 @@ fn run(options: &Options) -> Result<()> {
     )?;
     evidence.push(json!({"case":"malformed map","response":malformed}));
     publish(&initial["bundle"], &config)?;
+    fs::write(root.join("mode"),"publish")?;
+    let assets=root.join("assets");copy_tree(Path::new("/source/res/lumen-desktop"),&assets)?;
+    let state=assets.join("shell/ShortcutEditorState.qml");let mut seams=vec![];
+    replace_once(&state,"command:[\"lumen-shortcut-settings\"]",&format!("command:[{}]",serde_json::to_string(helper)?),"Actual immutable raw helper; only executable resolution substitutes the pinned session wrapper",&mut seams)?;
+    store(root.join("qml-seams.json"),&json!(seams))?;
+    for (name,width,editable) in [("read-only",320,false),("compact",320,true),("regular",520,true)] {
+        publish(if editable{&initial["bundle"]}else{&manifest["readOnly"]},&config)?;
+        store(root.join("settings.json"),&initial["settings"])?;
+        let qml=root.join(format!("{name}.qml"));let screenshot=root.join(format!("{name}.png"));
+        fs::write(&qml,include_str!("../../shortcut_editor_fixture.qml").replace("WIDTH",&width.to_string()).replace("EDITABLE",if editable{"true"}else{"false"}).replace("SCREENSHOT",&screenshot.display().to_string()))?;
+        let result=Command::new("timeout").args(["20s","quickshell","-p"]).arg(qml).env_clear().envs(&values).output()?;
+        let log=String::from_utf8_lossy(&result.stdout).to_string()+&String::from_utf8_lossy(&result.stderr);fs::write(root.join(format!("{name}.log")),&log)?;
+        require(result.status.success() && log.contains(if editable{"SHORTCUT_EDITOR_ACTUAL_PASS"}else{"SHORTCUT_EDITOR_READONLY_PASS"}),&format!("Actual shortcut QML failed: {log}"))?;
+    }
     store(
         root.join("result.json"),
         &json!({"passed":true,"groups":evidence.len(),"cases":evidence,"moduleManifest":manifest_path,"scope":"Real Rust edit process and validator; real immutable Nix module generations; disposable settings/deployment transport only, no host activation"}),
@@ -280,5 +297,5 @@ fn main() -> Result<()> {
     if !options.inside {
         return outer(&options);
     }
-    inner_with_timeout(&options, 60, || run(&options))
+    if options.run {run(&options)} else {inner_with_timeout(&options,60)}
 }
