@@ -7,7 +7,9 @@ ApplicationWindow {
  property bool imageSaved:false
  function check(value,message){if(!value)throw Error(message || "Assertion failed");}
  function equal(a,b){check(a===b,"Expected "+b+", got "+a);}
- D.ShortcutEditorPane {id:pane;width:window.width-24;x:12;y:12;active:true}
+ Rectangle {id:frame;anchors.fill:parent;color:D.Theme.colors.background
+  D.ShortcutEditorPane {id:pane;width:window.width-24;x:12;y:12;active:true}
+ }
  TestCase {
   id:test;name:"ActualShortcutEditor";when:false
   function find(item,name){if(item.objectName===name)return item;for(const child of item.children || []){const value=find(child,name);if(value)return value;}return null;}
@@ -25,7 +27,7 @@ ApplicationWindow {
    click("shortcut-editor-restore");waitUntil(()=>!pane.service.busy && pane.row.enabled && pane.row.chord===pane.row.defaultChord);check(pane.service.message.includes("confirmed"));
    check(pane.height<=window.height-24);for(const name of ["shortcut-editor-apply","shortcut-editor-disable","shortcut-editor-restore","shortcut-editor-discard"]){const item=find(pane,name),at=item.mapToItem(window.contentItem,0,0);check(at.x>=0 && at.x+item.width<=window.width,name+" clipped");}
    check(selector.displayText.includes(pane.row.action),"Selected action label diverged after generation replacement");
-   window.contentItem.grabToImage(result=>{window.imageSaved=result.saveToFile("SCREENSHOT");});waitUntil(()=>window.imageSaved);console.log("SHORTCUT_EDITOR_ACTUAL_PASS");
+   frame.grabToImage(result=>{window.imageSaved=result.saveToFile("SCREENSHOT");});waitUntil(()=>window.imageSaved);console.log("SHORTCUT_EDITOR_ACTUAL_PASS");
   }
  }
  Timer {interval:100;running:true;onTriggered:{try{test.test_actual();Qt.quit();}catch(error){console.error("SHORTCUT_EDITOR_FAILED "+error+" "+error.stack);Qt.exit(1);}}}
