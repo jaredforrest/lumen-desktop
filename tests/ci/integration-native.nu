@@ -129,6 +129,8 @@ def main [] {
     build test-clipboard-producer clipboard-producer
     build clipboard-observer clipboard-observer
 
+    ^nu tests/ci/group-presentation.nu $shell $basic $effects
+
     for compositor in [compositor compositor-effects] {
         let flags = if $compositor == 'compositor-effects' { ['--effects'] } else { [] }
         let sway = (artifact $'($compositor)/bin/sway')

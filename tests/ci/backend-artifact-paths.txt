@@ -133,3 +133,4 @@ artifacts/shortcut-settings-typography
 artifacts/native-focus-guard-*
 artifacts/native-identity-*
 artifacts/native-window-inventory-*
+artifacts/group-presentation-*
