@@ -1,12 +1,14 @@
 diff --git a/src/wayland/toplevel/CMakeLists.txt b/src/wayland/toplevel/CMakeLists.txt
-index 0c1d555..41f3d73 100644
+index 0c1d555..dac3033 100644
 --- a/src/wayland/toplevel/CMakeLists.txt
 +++ b/src/wayland/toplevel/CMakeLists.txt
-@@ -16,10 +16,12 @@ qs_add_module_deps_light(quickshell-wayland-toplevel-management
+@@ -16,10 +16,14 @@ qs_add_module_deps_light(quickshell-wayland-toplevel-management
  install_qml_module(quickshell-wayland-toplevel-management)
  
  wl_proto(wlp-foreign-toplevel wlr-foreign-toplevel-management-unstable-v1 "${CMAKE_CURRENT_SOURCE_DIR}")
 +wl_proto(wlp-toplevel-identity lumen-toplevel-identity-v1 "${CMAKE_CURRENT_SOURCE_DIR}")
++target_compile_options(wlp-toplevel-identity PRIVATE -Werror)
++target_compile_options(quickshell-wayland-toplevel-management PRIVATE -Werror)
  
  target_link_libraries(quickshell-wayland-toplevel-management PRIVATE
  	Qt::Quick Qt::WaylandClient Qt::WaylandClientPrivate wayland-client
@@ -17,7 +19,7 @@ index 0c1d555..41f3d73 100644
  qs_module_pch(quickshell-wayland-toplevel-management SET large)
 diff --git a/src/wayland/toplevel/lumen-toplevel-identity-v1.xml b/src/wayland/toplevel/lumen-toplevel-identity-v1.xml
 new file mode 100644
-index 0000000..37b66a2
+index 0000000..9d6ce6b
 --- /dev/null
 +++ b/src/wayland/toplevel/lumen-toplevel-identity-v1.xml
 @@ -0,0 +1,45 @@
@@ -46,7 +48,7 @@ index 0000000..37b66a2
 +        The reply is one-shot and independent of the manager lifetime.
 +      </description>
 +      <arg name="id" type="new_id" interface="lumen_toplevel_identity_reply_v1"/>
-+      <arg name="handle" type="object"/>
++      <arg name="handle" type="object" interface="zwlr_foreign_toplevel_handle_v1"/>
 +    </request>
 +  </interface>
 +  <interface name="lumen_toplevel_identity_reply_v1" version="1">
@@ -116,7 +118,7 @@ index 72ceb1a..d0f4e94 100644
  	void parentChanged();
  	void activatedChanged();
 diff --git a/src/wayland/toplevel/wlr_toplevel.cpp b/src/wayland/toplevel/wlr_toplevel.cpp
-index 6055e22..3155c35 100644
+index 6055e22..fed360b 100644
 --- a/src/wayland/toplevel/wlr_toplevel.cpp
 +++ b/src/wayland/toplevel/wlr_toplevel.cpp
 @@ -1,4 +1,5 @@
@@ -198,7 +200,7 @@ index 6055e22..3155c35 100644
 +	if (changed) emit this->foreignToplevelIdentifierChanged();
 +	if (!self || generation != this->identityGeneration || !this->isInitialized()
 +	    || !this->isReady || !IdentityManager::instance()->isActive()) return;
-+	auto* proxy = IdentityManager::instance()->resolve(reinterpret_cast<wl_object*>(this->object()));
++	auto* proxy = IdentityManager::instance()->resolve(this->object());
 +	this->identityReply = new IdentityReply(this, this->identityGeneration, proxy);
 +}
 +
