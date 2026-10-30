@@ -27,6 +27,29 @@ fn focused(value: &Value, title: &str) -> bool {
     })
 }
 pub fn run(f: &mut Fixture, qml: &Path, peer: &Path, folder: &Path, incoming: &Path) -> Result<()> {
+    // The namespace's /tmp and retained /artifacts may be distinct mounts.
+    // Mirror ordinary same-volume home/Trash placement for this supported Undo
+    // journey; cross-volume refusal is independently covered by endpoint tests.
+    let destination = f.options.output.join("CopyUndoFiles");
+    fs::create_dir(&destination)?;
+    for name in ["drag space # café.txt", "second.txt"] {
+        fs::copy(folder.join(name), destination.join(name))?;
+    }
+    let folder = destination.as_path();
+    f.ipc(
+        qml,
+        "filesDragTest",
+        "navigate",
+        &[folder.to_str().ok_or("Copy Undo destination")?],
+    )?;
+    wait_true("same-volume owned Files destination listing", || {
+        let current = state(f, qml)?;
+        Ok(current["path"] == folder.display().to_string()
+            && current["busy"] == false
+            && current["rows"]
+                .as_array()
+                .is_some_and(|rows| rows.len() == 2))
+    })?;
     let original = incoming.join("copy undo # café.txt");
     let output = folder.join(original.file_name().ok_or("Incoming basename")?);
     let payload = b"Native Copy Undo retains the original source.\n";
