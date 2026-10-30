@@ -169,6 +169,7 @@ in {
       "XF86AudioPrev" = "exec ${mediaKey}/bin/lumen-media-key previous";
     } // builtins.listToAttrs (map (n: { name = "Mod4+Mod1+F${toString n}"; value = "exec ${menuCommand}/bin/lumen-menu-command slot ${toString n}"; }) (lib.range 1 12));
     shortcutValidator = pkgs.callPackage ../packages/shortcuts.nix { };
+    shortcutSettings = pkgs.callPackage ../packages/shortcut-settings.nix { };
     shortcutDefaults = (builtins.fromJSON (builtins.readFile ../res/lumen-desktop/runtime/shortcut-defaults.json)).bindings;
     rebound = import ../packages/shortcut-rebindings.nix { inherit lib; base = baseDesktopKeybindings; defaults = shortcutDefaults; rebindings = cfg.shortcuts.rebindings; };
     desktopKeybindings = rebound.bindings // readerBindings;
@@ -211,7 +212,7 @@ in {
     # Session UI only: the consumer retains all authentication policy.
     wayland.windowManager.sway.config.startup = lib.optionals cfg.integrations.authorization.enable [
       { command = "${authorizationAgent}/libexec/polkit-gnome-authentication-agent-1"; }
-    ];
+    ] ++ lib.optional cfg.shortcuts.editable { command = "${shortcutSettings}/bin/lumen-shortcut-runtime-witness ${shortcutRegistry}"; always = true; };
     # Own the theme declaratively, rather than keeping temporary config links.
     wayland.windowManager.sway.extraConfig = lib.mkAfter (builtins.readFile ../res/lumen-desktop/sway.conf + ''
       # libinput exposes three-finger swipes; two-finger edge gestures are not available in Sway.

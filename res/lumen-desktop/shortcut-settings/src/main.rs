@@ -1,4 +1,5 @@
 //! Declarative owned shortcut edits; dispatch remains compositor-owned.
+use lumen_shortcut_settings::{process, runtime};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{
@@ -44,6 +45,8 @@ struct Snapshot {
     catalog: Value,
     registry: Value,
     generation: String,
+    runtime: Option<Value>,
+    runtime_error: String,
 }
 fn snapshot() -> Result<Snapshot> {
     let config = configuration()?;
@@ -72,27 +75,43 @@ fn snapshot() -> Result<Snapshot> {
     digest.update((catalog_bytes.len() as u64).to_le_bytes());
     digest.update(catalog_bytes);
     digest.update(registry_bytes);
+    let (runtime, runtime_error) = match runtime::confirmed(&expected) {
+        Ok(value) => (Some(value), String::new()),
+        Err(error) => (None, error),
+    };
+    digest.update(serde_json::to_vec(&runtime).map_err(|e| e.to_string())?);
     Ok(Snapshot {
         catalog,
         registry,
         generation: format!("{:x}", digest.finalize()),
+        runtime,
+        runtime_error,
     })
 }
 fn status(s: &Snapshot) -> Value {
-    json!({"available":true,"editable":s.catalog["editable"],"generation":s.generation,"bindings":s.catalog["bindings"],"boundary":"Owned default-mode symbol bindings only. Raw compositor configuration, runtime changes, keycodes and undeclared application shortcuts are not covered."})
+    json!({"available":true,"configuredEditable":s.catalog["editable"],"editable":s.catalog["editable"]==true && s.runtime.is_some(),"runtimeConfirmed":s.runtime.is_some(),"runtimeDetail":s.runtime_error,"generation":s.generation,"bindings":s.catalog["bindings"],"boundary":"Owned default-mode symbol bindings only. Raw compositor configuration, runtime changes, keycodes and undeclared application shortcuts are not covered."})
 }
 fn settings(args: &[&str]) -> Result<Value> {
-    let result = Command::new("lumen-nix-settings")
-        .args(args)
-        .output()
-        .map_err(|e| e.to_string())?;
+    let budget = if args.first() == Some(&"read") {
+        20
+    } else {
+        4000
+    };
+    let result = process::run(
+        "lumen-nix-settings",
+        args,
+        Duration::from_secs(budget),
+        &directory()?.join("provider-diagnostic.log"),
+    )?;
     let parsed = serde_json::from_slice::<Value>(&result.stdout)
-        .map_err(|_| "Settings provider returned an invalid response")?;
-    if !result.status.success() || parsed.get("error").is_some() {
+        .map_err(|_| "Settings provider returned an invalid response; outcome is unconfirmed")?;
+    if !result.success || parsed.get("error").is_some() {
         return Err(parsed["error"]
             .as_str()
             .unwrap_or("Settings update failed")
-            .to_owned());
+            .chars()
+            .take(2000)
+            .collect());
     }
     Ok(parsed)
 }
@@ -131,13 +150,23 @@ fn validate(s: &Snapshot, row: &Value, chord: Option<&str>) -> Result<()> {
             .as_bytes(),
     )
     .map_err(|e| e.to_string())?;
-    let result = Command::new("lumen-shortcuts").arg(&path).output();
+    let result = process::run(
+        "lumen-shortcuts",
+        &[path.to_str().ok_or("Invalid validation path")?],
+        Duration::from_secs(5),
+        &directory()?.join("validator-diagnostic.log"),
+    );
     let _ = fs::remove_file(path);
-    let result = result.map_err(|e| e.to_string())?;
-    if !result.status.success() {
+    let result = result?;
+    if !result.success {
+        let value: Value = serde_json::from_slice(&result.stdout).unwrap_or(Value::Null);
         return Err(format!(
             "Shortcut rejected; previous map retained. {}",
-            String::from_utf8_lossy(&result.stderr).trim()
+            value["diagnostics"]
+                .to_string()
+                .chars()
+                .take(2000)
+                .collect::<String>()
         ));
     }
     Ok(())
@@ -145,6 +174,7 @@ fn validate(s: &Snapshot, row: &Value, chord: Option<&str>) -> Result<()> {
 fn confirms(id: &str, chord: Option<&str>) -> Option<Snapshot> {
     let s = snapshot().ok()?;
     let confirmed = s.catalog["editable"] == true
+        && s.runtime.is_some()
         && s.catalog["bindings"].as_array().is_some_and(|rows| {
             rows.iter().any(|r| {
                 r["id"] == id
@@ -182,6 +212,12 @@ fn confirms(id: &str, chord: Option<&str>) -> Option<Snapshot> {
 fn edit(request: &Value, s: &Snapshot) -> Result<Value> {
     if s.catalog["editable"] != true {
         return Err("Shortcut editing requires an explicitly wired consumer configuration".into());
+    }
+    if s.runtime.is_none() {
+        return Err(format!(
+            "Shortcut activation is unconfirmed: {}",
+            s.runtime_error
+        ));
     }
     if request["generation"] != s.generation {
         return Err("Shortcut configuration changed; review it before retrying".into());
@@ -248,8 +284,7 @@ fn edit(request: &Value, s: &Snapshot) -> Result<Value> {
     while Instant::now() < deadline {
         if let Some(witness) = confirms(id, chord) {
             let mut reply = status(&witness);
-            reply["message"] =
-                json!("Shortcut applied and confirmed in the effective configuration");
+            reply["message"] = json!("Shortcut applied and confirmed in the running compositor");
             return Ok(reply);
         }
         thread::sleep(Duration::from_millis(50));
@@ -306,6 +341,7 @@ fn run() -> Result<Value> {
     }
 }
 fn main() {
+    process::install_interrupts();
     // Children inherit only the pinned package PATH supplied by the session wrapper.
     match run() {
         Ok(value) => println!("{value}"),

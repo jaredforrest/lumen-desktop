@@ -18,6 +18,7 @@ Column {
     PanelLabel {text:"Configured Shortcuts";font.weight:Font.DemiBold}
     PanelLabel {width:parent.width;wrapMode:Text.Wrap;color:Theme.colors.muted;text:root.service.editable?"Changes rebuild the authoritative configuration. Apply succeeds only when the effective map confirms the change.":"Read-only configuration. Shortcut editing requires an explicitly wired consumer configuration."}
     PanelLabel {width:parent.width;wrapMode:Text.Wrap;color:Theme.colors.muted;text:root.service.boundary}
+    PanelLabel {width:parent.width;wrapMode:Text.Wrap;color:Theme.colors.muted;visible:root.service.configuredEditable && !root.service.runtimeConfirmed;text:root.service.runtimeDetail}
     StatusMessage {width:parent.width;text:root.service.error;severity:"error"}
     StatusMessage {width:parent.width;text:root.service.message;severity:"success"}
     PanelLabel {width:parent.width;visible:root.service.busy;wrapMode:Text.Wrap;text:root.service.request.action==="status"?"Reading effective shortcuts…":"Building and applying the requested shortcut. The previous map remains active until activation completes."}
