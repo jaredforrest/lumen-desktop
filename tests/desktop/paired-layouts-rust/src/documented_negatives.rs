@@ -204,6 +204,10 @@ pub fn relationships(fixture: &mut Fixture<'_>, anchor: i64) -> Result<()> {
             .then_some(()))
     })?;
     let before = json!({"anchor":fixture.required(anchor)?,"modal":fixture.required(dialog)?});
+    require(
+        before["anchor"]["lumen_pair"]["eligible"] == true,
+        "Modal rejection source is not independently eligible",
+    )?;
     let command = fixture.rejected(
         &format!("lumen_pair create {anchor} {dialog}"),
         "modal-primary-command.json",
