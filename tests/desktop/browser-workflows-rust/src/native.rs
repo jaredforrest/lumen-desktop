@@ -1125,7 +1125,15 @@ impl Native {
         self.finish_result()
     }
     fn open_save(&mut self) -> Result<Value> {
-        self.click_page("#sample")?;
+        if self.keyboard_route_active {
+            ensure(
+                self.current_main()?["focused"] == true
+                    && self.evaluate("document.hasFocus()")? == true,
+                "Keyboard-only save requires the captured browser/page to retain focus",
+            )?;
+        } else {
+            self.click_page("#sample")?;
+        }
         let existing = self
             .windows()?
             .into_iter()
