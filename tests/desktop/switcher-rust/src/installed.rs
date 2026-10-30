@@ -28,7 +28,15 @@ fn focus(ctx: &Context, shell: u32, title: &str) -> Result<()> {
     ctx.focus(title)?;
     wait(&format!("shell focus {title}"), || {
         Ok((status(ctx, shell)?["active"] == title).then_some(()))
+    })?;
+    let target=ctx.find(title)?.ok_or("Focused native window missing")?["id"].clone();
+    wait(&format!("broker source focus {title}"),||{
+        let state=status(ctx,shell)?;
+        Ok((state["nativeObservation"]["source"]["kind"]=="native" && state["nativeObservation"]["source"]["conId"]==target).then_some(()))
     })
+}
+fn native_selection(state:&Value,identities:&BTreeMap<String,Value>,title:&str)->Result<()>{
+    ensure(state["picker"]["nativeCapture"]["conId"]==identities[title][0],format!("Preview did not capture exact native {title}: {state}"))
 }
 fn app(
     ctx: &mut Context,
@@ -194,7 +202,7 @@ pub fn run(ctx: &mut Context) -> Result<()> {
         1,
     );
     let end = modified.rfind('}').ok_or("Shell root missing")?;
-    modified.insert_str(end,"\n property bool switchAuditSuppressActivation:false\n IpcHandler {target:\"switchAudit\"\n function suppressActivation(value:bool):void{root.switchAuditSuppressActivation=value;}\n function focusCaptured(title:string):void{const target=root.windows.find(w=>w.title===title);if(target)root.focusWindow(target);}\n function status():string{return JSON.stringify({picker:JSON.parse(applicationSwitcher.status()),active:root.active?root.active.title:\"\",windows:root.windows.map(w=>({title:w.title,app:w.appId,minimized:w.minimized})),creation:root.windowCreationOrder.map(w=>w.title)});}\n }\n");
+    modified.insert_str(end,"\n property bool switchAuditSuppressActivation:false\n IpcHandler {target:\"switchAudit\"\n function suppressActivation(value:bool):void{root.switchAuditSuppressActivation=value;}\n function focusCaptured(title:string):void{const target=root.windows.find(w=>w.title===title);if(target)root.focusWindow(target);}\n function status():string{return JSON.stringify({picker:JSON.parse(applicationSwitcher.status()),active:root.active?root.active.title:\"\",nativeObservation:root.nativeWindowObservation,error:root.applicationCommandError,windows:root.windows.map(w=>({title:w.title,app:w.appId,minimized:w.minimized})),creation:root.windowCreationOrder.map(w=>w.title)});}\n }\n");
     fs::write(&qml, modified)?;
     let pidfile = out.join("service.pid");
     let locator = out.join("systemctl-private");
@@ -315,22 +323,34 @@ pub fn run(ctx: &mut Context) -> Result<()> {
     for title in ["C", "B", "A1"] {
         focus(ctx, shell, title)?;
     }
+    wait("initial native observation",||{
+        let s=status(ctx,shell)?;
+        let observation=&s["nativeObservation"];
+        Ok((observation["source"]["conId"]==identities["A1"][0] && observation["captures"].as_array().is_some_and(|r|r.len()==5)).then_some(()))
+    })?;
     let (proc, commits, offset) = held(ctx, shell, false, 1)?;
     let previewed = preview(ctx, shell, &identities, commits, offset)?;
+    native_selection(&previewed,&identities,"B")?;
     ensure(
         previewed["picker"]["key"] == "lumen-fixture-b",
         "Forward preview wrong app",
     )?;
     release(ctx, proc)?;
-    wait("forward release B", || {
+    let mut trace=vec![previewed];
+    let forward=wait("forward release B", || {
+        let state=status(ctx,shell)?;
+        if trace.last()!=Some(&state){if trace.len()==16{trace.remove(0);}trace.push(state);}
         Ok((focused(ctx, &identities)?.as_deref() == Some("B")).then_some(()))
-    })?;
+    });
+    save(&out.join("forward-release-trace.json"),&json!(trace))?;
+    forward?;
     results.insert("forward".into(), status(ctx, shell)?);
     for title in ["C", "B", "A1"] {
         focus(ctx, shell, title)?;
     }
     let (proc, commits, offset) = held(ctx, shell, true, 1)?;
     let previewed = preview(ctx, shell, &identities, commits, offset)?;
+    native_selection(&previewed,&identities,"C")?;
     ensure(
         previewed["picker"]["key"] == "lumen-fixture-c",
         "Reverse preview wrong app",
@@ -344,7 +364,7 @@ pub fn run(ctx: &mut Context) -> Result<()> {
         focus(ctx, shell, title)?;
     }
     let (proc, commits, offset) = held(ctx, shell, false, 1)?;
-    preview(ctx, shell, &identities, commits, offset)?;
+    native_selection(&preview(ctx, shell, &identities, commits, offset)?,&identities,"B")?;
     ctx.keys(&["-k", "Escape"])?;
     release(ctx, proc)?;
     wait("cancelled picker", || {
@@ -440,7 +460,7 @@ pub fn run(ctx: &mut Context) -> Result<()> {
         focus(ctx, shell, title)?;
     }
     let (proc, commits, offset) = held(ctx, shell, false, 1)?;
-    preview(ctx, shell, &identities, commits, offset)?;
+    native_selection(&preview(ctx, shell, &identities, commits, offset)?,&identities,"B")?;
     kill_window(ctx, "B")?;
     release(ctx, proc)?;
     wait("removed app cancels", || {
@@ -455,14 +475,19 @@ pub fn run(ctx: &mut Context) -> Result<()> {
         focus(ctx, shell, title)?;
     }
     let (proc, commits, offset) = held(ctx, shell, false, 1)?;
-    preview(ctx, shell, &identities, commits, offset)?;
+    native_selection(&preview(ctx, shell, &identities, commits, offset)?,&identities,"B2")?;
     kill_window(ctx, "B2")?;
     app(ctx, shell, &mut identities, "B3", "lumen-fixture-b")?;
+    // Mapping B3 can focus it independently of the switcher. Restore the
+    // captured source beneath the overlay so a stale replacement dispatch
+    // cannot masquerade as successful refusal.
+    ctx.focus("A1")?;
     release(ctx, proc)?;
-    wait("same-app replacement", || {
-        Ok((focused(ctx, &identities)?.as_deref() == Some("B3")).then_some(()))
+    wait("same-app replacement refused", || {
+        let state=status(ctx,shell)?;
+        Ok((state["picker"]["phase"]=="cancelled" && state["picker"]["commits"]==commits && focused(ctx, &identities)?.as_deref() == Some("A1")).then_some(()))
     })?;
-    results.insert("replacement".into(), status(ctx, shell)?);
+    results.insert("replacementRefused".into(), status(ctx, shell)?);
     let node = ctx.find("B3")?.ok_or("B3 missing")?;
     ctx.named(
         "swaymsg",
@@ -491,6 +516,7 @@ pub fn run(ctx: &mut Context) -> Result<()> {
     wait("minimized app selection", || {
         Ok((status(ctx, shell)?["picker"]["key"] == "lumen-fixture-b").then_some(()))
     })?;
+    native_selection(&status(ctx,shell)?,&identities,"B3")?;
     ensure(
         status(ctx, shell)?["picker"]["commits"] == commits,
         "Minimized preview committed early",
