@@ -5,6 +5,10 @@ a small wrapper around the pinned standard `rustPlatform.buildRustPackage`.
 The source contract rejects new owned derivations that call the underlying
 builder directly. This includes the character-viewer runtime and private native
 test fixtures, rather than only packages exported as top-level flake attributes.
+Standalone owned `rustc` invocations, including compilers launched inside test
+processes, pass the same explicit warning denial. The source contract checks the
+repository's direct command and `Command::args` forms to prevent accidental
+omissions; the offscreen QML check actually compiles and runs those fixtures.
 
 The builder appends `-D warnings` to compiler and documentation flags while
 preserving existing direct or `env` flags. Encoded Cargo flags take precedence

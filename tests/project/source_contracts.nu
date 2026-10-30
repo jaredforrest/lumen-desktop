@@ -32,6 +32,16 @@ def main [root: path] {
         if (['.cpp' '.cc' '.cxx' '.hpp' '.hh' '.hxx'] | any {|suffix| $path | str ends-with $suffix }) {
             $errors = ($errors | append $'First-party C++ source restored: ($relative)')
         }
+        for hit in ($content | parse -r '(?m)^\s*\^?rustc\s+(?<arguments>[^\r\n]+)') {
+            if $hit.arguments !~ '-D(?:warnings|\s+warnings)(?:\s|$)' {
+                $errors = ($errors | append $'Standalone Rust compiler lacks warning denial: ($relative)')
+            }
+        }
+        for hit in ($content | parse -r '(?s)Command::new\("rustc"\)\s*\.args\(\[(?<arguments>[^\]]*)\]') {
+            if $hit.arguments !~ '"-Dwarnings"|"-D"\s*,\s*"warnings"' {
+                $errors = ($errors | append $'Nested Rust compiler lacks warning denial: ($relative)')
+            }
+        }
         if ($path | str ends-with '.nix') {
             let upstream_rust_builders = [packages/wordcraft-source.nix packages/gridcraft-source.nix packages/deckcraft-source.nix]
             if ($content | str contains 'pkgs.rustPlatform.buildRustPackage') and $relative != 'packages/owned-rust.nix' and $relative not-in $upstream_rust_builders {
