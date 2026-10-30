@@ -41,7 +41,7 @@ This is a functional grouping workflow, not a complete spatial presentation.
 The recent groups edge selector is implemented below. Owned Overview membership drag is implemented below. Spatial packing, previews
 and animations are not implemented. Ordinary tiled windows
 retain their original layout slots. The per-application presentation setting is
-described below. Sticky windows, X11 windows and shared-process shell windows are currently ungrouped;
+described below. Sticky windows and shared-process shell windows are currently ungrouped;
 the latter need explicit owned-role adapters rather than title-based inference.
 Groups have a 256-entry bound; additional eligible roots remain ungrouped and
 visible if that limit is reached. A native desktop destroyed while all its members
@@ -54,9 +54,14 @@ membership is claimed.
 **Settings → Desktop & Dock → Application windows in a group** controls the
 persisted, typed `windows.groupWindowMode` preference: `all_together` (default)
 or `one_at_a_time`. The latter retains the most recently focused eligible root
-of each exact native application ID in the selected group, with that root's
+of each exact native application identity in the selected group, with that root's
 protocol-owned dialogs. Different applications sharing a process remain
-independent. Unknown application IDs are not merged. Real accepted focus is
+independent. Wayland application IDs and managed X11 classes occupy separate
+identity namespaces; only exact nonempty values within the same view type merge.
+Managed X11 membership requires the validated native relationship adapter,
+including its process and parent-chain checks. Unknown application identities are
+not merged. Invalidated relationships retire membership even while a window is
+in the scratchpad. Real accepted focus is
 recorded in both modes and while grouping is off. Existing focus commands can
 activate another root; no window is closed, resized or moved by this setting.
 

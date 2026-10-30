@@ -1,0 +1,60 @@
+diff --git a/sway/tree/lumen_groups.c b/sway/tree/lumen_groups.c
+--- a/sway/tree/lumen_groups.c
++++ b/sway/tree/lumen_groups.c
+@@ -36,15 +36,23 @@ static struct group *find(uint64_t id) {
+ }
+ static struct sway_container *parent(struct sway_container *con) {
+- if (!con->view || con->view->type != SWAY_VIEW_XDG_SHELL) return NULL;
+- struct wlr_xdg_toplevel *p = con->view->wlr_xdg_toplevel->parent;
+- if (!p) return NULL;
+- struct sway_view *v = view_from_wlr_xdg_surface(p->base);
+- return v ? v->container : NULL;
++ struct sway_view *owner = NULL;
++ int modal;
++ if (!con->view || !lumen_view_relationship(con->view, &owner, &modal)) return NULL;
++ return owner ? owner->container : NULL;
+ }
+-static bool eligible(struct sway_container *con) {
+- if (!con->view || con->node.destroying || con->view->pid <= 0 ||
+-     con->view->type != SWAY_VIEW_XDG_SHELL || !con->pending.workspace ||
+-     con->pending.workspace->node.destroying || container_is_sticky_or_child(con)) return false;
++static bool supported_view(struct sway_container *con) {
++ if (!con->view || con->node.destroying || con->view->pid <= 0) return false;
++ struct sway_view *owner = NULL;
++ int modal;
++ if (!lumen_view_relationship(con->view, &owner, &modal)) return false;
++#if WLR_HAS_XWAYLAND
++ if (con->view->type == SWAY_VIEW_XWAYLAND) return true;
++#endif
++ if (con->view->type != SWAY_VIEW_XDG_SHELL) return false;
+  const char *app = view_get_app_id(con->view);
+  return !app || strcmp(app, "org.quickshell") != 0;
+ }
++static bool eligible(struct sway_container *con) {
++ return supported_view(con) && con->pending.workspace &&
++     !con->pending.workspace->node.destroying && !container_is_sticky_or_child(con);
++}
+@@ -77,6 +85,6 @@ static void reconcile_member(struct sway_container *con, void *data) {
+  if (!eligible(con)) {
+   /* Scratchpad members retain their identity without gaining visibility. */
+-  if (g && con->view && !con->node.destroying && !con->pending.workspace) g->members++;
++  if (g && supported_view(con) && !con->pending.workspace) g->members++;
+   else if (con->lumen_group_id) {con->lumen_group_id = 0; revision++;}
+   return;
+  }
+@@ -125,6 +133,14 @@ static struct sway_container *presentation_owner(struct sway_container *con) {
+ }
+ static bool same_application(struct sway_container *a, struct sway_container *b) {
+  if (a == b) return true;
+- const char *left = view_get_app_id(a->view), *right = view_get_app_id(b->view);
++ if (!a->view || !b->view || a->view->type != b->view->type) return false;
++ const char *left = NULL, *right = NULL;
++ if (a->view->type == SWAY_VIEW_XDG_SHELL) {
++  left = view_get_app_id(a->view); right = view_get_app_id(b->view);
++#if WLR_HAS_XWAYLAND
++ } else if (a->view->type == SWAY_VIEW_XWAYLAND) {
++  left = view_get_class(a->view); right = view_get_class(b->view);
++#endif
++ }
+  return left && *left && right && *right && !strcmp(left, right);
+ }
