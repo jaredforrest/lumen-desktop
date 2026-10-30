@@ -30,7 +30,7 @@ Column {
     }
     PanelLabel {width:parent.width;wrapMode:Text.WordWrap;elide:Text.ElideNone;text:root.page==="Fonts"?"Preview a font. Apply formatting in the app that owns your document.":"Choose a colour, save swatches or copy its value.";font.pixelSize:12;color:Theme.colors.muted}
     Column {visible:root.page==="Fonts";width:parent.width;spacing:10
-        TextField {width:parent.width;height:32;placeholderText:"Search font families";Accessible.name:"Search font families";onTextChanged:root.fontQuery=text;color:Theme.colors.text;font.family:Theme.font;background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline}}
+        DesktopTextField {width:parent.width;height:32;placeholderText:"Search font families";Accessible.name:"Search font families";onTextChanged:root.fontQuery=text;color:Theme.colors.text;font.family:Theme.font;background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline}}
         Row {width:parent.width;spacing:8
             DesktopComboBox {id:family;width:parent.width-110;model:root.families;Accessible.name:"Font family";Component.onCompleted:currentIndex=Math.max(0,model.indexOf(Theme.font))}
             DialogButton {width:102;text:root.favourites.includes(family.currentText)?"★ Saved":"☆ Save";enabled:!!family.currentText;Accessible.name:"Save font to favourites";onClicked:{root.favourites=root.favourites.includes(family.currentText)?root.favourites.filter(f=>f!==family.currentText):root.favourites.concat([family.currentText]);root.save();}}
@@ -68,7 +68,7 @@ Column {
             }
         }
         Row {spacing:8;width:parent.width
-            TextField {width:120;height:30;text:root.chosen.toString();color:Theme.colors.text;font.family:Theme.font;Accessible.name:"Hex colour, optional alpha first";selectByMouse:true;validator:RegularExpressionValidator {regularExpression:/#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})/}onEditingFinished:if(acceptableInput)root.setColour(text);background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline}}
+            DesktopTextField {width:120;height:30;text:root.chosen.toString();color:Theme.colors.text;font.family:Theme.font;Accessible.name:"Hex colour, optional alpha first";selectByMouse:true;validator:RegularExpressionValidator {regularExpression:/#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})/}onEditingFinished:if(acceptableInput)root.setColour(text);background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline}}
             DialogButton {width:90;text:"Copy Hex";onClicked:root.copyRequested(root.chosen.toString())}
             DialogButton {width:110;text:"Save Swatch";onClicked:{const hex=root.chosen.toString();root.swatches=root.swatches.filter(c=>c!==hex).concat([hex]).slice(-20);root.save();}}
         }

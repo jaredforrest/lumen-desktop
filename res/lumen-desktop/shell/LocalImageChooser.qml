@@ -22,7 +22,7 @@ Popup {
         spacing:8
         PanelLabel {width:parent.width;text:"Choose Wallpaper";font.weight:Font.DemiBold}
         PanelLabel {width:parent.width;wrapMode:Text.Wrap;text:"Browse local folders or enter an absolute image path. Personal files remain in place.";color:Theme.colors.muted}
-        TextField {id:location;objectName:"wallpaper-location";width:parent.width;placeholderText:"Folder or image path";text:root.service.folder;font.family:Theme.font;font.pixelSize:Theme.textSize(13);color:Theme.colors.text;selectionColor:Theme.colors.accent;selectedTextColor:Theme.colors.selectedText;background:Rectangle {radius:6;color:Theme.colors.field;border.color:location.activeFocus?Theme.colors.accent:Theme.outline}
+        DesktopTextField {id:location;objectName:"wallpaper-location";width:parent.width;placeholderText:"Folder or image path";text:root.service.folder;font.family:Theme.font;font.pixelSize:Theme.textSize(13);color:Theme.colors.text;selectionColor:Theme.colors.accent;selectedTextColor:Theme.colors.selectedText;background:Rectangle {radius:6;color:Theme.colors.field;border.color:location.activeFocus?Theme.colors.accent:Theme.outline}
             Accessible.name:"Local image or folder path";onAccepted:{if(/\.(png|jpe?g)$/i.test(text)){root.selectedPath=text;}else root.service.browse(text);}}
         DialogButton {objectName:"wallpaper-folder-up";text:"Parent folder";enabled:!root.service.busy;onClicked:root.service.browse(root.service.parentFolder)}
         ListView {id:files;objectName:"wallpaper-image-list";width:parent.width;height:Math.max(80,root.availableHeight-270);clip:true;model:root.service.entries;currentIndex:-1;keyNavigationEnabled:true;ScrollBar.vertical:DesktopScrollBar {}

@@ -4,7 +4,7 @@ in pkgs.stdenv.mkDerivation {
   dontWrapQtApps = true;
   pname = "lumen-qt-wayland-client-runtime";
   inherit (qt) version src;
-  patches = (qt.patches or [ ]) ++ [ ./qtwayland-destroyed-focus-release.patch ];
+  patches = (qt.patches or [ ]) ++ [ ./qtwayland-destroyed-focus-release.patch ./qtwayland-empty-preedit-composition.patch ];
   nativeBuildInputs = (qt.nativeBuildInputs or [ ]) ++ [ pkgs.cmake pkgs.ninja pkgs.pkg-config pkgs.wayland-scanner pkgs.patchelf pkgs.binutils qt ];
   buildInputs = (qt.buildInputs or [ ]) ++ (qt.propagatedBuildInputs or [ ]) ++ [ qt pkgs.wayland pkgs.wayland-protocols pkgs.libxkbcommon ];
   NIX_CFLAGS_COMPILE = qt.NIX_CFLAGS_COMPILE or "";

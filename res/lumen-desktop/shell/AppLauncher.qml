@@ -5,7 +5,7 @@ import Quickshell
 PanelSurface {
     id: root
     required property var shell
-    Keys.onEscapePressed:root.closeRequested()
+    Keys.onEscapePressed:event=>{if(InputOwnership.textOwns(event,root.Window.window))event.accepted=false;else root.closeRequested();}
     signal closeRequested()
     readonly property var disabledProviders: Theme.searchPreferences.disabledProviders || []
     readonly property var providerChoices: ["All","Applications","Files","Actions","Clipboard"].filter(name=>name==="All" || !disabledProviders.includes(name.toLowerCase()))
@@ -143,11 +143,12 @@ PanelSurface {
         id:searchArea;width:parent.width;height:Math.max(66,search.implicitHeight+28)
         SystemGlyph {x:22;anchors.verticalCenter:parent.verticalCenter;name:"search";width:24;height:24;ink:Theme.colors.muted}
         TextInput {
-            id:search;x:60;anchors.verticalCenter:parent.verticalCenter;width:parent.width-84
+            id:search;objectName:"launcher-query";x:60;anchors.verticalCenter:parent.verticalCenter;width:parent.width-84
             font.family:Theme.font;font.pixelSize:Theme.textSize(24);color:Theme.colors.text;selectionColor:Theme.colors.accent;clip:true
             onTextChanged:{root.selectedIndex=0;if(root.visible){if(root.provider==="Clipboard")clipboard.search(text);else if(root.providerEnabled("Files"))root.service.search(text);}}
             PanelLabel {visible:search.text.length===0;text:"Search";font.pixelSize:Theme.textSize(24);color:Theme.colors.muted}
             Keys.onPressed:event=>{
+                if(InputOwnership.textOwns(event,root.Window.window)){event.accepted=false;return;}
                 if((event.modifiers & Qt.ControlModifier) && event.key===Qt.Key_1){if(root.providerEnabled("Applications")){root.provider="Applications";root.gridMode=true;}event.accepted=true;}
                 else if((event.modifiers & Qt.ControlModifier) && event.key===Qt.Key_2){root.setProvider("Files");event.accepted=true;}
                 else if((event.modifiers & Qt.ControlModifier) && event.key===Qt.Key_3){root.setProvider("Actions");event.accepted=true;}
@@ -158,10 +159,11 @@ PanelSurface {
                 else if(event.key===Qt.Key_Tab && (event.modifiers & Qt.ControlModifier)){root.cycleProvider();event.accepted=true;}
                 else event.accepted=false;
             }
-            Keys.onDownPressed:event=>{if(event.modifiers & Qt.AltModifier)root.recallHistory(-1);else root.moveSelection(root.gridMode?5:1);event.accepted=true;}
-            Keys.onUpPressed:event=>{if(event.modifiers & Qt.AltModifier)root.recallHistory(1);else root.moveSelection(root.gridMode?-5:-1);event.accepted=true;}
-            Keys.onReturnPressed:event=>root.launch(root.selectedIndex,!!(event.modifiers & Qt.ControlModifier))
-            Keys.onEscapePressed:root.closeRequested()
+            Keys.onDownPressed:event=>{if(InputOwnership.textOwns(event,root.Window.window)){event.accepted=false;return;}if(event.modifiers & Qt.AltModifier)root.recallHistory(-1);else root.moveSelection(root.gridMode?5:1);event.accepted=true;}
+            Keys.onUpPressed:event=>{if(InputOwnership.textOwns(event,root.Window.window)){event.accepted=false;return;}if(event.modifiers & Qt.AltModifier)root.recallHistory(1);else root.moveSelection(root.gridMode?-5:-1);event.accepted=true;}
+            Keys.onReturnPressed:event=>{if(InputOwnership.textOwns(event,root.Window.window))event.accepted=false;else root.launch(root.selectedIndex,!!(event.modifiers & Qt.ControlModifier));}
+            Keys.onEnterPressed:event=>{if(InputOwnership.textOwns(event,root.Window.window))event.accepted=false;else root.launch(root.selectedIndex,!!(event.modifiers & Qt.ControlModifier));}
+            Keys.onEscapePressed:event=>{if(InputOwnership.textOwns(event,root.Window.window))event.accepted=false;else root.closeRequested();}
             Accessible.name:"Search applications, files, actions and clipboard history"
         }
     }

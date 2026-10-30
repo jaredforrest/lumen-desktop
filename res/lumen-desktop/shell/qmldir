@@ -1,4 +1,6 @@
 singleton Theme 1.0 Theme.qml
+singleton InputOwnership 1.0 InputOwnership.qml
+DesktopTextField 1.0 DesktopTextField.qml
 BatteryState 1.0 BatteryState.qml
 BatteryGlyph 1.0 BatteryGlyph.qml
 BatteryMenuButton 1.0 BatteryMenuButton.qml

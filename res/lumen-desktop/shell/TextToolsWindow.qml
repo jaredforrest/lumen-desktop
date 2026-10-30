@@ -83,7 +83,7 @@ FloatingWindow {
                 }
             }
             Row {visible:root.page==="Replacements";width:parent.width;spacing:8
-                TextField {id:name;width:parent.width-108;height:Math.max(30,Theme.textRole("body")+16);color:Theme.colors.text;font.family:Theme.font;font.pixelSize:Theme.textRole("body");placeholderText:"Abbreviation or name";placeholderTextColor:Theme.colors.muted;Accessible.name:"Replacement name";background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline}}
+                DesktopTextField {id:name;width:parent.width-108;height:Math.max(30,Theme.textRole("body")+16);color:Theme.colors.text;font.family:Theme.font;font.pixelSize:Theme.textRole("body");placeholderText:"Abbreviation or name";placeholderTextColor:Theme.colors.muted;Accessible.name:"Replacement name";background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline}}
                 DialogButton {width:100;text:"Save";enabled:!!name.text && !!input.text && !worker.running;onClicked:root.send({action:"save",name:name.text,text:input.text})}
             }
             SettingsToggle {visible:root.page==="Replacements";width:parent.width;text:"Automatic replacements in supported fields";checked:root.automaticReplacements;onToggled:root.send({action:"automatic-replacements",enabled:checked})}
@@ -100,20 +100,20 @@ FloatingWindow {
             Column {visible:root.page==="Shortcuts";width:parent.width;spacing:10
                 PanelLabel {width:parent.width;text:"Application: "+root.targetApp;wrapMode:Text.WordWrap}
                 DesktopComboBox {id:slot;width:parent.width;model:Array.from({length:12},(_,i)=>"⌘⌥F"+(i+1));Accessible.name:"Menu shortcut slot"}
-                TextField {width:parent.width;height:Math.max(32,Theme.textRole("body")+16);readOnly:true;placeholderText:"Click here, then press ⌘⌥F1–F12";placeholderTextColor:Theme.colors.muted;Accessible.name:"Capture application shortcut";color:Theme.colors.text;font.family:Theme.font;font.pixelSize:Theme.textRole("body");background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline}
-                    Keys.onPressed:event=>{if((event.modifiers & Qt.MetaModifier) && (event.modifiers & Qt.AltModifier) && event.key>=Qt.Key_F1 && event.key<=Qt.Key_F12){slot.currentIndex=event.key-Qt.Key_F1;text="⌘⌥F"+(slot.currentIndex+1);event.accepted=true;}}
+                DesktopTextField {width:parent.width;height:Math.max(32,Theme.textRole("body")+16);readOnly:true;placeholderText:"Click here, then press ⌘⌥F1–F12";placeholderTextColor:Theme.colors.muted;Accessible.name:"Capture application shortcut";color:Theme.colors.text;font.family:Theme.font;font.pixelSize:Theme.textRole("body");background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline}
+                    Keys.onPressed:event=>{if(InputOwnership.textOwns(event,root.contentItem.Window.window)){event.accepted=false;return;}if((event.modifiers & Qt.MetaModifier) && (event.modifiers & Qt.AltModifier) && event.key>=Qt.Key_F1 && event.key<=Qt.Key_F12){slot.currentIndex=event.key-Qt.Key_F1;text="⌘⌥F"+(slot.currentIndex+1);event.accepted=true;}}
                 }
                 DesktopComboBox {width:parent.width;model:["Choose an application command…"].concat(root.menuCommands);enabled:root.menuCommands.length>0;Accessible.name:"Application command";onActivated:index=>{if(index>0)menuPath.text=root.menuCommands[index-1];}}
                 PanelLabel {width:parent.width;text:root.menuCommands.length?"Choose a command above or enter its menu path below.":"This app does not export menu commands. Shortcuts need an app with an exported menu.";wrapMode:Text.WordWrap;font.pixelSize:Theme.textRole("metadata");color:Theme.colors.muted}
-                TextField {id:menuPath;width:parent.width;height:Math.max(32,Theme.textRole("body")+16);color:Theme.colors.text;font.family:Theme.font;font.pixelSize:Theme.textRole("body");placeholderText:"Exact menu path, e.g. File/Save";placeholderTextColor:Theme.colors.muted;Accessible.name:"Menu command path";background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline}}
+                DesktopTextField {id:menuPath;width:parent.width;height:Math.max(32,Theme.textRole("body")+16);color:Theme.colors.text;font.family:Theme.font;font.pixelSize:Theme.textRole("body");placeholderText:"Exact menu path, e.g. File/Save";placeholderTextColor:Theme.colors.muted;Accessible.name:"Menu command path";background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline}}
                 DialogButton {width:parent.width;text:"Save Application Shortcut";enabled:!!menuPath.text;onClicked:root.send({action:"save-shortcut",slot:slot.currentIndex+1,app:root.targetApp,path:menuPath.text})}
             }
             StatusMessage {width:parent.width;text:root.error;severity:root.severity}
         }
         }
-        Shortcut {sequence:"Ctrl+Tab";enabled:root.visible;onActivated:root.page=root.pages[(root.pages.indexOf(root.page)+1)%root.pages.length]}
-        Shortcut {sequence:"Ctrl+Shift+Tab";enabled:root.visible;onActivated:root.page=root.pages[(root.pages.indexOf(root.page)+root.pages.length-1)%root.pages.length]}
-        Shortcut {sequence:"Escape";enabled:root.visible;onActivated:root.visible=false}
+        Shortcut {sequence:"Ctrl+Tab";enabled:root.visible && !InputOwnership.composing(root.contentItem.Window.window);onActivated:root.page=root.pages[(root.pages.indexOf(root.page)+1)%root.pages.length]}
+        Shortcut {sequence:"Ctrl+Shift+Tab";enabled:root.visible && !InputOwnership.composing(root.contentItem.Window.window);onActivated:root.page=root.pages[(root.pages.indexOf(root.page)+root.pages.length-1)%root.pages.length]}
+        Shortcut {sequence:"Escape";enabled:root.visible && !InputOwnership.composing(root.contentItem.Window.window);onActivated:root.visible=false}
     }
     Timer {interval:121000;running:root.recording;onTriggered:root.send({action:"dictation-finish"})}
     Timer {id:insertion;property string text;interval:150;onTriggered:root.send({action:"insert",text:text,target:root.target})}

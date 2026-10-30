@@ -69,7 +69,7 @@ PanelSurface {
             PanelLabel {width:parent.width;text:"Pair with "+root.pairingName;textFormat:Text.PlainText;wrapMode:Text.WordWrap;font.weight:Font.DemiBold}
             PanelLabel {width:parent.width;text:root.promptKind==="confirm"?"Confirm this code matches the device:":root.promptKind==="display"?"Enter this code on the device:":root.promptKind==="authorize"?"Allow this device to pair?":root.promptKind==="pin" || root.promptKind==="passkey"?"Enter the code provided by the device:":root.pairingMessage;wrapMode:Text.WordWrap}
             PanelLabel {visible:!!root.passcode;text:root.passcode;font.pixelSize:25;font.weight:Font.DemiBold}
-            TextField {id:pin;visible:["pin","passkey"].includes(root.promptKind);width:parent.width;color:Theme.colors.text;font.family:Theme.font;Accessible.name:"Pairing code";background:Rectangle {radius:6;color:Theme.colors.field;border.color:Theme.colors.accent}}
+            DesktopTextField {id:pin;visible:["pin","passkey"].includes(root.promptKind);width:parent.width;color:Theme.colors.text;font.family:Theme.font;Accessible.name:"Pairing code";background:Rectangle {radius:6;color:Theme.colors.field;border.color:Theme.colors.accent}}
             Row {spacing:8
                 DialogButton {width:110;text:pairing.running?"Cancel":"Close";onClicked:{if(pairing.running)pairing.write(JSON.stringify({action:"cancel"})+"\n");pairDialog.close();}}
                 DialogButton {width:130;text:"Pair";primary:true;visible:["confirm","authorize","pin","passkey"].includes(root.promptKind);onClicked:{pairing.write(JSON.stringify({accept:true,value:pin.text})+"\n");root.promptKind="";root.pairingMessage="Pairing…";}}

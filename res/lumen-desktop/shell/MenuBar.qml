@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Window
 import Quickshell
 import Quickshell.Wayland
 import "MenuLayout.js" as MenuLayout
@@ -228,7 +229,7 @@ PanelWindow {
         WlrLayershell.keyboardFocus: bar.menu!==""?WlrKeyboardFocus.Exclusive:WlrKeyboardFocus.None
         MouseArea { anchors.fill: parent; onClicked: shell.claimPopup("") }
         Item { id:popupContents;anchors.fill:parent;focus:true
-            Keys.onEscapePressed:bar.menu=""
+            Keys.onEscapePressed:event=>{if(InputOwnership.textOwns(event,popupContents.Window.window))event.accepted=false;else bar.menu="";}
             Keys.onDownPressed:event=>{if(!bar.special){bar.stepBuiltin(1);event.accepted=true;}else event.accepted=false;}
             Keys.onUpPressed:event=>{if(!bar.special){bar.stepBuiltin(-1);event.accepted=true;}else event.accepted=false;}
             Keys.onRightPressed:event=>{if(!bar.special){bar.switchHeading(1);event.accepted=true;}else event.accepted=false;}

@@ -1,0 +1,14 @@
+--- a/src/plugins/platforms/wayland/qwaylandtextinputv3.cpp
++++ b/src/plugins/platforms/wayland/qwaylandtextinputv3.cpp
+@@ -174,7 +174,10 @@ void QWaylandTextInputv3::zwp_text_input_v3_done(uint32_t serial)
+     qCDebug(qLcQpaWaylandTextInput) << Q_FUNC_INFO << "PREEDIT" << m_pendingPreeditString.text << m_pendingPreeditString.cursorBegin;
+ 
+     QList<QInputMethodEvent::Attribute> attributes;
+-    {
++    // An empty preedit finishes composition. Cursor/format attributes would
++    // keep QQuickTextInput's hasImState set even after the committed text has
++    // arrived, preventing applications from resuming ordinary key handling.
++    if (!m_pendingPreeditString.text.isEmpty()) {
+         if (m_pendingPreeditString.cursorBegin != -1 ||
+                 m_pendingPreeditString.cursorEnd != -1) {
+             // Current supported cursor shape is just line.

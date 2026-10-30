@@ -260,7 +260,7 @@ PanelSurface {
     }
     // Compact content stays read-only; navigation hands off to the Calendar app.
     ControlRow {id:relatedLink;objectName:"calendar-open-related";visible:root.compact;width:parent.width-36;x:18;y:content.y+content.height+4;property var activationDate:null;text:root.events.length>3?"Show all "+root.total+" events in Calendar":"Open Calendar";onPressed:activationDate=new Date(root.selected);onCanceled:activationDate=null;onClicked:{const day=activationDate || new Date(root.selected);activationDate=null;root.openCalendar(day);}}
-    component CalendarField: TextField {
+    component CalendarField: DesktopTextField {
         height:Math.max(30,root.textSize(12)+16);font.family:Theme.font;font.pixelSize:root.textSize(12);color:Theme.colors.text;placeholderTextColor:Theme.colors.muted
         selectionColor:(root.monochrome?Theme.colors.muted:Theme.colors.accent);selectedTextColor:Theme.colors.selectedText
         background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?(root.monochrome?Theme.colors.muted:Theme.colors.accent):Theme.hairline}

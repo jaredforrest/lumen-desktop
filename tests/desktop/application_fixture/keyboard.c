@@ -48,7 +48,8 @@ int main(void) {
  if(wl_display_roundtrip(state.display)<0 || wl_display_roundtrip(state.display)<0 || !state.seat || !state.manager){fprintf(stderr,"private virtual keyboard unavailable\n");return 1;}
  struct zwp_virtual_keyboard_v1 *keyboard=zwp_virtual_keyboard_manager_v1_create_virtual_keyboard(state.manager,state.seat);
  struct xkb_context *context=xkb_context_new(XKB_CONTEXT_NO_FLAGS);
- struct xkb_rule_names names={.layout="us"};
+ const char *fixture_layout=getenv("LUMEN_TEST_LAYOUT");
+ struct xkb_rule_names names={.layout=fixture_layout?fixture_layout:"us"};
  struct xkb_keymap *map=NULL;
  const char *fixture_map=getenv("LUMEN_TEST_KEYMAP");
  if(context && fixture_map){
@@ -68,7 +69,7 @@ int main(void) {
  while(fgets(line,sizeof(line),stdin)) {
   char op,extra;unsigned int serial,value,pressed;
   if(!strchr(line,'\n') || sscanf(line," %c %u %u %u %c",&op,&serial,&value,&pressed,&extra)!=4 || !serial ||
-   (op!='k' && op!='m') || (op=='k' && (value>255 || pressed>1)) || (op=='m' && ((value&~(1u|4u|8u|64u)) || pressed))) {
+   (op!='k' && op!='m') || (op=='k' && (value>255 || pressed>1)) || (op=='m' && ((value&~(1u|4u|8u|64u|128u)) || pressed))) {
    fprintf(stderr,"invalid keyboard command; no acknowledgement\n");result=2;break;
   }
   if(op=='k')zwp_virtual_keyboard_v1_key(keyboard,0,value,pressed);

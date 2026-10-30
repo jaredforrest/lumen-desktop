@@ -130,8 +130,9 @@ FloatingWindow {
         layer.enabled:!Theme.nativeWindowFrame && GraphicsInfo.api !== GraphicsInfo.Software
         layer.effect:MultiEffect {maskEnabled:true;maskSource:windowMask}
         id:content;anchors.fill:parent;focus:true
-        Keys.onEscapePressed:root.visible=false
+        Keys.onEscapePressed:event=>{if(InputOwnership.textOwns(event,content.Window.window))event.accepted=false;else root.visible=false;}
         Keys.onPressed:event=>{
+            if(InputOwnership.textOwns(event,content.Window.window)){event.accepted=false;return;}
             if((event.modifiers & Qt.ControlModifier) && event.key===Qt.Key_F){search.forceActiveFocus();event.accepted=true;}
             else if((event.modifiers & Qt.ControlModifier) && event.key===Qt.Key_W){root.visible=false;event.accepted=true;}
             else if(event.modifiers & Qt.AltModifier){if(event.key===Qt.Key_Left){root.back(-1);event.accepted=true;}else if(event.key===Qt.Key_Right){root.back(1);event.accepted=true;}}
@@ -153,7 +154,7 @@ FloatingWindow {
                 else if(win){if(win.visibility===Window.FullScreen)win.showNormal();else win.showFullScreen();}
             }
         }
-        TextField {
+        DesktopTextField {
             placeholderTextColor:Theme.colors.muted;selectionColor:Theme.colors.accent;selectedTextColor:Theme.colors.selectedText
 
             id:search;objectName:"settings-search";x:14;y:56;width:root.sidebarWidth-28;height:Math.max(30,implicitHeight+8)
@@ -162,8 +163,8 @@ FloatingWindow {
             background:Rectangle {radius:7;color:Theme.colors.background;border.color:search.activeFocus?Theme.colors.accent:Theme.hairline}
             onTextChanged:root.searchIndex=0
             onAccepted:root.acceptSearch(root.searchResults[root.searchIndex])
-            Keys.onDownPressed:root.searchIndex=Math.min(root.searchResults.length-1,root.searchIndex+1)
-            Keys.onUpPressed:root.searchIndex=Math.max(0,root.searchIndex-1)
+            Keys.onDownPressed:event=>{if(InputOwnership.textOwns(event,content.Window.window))event.accepted=false;else root.searchIndex=Math.min(root.searchResults.length-1,root.searchIndex+1);}
+            Keys.onUpPressed:event=>{if(InputOwnership.textOwns(event,content.Window.window))event.accepted=false;else root.searchIndex=Math.max(0,root.searchIndex-1);}
         }
         ScrollView {
             id:sidebarScroll;objectName:"settings-navigation-viewport"
@@ -348,7 +349,7 @@ FloatingWindow {
                         }
                     }
                     Row {width:parent.width;spacing:8
-                        TextField {objectName:"settings-control-add-file-to-dock";id:dockFilePath;width:parent.width-90;placeholderText:"/absolute/file/path";Accessible.name:"Add file to Dock";color:Theme.colors.text;background:Rectangle {radius:6;color:Theme.colors.field;border.color:dockFilePath.activeFocus?Theme.colors.accent:Theme.hairline}}
+                        DesktopTextField {objectName:"settings-control-add-file-to-dock";id:dockFilePath;width:parent.width-90;placeholderText:"/absolute/file/path";Accessible.name:"Add file to Dock";color:Theme.colors.text;background:Rectangle {radius:6;color:Theme.colors.field;border.color:dockFilePath.activeFocus?Theme.colors.accent:Theme.hairline}}
                         DialogButton {width:82;text:"Add File";enabled:root.service.available && !root.service.busy && dockFilePath.text.startsWith("/") && !(root.service.preferences.dockFiles || []).includes(dockFilePath.text);onClicked:{root.service.setPreference("dockFiles",(root.service.preferences.dockFiles || []).concat([dockFilePath.text]));dockFilePath.text="";}}
                     }
                     PanelLabel {text:"Dock folders";font.weight:Font.DemiBold}
@@ -363,7 +364,7 @@ FloatingWindow {
                         }
                     }
                     Row {width:parent.width;spacing:8
-                        TextField {objectName:"settings-control-add-folder-to-dock";id:dockFolderPath;width:parent.width-90;placeholderText:"/absolute/folder/path";Accessible.name:"Add folder to Dock";color:Theme.colors.text;background:Rectangle {radius:6;color:Theme.colors.field;border.color:dockFolderPath.activeFocus?Theme.colors.accent:Theme.hairline}}
+                        DesktopTextField {objectName:"settings-control-add-folder-to-dock";id:dockFolderPath;width:parent.width-90;placeholderText:"/absolute/folder/path";Accessible.name:"Add folder to Dock";color:Theme.colors.text;background:Rectangle {radius:6;color:Theme.colors.field;border.color:dockFolderPath.activeFocus?Theme.colors.accent:Theme.hairline}}
                         DialogButton {width:82;text:"Add Folder";enabled:root.service.available && !root.service.busy && dockFolderPath.text.startsWith("/") && !(root.service.preferences.dockFolders || []).some(f=>f.path===dockFolderPath.text);onClicked:{root.service.setPreference("dockFolders",(root.service.preferences.dockFolders || []).concat([{path:dockFolderPath.text,sort:"modified",descending:true,presentation:"auto"}]));dockFolderPath.text="";}}
                     }
                     PanelLabel {text:"Show scroll bars"}

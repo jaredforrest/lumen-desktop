@@ -18,7 +18,7 @@ Column {
     function schedule(index,key,value) {
         const next=JSON.parse(JSON.stringify(profile.schedules));next[index][key]=value;update("schedules",next);
     }
-    TextField {id:profileName;width:parent.width;height:32;color:Theme.colors.text;selectionColor:Theme.colors.accent;selectedTextColor:Theme.colors.selectedText;font.family:Theme.font;background:Rectangle {radius:6;color:Theme.colors.field;border.color:profileName.activeFocus?Theme.colors.accent:Theme.hairline}text:root.profile?root.profile.name:"";Accessible.name:"Focus profile name";onEditingFinished:if(text.trim())root.update("name",text.trim())}
+    DesktopTextField {id:profileName;width:parent.width;height:32;color:Theme.colors.text;selectionColor:Theme.colors.accent;selectedTextColor:Theme.colors.selectedText;font.family:Theme.font;background:Rectangle {radius:6;color:Theme.colors.field;border.color:profileName.activeFocus?Theme.colors.accent:Theme.hairline}text:root.profile?root.profile.name:"";Accessible.name:"Focus profile name";onEditingFinished:if(text.trim())root.update("name",text.trim())}
     ControlRow {width:parent.width;Accessible.role:Accessible.CheckBox;Accessible.checkable:true;Accessible.checked:!!root.profile && root.profile.allowCritical;Accessible.name:"Allow critical notifications";text:(root.profile && root.profile.allowCritical?"✓  ":"")+"Allow critical notifications";onClicked:root.update("allowCritical",!root.profile.allowCritical)}
     PanelLabel {text:"Allowed apps";font.weight:Font.DemiBold}
     Repeater {model:root.service.applications

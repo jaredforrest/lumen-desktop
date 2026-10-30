@@ -103,6 +103,7 @@ FloatingWindow {
         layer.enabled:!Theme.nativeWindowFrame && GraphicsInfo.api !== GraphicsInfo.Software;layer.effect:MultiEffect {maskEnabled:true;maskSource:windowMask}
         Rectangle {anchors.fill:parent;color:root.canvasColor}
         Keys.onPressed:event=>{
+            if(InputOwnership.textOwns(event,content.Window.window)){event.accepted=false;return;}
             if(event.key===Qt.Key_Escape){root.inspector=false;calendar.editing=false;event.accepted=true;}
             else if(event.modifiers & Qt.ControlModifier){
                 if(event.key===Qt.Key_T){root.choose(new Date());event.accepted=true;}
@@ -125,7 +126,7 @@ FloatingWindow {
                 delegate:Tool {required property string modelData;label:modelData;width:Math.max(60,implicitWidth);background:Rectangle {radius:6;color:root.view===parent.modelData?(Theme.dark?"#555559":"#dedee1"):parent.hovered?Theme.colors.hover:"transparent"}onClicked:root.view=modelData}
             }
         }
-        TextField {id:search;width:root.width<900?100+(Theme.textRole("label")-12)*5:155;height:Math.max(28,Theme.textRole("label")+14);anchors.right:parent.right;anchors.rightMargin:16;y:12;placeholderText:"Search";font.family:Theme.font;font.pixelSize:Theme.textRole("label");color:Theme.colors.text;placeholderTextColor:Theme.colors.muted;selectByMouse:true;Accessible.name:"Search this month's events";background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline}}
+        DesktopTextField {id:search;width:root.width<900?100+(Theme.textRole("label")-12)*5:155;height:Math.max(28,Theme.textRole("label")+14);anchors.right:parent.right;anchors.rightMargin:16;y:12;placeholderText:"Search";font.family:Theme.font;font.pixelSize:Theme.textRole("label");color:Theme.colors.text;placeholderTextColor:Theme.colors.muted;selectByMouse:true;Accessible.name:"Search this month's events";background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline}}
         ScrollView {id:calendarSidebarScroll;objectName:"calendar-sidebar-viewport";visible:root.sidebar;x:12;y:root.toolbarHeight+20;width:root.sidebarWidth-24;height:Math.max(1,parent.height-y-45-geometryStatus.height);clip:true
             FocusFlickable {id:calendarSidebarContent;clip:true;contentWidth:width;contentHeight:calendarSidebarColumn.height
             Column {id:calendarSidebarColumn;width:calendarSidebarScroll.availableWidth;spacing:6;onPositioningComplete:Qt.callLater(calendarSidebarContent.revealFocus)

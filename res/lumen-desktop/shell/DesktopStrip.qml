@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Window
 import "DesktopOrderModel.js" as Ordering
 
 Item {
@@ -62,10 +63,10 @@ Item {
         onCanceled:root.cancel()
         onWheel:wheel=>{list.contentX=Math.max(0,Math.min(list.contentWidth-list.width,list.contentX-wheel.angleDelta.y));wheel.accepted=true;}
     }
-    Shortcut {sequence:"Ctrl+Left";enabled:root.editing;onActivated:root.step(-1)}
-    Shortcut {sequence:"Ctrl+Right";enabled:root.editing;onActivated:root.step(1)}
-    Shortcut {sequence:"Return";enabled:root.editing;onActivated:root.commit()}
-    Shortcut {sequence:"Enter";enabled:root.editing;onActivated:root.commit()}
-    Shortcut {sequence:"Escape";enabled:root.editing;onActivated:root.cancel()}
+    Shortcut {sequence:"Ctrl+Left";enabled:root.editing && !InputOwnership.composing(root.Window.window);onActivated:root.step(-1)}
+    Shortcut {sequence:"Ctrl+Right";enabled:root.editing && !InputOwnership.composing(root.Window.window);onActivated:root.step(1)}
+    Shortcut {sequence:"Return";enabled:root.editing && !InputOwnership.composing(root.Window.window);onActivated:root.commit()}
+    Shortcut {sequence:"Enter";enabled:root.editing && !InputOwnership.composing(root.Window.window);onActivated:root.commit()}
+    Shortcut {sequence:"Escape";enabled:root.editing && !InputOwnership.composing(root.Window.window);onActivated:root.cancel()}
 
 }

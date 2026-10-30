@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Window
 import Quickshell
 import Quickshell.Io
 import "DesktopLayoutModel.js" as Layout
@@ -135,6 +136,7 @@ Item {
 
         focus:root.keyboardActive
         Keys.onPressed:event=>{
+            if(InputOwnership.textOwns(event,root.Window.window)){event.accepted=false;return;}
             const primary=event.modifiers&(Qt.ControlModifier|Qt.MetaModifier);
             if(event.key===Qt.Key_Escape){if(root.nativeDragActive)dragProxy.Drag.cancel();else root.cancelDrag();dropConfirmation.close();actions.close();editor.close();trashConfirmation.close();root.pendingTrash=[];root.leaveKeyboard();}
             else if(primary && event.key===Qt.Key_A){root.selectedPaths=root.service.rows.map(row=>row.path);if(root.selectedPaths.length)root.currentPath=root.selectedPaths[0];}
@@ -265,7 +267,7 @@ Item {
             background:Rectangle {radius:12;color:Theme.colors.background;border.color:Theme.outline}
             contentItem:Column {spacing:12
                 PanelLabel {text:editor.mode==="rename"?"Rename":"New Folder";font.weight:Font.DemiBold}
-                TextField {id:nameField;width:parent.width;Accessible.name:"Name";color:Theme.colors.text;selectByMouse:true;background:Rectangle {radius:6;color:Theme.colors.field;border.color:Theme.colors.accent}onAccepted:if(text)root.submitName()}
+                DesktopTextField {id:nameField;width:parent.width;Accessible.name:"Name";color:Theme.colors.text;selectByMouse:true;background:Rectangle {radius:6;color:Theme.colors.field;border.color:Theme.colors.accent}onAccepted:if(text)root.submitName()}
                 Row {width:parent.width;spacing:8
                     DialogButton {width:(parent.width-8)/2;text:"Cancel";onClicked:editor.close()}
                     DialogButton {width:(parent.width-8)/2;text:editor.mode==="rename"?"Rename":"Create";enabled:!!nameField.text;primary:true;onClicked:root.submitName()}

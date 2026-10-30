@@ -53,7 +53,7 @@ Popup {
             }
         }
     }
-    component RenameField:TextField {
+    component RenameField:DesktopTextField {
         color:Theme.colors.text;placeholderTextColor:Theme.colors.muted
         selectionColor:Theme.colors.accent;selectedTextColor:Theme.colors.selectedText
         font.family:Theme.font;font.pixelSize:Theme.textSize(13)

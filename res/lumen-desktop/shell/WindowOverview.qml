@@ -75,8 +75,9 @@ FloatingWindow {
     function step(delta){draggedId=0;selected=Math.max(0,Math.min(matches.length-1,selected+delta));grid.positionViewAtIndex(selected,GridView.Contain);}
     Timer {id:activation;property var data;interval:100;onTriggered:{if(root.busy)restart();else root.send(data);}}
     Rectangle {id:content;anchors.fill:parent;radius:Theme.nativeWindowFrame?0:12;color:Theme.colors.background;border.color:Theme.outline;focus:true
-        Keys.onEscapePressed:{if(root.shell.groupMembershipDrag && root.shell.groupMembershipDrag.active)root.shell.groupMembershipDrag.cancel();else if(desktopStrip.editing)desktopStrip.cancel();else root.visible=false;}
+        Keys.onEscapePressed:event=>{if(InputOwnership.textOwns(event,content.Window.window)){event.accepted=false;return;}if(root.shell.groupMembershipDrag && root.shell.groupMembershipDrag.active)root.shell.groupMembershipDrag.cancel();else if(desktopStrip.editing)desktopStrip.cancel();else root.visible=false;}
         Keys.onPressed:event=>{
+            if(InputOwnership.textOwns(event,content.Window.window)){event.accepted=false;return;}
             if(event.key===Qt.Key_Down){root.step(Math.max(1,Math.floor(grid.width/grid.cellWidth)));event.accepted=true;}
             else if(event.key===Qt.Key_Up){root.step(-Math.max(1,Math.floor(grid.width/grid.cellWidth)));event.accepted=true;}
             else if(event.key===Qt.Key_Left){root.step(-1);event.accepted=true;}
@@ -89,7 +90,7 @@ FloatingWindow {
         FocusFlickable {id:bodyViewport;objectName:"overview-body-scroll";x:0;y:44;width:parent.width;height:parent.height-y;clip:true;contentWidth:width;contentHeight:body.height
             ScrollBar.vertical:DesktopScrollBar {}
             Item {id:body;width:bodyViewport.width;height:Math.max(bodyViewport.height,grid.y+root.cardHeight+footer.implicitHeight+29)
-        TextField {id:search;x:20;y:10;width:parent.width-40;height:Math.max(32,contentItem.implicitHeight+12);placeholderText:"Find a window";placeholderTextColor:Theme.colors.muted;color:Theme.colors.text;font.family:Theme.font;font.pixelSize:Theme.textRole("label");selectByMouse:true;Accessible.name:"Find a window";onTextChanged:{root.draggedId=0;root.selected=0;}onAccepted:root.activate();background:Rectangle {radius:8;color:Theme.colors.field;border.color:search.activeFocus?Theme.colors.accent:Theme.hairline}}
+        DesktopTextField {id:search;x:20;y:10;width:parent.width-40;height:Math.max(32,contentItem.implicitHeight+12);placeholderText:"Find a window";placeholderTextColor:Theme.colors.muted;color:Theme.colors.text;font.family:Theme.font;font.pixelSize:Theme.textRole("label");selectByMouse:true;Accessible.name:"Find a window";onTextChanged:{root.draggedId=0;root.selected=0;}onAccepted:root.activate();background:Rectangle {radius:8;color:Theme.colors.field;border.color:search.activeFocus?Theme.colors.accent:Theme.hairline}}
         DesktopStrip {id:desktopStrip;x:20;y:search.y+search.height+12;width:parent.width-40;height:implicitHeight;desktops:root.workspaces;revision:root.revision;sessionEpoch:root.sessionEpoch;busy:root.busy;outputId:root.outputs[desktopOutput.currentIndex]?root.outputs[desktopOutput.currentIndex].logicalId:"";selectedId:root.managedDesktopId
             onSelectedIdChanged:root.managedDesktopId=selectedId
             onActivateDesktop:desktop=>{root.managedDesktopId=desktop.logicalId;root.visible=false;activation.data={action:"workspace",logicalId:desktop.logicalId,sessionEpoch:root.sessionEpoch};activation.restart();}

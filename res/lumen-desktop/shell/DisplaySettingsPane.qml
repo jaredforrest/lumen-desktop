@@ -50,7 +50,7 @@ Column {
     PanelLabel {text:"Position in desktop points";textRole:"label"}
     Row {width:parent.width;spacing:8
         Repeater {model:["x","y"]
-            TextField {required property string modelData;objectName:modelData==="x"?"displayX":"displayY";width:(parent.width-8)/2;height:Math.max(30,positionMetrics.height+14);text:root.output?String(root.output[modelData]):"0";validator:IntValidator {bottom:-32768;top:32767} enabled:!root.pending;font.family:Theme.font;font.pixelSize:Theme.textRole("body");color:Theme.colors.text;selectByMouse:true;Accessible.name:"Display "+modelData+" position";background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline}}
+            DesktopTextField {required property string modelData;objectName:modelData==="x"?"displayX":"displayY";width:(parent.width-8)/2;height:Math.max(30,positionMetrics.height+14);text:root.output?String(root.output[modelData]):"0";validator:IntValidator {bottom:-32768;top:32767} enabled:!root.pending;font.family:Theme.font;font.pixelSize:Theme.textRole("body");color:Theme.colors.text;selectByMouse:true;Accessible.name:"Display "+modelData+" position";background:Rectangle {radius:6;color:Theme.colors.field;border.color:parent.activeFocus?Theme.colors.accent:Theme.hairline}}
         }
         id:position
     }

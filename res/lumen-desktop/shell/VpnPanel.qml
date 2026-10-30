@@ -183,7 +183,7 @@ Column {
             spacing: 10
             PanelLabel { width: parent.width; wrapMode: Text.WordWrap
                 text: "Enter your 16-digit Mullvad account number. It is sent to the local Mullvad client." }
-            TextField { id: accountNumber; width: parent.width; echoMode: TextInput.Password
+            DesktopTextField { id: accountNumber; width: parent.width; echoMode: TextInput.Password
                 inputMethodHints: Qt.ImhDigitsOnly; maximumLength: 16; Accessible.name: "Mullvad account number" }
         }
     }

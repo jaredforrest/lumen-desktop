@@ -24,7 +24,7 @@ FloatingWindow {
   MouseArea {visible:!Theme.nativeWindowFrame;width:parent.width;height:48;onPressed:body.Window.window.startSystemMove()}
   WindowControls {windowActive:body.Window.window?body.Window.window.active:false;windowName:"Desktop Help";canFullscreen:false;onTriggered:index=>{if(index===0)root.visible=false;else if(index===1)body.Window.window.showMinimized();}}
   PanelLabel {x:100;y:14;visible:!Theme.nativeWindowFrame;text:"Desktop Help";font.weight:Font.DemiBold}
-  TextField {id:search;x:20;y:Theme.nativeWindowFrame?14:58;width:parent.width-40;height:34;placeholderText:"Search Help";placeholderTextColor:Theme.colors.muted;Accessible.name:"Search Help";color:Theme.colors.text;font.family:Theme.font;onTextChanged:root.query=text;background:Rectangle {radius:7;color:Theme.colors.field;border.color:search.activeFocus?Theme.colors.accent:Theme.hairline}}
+  DesktopTextField {id:search;x:20;y:Theme.nativeWindowFrame?14:58;width:parent.width-40;height:34;placeholderText:"Search Help";placeholderTextColor:Theme.colors.muted;Accessible.name:"Search Help";color:Theme.colors.text;font.family:Theme.font;onTextChanged:root.query=text;background:Rectangle {radius:7;color:Theme.colors.field;border.color:search.activeFocus?Theme.colors.accent:Theme.hairline}}
   ListView {x:20;y:Theme.nativeWindowFrame?60:104;width:parent.width-40;height:parent.height-y-20;clip:true;spacing:10;model:root.matches;ScrollBar.vertical:DesktopScrollBar {}
    delegate:Rectangle {required property var modelData;width:ListView.view.width;height:topic.height+24;radius:10;color:Theme.colors.surface
     Column {id:topic;x:12;y:12;width:parent.width-24;spacing:8
@@ -35,6 +35,6 @@ FloatingWindow {
    }
    PanelLabel {visible:root.matches.length===0;anchors.centerIn:parent;text:"No matching help topics"}
   }
-  Shortcut {sequence:"Escape";onActivated:root.visible=false}
+  Shortcut {sequence:"Escape";enabled:!InputOwnership.composing(root.contentItem.Window.window);onActivated:root.visible=false}
  }
 }

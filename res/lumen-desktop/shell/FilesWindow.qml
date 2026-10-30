@@ -270,6 +270,7 @@ FloatingWindow {
         layer.effect:MultiEffect {maskEnabled:true;maskSource:windowMask}
         id:content;objectName:"files-keyboard-content";anchors.fill:parent;focus:true
         Keys.onPressed:event=>{
+            if(InputOwnership.textOwns(event,content.Window.window)){event.accepted=false;return;}
             const ctrl=event.modifiers & Qt.ControlModifier,shift=event.modifiers & Qt.ShiftModifier,alt=event.modifiers & Qt.AltModifier;
             let handled=true;
             if(ctrl && event.key===Qt.Key_W)root.closeTab();
@@ -472,7 +473,7 @@ FloatingWindow {
                 PanelLabel {visible:root.applications.length===0;text:"No applications registered for this file";width:parent.width;wrapMode:Text.WordWrap}
             }
         }
-        TextField {
+        DesktopTextField {
             placeholderTextColor:Theme.colors.muted;selectionColor:Theme.colors.accent;selectedTextColor:Theme.colors.selectedText
 
             id:filter;objectName:"files-filter";x:root.sidebarWidth+14;y:66+root.tabHeight;width:parent.width-x-14;height:30
@@ -480,7 +481,7 @@ FloatingWindow {
             Accessible.name:"Filter this folder"
             background:Rectangle {radius:7;color:Theme.colors.background;border.color:filter.activeFocus?Theme.colors.accent:Theme.hairline}
             onTextEdited:{root.service.query=text;filterDelay.restart();}
-            Keys.onDownPressed:{content.forceActiveFocus();root.step(1);}
+            Keys.onDownPressed:event=>{if(InputOwnership.textOwns(event,content.Window.window))event.accepted=false;else {content.forceActiveFocus();root.step(1);}}
             onAccepted:{root.service.query=text;root.service.refresh();content.forceActiveFocus();}
         }
         Timer {id:filterDelay;interval:220;onTriggered:root.service.refresh()}
@@ -682,7 +683,7 @@ Accessible.name:FileLinks.accessible(modelData);Accessible.selected:root.isSelec
                 spacing:14
                 PanelLabel {width:parent.width;text:editor.action==="trash"?"Move to Trash?":editor.action==="rename"?"Rename":editor.action==="goto"?"Go to Folder":"New Folder";font.pixelSize:Theme.textRole("heading");font.weight:Font.DemiBold}
                 PanelLabel {visible:editor.action==="trash";width:parent.width;text:editor.label+" will be moved to Trash.";textFormat:Text.PlainText;wrapMode:Text.WrapAnywhere}
-                TextField {
+                DesktopTextField {
             placeholderTextColor:Theme.colors.muted;selectionColor:Theme.colors.accent;selectedTextColor:Theme.colors.selectedText
 id:entry;visible:editor.action!=="trash";width:parent.width;height:Math.max(34,Theme.textRole("body")+16);font.pixelSize:Theme.textRole("body");color:Theme.colors.text;font.family:Theme.font;selectByMouse:true;placeholderText:editor.action==="goto"?"Folder path":"Name";Accessible.name:placeholderText;background:Rectangle{radius:6;color:Theme.colors.field;border.color:Theme.colors.accent} onAccepted:if(text)root.submit()}
                 Row {
