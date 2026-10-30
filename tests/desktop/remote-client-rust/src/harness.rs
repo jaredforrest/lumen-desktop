@@ -98,6 +98,7 @@ impl Options {
                 "interactions",
                 "text-clipboard",
                 "legacy-clipboard",
+                "legacy-clipboard-close",
             ]
             .contains(&o.scenario.as_str()),
             "Unknown scenario",
@@ -116,7 +117,7 @@ impl Options {
         )?;
         ensure(!o.output.as_os_str().is_empty(), "Fresh output required")?;
         ensure(
-            o.scenario != "legacy-clipboard"
+            !o.legacy_clipboard_workflow()
                 || (o.protocol == "vnc" && o.tools.contains_key("x11vnc")),
             "Legacy clipboard acceptance requires VNC and the actual X11 server",
         )?;
@@ -127,6 +128,9 @@ impl Options {
     }
     pub fn viewer_workflow(&self) -> bool {
         ["interactions", "text-clipboard"].contains(&self.scenario.as_str())
+    }
+    pub fn legacy_clipboard_workflow(&self) -> bool {
+        ["legacy-clipboard", "legacy-clipboard-close"].contains(&self.scenario.as_str())
     }
 }
 pub fn ensure(ok: bool, message: impl Into<String>) -> Result<()> {
@@ -891,7 +895,9 @@ pub fn inside(o: Options) -> Result<()> {
             (
                 "remmina",
                 "remmina.pref",
-                if f.o.viewer_workflow() {
+                if f.o.legacy_clipboard_workflow() {
+                    "[remmina_pref]\nfloating_toolbar_monitor=0\ndisable_tray_icon=true\nconfirm_close=false\n"
+                } else if f.o.viewer_workflow() {
                     "[remmina_pref]\nfloating_toolbar_monitor=0\ndisable_tray_icon=true\nhostkey=65481\nshortcutkey_fullscreen=102\n"
                 } else {
                     "[remmina_pref]\nfloating_toolbar_monitor=0\ndisable_tray_icon=true\n"

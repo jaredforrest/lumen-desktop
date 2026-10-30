@@ -71,7 +71,7 @@ pub fn target(f: &mut Harness) -> Result<()> {
         f.remote_display = Some(remote.clone());
         f.env.insert("WAYLAND_DISPLAY".into(), remote);
     }
-    if f.o.protocol == "rdp" || f.o.scenario == "legacy-clipboard" {
+    if f.o.protocol == "rdp" || f.o.legacy_clipboard_workflow() {
         fs::create_dir("/bin")?;
         symlink(f.o.tool("posix-shell"), "/bin/sh")?;
         fs::create_dir_all("/share/X11/xkb/compiled")?;
@@ -152,7 +152,7 @@ pub fn target(f: &mut Harness) -> Result<()> {
         .parent()
         .ok_or("Fixture bin directory")?
         .join("lumen-remote-target");
-    if ["text-clipboard", "legacy-clipboard"].contains(&f.o.scenario.as_str()) {
+    if f.o.scenario == "text-clipboard" || f.o.legacy_clipboard_workflow() {
         let seed = f.private.join("remote-text.txt");
         fs::write(&seed, REMOTE_TEXT)?;
         f.launch_s(
@@ -163,7 +163,7 @@ pub fn target(f: &mut Harness) -> Result<()> {
     } else {
         f.launch_s(target, &[], "target.log")?;
     }
-    if f.o.protocol == "rdp" || f.o.scenario == "legacy-clipboard" || f.remote_display.is_some() {
+    if f.o.protocol == "rdp" || f.o.legacy_clipboard_workflow() || f.remote_display.is_some() {
         wait("independent remote target", || Ok(f.target().ok()))?;
         f.env.insert("GDK_BACKEND".into(), "wayland".into());
         if f.remote_ipc.is_some() {
@@ -264,7 +264,7 @@ fn vnc_start(f: &mut Harness, settings: &Path, control: &Path, log: &str) -> Res
     Ok(index)
 }
 fn vnc(f: &mut Harness) -> Result<()> {
-    if f.o.scenario == "legacy-clipboard" {
+    if f.o.legacy_clipboard_workflow() {
         return legacy_clipboard(f);
     }
     let cert = f.private.join("server.crt");
@@ -783,7 +783,12 @@ fn legacy_clipboard(f: &mut Harness) -> Result<()> {
         &f.out.join("legacy-before-disconnect-tree.json"),
         &f.tree()?,
     )?;
-    f.stop(legacy_server)?;
+    if f.o.scenario == "legacy-clipboard-close" {
+        let id = viewer["id"].as_u64().ok_or("Originating viewer identity")?;
+        f.ipc(&[&format!("[con_id={id}] kill")])?;
+    } else {
+        f.stop(legacy_server)?;
+    }
     wait("clipboard warning removed on connection loss", || {
         Ok((!nodes(&f.tree()?)
             .iter()
@@ -797,6 +802,14 @@ fn legacy_clipboard(f: &mut Harness) -> Result<()> {
             && after_disconnect["text"] == changed_receipt["text"],
         "Disconnect warning lifecycle changed the remote document",
     )?;
+    wait("one clipboard generation invalidation", || {
+        Ok((f
+            .log("remmina.log")
+            .matches("VNC clipboard generation invalidated:")
+            .count()
+            == 1)
+            .then_some(()))
+    })?;
     save(
         &f.out.join("legacy-clipboard-acceptance.json"),
         &json!({
@@ -808,6 +821,8 @@ fn legacy_clipboard(f: &mut Harness) -> Result<()> {
         "originatingViewer":viewer, "ownedModalDialog":dialog,
         "connectionInputReceipt":input_receipt, "changedCompatibleClipboardReceipt":changed_receipt, "remoteTargetIdentityRetained":true,
         "warningBeforeActualServerLoss":disconnect_dialog, "warningRemovedOnDisconnect":true,
+        "disconnectTrigger":if f.o.scenario == "legacy-clipboard-close" {"explicit captured window close"} else {"actual server loss"},
+        "generationInvalidationCount":f.log("remmina.log").matches("VNC clipboard generation invalidated:").count(),
         "afterDisconnectTarget":after_disconnect,
         "rejectedPastePreservedPriorClipboard":rejected_paste_preserved,
         "notClaimed":["encrypted legacy connection", "HTML", "files", "Windows"]}),
