@@ -319,6 +319,22 @@ mod tests {
         assert!(canonical_topology(&json!({"id":u64::MAX})).is_err());
     }
     #[test]
+    fn presentation_mode_and_revision_invalidate_captured_topology() {
+        let before = json!({"window_groups":{"enabled":true,"revision":12,"window_mode":"all_together","groups":[]}});
+        let mut mode = before.clone();
+        mode["window_groups"]["window_mode"] = json!("one_at_a_time");
+        assert_ne!(
+            canonical_topology(&before).unwrap(),
+            canonical_topology(&mode).unwrap()
+        );
+        let mut revision = before.clone();
+        revision["window_groups"]["revision"] = json!(13);
+        assert_ne!(
+            canonical_topology(&before).unwrap(),
+            canonical_topology(&revision).unwrap()
+        );
+    }
+    #[test]
     fn writer_refuses_unknown_duplicate_and_out_of_order_actions() {
         let target = json!({"id":1,"pid":10,"foreign_toplevel_identifier":"surface","app_id":"x"});
         let tree = json!({"nodes":[target]});
