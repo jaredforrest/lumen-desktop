@@ -1,4 +1,5 @@
 //! Native paired full-output identity, divider, and restore lifecycle acceptance.
+mod documented_negatives;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::env;
@@ -19,14 +20,14 @@ fn fail(message: impl Into<String>) -> Box<dyn Error> {
 fn require(ok: bool, message: impl Into<String>) -> Result<()> {
     if ok { Ok(()) } else { Err(fail(message)) }
 }
-fn unavailable_reply(status: Option<i32>, stdout: &[u8]) -> Result<Value> {
+fn unavailable_reply(status: Option<i32>, stdout: &[u8], expected_error: &str) -> Result<Value> {
     let answer: Value = serde_json::from_slice(stdout)?;
     require(
         status == Some(2)
             && answer.as_array().is_some_and(|rows| rows.len() == 1)
             && answer[0]["success"] == false
             && answer[0]["parse_error"] == true
-            && answer[0]["error"] == "Window action is unavailable",
+            && answer[0]["error"] == expected_error,
         format!("Expected exact unavailable action reply, got {status:?}: {answer}"),
     )?;
     Ok(answer)
@@ -404,7 +405,7 @@ impl<'a> Fixture<'a> {
         let config = options.output.join("sway.conf");
         fs::write(
             &config,
-            "output HEADLESS-1 resolution 1280x720 position 0 0\noutput HEADLESS-2 resolution 1000x800 position 1280 0\nseat seat0 fallback true\ndefault_border normal 2\n",
+            "output HEADLESS-1 resolution 1280x720 position 0 0\noutput HEADLESS-2 resolution 1000x800 position 1280 0\nseat seat0 fallback true\ndefault_border normal 2\nno_focus [app_id=\"pair-no-focus\"]\n",
         )?;
         children.launch(
             &options.sway,
@@ -522,6 +523,13 @@ impl<'a> Fixture<'a> {
         Ok(())
     }
     fn unavailable(&self, command: &str) -> Result<Value> {
+        self.rejected(
+            command,
+            "paired-minimize-command.json",
+            "Window action is unavailable",
+        )
+    }
+    fn rejected(&self, command: &str, receipt_name: &str, expected_error: &str) -> Result<Value> {
         let output = Command::new("timeout")
             .arg("5s")
             .arg(&self.swaymsg)
@@ -532,10 +540,10 @@ impl<'a> Fixture<'a> {
         let receipt = json!({"command":command,"exitCode":output.status.code(),
             "stdout":String::from_utf8_lossy(&output.stdout),"stderr":String::from_utf8_lossy(&output.stderr)});
         fs::write(
-            self.options.output.join("paired-minimize-command.json"),
+            self.options.output.join(receipt_name),
             serde_json::to_vec_pretty(&receipt)?,
         )?;
-        unavailable_reply(output.status.code(), &output.stdout)?;
+        unavailable_reply(output.status.code(), &output.stdout, expected_error)?;
         Ok(receipt)
     }
     fn tree(&self) -> Result<Value> {
@@ -699,6 +707,8 @@ fn run(options: &Options) -> Result<()> {
         "Desktop state classified pair incorrectly",
     )?;
 
+    documented_negatives::ratios(&fixture, aa, bb)?;
+    documented_negatives::no_focus(&mut fixture, aa)?;
     // Show Desktop hides the pair as one group and either member can restore it.
     let parent_id = id(&parent)?;
     fixture.yes("lumen_window show-desktop-on")?;
@@ -883,6 +893,7 @@ fn run(options: &Options) -> Result<()> {
             && fixture.required(cc)?["fullscreen_mode"] == 1,
         "Survivor reveal changed identity",
     )?;
+    documented_negatives::survivor(&fixture, cc)?;
     fixture.yes("lumen_window show-desktop-on")?;
     fixture.yes(&format!("lumen_pair leave {cc}"))?;
     require(
@@ -1182,6 +1193,7 @@ fn run(options: &Options) -> Result<()> {
     )?;
     fixture.yes(&format!("lumen_pair leave {aa}"))?;
 
+    documented_negatives::relationships(&mut fixture, aa)?;
     fixture.yes(&format!("lumen_pair create {aa} {cc}"))?;
     fixture.yes("output HEADLESS-1 disable")?;
     require(
@@ -1276,6 +1288,10 @@ fn run(options: &Options) -> Result<()> {
         "group reveal and child activation preserve pair",
         "hidden pair management normalizes group before actions",
         "paired minimize rejects with full native state unchanged while ordinary minimize and restore remain functional",
+        "nonfinite and out-of-open-interval ratios reject without native state changes",
+        "survivor minimize rejects without native state changes",
+        "unrelated no-focus window maps outside the pair without stealing focus",
+        "actual reparent updates captured owner and modal-only windows reject primary pairing",
         "full-screen source exits to ordinary saved geometry",
         "hide exits without stranding restore state",
         "new app routes outside pair",
@@ -1314,14 +1330,16 @@ mod tests {
     fn unavailable_action_requires_exact_native_failure() {
         let body =
             br#"[{"success":false,"parse_error":true,"error":"Window action is unavailable"}]"#;
-        assert!(unavailable_reply(Some(2), body).is_ok());
-        assert!(unavailable_reply(Some(0), body).is_err());
-        assert!(unavailable_reply(None, body).is_err());
-        assert!(unavailable_reply(Some(2), b"[]").is_err());
+        let expected = "Window action is unavailable";
+        assert!(unavailable_reply(Some(2), body, expected).is_ok());
+        assert!(unavailable_reply(Some(0), body, expected).is_err());
+        assert!(unavailable_reply(None, body, expected).is_err());
+        assert!(unavailable_reply(Some(2), b"[]", expected).is_err());
         assert!(
             unavailable_reply(
                 Some(2),
-                br#"[{"success":false,"parse_error":true,"error":"Unknown command"}]"#
+                br#"[{"success":false,"parse_error":true,"error":"Unknown command"}]"#,
+                expected
             )
             .is_err()
         );

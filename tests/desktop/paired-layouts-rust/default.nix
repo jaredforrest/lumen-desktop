@@ -4,4 +4,5 @@
   version = "0.1.0";
   src = ./.;
   cargoLock.lockFile = ./Cargo.lock;
+  LUMEN_PAIR_RELATIONSHIP_CLIENT = "${import ../window_relationship_client.nix { inherit pkgs; }}/bin/lumen-test-window-relationships";
 }
