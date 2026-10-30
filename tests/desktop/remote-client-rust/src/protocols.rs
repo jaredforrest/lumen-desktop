@@ -654,6 +654,8 @@ fn legacy_clipboard(f: &mut Harness) -> Result<()> {
     chord(f, "a")?;
     pause(1500);
     chord(f, "c")?;
+    // Wayland grants the clipboard selection to the focused receiving client.
+    focus_viewer(f)?;
     let warning = wait("explicit unsupported legacy text warning", || {
         save(
             &f.out.join("legacy-unsupported-local-receipt.json"),
