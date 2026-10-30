@@ -128,3 +128,5 @@ artifacts/session-end*
 artifacts/session-recovery-*
 artifacts/network-provider.log
 artifacts/shortcut-settings-typography
+artifacts/native-focus-guard-*
+artifacts/native-identity-*
