@@ -19,7 +19,7 @@ fn emit(available:bool,lifecycle:&Lifecycle,session:&SessionEnd,store:&mut Optio
             }
         }
     }
-    let mut value=json!({"available":available,"applications":if available{lifecycle.rows()}else{Vec::new()},"activationHistory":if available{lifecycle.activation_history.order()}else{Vec::new()},"nativeWindows":if available{lifecycle.window_history.captures(lifecycle)}else{Vec::new()},"nativeFocused":if available{lifecycle.current_native_focus.as_ref().and_then(|row|lifecycle.capture_record(row))}else{None},"sessionEpoch":if available{lifecycle.epoch.clone()}else{None},"error":error,"recoveryAvailable":recovery,"session":session.state()});
+    let mut value=json!({"available":available,"applications":if available{lifecycle.rows()}else{Vec::new()},"activationHistory":if available{lifecycle.activation_history.order()}else{Vec::new()},"nativeWindows":if available{lifecycle.window_history.captures(lifecycle)}else{Vec::new()},"nativeFocused":if available{lifecycle.current_source_focus.clone()}else{Value::Null},"sessionEpoch":if available{lifecycle.epoch.clone()}else{None},"error":error,"recoveryAvailable":recovery,"session":session.state()});
     if let Some(result)=result{value["result"]=result;}
     if let Ok(encoded)=serde_json::to_string(&value){
         if last.as_ref()!=Some(&encoded){println!("{encoded}");let _=std::io::stdout().flush();*last=Some(encoded);}
@@ -51,7 +51,8 @@ fn handle(data:&Value,nodes:&mut Vec<Value>,query:&mut UnixStream,path:&PathBuf,
             if !lifecycle.source_focus_matches(initial){return Err("Native focus changed after preview".into());}
             let plan=lifecycle.native_focus_plan(&data["capture"],&tree,switch_space)?;
             if epoch(path)?!=expected{return Err("Compositor session changed".into());}
-            // Repeat the process/surface guard immediately before dispatch.
+            // Repeat live process checks against the sampled surface. Source
+            // and surface checks use this snapshot, not an atomic dispatch guard.
             lifecycle.native_focus_plan(&data["capture"],&tree,switch_space)?;
             if let Some(command)=&plan.command{
                 send(query,0,command)?;let (kind,reply)=receive(query)?;

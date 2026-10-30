@@ -129,22 +129,46 @@ impl Lifecycle {
         Some(capture)
     }
     pub fn source_focus_matches(&self, captured: &Value) -> bool {
-        if captured.is_null() {
-            return self.current_native_focus.is_none();
-        }
-        if captured["epoch"].as_str() != self.epoch.as_deref() {
-            return false;
-        }
-        let mut row = captured.clone();
-        let Some(obj) = row.as_object_mut() else {
-            return false;
+        matches!(captured["kind"].as_str(), Some("native" | "none"))
+            && *captured == self.current_source_focus
+    }
+    pub fn source_focus(&self, nodes: &[Value]) -> Value {
+        let Some(epoch) = self.epoch.as_deref() else {
+            return Value::Null;
         };
-        if obj.len() != 6 {
-            return false;
+        if nodes.iter().any(|node| !node["focused"].is_boolean()) {
+            return json!({"kind":"unsupported","epoch":epoch});
         }
-        obj.remove("epoch");
-        obj.remove("groupInstances");
-        self.current_native_focus.as_ref() == Some(&row)
+        let focused = nodes
+            .iter()
+            .filter(|node| node["focused"] == true)
+            .collect::<Vec<_>>();
+        if focused.is_empty() {
+            return json!({"kind":"none","epoch":epoch});
+        }
+        let unsupported = json!({"kind":"unsupported","epoch":epoch});
+        let [node] = focused.as_slice() else {
+            return unsupported;
+        };
+        if node["shell"] != "xdg_shell"
+            || !node["window"].is_null()
+            || !foreign(&node["foreign_toplevel_identifier"])
+        {
+            return unsupported;
+        }
+        let (Some(id), Some(pid), Some(app)) = (
+            node["id"].as_i64().filter(|id| *id > 0),
+            node["pid"].as_u64().and_then(|pid| u32::try_from(pid).ok()),
+            node["app_id"].as_str().filter(|app| {
+                !app.is_empty() && app.len() <= 256 && !app.chars().any(char::is_control)
+            }),
+        ) else {
+            return unsupported;
+        };
+        let Ok(identity) = crate::source_process_identity(pid) else {
+            return unsupported;
+        };
+        json!({"kind":"native","epoch":epoch,"conId":id,"foreignId":node["foreign_toplevel_identifier"],"appId":app,"instanceId":mru::instance(&identity)})
     }
     pub fn native_record(&self, node: &Value) -> Option<Value> {
         if node["shell"] != "xdg_shell"

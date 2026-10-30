@@ -61,7 +61,7 @@ fn exact_duplicate_title_window_order_reopens_and_reused_id_cannot_inherit() {
         lifecycle.observe_focus(&n);
     }
     let chosen = capture(&lifecycle, 12);
-    let initial = capture(&lifecycle, 13);
+    let initial = lifecycle.current_source_focus.clone();
     assert_eq!(
         lifecycle
             .window_history
@@ -216,4 +216,55 @@ fn bounded_native_history_rejects_corruption_and_retired_owner() {
             .iter()
             .any(|c| c["appId"] == "app")
     );
+}
+
+#[test]
+fn unsupported_source_is_distinct_from_no_client_and_owned_native_panel_is_exact() {
+    let owners = owners();
+    let mut lifecycle = Lifecycle::default();
+    let supported = nodes(&owners, 13);
+    lifecycle.refresh(EPOCH, &supported);
+    let native = lifecycle.current_source_focus.clone();
+    assert_eq!(native["kind"], "native");
+    assert!(lifecycle.source_focus_matches(&native));
+    let mut unsupported_a = supported.clone();
+    unsupported_a[2]["shell"] = json!("xwayland");
+    unsupported_a[2]["window"] = json!(50);
+    lifecycle.refresh(EPOCH, &unsupported_a);
+    let unknown = lifecycle.current_source_focus.clone();
+    assert_eq!(unknown["kind"], "unsupported");
+    assert!(!lifecycle.source_focus_matches(&unknown));
+    assert!(!lifecycle.source_focus_matches(&Value::Null));
+    let mut unsupported_b = unsupported_a.clone();
+    unsupported_b[2]["id"] = json!(99);
+    lifecycle.refresh(EPOCH, &unsupported_b);
+    assert!(!lifecycle.source_focus_matches(&unknown));
+    assert!(!lifecycle.source_focus_matches(&Value::Null));
+    let mut unregistered = supported.clone();
+    unregistered[2]["app_id"] = Value::Null;
+    let flattened = lumen_application_lifecycle::window_nodes(&tree(&unregistered)).unwrap();
+    assert_eq!(flattened.len(), 3);
+    lifecycle.refresh(EPOCH, &flattened);
+    assert_eq!(lifecycle.current_source_focus["kind"], "unsupported");
+    assert!(!lifecycle.source_focus_matches(&Value::Null));
+    let mut none = supported.clone();
+    for node in &mut none {
+        node["focused"] = json!(false);
+    }
+    lifecycle.refresh(EPOCH, &none);
+    let empty = lifecycle.current_source_focus.clone();
+    assert_eq!(empty["kind"], "none");
+    assert!(lifecycle.source_focus_matches(&empty));
+    assert!(!lifecycle.source_focus_matches(&Value::Null));
+    let mut owned = supported.clone();
+    owned[2]["app_id"] = json!("org.quickshell");
+    lifecycle.refresh(EPOCH, &owned);
+    let panel = lifecycle.current_source_focus.clone();
+    assert_eq!(panel["kind"], "native");
+    assert_eq!(panel["appId"], "org.quickshell");
+    assert!(lifecycle.source_focus_matches(&panel));
+    assert!(lifecycle.native_record(&owned[2]).is_none());
+    owned[2]["foreign_toplevel_identifier"] = json!("different-owned-panel");
+    lifecycle.refresh(EPOCH, &owned);
+    assert!(!lifecycle.source_focus_matches(&panel));
 }

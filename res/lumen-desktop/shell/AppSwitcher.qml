@@ -44,7 +44,7 @@ PanelWindow {
         if(action==="cancel"){if(visible){visible=false;phase="cancelled";}return;}
         if(action==="commit"){commit();return;}
         if(!["begin","next","previous"].includes(action))return;
-        if(!visible && phase==="pending")return;
+        if(!visible && (phase==="pending" || shell.nativeCommitBlocked))return;
         if(!visible){
             pendingNativeRequest="";
             previewNativeFocus=JSON.parse(JSON.stringify(shell.nativeFocusedCapture || null));
@@ -113,7 +113,7 @@ PanelWindow {
     }
     function status(){return JSON.stringify({visible:visible,phase:phase,selected:selected,key:items[selected]?items[selected].key:"",items:items.map(i=>i.key),nativeCapture:items[selected]?items[selected].nativeCapture || null:null,commits:commits});}
     Connections {target:shell
-        function onNativeFocusResult(result){if(root.pendingNativeRequest && (!result.requestId || result.requestId===root.pendingNativeRequest)){root.pendingNativeRequest="";root.phase=result.requested?"committed":"cancelled";if(result.requested)++root.commits;}}
+        function onNativeFocusResult(result){if(root.pendingNativeRequest && result.requestId===root.pendingNativeRequest){root.pendingNativeRequest="";root.phase=result.requested?"committed":"cancelled";if(result.requested)++root.commits;}}
         function onDismissPopups(owner){if(owner!=="app-switcher" && root.visible){root.visible=false;root.phase="cancelled";}}
     }
     Item {

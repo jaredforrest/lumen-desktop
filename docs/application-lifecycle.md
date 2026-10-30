@@ -116,6 +116,22 @@ ID cannot join that old group request. Protocol-linked modal descendants are
 validated as live native
 surfaces before redirection.
 
+Source focus distinguishes a positively observed empty desktop from unsupported
+or unknown focused clients. Unsupported sources fail closed. Owned native shell
+panels have source-only process/surface witnesses; they are not promoted to
+external application ownership or activation targets.
+
+Native requests have exact reply ownership and a 30-second total transport
+budget. A malformed, unavailable, mismatched, exited or timed-out worker cancels
+the owning request with an explicitly uncertain result. That owned worker is
+retired and reaped before a replacement can become available. A fresh user
+decision is required; no pending action is replayed, retried or rolled back.
+
+Current surface and source checks use the sampled compositor tree before command
+dispatch. Repeated checks refresh process witnesses, not the tree. The command is
+a separate IPC message; this adapter does not claim an atomic compositor-side
+source-and-target guard across that interval.
+
 The original helper uses the same policy core and retains its existing API.
 Unsupported surfaces, missing foreign identifiers and window-only providers keep
 the existing live-window fallback. Those paths do not gain durable window MRU.

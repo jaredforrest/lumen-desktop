@@ -143,6 +143,7 @@ ShellRoot {
     signal nativeFocusResult(var result)
     readonly property var nativeWindowCaptures:applicationLifecycle.nativeWindows
     readonly property var nativeFocusedCapture:applicationLifecycle.nativeFocused
+    readonly property bool nativeCommitBlocked:applicationLifecycle.nativeRetiring
     function focusCapturedNative(capture,initialFocus){return applicationLifecycle.focusNative(capture,initialFocus,Theme.preferences.switchToAppSpace!==false);}
     property string applicationCommandError:""
     onApplicationCommandErrorChanged:if(applicationCommandError)applicationCommandTimer.restart()

@@ -47,11 +47,17 @@ pub fn window_nodes(tree:&Value)->Result<Vec<Value>>{
             if !seen.insert(id){return Err("Invalid compositor identity".into());}
         }
         for key in ["nodes","floating_nodes"]{if let Some(value)=obj.get(key){pending.extend(value.as_array().ok_or("Invalid compositor children")?);}}
-        if !node["app_id"].is_null()||!node["window"].is_null(){result.push(node.clone());}
+        if !node["app_id"].is_null()||!node["window"].is_null()||node["shell"]=="xdg_shell"{result.push(node.clone());}
     }
     Ok(result)
 }
 pub fn process_identity(pid:u32)->Result<Value>{
+    identify_process(pid,false)
+}
+pub fn source_process_identity(pid:u32)->Result<Value>{
+    identify_process(pid,true)
+}
+fn identify_process(pid:u32,source_only:bool)->Result<Value>{
     if pid<2{return Err("Invalid application process".into());}
     let root=PathBuf::from(format!("/proc/{pid}"));
     if fs::metadata(&root).map_err(|error|error.to_string())?.uid()!=unsafe{libc::getuid()}{return Err("Application process has an unexpected owner".into());}
@@ -63,7 +69,7 @@ pub fn process_identity(pid:u32)->Result<Value>{
     let uids=status.lines().find_map(|line|line.strip_prefix("Uid:")).map(|line|line.split_whitespace().collect::<Vec<_>>()).unwrap_or_default();
     if uids.len()!=4||uids.iter().any(|uid|uid.parse::<u32>().ok()!=Some(unsafe{libc::getuid()})){return Err("Privileged application processes cannot be observed here".into());}
     let executable=root.join("exe");let resolved=fs::canonicalize(&executable).map_err(|error|error.to_string())?;
-    if resolved.file_name().is_some_and(|name|name.to_string_lossy().contains("quickshell")){return Err("The desktop shell is not an external application".into());}
+    if !source_only&&resolved.file_name().is_some_and(|name|name.to_string_lossy().contains("quickshell")){return Err("The desktop shell is not an external application".into());}
     let info=fs::metadata(&executable).map_err(|error|error.to_string())?;
     Ok(json!({"pid":pid,"start":start,"device":info.dev(),"inode":info.ino()}))
 }
@@ -81,10 +87,10 @@ pub fn valid_identity(value:&Value)->bool{
     value.as_object().is_some_and(|row|row.len()==4&&["pid","start","device","inode"].iter().all(|key|row.get(*key).and_then(Value::as_u64).is_some())&&row["pid"].as_u64().is_some_and(|pid|pid>=2&&pid<=u32::MAX as u64))
 }
 pub struct Process{pub identity:Value,pub handle:OwnedFd,pub apps:BTreeSet<String>}
-pub struct Lifecycle{pub processes:BTreeMap<u32,Process>,pub windows:HashMap<(u32,String),Vec<Value>>,pub epoch:Option<String>,pub activation_history:mru::History,pub window_history:windows::History,pub current_native_focus:Option<Value>,focus_witnesses:HashMap<i64,Option<(u32,Value,String)>>}
-impl Default for Lifecycle{fn default()->Self{Self{processes:BTreeMap::new(),windows:HashMap::new(),epoch:None,activation_history:mru::History::default(),window_history:windows::History::default(),current_native_focus:None,focus_witnesses:HashMap::new()}}}
+pub struct Lifecycle{pub processes:BTreeMap<u32,Process>,pub windows:HashMap<(u32,String),Vec<Value>>,pub epoch:Option<String>,pub activation_history:mru::History,pub window_history:windows::History,pub current_source_focus:Value,focus_witnesses:HashMap<i64,Option<(u32,Value,String)>>}
+impl Default for Lifecycle{fn default()->Self{Self{processes:BTreeMap::new(),windows:HashMap::new(),epoch:None,activation_history:mru::History::default(),window_history:windows::History::default(),current_source_focus:Value::Null,focus_witnesses:HashMap::new()}}}
 impl Lifecycle{
-    pub fn close(&mut self){self.processes.clear();self.windows.clear();self.epoch=None;self.activation_history=mru::History::default();self.window_history=windows::History::default();self.current_native_focus=None;self.focus_witnesses.clear();}
+    pub fn close(&mut self){self.processes.clear();self.windows.clear();self.epoch=None;self.activation_history=mru::History::default();self.window_history=windows::History::default();self.current_source_focus=Value::Null;self.focus_witnesses.clear();}
     pub fn observe(&mut self,node:&Value){
         if node["shell"]!="xdg_shell"||!node["window"].is_null(){return;}
         let Some(app)=node["app_id"].as_str().filter(|app|valid_app_id(app))else{return;};
@@ -132,7 +138,7 @@ impl Lifecycle{
             else if self.focus_witnesses.len()<4096{self.focus_witnesses.insert(id,Some(witness));}
         }
         let native=nodes.iter().filter_map(|node|self.native_record(node)).collect::<Vec<_>>();self.window_history.reconcile(&native);
-        self.current_native_focus=nodes.iter().find(|node|node["focused"]==true).and_then(|node|self.native_record(node));
+        self.current_source_focus=self.source_focus(nodes);
         self.rows()
     }
     pub fn prune(&mut self){self.processes.retain(|pid,process|!exited(&process.handle)&&process_identity(*pid).ok().as_ref()==Some(&process.identity));for witness in self.focus_witnesses.values_mut(){if witness.as_ref().is_some_and(|(pid,identity,app)|!self.processes.get(pid).is_some_and(|p|p.identity==*identity&&p.apps.contains(app))){*witness=None;}}let rows=self.rows();self.activation_history.prune(&rows);self.window_history.retain_processes(&self.records());}
