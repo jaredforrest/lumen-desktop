@@ -87,7 +87,7 @@
  }
 --- a/sway/commands/move.c
 +++ b/sway/commands/move.c
-@@ -241,1 +241,10 @@
+@@ -241,1 +241,9 @@
 +void lumen_space_transfer_move(struct sway_container *con, struct sway_workspace *target) {
 + struct sway_workspace *old=con->pending.workspace;
 + struct sway_container *parent=con->pending.parent;
