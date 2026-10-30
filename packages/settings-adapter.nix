@@ -2,7 +2,8 @@
 let
   source = pkgs.writeText "desktop-defaults.nix" "{}";
   defaults = pkgs.writeText "standalone-app-defaults.json" (builtins.toJSON (import ../config/application-profiles.nix));
-  schema = ./desktop-settings-schema.nix;
+  # Keep the schema's shared type imports beside it in the immutable source.
+  schema = "${./.}/desktop-settings-schema.nix";
   builder = pkgs.writeText "desktop-settings-builder.nix" ''
     { source }:
     let pkgs = import ${pkgs.path} { system = "${pkgs.stdenv.hostPlatform.system}"; };
