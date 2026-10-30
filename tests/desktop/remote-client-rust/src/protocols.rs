@@ -784,6 +784,23 @@ fn legacy_clipboard(f: &mut Harness) -> Result<()> {
         &f.tree()?,
     )?;
     if f.o.scenario == "legacy-clipboard-close" {
+        let dialog_id = disconnect_dialog["id"]
+            .as_u64()
+            .ok_or("Owned warning identity")?;
+        f.ipc(&[&format!("[con_id={dialog_id}] focus")])?;
+        f.keyboard
+            .as_mut()
+            .ok_or("Keyboard")?
+            .key(&["-k", "Escape"])?;
+        wait(
+            "owned warning acknowledged before explicit parent close",
+            || {
+                Ok((!nodes(&f.tree()?)
+                    .iter()
+                    .any(|node| node["name"] == "Clipboard transfer"))
+                .then_some(()))
+            },
+        )?;
         let id = viewer["id"].as_u64().ok_or("Originating viewer identity")?;
         f.ipc(&[&format!("[con_id={id}] kill")])?;
     } else {
@@ -822,6 +839,7 @@ fn legacy_clipboard(f: &mut Harness) -> Result<()> {
         "connectionInputReceipt":input_receipt, "changedCompatibleClipboardReceipt":changed_receipt, "remoteTargetIdentityRetained":true,
         "warningBeforeActualServerLoss":disconnect_dialog, "warningRemovedOnDisconnect":true,
         "disconnectTrigger":if f.o.scenario == "legacy-clipboard-close" {"explicit captured window close"} else {"actual server loss"},
+        "warningAcknowledgedBeforeExplicitClose":f.o.scenario == "legacy-clipboard-close",
         "generationInvalidationCount":f.log("remmina.log").matches("VNC clipboard generation invalidated:").count(),
         "afterDisconnectTarget":after_disconnect,
         "rejectedPastePreservedPriorClipboard":rejected_paste_preserved,
