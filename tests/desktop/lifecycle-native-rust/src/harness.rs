@@ -53,6 +53,7 @@ pub struct Options {
     pub sway: PathBuf,
     pub effects: bool,
     pub inside: bool,
+    pub relationships_client: Option<PathBuf>,
 }
 impl Options {
     pub fn parse() -> Result<Self> {
@@ -62,6 +63,7 @@ impl Options {
         let mut sway = None;
         let mut effects = false;
         let mut inside = false;
+        let mut relationships_client = None;
         let mut args = env::args_os().skip(1);
         while let Some(arg) = args.next() {
             match arg.to_str() {
@@ -71,9 +73,11 @@ impl Options {
                     | "recovery"
                     | "mru"
                     | "window-mru"
+                    | "window-mru-baseline"
+                    | "focus-guard"
                     | "identity"
                     | "identity-absent"
-                    | "window-mru-baseline",
+                    | "focus-guard-unsupported",
                 ) => scenario = Some(arg.to_string_lossy().into_owned()),
                 Some("--output") => {
                     output = Some(PathBuf::from(args.next().ok_or("Missing output")?))
@@ -82,6 +86,12 @@ impl Options {
                     launcher = Some(PathBuf::from(args.next().ok_or("Missing launcher")?))
                 }
                 Some("--sway") => sway = Some(PathBuf::from(args.next().ok_or("Missing Sway")?)),
+                Some("--relationships-client") => {
+                    relationships_client = Some(
+                        PathBuf::from(args.next().ok_or("Missing relationships client")?)
+                            .canonicalize()?,
+                    )
+                }
                 Some("--effects") => effects = true,
                 Some("--inside") => inside = true,
                 _ => return Err(fail(format!("Unknown argument: {}", arg.to_string_lossy()))),
@@ -100,6 +110,7 @@ impl Options {
             sway: sway.ok_or("--sway required")?.canonicalize()?,
             effects,
             inside,
+            relationships_client,
         })
     }
 }
@@ -215,6 +226,7 @@ impl Managed {
         args: &[&str],
         vars: &BTreeMap<String, String>,
         log: &Path,
+        input: bool,
     ) -> Result<Self> {
         let file = File::create(log)?;
         Ok(Self(
@@ -222,7 +234,7 @@ impl Managed {
                 .args(args)
                 .env_clear()
                 .envs(vars)
-                .stdin(Stdio::null())
+                .stdin(if input { Stdio::piped() } else { Stdio::null() })
                 .stdout(Stdio::from(file.try_clone()?))
                 .stderr(Stdio::from(file))
                 .process_group(0)
@@ -341,6 +353,17 @@ impl Fixture {
             args,
             &self.vars,
             &self.options.output.join(log),
+            false,
+        )?);
+        Ok(self.processes.len() - 1)
+    }
+    pub fn launch_input(&mut self, program: &Path, log: &str) -> Result<usize> {
+        self.processes.push(Managed::launch(
+            program,
+            &[],
+            &self.vars,
+            &self.options.output.join(log),
+            true,
         )?);
         Ok(self.processes.len() - 1)
     }
@@ -413,9 +436,7 @@ impl Fixture {
         )?;
         let sway = self.options.sway.clone();
         let mut arguments = vec!["--unsupported-gpu", "-c", config.to_str().unwrap()];
-        if self.options.scenario == "identity" {
-            arguments.push("-d");
-        }
+        if self.options.scenario == "identity" { arguments.push("-d"); }
         self.launch(
             &sway,
             &arguments,
@@ -460,7 +481,9 @@ impl Fixture {
                 include_str!("../recovery.qml.inc")
             } else if self.options.scenario == "mru" {
                 include_str!("../mru.qml.inc")
-            } else if self.options.scenario.starts_with("window-mru") {
+            } else if self.options.scenario.starts_with("window-mru")
+                || self.options.scenario.starts_with("focus-guard")
+            {
                 include_str!("../window-mru.qml.inc")
             } else {
                 include_str!("../lifecycle.qml.inc")

@@ -1,0 +1,57 @@
+--- a/include/sway/commands.h
++++ b/include/sway/commands.h
+@@ -191,6 +191,8 @@
+ sway_cmd cmd_resize;
+ sway_cmd cmd_scratchpad;
+ sway_cmd cmd_lumen_window;
++sway_cmd cmd_lumen_focus_guard;
++bool lumen_focus_guard_wire_ready(void);
+ sway_cmd cmd_scratchpad_minimize;
+ sway_cmd cmd_seamless_mouse;
+ sway_cmd cmd_set;
+--- a/sway/commands.c
++++ b/sway/commands.c
+@@ -146,6 +146,7 @@
+ 	{ "inhibit_idle", cmd_inhibit_idle },
+ 	{ "kill", cmd_kill },
+ 	{ "layout", cmd_layout },
++ { "lumen_focus_guard", cmd_lumen_focus_guard },
+  { "lumen_pair", cmd_lumen_pair },
+  { "lumen_window", cmd_lumen_window },
+ 	{ "mark", cmd_mark },
+--- a/sway/meson.build
++++ b/sway/meson.build
+@@ -94,6 +94,7 @@
+ 	'commands/include.c',
+ 	'commands/input.c',
+ 	'commands/layout.c',
++	'commands/lumen_focus_guard.c',
+ 	'commands/layer_effects.c',
+ 	'commands/mode.c',
+ 	'commands/mouse_warping.c',
+@@ -248,6 +249,7 @@
+ )
+ 
+ sway_deps = [
++	dependency('libcrypto'),
+ 	cairo,
+ 	drm,
+ 	jsonc,
+--- a/sway/ipc-json.c
++++ b/sway/ipc-json.c
+@@ -17,6 +17,7 @@
+ #include "json_object.h"
+ #include "log.h"
+ #include "sway/config.h"
++#include "sway/commands.h"
+ #include "sway/ipc-json.h"
+ #include "sway/scene_descriptor.h"
+ #include "sway/server.h"
+@@ -240,6 +241,7 @@
+  json_object_object_add(version, "native_window_group_selector", json_object_new_boolean(true));
+  json_object_object_add(version, "native_window_group_membership", json_object_new_boolean(true));
+ 	json_object_object_add(version, "desktop_rehome", json_object_new_boolean(true));
++	json_object_object_add(version, "native_focus_guard", json_object_new_int(lumen_focus_guard_wire_ready() ? 2 : 0));
+ 	json_object_object_add(version, "native_window_relationships", json_object_new_boolean(true));
+ 
+ 	json_object_object_add(version, "native_file_drag_state", json_object_new_boolean(true));

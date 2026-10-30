@@ -1,0 +1,194 @@
+--- /dev/null
++++ b/sway/commands/lumen_focus_guard.c
+@@ -0,0 +1,191 @@
++/* Bounded typed activation guard. All preflight runs in one IPC callback. */
++#include <inttypes.h>
++#include <json.h>
++#include <math.h>
++#include <openssl/evp.h>
++#include <stdint.h>
++#include <stdbool.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <wlr/types/wlr_seat.h>
++#include <wlr/types/wlr_ext_foreign_toplevel_list_v1.h>
++#include "list.h"
++#include "sway/commands.h"
++#include "sway/config.h"
++#include "sway/input/seat.h"
++#include "sway/ipc-json.h"
++#include "sway/tree/container.h"
++#include "sway/tree/root.h"
++#include "sway/tree/view.h"
++
++#define LIMIT (1024U * 1024U)
++#define WIRE_LIMIT (32U * 1024U)
++#define ACTIONS 2048U
++struct bytes { unsigned char *data; size_t len; bool failed; unsigned nodes, windows; };
++struct reader { const unsigned char *next, *end; bool failed; };
++struct witness { uint64_t id; uint32_t pid, length; const unsigned char *foreign; };
++struct action { unsigned char op; struct witness witness; struct sway_container *con; };
++static void put(struct bytes *out, const void *data, size_t length) {
++ if (out->failed || length > LIMIT - out->len) { out->failed = true; return; }
++ memcpy(out->data + out->len, data, length); out->len += length;
++}
++static void integer(struct bytes *out, uint64_t value, unsigned length) {
++ unsigned char raw[8]; for (unsigned i = 0; i < length; i++) raw[length - i - 1] = (unsigned char)(value >> (8 * i)); put(out, raw, length);
++}
++static json_object *field(json_object *object, const char *key) {
++ json_object *value = NULL; json_object_object_get_ex(object, key, &value); return value;
++}
++static bool text_is(json_object *object, const char *value) {
++ return object && json_object_get_type(object) == json_type_string && !strcmp(json_object_get_string(object), value);
++}
++static void string(struct bytes *out, const char *value, size_t length) {
++ if (length > LIMIT || memchr(value, 0, length)) { out->failed = true; return; }
++ integer(out, length, 4); put(out, value, length);
++}
++static bool keep(json_object *object, const char *key) {
++ bool named = text_is(field(object, "type"), "root") || text_is(field(object, "type"), "output") || text_is(field(object, "type"), "workspace");
++ if (!strcmp(key, "name")) return named;
++ if (!strcmp(key, "title") || !strcmp(key, "representation")) return false;
++ if (!strcmp(key, "rect") || !strcmp(key, "deco_rect") || !strcmp(key, "window_rect") || !strcmp(key, "geometry")) return named;
++ return true;
++}
++static int compare_keys(const void *a, const void *b) { return strcmp(*(const char *const *)a, *(const char *const *)b); }
++static void canonical(json_object *value, struct bytes *out, unsigned depth, bool node) {
++ if (out->failed || depth > 64) { out->failed = true; return; }
++ enum json_type type = json_object_get_type(value);
++ switch (type) {
++ case json_type_null: integer(out, 0, 1); break;
++ case json_type_boolean: integer(out, 1, 1); integer(out, json_object_get_boolean(value) ? 1 : 0, 1); break;
++ case json_type_int: integer(out, 2, 1); integer(out, (uint64_t)json_object_get_int64(value), 8); break;
++ case json_type_double: {
++  double number = json_object_get_double(value); uint64_t bits;
++  if (!isfinite(number)) { out->failed = true; return; }
++  memcpy(&bits, &number, sizeof(bits)); integer(out, 3, 1); integer(out, bits, 8); break;
++ }
++ case json_type_string: integer(out, 4, 1); string(out, json_object_get_string(value), (size_t)json_object_get_string_len(value)); break;
++ case json_type_array: {
++  size_t length = json_object_array_length(value); if (length > 8192) { out->failed = true; return; }
++  integer(out, 5, 1); integer(out, length, 4);
++  for (size_t i = 0; i < length; i++) canonical(json_object_array_get_idx(value, i), out, depth + 1, node);
++  break;
++ }
++ case json_type_object: {
++  if (node) {
++   if (++out->nodes > 8192) { out->failed = true; return; }
++   if (field(value, "app_id") || field(value, "window") || text_is(field(value, "shell"), "xdg_shell")) {
++    if (++out->windows > 2048) { out->failed = true; return; }
++   }
++  }
++  size_t length = (size_t)json_object_object_length(value); if (length > 8192) { out->failed = true; return; }
++  const char **keys = calloc(length ? length : 1, sizeof(char *)); if (!keys) { out->failed = true; return; }
++  size_t count = 0;
++  json_object_object_foreach(value, key, child) { (void)child; if (keep(value, key)) keys[count++] = key; }
++  qsort(keys, count, sizeof(char *), compare_keys); integer(out, 6, 1); integer(out, count, 4);
++  for (size_t i = 0; i < count; i++) {
++   integer(out, 4, 1); string(out, keys[i], strlen(keys[i]));
++   canonical(field(value, keys[i]), out, depth + 1, !strcmp(keys[i], "nodes") || !strcmp(keys[i], "floating_nodes"));
++  }
++  free(keys); break;
++ }
++ }
++}
++static const unsigned char *take(struct reader *reader, size_t length) {
++ if (reader->failed || length > (size_t)(reader->end - reader->next)) { reader->failed = true; return NULL; }
++ const unsigned char *result = reader->next; reader->next += length; return result;
++}
++static uint64_t number(struct reader *reader, unsigned length) {
++ const unsigned char *raw = take(reader, length); uint64_t value = 0;
++ if (raw) for (unsigned i = 0; i < length; i++) value = (value << 8) | raw[i];
++ return value;
++}
++static struct witness witness(struct reader *reader) {
++ struct witness result = {0}; result.id = number(reader, 8); result.pid = (uint32_t)number(reader, 4); result.length = (uint32_t)number(reader, 4);
++ if (!result.id || result.id > INT64_MAX || result.pid < 2 || result.pid > INT32_MAX || !result.length || result.length > 256) { reader->failed = true; return result; }
++ result.foreign = take(reader, result.length);
++ if (result.foreign) for (uint32_t i = 0; i < result.length; i++) if (result.foreign[i] < 32 || result.foreign[i] == 127) reader->failed = true;
++ return result;
++}
++static bool matches_id(struct sway_container *con, void *id) { return con->node.id == *(uint64_t *)id; }
++static struct sway_container *resolve(struct witness *witness) {
++ struct sway_container *con = root_find_container(matches_id, &witness->id);
++ if (!con || con->node.destroying || !con->view || !con->view->surface || con->view->type != SWAY_VIEW_XDG_SHELL ||
++   (uint64_t)con->view->pid != witness->pid || !con->view->ext_foreign_toplevel || !witness->foreign) return NULL;
++ const char *foreign = con->view->ext_foreign_toplevel->identifier;
++ return foreign && strlen(foreign) == witness->length && !memcmp(foreign, witness->foreign, witness->length) ? con : NULL;
++}
++static bool source_matches(struct sway_seat *seat, unsigned kind, struct witness *source) {
++ if (!seat || seat->focused_layer || seat->has_exclusive_layer) return false;
++ struct sway_node *focused = seat_get_focus(seat);
++ if (!kind) return !seat->wlr_seat->keyboard_state.focused_surface && (!focused || focused->type != N_CONTAINER || !focused->sway_container->view);
++ struct sway_container *con = resolve(source);
++ return con && focused == &con->node && seat->wlr_seat->keyboard_state.focused_surface == con->view->surface;
++}
++static int hex(unsigned char value) {
++ if (value >= '0' && value <= '9') return value - '0';
++ if (value >= 'a' && value <= 'f') return value - 'a' + 10;
++ return -1;
++}
++bool lumen_focus_guard_wire_ready(void) {
++ static const unsigned char expected[32] = {0xb4,0x54,0x82,0x22,0x4b,0x43,0x9a,0x3d,0x54,0x8c,0x65,0x37,0x89,0x29,0xb7,0xdc,0xc1,0x6a,0x42,0x28,0x85,0x30,0xb7,0xb2,0x0d,0x5c,0x81,0x03,0xcc,0x87,0x9d,0x10};
++ struct bytes golden = {.data = malloc(LIMIT)}; if (!golden.data) return false;
++ json_object *empty = json_object_new_object(); if (!empty) {free(golden.data); return false;}
++ canonical(empty, &golden, 0, true); json_object_put(empty);
++ unsigned char digest[32]; unsigned int digest_size = 0;
++ bool ready = !golden.failed && EVP_Digest(golden.data, golden.len, digest, &digest_size, EVP_sha256(), NULL) && digest_size == 32 && !memcmp(digest, expected, 32);
++ free(golden.data); return ready;
++}
++struct cmd_results *cmd_lumen_focus_guard(int argc, char **argv) {
++ if (argc != 1 || config->reading || !config->active || config->handler_context.node_overridden) return cmd_results_new(CMD_INVALID, "LFG_REJECTED: expected one runtime token without criteria");
++ size_t length = strnlen(argv[0], WIRE_LIMIT * 2 + 1);
++ if (length < 8 || length > WIRE_LIMIT * 2 || length % 2) return cmd_results_new(CMD_INVALID, "LFG_REJECTED: token size is invalid");
++ unsigned char *raw = malloc(length / 2); struct action *actions = NULL; unsigned char *live = NULL;
++ if (!raw) return cmd_results_new(CMD_FAILURE, "LFG_REJECTED: allocation failed before dispatch");
++ bool decoded = true;
++ for (size_t i = 0; i < length / 2; i++) { int a = hex((unsigned char)argv[0][2 * i]), b = hex((unsigned char)argv[0][2 * i + 1]); if (a < 0 || b < 0) { decoded = false; break; } raw[i] = (unsigned char)((a << 4) | b); }
++ struct reader reader = {raw, raw + length / 2, !decoded};
++ const unsigned char *magic = take(&reader, 4);
++ if (!magic || memcmp(magic, "LFG2", 4)) reader.failed = true;
++ unsigned kind = (unsigned)number(&reader, 1); if (kind > 1) reader.failed = true;
++ struct witness source = {0}; if (kind == 1) source = witness(&reader);
++ struct witness target = witness(&reader); struct sway_container *target_con = reader.failed ? NULL : resolve(&target);
++ const unsigned char *topology = take(&reader, 32);
++ uint64_t count = number(&reader, 4); if (count > ACTIONS) reader.failed = true;
++ if (!reader.failed) actions = calloc(count ? (size_t)count : 1, sizeof(*actions));
++ if (!actions) reader.failed = true;
++ unsigned phase = 0;
++ for (uint64_t i = 0; i < count && !reader.failed; i++) {
++  actions[i].op = (unsigned char)number(&reader, 1); actions[i].witness = witness(&reader);
++  struct action *action = &actions[i]; action->con = reader.failed ? NULL : resolve(&action->witness);
++  if (!action->con) { reader.failed = true; break; }
++  if (action->op == 1 && !phase) {
++   if (!action->con->lumen_app_hidden) reader.failed = true;
++   for (uint64_t j = 0; j < i; j++) if (actions[j].witness.id == action->witness.id) reader.failed = true;
++  } else if (action->op == 2 && !phase && action->con == target_con && action->con->scratchpad) phase = 1;
++  else if (action->op == 3 && phase < 2 && action->con == target_con) phase = 2;
++  else reader.failed = true;
++ }
++ if (reader.next != reader.end || phase == 1 || !topology || !target_con || !source_matches(config->handler_context.seat, kind, &source)) reader.failed = true;
++ if (!reader.failed) {
++  live = malloc(LIMIT); if (!live) reader.failed = true;
++  else {
++   struct bytes actual = {.data = live}; json_object *tree = ipc_json_describe_node_recursive(&root->node);
++   canonical(tree, &actual, 0, true); json_object_put(tree);
++   unsigned char digest[32]; unsigned int digest_size = 0;
++   if (actual.failed || !EVP_Digest(actual.data, actual.len, digest, &digest_size, EVP_sha256(), NULL) || digest_size != 32 || memcmp(digest, topology, 32)) reader.failed = true;
++  }
++ }
++ bool failed = reader.failed; bool partial = false;
++ struct sway_seat *seat = config->handler_context.seat;
++ for (uint64_t i = 0; i < count && !failed; i++) {
++  char command[128]; const char *operation = actions[i].op == 1 ? "lumen_window unhide" : actions[i].op == 2 ? "scratchpad show" : "focus";
++  snprintf(command, sizeof(command), "[con_id=%" PRIu64 "] %s", actions[i].witness.id, operation);
++  list_t *results = execute_command(command, seat, NULL);
++  if (!results || results->length != 1) failed = true;
++  if (results) { for (int j = 0; j < results->length; j++) { struct cmd_results *result = results->items[j]; if (result->status != CMD_SUCCESS) failed = true; free_cmd_results(result); } list_free(results); }
++  partial = true;
++ }
++ free(live); free(actions); free(raw);
++ if (failed) return cmd_results_new(CMD_FAILURE, partial ? "LFG_UNCERTAIN: dispatch failed after an action; no retry was attempted" : "LFG_REJECTED: validation failed before any action");
++ return cmd_results_new(CMD_SUCCESS, NULL);
++}

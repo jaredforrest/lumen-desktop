@@ -10,6 +10,7 @@ QtObject {
     property var activationHistory:[]
     property var nativeWindows:[]
     property bool nativeCoverageComplete:false
+    property bool nativeGuardAvailable:false
     property var nativeFocused:null
     property int nativeSerial:0
     property bool nativePending:false
@@ -20,7 +21,7 @@ QtObject {
     signal nativeFocusResult(var result)
     function clearObservation(){
         recoveryAvailable=false;available=false;applications=[];activationHistory=[];
-        nativeWindows=[];nativeCoverageComplete=false;nativeFocused=null;sessionEpoch="";pending=false;
+        nativeWindows=[];nativeCoverageComplete=false;nativeGuardAvailable=false;nativeFocused=null;sessionEpoch="";pending=false;
     }
     function cancelNative(reason,retire){
         const request=nativeRequest;
@@ -68,7 +69,7 @@ QtObject {
                 if(value.available!==true && root.nativePending){root.cancelNative("The desktop disconnected during the window request. Its result is uncertain; wait for reconnection.",true);return;}
                 root.available=value.available===true;root.recoveryAvailable=root.available && value.recoveryAvailable===true;root.applications=root.available && Array.isArray(value.applications)?value.applications:[];root.error=value.error || "";root.session=value.session || {phase:"idle",token:"",error:""};
                 root.activationHistory=root.available && Array.isArray(value.activationHistory)?value.activationHistory:[];root.sessionEpoch=root.available && typeof value.sessionEpoch==="string"?value.sessionEpoch:"";
-                root.nativeCoverageComplete=root.available && value.nativeCoverageComplete===true;root.nativeWindows=root.available && Array.isArray(value.nativeWindows)?value.nativeWindows:[];root.nativeFocused=root.available?value.nativeFocused || null:null;
+                root.nativeGuardAvailable=root.available && value.nativeGuardAvailable===true;root.nativeCoverageComplete=root.available && value.nativeCoverageComplete===true;root.nativeWindows=root.available && Array.isArray(value.nativeWindows)?value.nativeWindows:[];root.nativeFocused=root.available?value.nativeFocused || null:null;
                 if(root.available)root.nativeRetiring=false;
                 if(value.result){
                     if(value.result.nativeFocus){

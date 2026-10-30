@@ -24,20 +24,8 @@ fn owners() -> Owners {
     )
 }
 #[test]
-fn similarly_named_shell_process_is_not_the_registered_owner() {
-    let path = std::env::temp_dir().join(format!("lumen-owned-shell-{}", std::process::id()));
-    fs::create_dir(&path).unwrap();
-    let executable = path.join("quickshell-untrusted");
-    let source = std::env::split_paths(&std::env::var_os("PATH").unwrap())
-        .map(|dir| dir.join("sleep"))
-        .find(|path| path.is_file())
-        .unwrap();
-    fs::copy(source, &executable).unwrap();
-    let owners = Owners(
-        (0..2)
-            .map(|_| Command::new(&executable).arg("30").spawn().unwrap())
-            .collect(),
-    );
+fn same_executable_process_is_not_the_registered_owner() {
+    let owners = owners();
     let node = |index: usize| json!({"id":index+1,"pid":owners.0[index].id(),"app_id":"independent.external","window":null,"shell":"xdg_shell","foreign_toplevel_identifier":format!("surface-{index}")});
     let mut lifecycle = Lifecycle::default();
     lifecycle.bind_shell_owner(owners.0[0].id());
@@ -46,8 +34,6 @@ fn similarly_named_shell_process_is_not_the_registered_owner() {
     assert!(!lifecycle.native_coverage_complete(&[node(0), node(1)]));
     lifecycle.shell_owner = None;
     assert!(!lifecycle.native_coverage_complete(&[node(0)]));
-    drop(owners);
-    fs::remove_dir_all(path).unwrap();
 }
 fn nodes(owners: &Owners, focused: i64) -> Vec<Value> {
     [(11,0,"app"),(12,0,"app"),(13,1,"other")].into_iter().map(|(id,pid,app)|json!({"id":id,"type":"con","pid":owners.0[pid].id(),"app_id":app,"name":"identical","shell":"xdg_shell","window":null,"foreign_toplevel_identifier":format!("surface-{id}"),"focused":id==focused,"lumen_state":{"version":1,"hidden":false,"minimised":false,"restore_workspace":"one"},"lumen_relationships":{"version":1,"parent_supported":true,"parent":null,"modal":null}})).collect()

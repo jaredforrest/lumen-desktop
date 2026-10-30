@@ -50,8 +50,9 @@ PanelWindow {
         if(!visible){
             pendingNativeRequest="";
             previewNativeFocus=JSON.parse(JSON.stringify(shell.nativeFocusedCapture || null));
-            items=SwitcherModel.snapshot(shell.windows,shell.activationHistory,identity).map(item=>{
-                const pairs=shell.nativeWindowCoverageComplete===true?SwitcherModel.nativeGroupPairs(shell.windows,shell.nativeWindowCaptures || [],identity,item.key):null;
+            const windows=Array.from(shell.windows);
+            items=SwitcherModel.snapshot(windows,shell.activationHistory,identity).map(item=>{
+                const pairs=shell.nativeWindowCoverageComplete===true?SwitcherModel.nativeGroupPairs(windows,shell.nativeWindowCaptures || [],identity,item.key):null;
                 const native=pairs && pairs.length?pairs[0]:null;
                 const window=native?native.window:item.window;
                 const entry=shell.entryFor(window);

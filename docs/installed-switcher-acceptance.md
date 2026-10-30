@@ -21,8 +21,12 @@ modifier-release commit, Escape cancellation, no preview activation, same-app
 creation-order cycling and reverse cycling, minimized targets, selected-app
 removal and same-app replacement. Native container ID and process ID are checked
 against each created process. The native window event log records focus changes.
-A replacement document of the same application may receive an application-level
-commit; another application cannot inherit its snapshot slot.
+The legacy QObject path permits an application-level commit to a live window
+of that application; another application cannot inherit its snapshot slot.
+The exact native backing-window path instead captures a specific surface and
+process: closing or replacing it cancels the decision, including a replacement
+document from the same application. Mixed or unsupported external surfaces keep
+the legacy path until complete exact native coverage is available.
 
 The regression also exercises a delayed focus fallback. Once its target gains
 native focus, its pending timer is stopped; a newer non-origin native focus

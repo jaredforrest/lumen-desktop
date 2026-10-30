@@ -1,4 +1,4 @@
-{ pkgs, effects ? false, displaySpaces ? true, ownedGeometryEvents ? true }:
+{ pkgs, effects ? false, displaySpaces ? true, ownedGeometryEvents ? true, nativeFocusGuard ? true }:
 let
   alignedWlroots = pkgs.wlroots_0_20.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [ ../res/lumen-desktop/wlroots-udmabuf-raster-alignment.patch ../res/lumen-desktop/wlroots-xwayland-modal-state.patch ../res/lumen-desktop/wlroots-seat-capability-leave.patch ];
@@ -25,6 +25,13 @@ pkgs.sway.override {
       ++ pkgs.lib.optional displaySpaces ../res/lumen-desktop/sway-display-spaces.patch
       ++ [ ../res/lumen-desktop/sway-disabled-action-dispatch.patch ]
       ++ pkgs.lib.optional ownedGeometryEvents ../res/lumen-desktop/sway-owned-geometry-events.patch
-      ++ [ ../res/lumen-desktop/sway-interactive-resize-sync.patch ../res/lumen-desktop/sway-shortcut-load-state.patch ];
+      ++ [ ../res/lumen-desktop/sway-interactive-resize-sync.patch ../res/lumen-desktop/sway-shortcut-load-state.patch ]
+      ++ [ ../res/lumen-desktop/sway-toplevel-identity.patch ];
+    postPatch = (old.postPatch or "") + pkgs.lib.optionalString nativeFocusGuard ''
+      ${pkgs.patch}/bin/patch --batch --fuzz=0 -p1 < ${if effects then ../res/lumen-desktop/swayfx-native-focus-guard.patch else ../res/lumen-desktop/sway-native-focus-guard.patch}
+      ${pkgs.patch}/bin/patch --batch --fuzz=0 -p1 < ${../res/lumen-desktop/sway-native-focus-guard-core.patch}
+    '';
+    mesonFlags = (old.mesonFlags or [ ]) ++ [ "-Dwerror=true" ];
+    buildInputs = (old.buildInputs or [ ]) ++ pkgs.lib.optional nativeFocusGuard pkgs.openssl;
   });
 }

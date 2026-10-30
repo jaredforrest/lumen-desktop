@@ -51,6 +51,7 @@
         global-menu-runtime = session.menuRuntime;
         compositor = import ./packages/sway-window-controls.nix { pkgs = compositorPkgs; effects = true; };
         compositor-basic = import ./packages/sway-window-controls.nix { pkgs = compositorPkgs; effects = false; };
+        test-native-focus-legacy-compositor = import ./packages/sway-window-controls.nix { pkgs = compositorPkgs; nativeFocusGuard = false; };
         test-display-spaces-legacy-compositor = import ./packages/sway-window-controls.nix { pkgs = compositorPkgs; displaySpaces = false; };
         utilities = import ./packages/utilities.nix { inherit pkgs; };
         file-jobs-rust = import ./packages/file-jobs-rust.nix { inherit pkgs; };

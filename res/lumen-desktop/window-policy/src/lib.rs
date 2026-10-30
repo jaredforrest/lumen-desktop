@@ -1,4 +1,5 @@
 use serde_json::Value;
+pub mod guard;
 pub type Result<T> = std::result::Result<T, String>;
 #[derive(Clone)]
 struct Window<'a> {
@@ -268,6 +269,7 @@ pub fn visibility_command(
 /// modal redirection, application unhiding and workspace restoration consistent.
 pub struct NativePlan {
     pub command: Option<String>,
+    pub actions: Vec<Value>,
     pub target: Value,
     pub focus_allowed: bool,
 }
@@ -294,6 +296,7 @@ pub fn native_focus_plan(
         return Err("The active workspace could not be determined".into());
     }
     let mut commands = Vec::new();
+    let mut actions = Vec::new();
     for window in &all {
         if (unhide_ids.contains(&window.id().unwrap_or(-1)) || window.id().ok() == target.id().ok())
             && window.state()["hidden"] == true
@@ -302,6 +305,7 @@ pub fn native_focus_plan(
                 return Err("The compositor cannot restore this hidden application".into());
             }
             commands.push(format!("[con_id={}] lumen_window unhide", window.id()?));
+            actions.push(serde_json::json!({"op":"unhide","conId":window.id()?}));
         }
     }
     if allowed && target.node["focused"] != true {
@@ -313,9 +317,12 @@ pub fn native_focus_plan(
             target.id()?,
             if scratch { "scratchpad show, " } else { "" }
         ));
+        if scratch {actions.push(serde_json::json!({"op":"show","conId":target.id()?}));}
+        actions.push(serde_json::json!({"op":"focus","conId":target.id()?}));
     }
     Ok(NativePlan {
         command: (!commands.is_empty()).then(|| commands.join("; ")),
+        actions,
         target: target.node.clone(),
         focus_allowed: allowed,
     })

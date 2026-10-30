@@ -19,7 +19,7 @@ fn emit(available:bool,lifecycle:&Lifecycle,session:&SessionEnd,store:&mut Optio
             }
         }
     }
-    let mut value=json!({"available":available,"applications":if available{lifecycle.rows()}else{Vec::new()},"activationHistory":if available{lifecycle.activation_history.order()}else{Vec::new()},"nativeWindows":if available{lifecycle.window_history.captures(lifecycle)}else{Vec::new()},"nativeCoverageComplete":available&&lifecycle.native_coverage_complete,"nativeFocused":if available{lifecycle.current_source_focus.clone()}else{Value::Null},"sessionEpoch":if available{lifecycle.epoch.clone()}else{None},"error":error,"recoveryAvailable":recovery,"session":session.state()});
+    let mut value=json!({"available":available,"applications":if available{lifecycle.rows()}else{Vec::new()},"activationHistory":if available{lifecycle.activation_history.order()}else{Vec::new()},"nativeGuardAvailable":available&&lifecycle.native_guard_available,"nativeWindows":if available&&lifecycle.native_guard_available{lifecycle.window_history.captures(lifecycle)}else{Vec::new()},"nativeCoverageComplete":available&&lifecycle.native_guard_available&&lifecycle.native_coverage_complete,"nativeFocused":if available{lifecycle.current_source_focus.clone()}else{Value::Null},"sessionEpoch":if available{lifecycle.epoch.clone()}else{None},"error":error,"recoveryAvailable":recovery,"session":session.state()});
     if let Some(result)=result{value["result"]=result;}
     if let Ok(encoded)=serde_json::to_string(&value){
         if last.as_ref()!=Some(&encoded){println!("{encoded}");let _=std::io::stdout().flush();*last=Some(encoded);}
@@ -41,6 +41,10 @@ fn handle(data:&Value,nodes:&mut Vec<Value>,query:&mut UnixStream,path:&PathBuf,
     if action=="session_cancel"{session.cancel();emit(true,lifecycle,session,store,last,"",None);return;}
     if action=="focus_native"{
         let request=data["requestId"].as_str().filter(|id|!id.is_empty()&&id.len()<=128&&!id.chars().any(char::is_control));
+        if !lifecycle.native_guard_available {
+            emit(true,lifecycle,session,store,last,"This compositor does not support guarded window activation.",Some(json!({"nativeFocus":{"requestId":request.unwrap_or(""),"requested":false,"unsupported":true,"error":"This compositor does not support guarded window activation. Window-based controls remain available."}})));return;
+        }
+        let mut uncertain=false;
         let outcome=(||->Result<Value>{
             let request=request.ok_or("Invalid focus request")?;
             let switch_space=data["switchSpace"].as_bool().ok_or("Invalid workspace preference")?;
@@ -51,16 +55,20 @@ fn handle(data:&Value,nodes:&mut Vec<Value>,query:&mut UnixStream,path:&PathBuf,
             if !lifecycle.source_focus_matches(initial){return Err("Native focus changed after preview".into());}
             let plan=lifecycle.native_focus_plan(&data["capture"],&tree,switch_space)?;
             if epoch(path)?!=expected{return Err("Compositor session changed".into());}
-            // Repeat live process checks against the sampled surface. Source
-            // and surface checks use this snapshot, not an atomic dispatch guard.
+            // Kernel-process witnesses are sampled. The typed compositor guard
+            // independently checks actual source/surface topology at dispatch.
             lifecycle.native_focus_plan(&data["capture"],&tree,switch_space)?;
-            if let Some(command)=&plan.command{
-                send(query,0,command)?;let (kind,reply)=receive(query)?;
-                if kind!=0||!reply.as_array().is_some_and(|rows|!rows.is_empty()&&rows.iter().all(|row|row["success"]==true)){return Err("The compositor rejected native activation".into());}
+            let packet=lumen_window_policy::guard::packet(&tree,initial,&plan.target,&plan.actions)?;
+            let command=lumen_window_policy::guard::command(&packet)?;
+            uncertain=true;send(query,0,&command)?;let (kind,reply)=receive(query)?;
+            if kind!=0||!reply.as_array().is_some_and(|rows|rows.len()==1&&rows.iter().all(|row|row["success"]==true)){
+                if kind==0&&reply.as_array().is_some_and(|rows|rows.len()==1&&rows[0]["error"].as_str().is_some_and(|error|error.starts_with("LFG_REJECTED:"))){uncertain=false;}
+                return Err("The compositor rejected guarded activation".into());
             }
+            uncertain=false;
             Ok(json!({"requestId":request,"requested":plan.focus_allowed,"conId":plan.target["id"],"foreignId":plan.target["foreign_toplevel_identifier"]}))
         })();
-        let result=outcome.unwrap_or_else(|_|json!({"requestId":request.unwrap_or(""),"requested":false,"error":"The captured window, process or session changed. Open the switcher again."}));
+        let result=outcome.unwrap_or_else(|_|json!({"requestId":request.unwrap_or(""),"requested":false,"uncertain":uncertain,"error":if uncertain{"The window action may have partially completed. No retry was attempted; check the desktop before opening the switcher again."}else{"The captured window, process or desktop state changed. Open the switcher again."}}));
         emit(true,lifecycle,session,store,last,"",Some(json!({"nativeFocus":result})));return;
     }
     let result=(||->Result<Option<Value>>{
@@ -107,6 +115,8 @@ fn watch()->Result<()>{
         query.set_read_timeout(Some(Duration::from_secs(5))).map_err(|error|error.to_string())?;
         query.set_write_timeout(Some(Duration::from_secs(5))).map_err(|error|error.to_string())?;
         if let Some(store)=&mut store{let saved=store.load_state();lifecycle.recover(&identity,&saved.processes);lifecycle.activation_history=saved.history;lifecycle.window_history=saved.windows;lifecycle.prune();}
+        send(&mut query,7,"")?;let (version_kind,version)=receive(&mut query)?;
+        lifecycle.native_guard_available=version_kind==7&&version["native_focus_guard"].as_u64()==Some(2);
         let mut nodes=refresh(&mut query,&path,&identity,&mut lifecycle,&mut session,&protocol,&mut store,&mut last)?;
         lifecycle.observe_focus(&nodes);emit(true,&lifecycle,&session,&mut store,&mut last,"",None);
         events.set_read_timeout(None).map_err(|error|error.to_string())?;

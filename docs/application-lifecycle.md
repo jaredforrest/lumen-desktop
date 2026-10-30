@@ -136,10 +136,14 @@ the owning request with an explicitly uncertain result. That owned worker is
 retired and reaped before a replacement can become available. A fresh user
 decision is required; no pending action is replayed, retried or rolled back.
 
-Current surface and source checks use the sampled compositor tree before command
-dispatch. Repeated checks refresh process witnesses, not the tree. The command is
-a separate IPC message; this adapter does not claim an atomic compositor-side
-source-and-target guard across that interval.
+The observer repeats live kernel-process checks against its sampled tree, then
+submits a [versioned typed guard](native-focus-guard.md). The compositor checks
+actual source/target surfaces and the complete canonical policy topology digest
+inside one callback before applying the approved actions synchronously. This
+closes the surface/source IPC interval; kernel process lifetime remains a
+separate sampled witness and can end immediately after its last check. Missing
+guard capability keeps the original window-based path and explicitly refuses a
+captured native request.
 
 The original helper uses the same policy core and retains its existing API.
 Unsupported surfaces, missing foreign identifiers and window-only providers keep
