@@ -151,6 +151,24 @@ fn floating(node: &Value) -> Result<bool> {
         _ => Err(fail("Unknown native floating classification")),
     }
 }
+fn outputs(f: &Fixture) -> Result<Value> {
+    let (status, raw) = f.call(&["-r", "-t", "get_outputs"])?;
+    require(status.success(), "Output observation failed")?;
+    Ok(serde_json::from_str(&raw)?)
+}
+fn visible_workspaces(outputs: &Value) -> Result<Value> {
+    Ok(Value::Array(
+        outputs
+            .as_array()
+            .ok_or("Native output array missing")?
+            .iter()
+            .map(|output| {
+                json!({"id":output["id"],"name":output["name"],
+            "active":output["active"],"current_workspace":output["current_workspace"]})
+            })
+            .collect(),
+    ))
+}
 fn move_family(f: &mut Fixture, name: &str, child: bool, label: &str) -> Result<()> {
     let root_identity = f.mapped(0, 0)?;
     let child_identity = if child { Some(f.mapped(0, 1)?) } else { None };
@@ -165,11 +183,12 @@ fn move_family(f: &mut Fixture, name: &str, child: bool, label: &str) -> Result<
         })
         .transpose()?;
     let visible = current(f)?;
+    let before_outputs = outputs(f)?;
     let reply = f.ipc(&captured.command)?;
     let after_ack = f.tree()?;
     save(
         &format!("{label}-ack"),
-        &json!({"capturedTree":captured.tree,
+        &json!({"capturedTree":captured.tree,"outputsBefore":before_outputs,
         "capturedSnapshot":captured.snapshot,"command":captured.command,"reply":reply,
         "focusedWorkspaceBefore":visible,"treeAfterAcknowledgement":after_ack}),
     )?;
@@ -186,12 +205,10 @@ fn move_family(f: &mut Fixture, name: &str, child: bool, label: &str) -> Result<
     })?;
     let after = f.mapped(0, 0)?;
     let after_child = if child { Some(f.mapped(0, 1)?) } else { None };
-    let (outputs_status, outputs_raw) = f.call(&["-r", "-t", "get_outputs"])?;
-    require(outputs_status.success(), "Output observation failed")?;
-    let outputs: Value = serde_json::from_str(&outputs_raw)?;
+    let after_outputs = outputs(f)?;
     save(
         &format!("{label}-settled"),
-        &json!({"tree":f.tree()?,"outputs":outputs,
+        &json!({"tree":f.tree()?,"outputs":after_outputs,
         "focusedWorkspaceBefore":visible,"focusedWorkspaceAfter":current(f)?}),
     )?;
     require(
@@ -212,7 +229,11 @@ fn move_family(f: &mut Fixture, name: &str, child: bool, label: &str) -> Result<
     }
     require(
         current(f)? == visible,
-        "Transfer activated destination workspace",
+        "Transfer changed keyboard-focus workspace",
+    )?;
+    require(
+        visible_workspaces(&before_outputs)? == visible_workspaces(&after_outputs)?,
+        "Transfer changed a visible output workspace",
     )?;
     if let (Some(before), Some(after_child)) = (&before_child, &after_child) {
         require(
@@ -237,6 +258,12 @@ fn move_family(f: &mut Fixture, name: &str, child: bool, label: &str) -> Result<
             )?;
         }
     }
+    let mut moved = vec![(0, 0)];
+    if child {
+        moved.push((0, 1));
+    }
+    // No focus request: the compositor must retain or repair the bystander target.
+    f.type_only(1, 0, &moved)?;
     save(
         label,
         &json!({"capturedSnapshot":captured.snapshot,"command":captured.command,"rootBefore":root,"rootAfter":after,"childBefore":before_child,"childAfter":after_child,"focusedWorkspaceBefore":visible,"focusedWorkspaceAfter":current(f)?}),
