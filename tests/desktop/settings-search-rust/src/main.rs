@@ -38,6 +38,16 @@ fn wait<T>(label: &str, mut probe: impl FnMut() -> Result<Option<T>>) -> Result<
 fn path_string(path: &Path) -> String {
     path.to_string_lossy().into_owned()
 }
+fn immutable_path(path: &Path, label: &str) -> Result<PathBuf> {
+    let canonical = path
+        .canonicalize()
+        .map_err(|error| fail(format!("Resolve {label} {}: {error}", path.display())))?;
+    ensure(
+        canonical.starts_with("/nix/store/"),
+        format!("Unpinned {label}: {}", path.display()),
+    )?;
+    Ok(canonical)
+}
 fn save(path: &Path, value: &Value) -> Result<()> {
     fs::write(path, format!("{}\n", serde_json::to_string_pretty(value)?))?;
     Ok(())
@@ -138,15 +148,17 @@ fn options() -> Result<Options> {
         env::current_dir()?.join(output)
     };
     Ok(Options {
-        launcher: launcher.ok_or("--launcher required")?,
-        sway: sway.ok_or("--sway required")?,
-        pointer: pointer.ok_or("--pointer-tool required")?,
+        launcher: immutable_path(&launcher.ok_or("--launcher required")?, "launcher")?,
+        sway: immutable_path(&sway.ok_or("--sway required")?, "compositor")?,
+        pointer: immutable_path(&pointer.ok_or("--pointer-tool required")?, "pointer")?,
         output,
         effects,
         inside,
         revision,
         parent_net,
-        egl,
+        egl: egl
+            .map(|path| immutable_path(&path, "EGL vendor"))
+            .transpose()?,
     })
 }
 fn run_command(program: &str, args: &[&str], vars: &BTreeMap<String, String>) -> Result<String> {
@@ -154,7 +166,8 @@ fn run_command(program: &str, args: &[&str], vars: &BTreeMap<String, String>) ->
         .args(args)
         .env_clear()
         .envs(vars)
-        .output()?;
+        .output()
+        .map_err(|error| fail(format!("Spawn {program} {args:?}: {error}")))?;
     ensure(
         result.status.success(),
         format!(
@@ -165,7 +178,15 @@ fn run_command(program: &str, args: &[&str], vars: &BTreeMap<String, String>) ->
     Ok(String::from_utf8(result.stdout)?.trim().to_owned())
 }
 fn launcher_env(launcher: &Path) -> Result<BTreeMap<String, String>> {
-    let result = Command::new(launcher).arg("--print-env0").output()?;
+    let result = Command::new(launcher)
+        .arg("--print-env0")
+        .output()
+        .map_err(|error| {
+            fail(format!(
+                "Read launcher environment {}: {error}",
+                launcher.display()
+            ))
+        })?;
     ensure(result.status.success(), "Launcher environment unavailable")?;
     let mut vars = BTreeMap::new();
     for part in result.stdout.split(|byte| *byte == 0) {
@@ -245,7 +266,7 @@ fn private_bus(vars: &mut BTreeMap<String, String>, out: &Path, runtime: &Path) 
         ),
     )?;
     let file = File::create(out.join("bus.log"))?;
-    let mut process = Command::new("dbus-daemon")
+    let mut process = Command::new(env!("LUMEN_SETTINGS_SEARCH_DBUS_DAEMON"))
         .arg("--nofork")
         .arg("--print-address=1")
         .arg(format!("--config-file={}", config.display()))
@@ -663,7 +684,10 @@ fn inner(opt: &Options) -> Result<()> {
                 <= selected["windowHeight"].as_f64().unwrap_or(0.),
         "Titlebar result not visible",
     )?;
-    driver.call("grim", &[&path_string(&out.join("titlebar-result.png"))])?;
+    driver.call(
+        env!("LUMEN_SETTINGS_SEARCH_GRIM"),
+        &[&path_string(&out.join("titlebar-result.png"))],
+    )?;
     driver.key(&["-k", "space", "-k", "Down", "-k", "Return"])?;
     wait("physical Zoom preference", || {
         Ok((driver.state()?["windowCalls"]
@@ -748,7 +772,10 @@ fn inner(opt: &Options) -> Result<()> {
             && final_state["windowCalls"] == json!([{"key":"titlebarDoubleClick","value":"zoom"}]),
         "Search/navigation changed another preference",
     )?;
-    driver.call("grim", &[&path_string(&out.join("final.png"))])?;
+    driver.call(
+        env!("LUMEN_SETTINGS_SEARCH_GRIM"),
+        &[&path_string(&out.join("final.png"))],
+    )?;
     if opt.effects {
         let log = fs::read_to_string(out.join("sway.log"))?;
         for marker in [
@@ -777,4 +804,38 @@ fn inner(opt: &Options) -> Result<()> {
 fn main() -> Result<()> {
     let opt = options()?;
     if opt.inside { inner(&opt) } else { outer(&opt) }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn artifact_symlink_is_replaced_by_namespace_visible_store_path() {
+        let root = env::temp_dir().join(format!("lumen-settings-path-test-{}", std::process::id()));
+        fs::create_dir(&root).unwrap();
+        let link = root.join("artifact-tool");
+        let executable = Path::new(env!("LUMEN_SETTINGS_SEARCH_GRIM"));
+        symlink(executable, &link).unwrap();
+        let result = immutable_path(&link, "test tool").unwrap();
+        assert_eq!(result, executable.canonicalize().unwrap());
+        assert!(result.starts_with("/nix/store"));
+        assert_ne!(result, link);
+        let local = root.join("local-tool");
+        fs::write(&local, "untrusted").unwrap();
+        assert!(
+            immutable_path(&local, "test tool")
+                .unwrap_err()
+                .to_string()
+                .contains("Unpinned")
+        );
+        assert!(
+            immutable_path(&root.join("absent"), "missing launcher")
+                .unwrap_err()
+                .to_string()
+                .contains("Resolve missing launcher")
+        );
+        fs::remove_file(link).unwrap();
+        fs::remove_file(local).unwrap();
+        fs::remove_dir(root).unwrap();
+    }
 }
