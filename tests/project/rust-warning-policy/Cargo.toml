@@ -6,3 +6,7 @@ edition = "2024"
 [features]
 preserved = []
 warning = []
+dependency-warning = ["owned-warning-dependency/warning"]
+
+[dependencies]
+owned-warning-dependency = { path = "dependency" }

@@ -31,4 +31,9 @@ pkgs.linkFarm "lumen-owned-rust-warning-policy" [
   { name = "encoded-positive"; path = encoded; }
   { name = "compiler-warning-negative"; path = negative direct; }
   { name = "encoded-compiler-warning-negative"; path = negative encoded; }
+  { name = "owned-dependency-warning-negative"; path = pkgs.testers.testBuildFailure' {
+    drv = direct.overrideAttrs { cargoBuildFeatures = [ "dependency-warning" ]; };
+    expectedBuilderExitCode = 101;
+    expectedBuilderLogEntries = [ "unused variable: `policy_dependency_unused`" "-D warnings" ];
+  }; }
 ]

@@ -5,3 +5,10 @@ version = 4
 [[package]]
 name = "lumen-rust-warning-policy-fixture"
 version = "0.1.0"
+dependencies = [
+ "owned-warning-dependency",
+]
+
+[[package]]
+name = "owned-warning-dependency"
+version = "0.1.0"
