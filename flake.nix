@@ -468,6 +468,8 @@
       devShells.${system}.default = pkgs.mkShell {
         packages = [ pkgs.nodejs pkgs.nushell pkgs.bubblewrap (import ./tests/desktop/portal-permission-provider-rust { inherit pkgs; }) (import ./tests/desktop/portal-pane-rust { inherit pkgs; }) (pkgs.callPackage ./tests/desktop/provider-isolation { inherit pkgs; }) (import ./tests/desktop/capture-observation-shim { inherit pkgs; }) (import ./tests/desktop/application-isolation { inherit pkgs; }) (pkgs.callPackage ./packages/ci-native-namespace-policy.nix { }) (pkgs.callPackage ./packages/office-capability-records.nix { }) privateBus browserPipeChild settings (pkgs.callPackage ./packages/file-preview.nix { }) (pkgs.callPackage ./packages/shell-ipc.nix { }) (pkgs.callPackage ./packages/power-status.nix { }) (pkgs.callPackage ./packages/portal-permissions.nix { }) pkgs.nix pkgs.git pkgs.dbus quickshell pkgs.sway pkgs.grim pkgs.wtype pkgs.foot pkgs.imagemagick pkgs.gitleaks pkgs.util-linux ];
         __EGL_VENDOR_LIBRARY_FILENAMES = "${pkgs.mesa}/share/glvnd/egl_vendor.d/50_mesa.json";
+        QML_IMPORT_PATH = "${pkgs.qt6.qtmultimedia}/lib/qt-6/qml";
+        QT_PLUGIN_PATH = "${pkgs.qt6.qtmultimedia}/lib/qt-6/plugins";
         LUMEN_TEST_SETTINGS_COMMAND = "${settings}/bin/lumen-nix-settings";
       };
     };
