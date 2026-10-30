@@ -33,9 +33,23 @@ Flickable {
     readonly property string columnPathKey:columns.map(column=>column.path).join("\u0000")
     function clampOffset(value){return Math.max(0,Math.min(value,Math.max(0,contentWidth-width)));}
     property var pendingSnapshot:null
+    property bool revealPending:false
     function snapshot(){return {x:contentX,columns:columns.map((column,index)=>{const item=columnRepeater.itemAt(index);if(!item)return {path:column.path,offset:0};const list=item.listView;const row=list.indexAt(1,list.contentY+1);const delegate=row>=0?list.itemAtIndex(row):null;return {path:column.path,offset:list.contentY,anchor:HistoryModel.ref(column.rows[row]),delta:delegate?Math.max(0,list.contentY-delegate.y):0};})};}
     function ensureVisible(path){columns.forEach((column,index)=>{const item=columnRepeater.itemAt(index),row=column.rows.findIndex(r=>r.path===path);if(item && row>=0){item.listView.positionViewAtIndex(row,ListView.Contain);contentX=Math.max(0,Math.min(item.x,contentWidth-width));}});}
-    function restoreSnapshot(value){pendingSnapshot=value;Qt.callLater(applySnapshot);}
+    function revealCurrentFolder(){
+        if(!visible)return;
+        if(pendingSnapshot){applySnapshot();return;}
+        const index=columns.findIndex(column=>column.path===selectionFolder),item=index>=0?columnRepeater.itemAt(index):null;
+        if(!item || columns[index].loaded===false || width<=0 || item.width<=0)return;
+        let expectedX=0;
+        for(let i=0;i<index;i++){const prior=columnRepeater.itemAt(i);if(!prior)return;expectedX+=prior.width;}
+        if(Math.abs(item.x-expectedX)>1)return;
+        contentX=clampOffset(item.x);
+        if(currentPath)ensureVisible(currentPath);
+        revealPending=false;
+    }
+    onVisibleChanged:if(visible){revealPending=true;Qt.callLater(revealCurrentFolder);}
+    function restoreSnapshot(value){revealPending=false;pendingSnapshot=value;Qt.callLater(applySnapshot);}
     function applySnapshot(){
         if(!pendingSnapshot)return;
         if(!visible){pendingSnapshot=null;snapshotRestored();return;}
@@ -44,14 +58,16 @@ Flickable {
         columns.forEach((column,index)=>{const saved=(pendingSnapshot.columns || []).find(c=>c.path===column.path),item=columnRepeater.itemAt(index);if(!saved)return;if(!item || column.loaded===false){waiting=true;return;}const list=item.listView;if(column.rows.length>0 && list.contentHeight===0){waiting=true;return;}const i=HistoryModel.locate(column.rows,saved.anchor);if(i>=0)list.positionViewAtIndex(i,ListView.Beginning);list.contentY=Math.max(0,Math.min(i>=0?list.contentY+(saved.delta || 0):saved.offset || 0,list.contentHeight-list.height));});
         if(!waiting && columns.every(column=>column.loaded!==false)){pendingSnapshot=null;snapshotRestored();}
     }
-    onColumnsChanged:Qt.callLater(applySnapshot)
+    onColumnsChanged:Qt.callLater(()=>{if(pendingSnapshot)applySnapshot();else if(revealPending)revealCurrentFolder();})
     onColumnPathKeyChanged:{resizeEpoch++;resizingIndex=-1;Qt.callLater(()=>{if(pendingSnapshot)applySnapshot();else if(resizingIndex<0)contentX=Math.max(0,contentWidth-width);});}
-    onContentWidthChanged:Qt.callLater(()=>{if(pendingSnapshot)applySnapshot();else contentX=clampOffset(contentX);})
+    onContentWidthChanged:Qt.callLater(()=>{if(pendingSnapshot)applySnapshot();else if(revealPending)revealCurrentFolder();else contentX=clampOffset(contentX);})
     ScrollBar.horizontal: DesktopScrollBar {}
     Row {
         id: columnRow; height: root.height
+        onPositioningComplete:if(root.revealPending)root.revealCurrentFolder()
         Repeater {
             id:columnRepeater
+            onItemAdded:if(root.revealPending)Qt.callLater(root.revealCurrentFolder)
             model: root.columns
             Item {
                 required property var modelData; required property int index
