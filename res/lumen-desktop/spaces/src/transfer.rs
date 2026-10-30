@@ -177,8 +177,10 @@ pub fn source_family(tree: &Value, wanted: &Value) -> Result<(Value, Vec<Value>)
     let relation = &node["lumen_relationships"];
     let state = &node["lumen_state"];
     let group_hidden = state["group_hidden"] != false;
+    if lumen_window_policy::projection::parse(node)?.is_some_and(|p| p.enabled) {
+        return Err("Clear all-desktop presentation before moving this window".into());
+    }
     if !managed_role(node)
-        || lumen_window_policy::projection::parse(node)?.is_some_and(|p| p.enabled)
         || node["sticky"] != false
         || node["fullscreen_mode"] != 0
         || fullscreen_in_path(tree, wanted, false) != Some(false)
@@ -230,11 +232,13 @@ pub fn source_family(tree: &Value, wanted: &Value) -> Result<(Value, Vec<Value>)
             }
             let relation = &child["lumen_relationships"];
             let state = &child["lumen_state"];
+            if lumen_window_policy::projection::parse(child)?.is_some_and(|p| p.enabled) {
+                return Err("Clear all-desktop presentation for every window in this family before moving it".into());
+            }
             if !matches!(child["floating"].as_str(), Some("user_on" | "auto_on"))
                 || child_workspace.is_none_or(|owner| owner["id"] != workspace["id"])
                 || child_output.is_none_or(|owner| owner["id"] != output["id"])
                 || !managed_role(child)
-                || lumen_window_policy::projection::parse(child)?.is_some_and(|p| p.enabled)
                 || child["sticky"] != false
                 || child["fullscreen_mode"] != 0
                 || fullscreen_in_path(tree, &child["id"], false) != Some(false)
