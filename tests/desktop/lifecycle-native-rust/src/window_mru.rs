@@ -251,7 +251,7 @@ pub fn run(options: Options) -> Result<()> {
         f.processes[owner].alive()? && f.processes[other].alive()?,
         "Shell restart exited native clients",
     )?;
-    f.launch(
+    let restarted_desktop = f.launch(
         Path::new("quickshell"),
         &["-p", qml.to_str().ok_or("QML path")?],
         "desktop-restarted.log",
@@ -346,6 +346,79 @@ pub fn run(options: Options) -> Result<()> {
     require(
         focused(&f)?["id"] == second,
         "Fresh preview Escape changed the committed exact target",
+    )?;
+    f.ipc("desktop", "calendar", &[])?;
+    let calendar = wait("owned Calendar native source focus", || {
+        let native = focused(&f)?;
+        let observed = state(&f)?;
+        Ok((native["app_id"] == "org.quickshell"
+            && native["pid"] == f.processes[restarted_desktop].0.id()
+            && observed["nativeFocused"]["kind"] == "native"
+            && observed["nativeFocused"]["appId"] == "org.quickshell"
+            && observed["nativeFocused"]["conId"] == native["id"])
+            .then_some(json!({"native":native,"capture":observed["nativeFocused"]})))
+    })?;
+    let decision = select(&f)?;
+    require(
+        decision["nativeCapture"]["conId"] == second,
+        "Owned panel switcher lost exact backing-window target",
+    )?;
+    require(
+        state(&f)?["apps"]
+            .as_array()
+            .is_some_and(|apps| !apps.iter().any(|app| app["appId"] == "org.quickshell")),
+        "Owned Calendar source was registered as an external application",
+    )?;
+    let panel_commits = decision["commits"]
+        .as_u64()
+        .ok_or("Owned panel commit count")?;
+    let panel_serial = state(&f)?["nativeSerial"]
+        .as_u64()
+        .ok_or("Owned panel request serial")?;
+    save(
+        &f.options
+            .output
+            .join("window-mru-owned-calendar-source.json"),
+        &json!({"source":calendar,"decision":decision,"tree":f.tree()?}),
+    )?;
+    physical(&f, "Return")?;
+    wait_true(
+        "owned Calendar panel switches to exact second backing window once",
+        || {
+            let observed = state(&f)?;
+            Ok(focused(&f)?["id"] == second
+                && observed["switcher"]["phase"] == "committed"
+                && observed["switcher"]["commits"] == panel_commits + 1
+                && observed["nativeSerial"] == panel_serial + 1)
+        },
+    )?;
+    // Close this captured panel alone. The owned desktop and observer remain
+    // alive for the remaining retired-target cases.
+    f.call(
+        "swaymsg",
+        &[
+            &format!(
+                "[con_id={}]",
+                calendar["native"]["id"]
+                    .as_u64()
+                    .ok_or("Owned Calendar conID")?
+            ),
+            "kill",
+        ],
+    )?;
+    wait_true(
+        "captured Calendar panel closes without desktop exit",
+        || {
+            let mut native = Vec::new();
+            Fixture::nodes(&f.tree()?, &mut native);
+            Ok(!native
+                .iter()
+                .any(|node| node["id"] == calendar["native"]["id"]))
+        },
+    )?;
+    require(
+        f.processes[restarted_desktop].alive()? && focused(&f)?["id"] == second,
+        "Closing captured Calendar panel changed exact target or exited desktop",
     )?;
     focus(&f, &other_id)?;
     let decision = select(&f)?;
@@ -458,7 +531,7 @@ pub fn run(options: Options) -> Result<()> {
     }
     save(
         &f.options.output.join("result.json"),
-        &json!({"passed":true,"checks":["duplicate titles have distinct exact native conID/foreignID/ownedPID witnesses","preview and physical Escape preserve backing-window focus","observer restart preserves captured backing-window identity","whole shell restart restores exact second-window MRU","physical Return targets exact duplicate-title native MRU","closed captured target refuses sibling fallback","same-process replacement cannot inherit stale capture","overlapping begin preserves pending owner and source, dispatches once and permits fresh preview afterward"],"scope":"Native duplicate-title backing-window MRU and captured physical switcher decisions; no modal/space/reference parity claim"}),
+        &json!({"passed":true,"checks":["duplicate titles have distinct exact native conID/foreignID/ownedPID witnesses","preview and physical Escape preserve backing-window focus","observer restart preserves captured backing-window identity","whole shell restart restores exact second-window MRU","physical Return targets exact duplicate-title native MRU","closed captured target refuses sibling fallback","same-process replacement cannot inherit stale capture","overlapping begin preserves pending owner and source, dispatches once and permits fresh preview afterward","owned Calendar panel source commits exact application backing window once without external app registration"],"scope":"Native duplicate-title backing-window MRU and captured physical switcher decisions; no modal/space/reference parity claim"}),
     )?;
     Ok(())
 }
