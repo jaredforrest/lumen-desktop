@@ -71,7 +71,7 @@ pub fn target(f: &mut Harness) -> Result<()> {
         f.remote_display = Some(remote.clone());
         f.env.insert("WAYLAND_DISPLAY".into(), remote);
     }
-    if f.o.protocol == "rdp" {
+    if f.o.protocol == "rdp" || f.o.scenario == "legacy-clipboard" {
         fs::create_dir("/bin")?;
         symlink(f.o.tool("posix-shell"), "/bin/sh")?;
         fs::create_dir_all("/share/X11/xkb/compiled")?;
@@ -152,7 +152,7 @@ pub fn target(f: &mut Harness) -> Result<()> {
         .parent()
         .ok_or("Fixture bin directory")?
         .join("lumen-remote-target");
-    if f.o.scenario == "text-clipboard" {
+    if ["text-clipboard", "legacy-clipboard"].contains(&f.o.scenario.as_str()) {
         let seed = f.private.join("remote-text.txt");
         fs::write(&seed, REMOTE_TEXT)?;
         f.launch_s(
@@ -163,7 +163,7 @@ pub fn target(f: &mut Harness) -> Result<()> {
     } else {
         f.launch_s(target, &[], "target.log")?;
     }
-    if f.o.protocol == "rdp" || f.remote_display.is_some() {
+    if f.o.protocol == "rdp" || f.o.scenario == "legacy-clipboard" || f.remote_display.is_some() {
         wait("independent remote target", || Ok(f.target().ok()))?;
         f.env.insert("GDK_BACKEND".into(), "wayland".into());
         if f.remote_ipc.is_some() {
@@ -264,6 +264,9 @@ fn vnc_start(f: &mut Harness, settings: &Path, control: &Path, log: &str) -> Res
     Ok(index)
 }
 fn vnc(f: &mut Harness) -> Result<()> {
+    if f.o.scenario == "legacy-clipboard" {
+        return legacy_clipboard(f);
+    }
     let cert = f.private.join("server.crt");
     let key = f.private.join("server.key");
     let expected_ip = if f.o.scenario == "wrong-identity" {
@@ -544,6 +547,132 @@ fn rdp(f: &mut Harness) -> Result<()> {
     save(
         &f.out.join("acceptance.json"),
         &json!({"protocol":"RDP","scenario":f.o.scenario,"passed":true,"actualProvider":"Remmina","actualServer":"FreeRDP shadow","windowsOS":false,"authenticated":true,"security":"NLA","trustedCA":true,"certificateOverride":false,"nondefaultPort":3395,"palettePixels":pixels,"transportLossObserved":true,"reconnect":"manual same-profile client restart","serverCertificateUnchanged":true,"remoteTargetIdentityRetained":true}),
+    )
+}
+fn legacy_clipboard(f: &mut Harness) -> Result<()> {
+    let password_file = f.private.join("legacy-vnc-password");
+    f.quiet(
+        f.o.tool("x11vnc").join("bin/x11vnc"),
+        &["-storepasswd", &f.password, &s(&password_file)],
+    )?;
+    f.launch_s(
+        f.o.tool("x11vnc").join("bin/x11vnc"),
+        &[
+            "-display",
+            "127.0.0.1:55",
+            "-rfbport",
+            "5906",
+            "-listen",
+            "127.0.0.1",
+            "-rfbauth",
+            &s(&password_file),
+            "-forever",
+            "-shared",
+            "-noxdamage",
+            "-noshm",
+        ],
+        "legacy-x11vnc.log",
+    )?;
+    wait("private legacy VNC server", || {
+        Ok(
+            TcpStream::connect_timeout(&"127.0.0.1:5906".parse()?, Duration::from_millis(100))
+                .ok()
+                .map(|_| ()),
+        )
+    })?;
+    fs::write(
+        &f.profile,
+        "[remmina]\nname=Disposable legacy clipboard\nprotocol=VNC\nserver=127.0.0.1:5906\ncolordepth=32\nquality=9\nscale=1\nviewmode=1\ndisableclipboard=0\ndisablepasswordstoring=1\n",
+    )?;
+    f.connect()?;
+    let password = f.password.clone();
+    f.password(&password)?;
+    wait("actual authenticated legacy viewer", || {
+        Ok(f.log("remmina.log")
+            .contains("Connect signal emitted")
+            .then_some(()))
+    })?;
+    let original = f.safe_target()?;
+    let target = env::current_exe()?
+        .parent()
+        .ok_or("Fixture bin")?
+        .join("lumen-remote-target");
+    const LEGACY: &str = "legacy café £\ncompatible\ttext\n";
+    let seed = f.private.join("legacy-source.txt");
+    fs::write(&seed, LEGACY)?;
+    let local = f.launch_s(
+        &target,
+        &["--local", "--multiline", "--seed-file", &s(&seed)],
+        "legacy-local.log",
+    )?;
+    focus_app(f, "org.lumen.LocalTarget")?;
+    chord(f, "a")?;
+    chord(f, "c")?;
+    pause(1500);
+    focus_viewer(f)?;
+    let compatible = paste_until(f, false, LEGACY)?;
+    let before_reject = f.safe_target()?;
+    save(
+        &f.out.join("legacy-compatible-receipt.json"),
+        &before_reject,
+    )?;
+    ensure(compatible, "Representable legacy clipboard text differs")?;
+    f.stop(local)?;
+    wait("legacy local document bus release", || {
+        Ok(f.target_named("org.lumen.LocalTarget")
+            .is_err()
+            .then_some(()))
+    })?;
+    fs::write(&seed, LOCAL_TEXT)?;
+    f.launch_s(
+        &target,
+        &["--local", "--multiline", "--seed-file", &s(&seed)],
+        "legacy-unsupported-local.log",
+    )?;
+    focus_app(f, "org.lumen.LocalTarget")?;
+    chord(f, "a")?;
+    pause(1500);
+    chord(f, "c")?;
+    let warning = wait("explicit unsupported legacy text warning", || {
+        Ok(f.semantics()?.into_iter().find(|row| {
+            row["name"]
+                .as_str()
+                .unwrap_or("")
+                .contains("only supports Latin-1")
+        }))
+    })?;
+    let unchanged = f.safe_target()?;
+    ensure(
+        unchanged["text"] == before_reject["text"] && unchanged["pid"] == original["pid"],
+        "Unsupported clipboard changed the remote document",
+    )?;
+    let close = wait("legacy warning close button", || {
+        Ok(f.semantics()?
+            .into_iter()
+            .find(|row| row["role"] == "push button" && row["name"] == "Close"))
+    })?;
+    f.focus(&close)?;
+    f.keyboard
+        .as_mut()
+        .ok_or("Keyboard")?
+        .key(&["-k", "Return"])?;
+    focus_viewer(f)?;
+    chord(f, "a")?;
+    f.keyboard
+        .as_mut()
+        .ok_or("Keyboard")?
+        .type_text("still-connected")?;
+    wait("legacy connection input after clipboard rejection", || {
+        Ok((f.safe_target()?["text"] == "still-connected").then_some(()))
+    })?;
+    save(
+        &f.out.join("legacy-clipboard-acceptance.json"),
+        &json!({
+        "protocol":"VNC", "actualServer":"stock x11vnc", "transport":"unencrypted RFB inside disposable loopback namespace only",
+        "independentDisplays":true, "representableLatin1Source":LEGACY, "representableReceipt":before_reject,
+        "unrepresentableSource":LOCAL_TEXT, "rejection":warning, "unchangedReceipt":unchanged,
+        "connectionInputReceipt":f.safe_target()?, "remoteTargetIdentityRetained":true,
+        "notClaimed":["encrypted legacy connection", "HTML", "files", "Windows"]}),
     )
 }
 fn rdp_clipboard(f: &mut Harness) -> Result<()> {

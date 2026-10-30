@@ -97,6 +97,7 @@ impl Options {
                 "wrong-password",
                 "interactions",
                 "text-clipboard",
+                "legacy-clipboard",
             ]
             .contains(&o.scenario.as_str()),
             "Unknown scenario",
@@ -114,6 +115,11 @@ impl Options {
             "RDP clipboard acceptance requires actual channel and backend servers",
         )?;
         ensure(!o.output.as_os_str().is_empty(), "Fresh output required")?;
+        ensure(
+            o.scenario != "legacy-clipboard"
+                || (o.protocol == "vnc" && o.tools.contains_key("x11vnc")),
+            "Legacy clipboard acceptance requires VNC and the actual X11 server",
+        )?;
         Ok(o)
     }
     pub fn tool(&self, name: &str) -> PathBuf {
