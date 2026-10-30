@@ -62,12 +62,17 @@ fn nodes<'a>(node: &'a Value, out: &mut Vec<&'a Value>) {
         }
     }
 }
-fn executable(path: &Path) -> Result<PathBuf> {
+fn immutable_input(path: &Path, directory: bool) -> Result<PathBuf> {
     let path = path.canonicalize()?;
     ensure(
-        path.starts_with("/nix/store") && path.is_file(),
-        "Exact installed application/test binaries required",
+        path.starts_with("/nix/store") && if directory { path.is_dir() } else { path.is_file() },
+        "Exact installed immutable input with the required file type is required",
     )?;
+    Ok(path)
+}
+fn executable(path: &Path) -> Result<PathBuf> {
+    let path = immutable_input(path, false)?;
+    ensure(fs::metadata(&path)?.permissions().mode() & 0o111 != 0, "Installed executable permission required")?;
     Ok(path)
 }
 fn sha(path: &Path) -> Result<String> {
@@ -347,15 +352,23 @@ fn outer(mut options: Options) -> Result<()> {
     fs::create_dir(&options.output)?;
     fs::set_permissions(&options.output, fs::Permissions::from_mode(0o700))?;
     options.source = options.source.canonicalize()?;
+    // The namespace exposes the immutable store, not caller artifact aliases.
+    // Retain resolved paths rather than only checking their referents.
     for binary in [
-        &options.writer,
-        &options.sheet,
-        &options.slides,
-        &options.sway,
-        &options.keyboard_tool,
-        &options.pointer_tool,
+        &mut options.writer,
+        &mut options.sheet,
+        &mut options.slides,
+        &mut options.sway,
+        &mut options.keyboard_tool,
+        &mut options.pointer_tool,
     ] {
-        executable(binary)?;
+        *binary = executable(binary)?;
+    }
+    options.software_driver = immutable_input(&options.software_driver, true)?;
+    if let Some(path) = &mut options.pdf_viewer { *path = executable(path)?; }
+    if let Some(path) = &mut options.dialog_tools { *path = immutable_input(path, false)?; }
+    for directory in [&mut options.at_spi_prefix, &mut options.xdg_tools, &mut options.mime_data, &mut options.pdf_tools].into_iter().flatten() {
+        *directory = immutable_input(directory, true)?;
     }
     let policies = Command::new("nix")
         .args(["eval", "--json", "--file"])
@@ -458,6 +471,14 @@ fn outer(mut options: Options) -> Result<()> {
     ).map_err(|error| fail(error.to_string()))?;
     let status = cmd.status();
     frozen.finish(&options.output, status.as_ref().ok().and_then(|status| status.code()).unwrap_or(1)).map_err(|error| fail(error.to_string()))?;
+    save(&options.output.join("immutable-inputs.json"), &json!({
+        "writer":options.writer,"sheet":options.sheet,"slides":options.slides,
+        "sway":options.sway,"keyboard":options.keyboard_tool,"pointer":options.pointer_tool,
+        "softwareDriver":options.software_driver,"dialogTools":options.dialog_tools,
+        "atSpiPrefix":options.at_spi_prefix,"pdfViewer":options.pdf_viewer,
+        "xdgTools":options.xdg_tools,"mimeData":options.mime_data,"pdfTools":options.pdf_tools
+    }))?;
+
     let status = status?;
     ensure(
         status.success(),
@@ -2274,5 +2295,65 @@ fn main() -> Result<()> {
         run(fixture)
     } else {
         outer(options)
+    }
+}
+
+#[cfg(test)]
+mod immutable_input_tests {
+    use super::*;
+    use std::os::unix::fs::symlink;
+
+    #[test]
+    fn caller_aliases_resolve_to_store_files_and_directories() -> Result<()> {
+        let shell = env::split_paths(&env::var_os("PATH").ok_or("PATH required")?)
+            .map(|directory| directory.join("sh"))
+            .find(|path| path.is_file())
+            .ok_or("Pinned shell required")?
+            .canonicalize()?;
+        let parent = shell.parent().ok_or("Pinned directory required")?;
+        let folder = env::temp_dir().join(format!("office-input-alias-{}", std::process::id()));
+        fs::create_dir(&folder)?;
+        let result = (|| -> Result<()> {
+            let binary = folder.join("binary");
+            let chain = folder.join("chained-binary");
+            let directory = folder.join("directory");
+            symlink(&shell, &binary)?;
+            symlink(&binary, &chain)?;
+            symlink(parent, &directory)?;
+            ensure(
+                executable(&chain)? == shell,
+                "Executable alias escaped unresolved",
+            )?;
+            ensure(
+                immutable_input(&directory, true)? == parent,
+                "Directory alias escaped unresolved",
+            )?;
+            ensure(
+                immutable_input(&directory, false).is_err(),
+                "Directory accepted as manifest",
+            )?;
+            ensure(
+                immutable_input(&binary, true).is_err(),
+                "File accepted as runtime directory",
+            )?;
+            let outside = folder.join("mutable-file");
+            fs::write(&outside, "mutable")?;
+            ensure(
+                immutable_input(&outside, false).is_err(),
+                "Mutable host input accepted",
+            )?;
+            ensure(
+                immutable_input(&folder, true).is_err(),
+                "Mutable host directory accepted",
+            )?;
+            symlink(folder.join("missing"), folder.join("dangling"))?;
+            ensure(
+                immutable_input(&folder.join("dangling"), false).is_err(),
+                "Dangling alias accepted",
+            )?;
+            Ok(())
+        })();
+        fs::remove_dir_all(folder)?;
+        result
     }
 }
