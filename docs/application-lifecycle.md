@@ -60,6 +60,12 @@ fidelity remain separate contracts.
 ## Observed application order
 
 The observer records actual native compositor focus as application-level MRU.
+Ordered compositor focus receipts preserve brief activations even when a later
+tree query already shows another focused window. Up to 4,096 in-memory native
+surface witnesses bind those receipts to an exact previously observed process;
+a closed surface may supply a queued receipt while that same process survives.
+Unknown surfaces and retired process witnesses fail closed. These surface
+associations are cleared with the observer or compositor epoch and never saved.
 Each rank carries exact observed process-instance witnesses. Closing the last
 window retains its rank while a witnessed process survives; a new process with
 the same advertised application ID cannot inherit that saved rank. Recovery

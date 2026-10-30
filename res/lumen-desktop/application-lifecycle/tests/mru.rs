@@ -49,19 +49,31 @@ fn queued_native_focus_receipts_preserve_brief_focus_with_later_tree_snapshots()
     for focused in [0,1,2]{
         let receipt=json!({"change":"focus","container":nodes(&clients,focused)[focused]});
         lifecycle.refresh(EPOCH,&latest);
-        lifecycle.observe_focus_event(&receipt,&latest);
+        lifecycle.observe_focus_event(&receipt);
+    }
+    assert_eq!(lifecycle.activation_history.order(),["app2","app1","app0"]);
+    // The middle application's surface can retire while its ordered focus
+    // receipt is queued. Its exact still-live process retains that receipt.
+    lifecycle.activation_history=History::default();
+    let remaining=latest.iter().filter(|node|node["app_id"]!="app1").cloned().collect::<Vec<_>>();
+    lifecycle.refresh(EPOCH,&remaining);
+    for focused in [0,1,2]{
+        lifecycle.observe_focus_event(&json!({"change":"focus","container":nodes(&clients,focused)[focused]}));
     }
     assert_eq!(lifecycle.activation_history.order(),["app2","app1","app0"]);
     // A queued receipt for a retired container, unrelated change, or false
     // focus flag cannot promote a different or replacement native surface.
     let mut stale=json!({"change":"focus","container":nodes(&clients,0)[0]});
     stale["container"]["id"]=json!(999);
-    lifecycle.observe_focus_event(&stale,&latest);
+    lifecycle.observe_focus_event(&stale);
     let other=json!({"change":"title","container":nodes(&clients,0)[0]});
-    lifecycle.observe_focus_event(&other,&latest);
+    lifecycle.observe_focus_event(&other);
     let not_focused=json!({"change":"focus","container":latest[0]});
-    lifecycle.observe_focus_event(&not_focused,&latest);
+    lifecycle.observe_focus_event(&not_focused);
     assert_eq!(lifecycle.activation_history.order(),["app2","app1","app0"]);
+    lifecycle.refresh("fedcba9876543210fedcba98",&remaining);
+    lifecycle.observe_focus_event(&json!({"change":"focus","container":nodes(&clients,1)[1]}));
+    assert!(lifecycle.activation_history.order().is_empty());
 }
 
 #[test]
