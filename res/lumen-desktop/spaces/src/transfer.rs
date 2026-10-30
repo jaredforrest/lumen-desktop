@@ -486,6 +486,27 @@ mod tests {
         tree["nodes"][0]["nodes"][0]["nodes"][1]["lumen_relationships"]["parent_supported"] = json!(false);
         assert!(source(&tree, &json!(8)).is_err());
     }
+    #[test]
+    fn native_family_refusal_is_observed_even_when_unsupported_parent_is_redacted() {
+        let mut tree = ordinary_family_tree();
+        tree["nodes"][0]["nodes"][0]["nodes"][1]["lumen_relationships"]["parent"] = Value::Null;
+        tree["nodes"][0]["nodes"][0]["nodes"][1]["lumen_relationships"]["parent_supported"] = json!(false);
+        tree["nodes"][0]["nodes"][0]["nodes"][0]["lumen_state"]["transfer_family_supported"] = json!(false);
+        assert!(source(&tree, &json!(8)).is_err());
+    }
+    #[test]
+    fn enabled_projection_retains_every_family_member_until_explicitly_cleared() {
+        let metadata = json!({"version":1,"enabled":true,"supported":false,"projected":false,"reason":"relationship-unsupported","revision":"7","origin_workspace":{"id":"4","name":"one"},"effective_workspace":{"id":"4","name":"one"},"origin_output":{"id":"2","name":"HEADLESS-1"},"effective_output":{"id":"2","name":"HEADLESS-1"}});
+        for member in [0, 1] {
+            let mut tree = ordinary_family_tree();
+            tree["nodes"][0]["nodes"][0]["nodes"][member]["lumen_all_desktops"] = metadata.clone();
+            assert!(source(&tree, &json!(8)).is_err());
+            tree["nodes"][0]["nodes"][0]["nodes"][member]["lumen_all_desktops"]["enabled"] = json!(false);
+            assert!(source(&tree, &json!(8)).is_ok());
+            tree["nodes"][0]["nodes"][0]["nodes"][member]["lumen_all_desktops"]["version"] = json!(2);
+            assert!(source(&tree, &json!(8)).is_err());
+        }
+    }
     fn nonview_fullscreen_tree() -> Value {
         let mut tree = tree();
         let leaf = tree["nodes"][0]["nodes"][0]["nodes"][0].clone();
