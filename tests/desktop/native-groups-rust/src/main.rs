@@ -530,12 +530,12 @@ fn setup(opt: Options) -> Result<Context> {
         ),
     )?;
     let sway = ctx.opt.sway.clone();
-    ctx.launch(
-        &sway,
-        &["--unsupported-gpu", "-c", &text(&config)],
-        "sway.log",
-        false,
-    )?;
+    let config_path = text(&config);
+    let mut compositor_args = vec!["--unsupported-gpu", "-c", &config_path];
+    if ctx.opt.scenario == "presentation" {
+        compositor_args.push("-d");
+    }
+    ctx.launch(&sway, &compositor_args, "sway.log", false)?;
     ctx.vars.insert(
         "SWAYSOCK".into(),
         text(&wait("private compositor socket", || {

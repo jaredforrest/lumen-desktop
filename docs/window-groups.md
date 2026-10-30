@@ -40,14 +40,46 @@ placement emulation.
 This is a functional grouping workflow, not a complete spatial presentation.
 The recent groups edge selector is implemented below. Owned Overview membership drag is implemented below. Spatial packing, previews
 and animations are not implemented. Ordinary tiled windows
-retain their original layout slots. There is no together/one-window-at-a-time
-setting yet. Sticky windows, X11 windows and shared-process shell windows are currently ungrouped;
+retain their original layout slots. The per-application presentation setting is
+described below. Sticky windows, X11 windows and shared-process shell windows are currently ungrouped;
 the latter need explicit owned-role adapters rather than title-based inference.
 Groups have a 256-entry bound; additional eligible roots remain ungrouped and
 visible if that limit is reached. A native desktop destroyed while all its members
 are conventionally hidden loses its group definitions; ordinary hide/restore
 placements remain intact. No cross-session group persistence or all-desktop
 membership is claimed.
+
+## Application window presentation
+
+**Settings → Desktop & Dock → Application windows in a group** controls the
+persisted, typed `windows.groupWindowMode` preference: `all_together` (default)
+or `one_at_a_time`. The latter retains the most recently focused eligible root
+of each exact native application ID in the selected group, with that root's
+protocol-owned dialogs. Different applications sharing a process remain
+independent. Unknown application IDs are not merged. Real accepted focus is
+recorded in both modes and while grouping is off. Existing focus commands can
+activate another root; no window is closed, resized or moved by this setting.
+
+The capability `native_window_group_presentation` is required. The typed mode
+backend captures the current compositor socket epoch and native revision,
+constructs only the two supported enum commands, and rejects lock, stale scope
+and unknown fields before dispatch. GET_TREE exposes `window_groups.window_mode`;
+mode changes increment the revision and invalidate captured native focus topology.
+Full screen, paired layout, Show Desktop and native lock retain the original
+group suspension semantics. Preference persistence does not persist session-local
+membership or restore groups after compositor restart.
+
+The shell applies the latest preference to each supported observed session.
+An uncertain or rejected request is not automatically replayed against an
+identical snapshot. Settings exposes an explicit **Retry group presentation**
+action; the service still revalidates current native scope. Old providers leave
+the preference control unavailable and have no placement fallback.
+
+The installed native presentation fixture exercises the actual Settings combo
+and production stdio backend with disposable windows. Its preference-service
+adapter is synthetic; actual appearance endpoint tests separately verify enum
+validation, fresh-process persistence and rejection without store mutation.
+This does not claim measured spatial packing, reference pixels or animation.
 
 ## Native interface and verification
 

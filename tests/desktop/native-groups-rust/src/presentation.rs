@@ -43,6 +43,12 @@ fn placements(ctx: &Context) -> Result<Value> {
 }
 pub fn run(ctx: &mut Context) -> Result<()> {
     let mut checks = Vec::new();
+    if ctx.opt.effects {
+        ensure(
+            fs::read_to_string(ctx.opt.output.join("sway.log"))?.contains("llvmpipe"),
+            "Effects provider did not prove software renderer",
+        )?;
+    }
     ensure(
         ctx.native("get_version")?["native_window_group_presentation"] == true,
         "Provider lacks explicit presentation capability",
