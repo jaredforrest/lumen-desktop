@@ -836,7 +836,7 @@ fn text_clipboard(f: &mut Harness) -> Result<()> {
     })?;
     let seed = f.private.join("local-text.txt");
     fs::write(&seed, LOCAL_TEXT)?;
-    f.launch_s(
+    let reverse_local = f.launch_s(
         target,
         &["--local", "--multiline", "--seed-file", &s(&seed)],
         "local-corpus-reverse.log",
@@ -855,9 +855,37 @@ fn text_clipboard(f: &mut Harness) -> Result<()> {
         original["pid"] == received_remote["pid"],
         "Remote document restarted during text transfer",
     )?;
+    let mut repeated_remote = Value::Null;
+    if remote_to_local && local_to_remote && f.o.protocol == "vnc" {
+        f.stop(reverse_local)?;
+        wait("reverse document bus release", || {
+            Ok(f.target_named("org.lumen.LocalTarget")
+                .is_err()
+                .then_some(()))
+        })?;
+        focus_viewer(f)?;
+        chord(f, "a")?;
+        chord(f, "c")?;
+        let target = env::current_exe()?
+            .parent()
+            .ok_or("Fixture bin")?
+            .join("lumen-remote-target");
+        f.launch_s(
+            target,
+            &["--local", "--multiline"],
+            "local-corpus-repeat.log",
+        )?;
+        focus_app(f, "org.lumen.LocalTarget")?;
+        let passed = paste_until(f, true, LOCAL_TEXT)?;
+        repeated_remote = f.target_named("org.lumen.LocalTarget")?;
+        ensure(
+            passed,
+            "Later remote copy was suppressed after changed local selection",
+        )?;
+    }
     save(
         &f.out.join("text-clipboard-acceptance.json"),
-        &json!({"protocol":f.o.protocol,"scenario":f.o.scenario,"remoteToLocal":remote_to_local,"localToRemote":local_to_remote,"remoteText":REMOTE_TEXT,"localText":LOCAL_TEXT,"localReceipt":received_local,"remoteReceipt":received_remote,"remoteTargetIdentityRetained":true,"sourceBytesExactRemoteToLocal":received_local["text"]==REMOTE_TEXT,"sourceBytesExactLocalToRemote":received_remote["text"]==LOCAL_TEXT,"allowedLineEndingConversion":if f.o.protocol=="rdp" {"local-to-remote LF to CRLF only"} else {"none"},"independentDisplays":true,"corpus":["Latin diacritics","Greek","CJK","RTL scripts","supplementary-plane emoji","combining marks","multiline","tabs","blank lines","trailing newline"],"notClaimed":["HTML","files","Windows"]}),
+        &json!({"protocol":f.o.protocol,"scenario":f.o.scenario,"remoteToLocal":remote_to_local,"localToRemote":local_to_remote,"remoteText":REMOTE_TEXT,"localText":LOCAL_TEXT,"localReceipt":received_local,"remoteReceipt":received_remote,"laterRemoteCopyAfterChangedLocalSelection":repeated_remote,"remoteTargetIdentityRetained":true,"sourceBytesExactRemoteToLocal":received_local["text"]==REMOTE_TEXT,"sourceBytesExactLocalToRemote":received_remote["text"]==LOCAL_TEXT,"allowedLineEndingConversion":if f.o.protocol=="rdp" {"local-to-remote LF to CRLF only"} else {"none"},"independentDisplays":true,"corpus":["Latin diacritics","Greek","CJK","RTL scripts","supplementary-plane emoji","combining marks","multiline","tabs","blank lines","trailing newline"],"notClaimed":["HTML","files","Windows"]}),
     )?;
     ensure(
         remote_to_local && local_to_remote,
