@@ -49,6 +49,10 @@ fn files_job_receipts() {
             .env("XDG_RUNTIME_DIR", runtime)
             .env("QT_QPA_PLATFORM", "offscreen")
             .env(
+                "LUMEN_FILES_BIN",
+                env::var("LUMEN_TEST_JOB_RECEIPTS_PROVIDER").expect("Pinned fixture provider"),
+            )
+            .env(
                 "FONTCONFIG_FILE",
                 env::var("LUMEN_TEST_FONTCONFIG").expect("Pinned fixture font configuration"),
             )

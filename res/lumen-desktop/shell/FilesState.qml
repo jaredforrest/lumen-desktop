@@ -23,6 +23,8 @@ Item {
     property bool pendingRefresh:false
     property string error:""
     property string warning:""
+    property string operationWarning:""
+    readonly property string visibleWarning:[operationWarning,warning].filter(Boolean).join("\n")
     property bool writable:false
     property bool hidden:false
     property var favorites:null
@@ -115,7 +117,7 @@ Item {
         if(["retire-actions","open-with","set-default","eject","open"].includes(action)){send(action,data);return;}
         busy=true;currentId=send(action,data);
     }
-    function startJob(operation,paths,destination,conflict){error="";send("job-start",{operation:operation,paths:paths || [],destination:destination || path,conflict:conflict || "skip"});}
+    function startJob(operation,paths,destination,conflict){error="";operationWarning="";send("job-start",{operation:operation,paths:paths || [],destination:destination || path,conflict:conflict || "skip"});}
     function requestPreview(value,page) {const row=rows.find(item=>item.path===value);const token=page!==undefined && preview.sourcePath===value?preview.sourceToken:null;ownedPreview.request(value,page,row?row.identity:null,token);}
     function stage(paths,action){stagedPaths=paths;stagedPath=paths[0] || "";stagedAction=action;error="";send("clipboard-write",{paths:paths,operation:action});}
     function paste(conflict){error="";send("clipboard-paste",{destination:path,conflict:conflict || "skip"});}
@@ -123,14 +125,17 @@ Item {
     function cancelJob(){if(currentJob)send("job-cancel",{job:currentJob.id});}
     function undo(){startJob("undo",[]);}
     function acceptJobs(data){
-        const previousStates=jobStates;let states=Object.assign({},previousStates),changed=false;
+        const previousStates=jobStates;let states=Object.assign({},previousStates),changed=false,terminal=null,startup=null;
+        function message(job){return job.state!=="complete" && job.recoveryPath && job.undoMessage?job.undoMessage+"\nRecovery: "+job.recoveryPath:job.errors.join("\n");}
         for(const job of data.jobs || []){
             if(states[job.id]!==job.state && !["running","cancelling"].includes(job.state)){
-                if(states[job.id] || job.started>=createdAt){changed=true;if(job.state!=="complete" && job.recoveryPath && job.undoMessage)error=job.undoMessage+"\nRecovery: "+job.recoveryPath;else if(job.errors.length)error=job.errors.join("\n");else if(job.state==="complete" && job.operation==="undo")error="";if(job.undoWarning)warning=job.undoWarning;}
+                if(previousStates[job.id] || job.started>=createdAt){
+                    changed=true;if(!terminal || job.started>=terminal.started)terminal=job;
+                }else if(job.state==="interrupted" && (!startup || job.started>=startup.started))startup=job;
             }
             states[job.id]=job.state;
         }
-        jobs=data.jobs || [];jobStates=states;if(data.historyWarning)error=data.historyWarning;for(const job of jobs){if(job.state==="interrupted" && previousStates[job.id]!=="interrupted")error=job.recoveryPath && job.undoMessage?job.undoMessage+"\nRecovery: "+job.recoveryPath:job.errors.join("\n");}canUndo=!!data.canUndo;undoKind=["copy","move"].includes(data.undoKind)?data.undoKind:"";undoLabel=typeof data.undoLabel==="string"?data.undoLabel:"Undo Last Move";
+        jobs=data.jobs || [];jobStates=states;if(terminal){error=message(terminal);operationWarning=terminal.undoWarning || "";}else if(startup)error=message(startup);if(data.historyWarning)error=data.historyWarning;canUndo=!!data.canUndo;undoKind=["copy","move"].includes(data.undoKind)?data.undoKind:"";undoLabel=typeof data.undoLabel==="string"?data.undoLabel:"Undo Last Move";
         if(changed)refresh();
     }
     onActiveChanged:if(active){if(persistViewPreferences && !preferencesLoaded)send("preferences");send("job-status");send("volumes");}

@@ -220,6 +220,7 @@ pub fn run(options: Options) -> Result<()> {
     let incoming = f.runtime.join("Incoming");
     fs::create_dir(&incoming)?;
     let qml = f.options.output.join("files.qml");
+    std::os::unix::fs::symlink(&f.assets,f.options.output.join("assets"))?;
     let gtk = f.options.scenario == "files-drag-gtk";
     let peer_qml = f
         .options
@@ -228,7 +229,7 @@ pub fn run(options: Options) -> Result<()> {
     fs::write(
         &qml,
         include_str!("../files-drag.qml")
-            .replace("@ASSETS@", &f.assets.display().to_string())
+            .replace("@ASSETS@", "./assets")
             .replace(
                 "@FOLDER@",
                 &serde_json::to_string(&folder.display().to_string())?,

@@ -486,19 +486,19 @@ FloatingWindow {
         Timer {id:filterDelay;interval:220;onTriggered:root.service.refresh()}
         PanelLabel {
             id:message;x:root.sidebarWidth+14;y:103+root.tabHeight;width:parent.width-x-14;height:visible?Math.max(48,Math.ceil(messageMetrics.height)*3):0
-            visible:root.service.error!=="" || root.service.warning!=="" || root.previewMessage!==""
-            text:root.service.error || root.service.warning || root.previewMessage;wrapMode:Text.WrapAnywhere;textFormat:Text.PlainText;font.pixelSize:Theme.textRole("label");color:Theme.colors.muted;elide:Text.ElideRight;maximumLineCount:3
-            MouseArea {anchors.fill:parent;enabled:root.service.error!=="" || root.service.warning!=="";onClicked:errorDetails.open()}
+            visible:root.service.error!=="" || (root.service.visibleWarning || root.service.warning)!=="" || root.previewMessage!==""
+            text:root.service.error || (root.service.visibleWarning || root.service.warning) || root.previewMessage;wrapMode:Text.WrapAnywhere;textFormat:Text.PlainText;font.pixelSize:Theme.textRole("label");color:Theme.colors.muted;elide:Text.ElideRight;maximumLineCount:3
+            MouseArea {anchors.fill:parent;enabled:root.service.error!=="" || (root.service.visibleWarning || root.service.warning)!=="";onClicked:errorDetails.open()}
             FontMetrics {id:messageMetrics;font.family:Theme.font;font.pixelSize:Theme.textRole("label")}
-            Accessible.name:(root.service.error || root.service.warning?"Operation details: ":"")+text
-            Accessible.onPressAction:if(root.service.error || root.service.warning)errorDetails.open()
+            Accessible.name:(root.service.error || (root.service.visibleWarning || root.service.warning)?"Operation details: ":"")+text
+            Accessible.onPressAction:if(root.service.error || (root.service.visibleWarning || root.service.warning))errorDetails.open()
         }
         Popup {id:errorDetails;modal:true;focus:true;width:Math.min(600,content.width-40);height:Math.min(400,content.height-40);anchors.centerIn:parent;padding:18
             background:Rectangle {radius:12;color:Theme.colors.background;border.color:Theme.outline}
             contentItem:Column {spacing:12
                 PanelLabel {text:"Operation Details";font.weight:Font.DemiBold}
                 ScrollView {width:parent.width;height:errorDetails.height-115
-                    TextArea {text:root.service.error || root.service.warning;readOnly:true;selectByMouse:true;wrapMode:TextEdit.Wrap;color:Theme.colors.text;font.family:Theme.font;background:Rectangle {color:"transparent"}}
+                    TextArea {text:root.service.error || (root.service.visibleWarning || root.service.warning);readOnly:true;selectByMouse:true;wrapMode:TextEdit.Wrap;color:Theme.colors.text;font.family:Theme.font;background:Rectangle {color:"transparent"}}
                 }
                 DialogButton {width:100;text:"Done";onClicked:errorDetails.close()}
             }
