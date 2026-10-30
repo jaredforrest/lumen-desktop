@@ -6,8 +6,9 @@ covered, and the staging package validates the actual policy during its build.
 
 `lumen-stage-artifacts` copies selected regular files into a new upload tree,
 preserving repository-relative paths, file bytes and permissions. It leaves the
-original fixture outputs untouched. Its manifest records every omitted path and
-its exact filesystem type. Symlinks, sockets, FIFOs and devices are never copied
+original fixture outputs untouched. Its manifest records each selected special
+entry's path and exact filesystem type; the include policy is retained separately.
+Symlinks, sockets, FIFOs and devices are never copied
 or dereferenced. Descriptor-relative traversal and no-follow opens keep parent
 replacement and leaf symlink replacement from redirecting reads.
 
