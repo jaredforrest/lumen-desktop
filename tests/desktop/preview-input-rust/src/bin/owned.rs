@@ -105,7 +105,6 @@ fn find_node(tree: &Value, title: &str) -> Option<Value> {
 }
 struct Test {
     f: Session,
-    o: Opt,
     docs: PathBuf,
     qml: PathBuf,
     shell: u32,
@@ -156,13 +155,6 @@ impl Test {
     fn key(&self, args: &[&str]) -> Result<()> {
         self.f.call("wtype", args)?;
         Ok(())
-    }
-    fn resource(&self, surface: &str) -> Result<PathBuf> {
-        Ok(PathBuf::from(
-            self.state(surface)?["result"]["resourcePath"]
-                .as_str()
-                .ok_or("resource path")?,
-        ))
     }
     fn focus(&self, title: &str) -> Result<Value> {
         let n = find_node(&self.f.tree()?, title).ok_or("window missing")?;
@@ -363,7 +355,6 @@ fn setup(o: Opt) -> Result<Test> {
     let shell_pid = f.child_pid(shell);
     let t = Test {
         f,
-        o,
         docs,
         qml,
         shell: shell_pid,
