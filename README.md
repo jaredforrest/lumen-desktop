@@ -9,6 +9,9 @@ nix flake check --print-build-logs --option abort-on-warn true
 nix develop
 ```
 
+Owned Rust compiler warnings also fail builds through the shared
+[warning policy](docs/rust-warning-policy.md), including standalone test compilers.
+
 The default package is `nix build .#shell`; the patched compositor is `nix build .#compositor`. Running the shell requires an existing compatible Wayland session. Installing a package does not install a login session or configure authentication.
 
 The NixOS module requires Home Manager, an existing Wayland configuration, a desktop user and a settings command. See [integration](docs/integration.md), [architecture](docs/architecture.md) and [contributing](CONTRIBUTING.md).
