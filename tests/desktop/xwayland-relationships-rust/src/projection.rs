@@ -303,7 +303,14 @@ fn tiled_groups(f: &mut Fixture) -> Result<()> {
         &json!({"beforeGroups":before_groups,"beforeTiled":tiled,"beforePeer":peer,"afterTiled":a,"afterPeer":b,"groups":f.tree()?["window_groups"]}),
     )?;
     apply(f, &a, false)?;
-    apply(f, &b, false)?;
+    // Clearing the focused member can change the effective workspace and the
+    // remaining member's revision. Each separate actuation owns a fresh witness.
+    let remaining = state(f, 0, 3, true, true)?;
+    save(
+        "projection-group-clear-recapture.json",
+        &json!({"beforeFirstClear":b,"afterFirstClear":remaining}),
+    )?;
+    apply(f, &remaining, false)?;
     let groups = f.tree()?["window_groups"].clone();
     f.ipc(&format!("lumen_window groups {} off", groups["revision"]))?;
     f.checks.push("Managed tiled X11 projection retains exact tiled/native group structure and origin; one-at-a-time versus all-together masks remain independent, with real current-desktop key recipients in both modes");
