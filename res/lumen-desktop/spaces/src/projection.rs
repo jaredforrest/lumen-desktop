@@ -56,7 +56,8 @@ pub fn uses_native(node: &Value) -> Result<bool> {
     if node["shell"] == "xwayland" && node["window"].as_u64().is_some_and(|id| id > 0) {
         // Only the exact older provider role discriminator selects legacy sticky.
         // Temporary eligibility changes never switch a modern view's backend.
-        return Ok(!(!p.enabled
+        return Ok(!(node["pid"].as_u64().is_some_and(|pid| pid > 0)
+            && !p.enabled
             && !p.supported
             && node["lumen_all_desktops"]["reason"] == "native-view-required"));
     }
@@ -231,6 +232,30 @@ mod tests {
     }
     fn tree(node: &Value) -> Value {
         json!({"nodes":[{"type":"workspace","name":"Origin","nodes":[node]}]})
+    }
+    #[test]
+    fn missing_xres_identity_does_not_select_an_older_provider_sticky_route() {
+        let (root, mut policy, mut node) = fixture();
+        node["shell"] = json!("xwayland");
+        node["window"] = json!(99);
+        node["window_properties"] = json!({"class":"editor"});
+        node["lumen_all_desktops"]["supported"] = json!(false);
+        node["lumen_all_desktops"]["reason"] = json!("native-view-required");
+        assert!(!uses_native(&node).unwrap());
+        node["pid"] = json!(0);
+        assert!(uses_native(&node).unwrap());
+        policy.assign("x11:editor", "all", None).unwrap();
+        reconcile_membership(&mut policy, &tree(&node), "session", |_| -> Result<()> {
+            panic!("Missing verified XRes identity cannot actuate any backend")
+        })
+        .unwrap();
+        assert!(
+            policy.state["managed_projection"]
+                .as_object()
+                .is_none_or(|records| records.is_empty())
+        );
+        drop(policy);
+        std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn unsupported_xwayland_metadata_preserves_legacy_sticky_status_and_ownership() {
