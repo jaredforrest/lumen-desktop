@@ -9,6 +9,17 @@ fn run(options: &Options) -> Result<()> {
     copy_tree(Path::new("/source/res/lumen-desktop"), &assets)?;
     let palette: Value =
         serde_json::from_slice(&fs::read(assets.join("appearance/palette.json"))?)?;
+    let appearance = root.join("appearance.json");
+    fs::write(
+        &appearance,
+        serde_json::to_vec(
+            &json!({"font":palette["font"],"palette":palette["dark"],"preferences":{"textScale":1}}),
+        )?,
+    )?;
+    values.insert(
+        "LUMEN_APPEARANCE_STATE".into(),
+        appearance.display().to_string(),
+    );
     let qml = root.join("settings-typography.qml");
     fs::write(
         &qml,
@@ -32,6 +43,23 @@ fn run(options: &Options) -> Result<()> {
         String::from_utf8_lossy(&output.stderr)
     );
     fs::write(root.join("quickshell.log"), &log)?;
+    // Quickshell's pinned ProxyWindowBase::onPolished unconditionally calls
+    // QWindow::setMask, even for its default null mask. Qt's offscreen provider
+    // cannot implement that platform operation. Preserve and count this exact
+    // provider diagnostic; all other warnings remain fatal.
+    let mask_diagnostics = log
+        .lines()
+        .filter(|line| line.ends_with("This plugin does not support setting window masks"))
+        .count();
+    require(
+        mask_diagnostics == 8,
+        "Unexpected offscreen mask diagnostic count",
+    )?;
+    let checked_log = log
+        .lines()
+        .filter(|line| !line.ends_with("This plugin does not support setting window masks"))
+        .collect::<Vec<_>>()
+        .join("\n");
     require(
         output.status.success() && log.contains("SHORTCUT_SETTINGS_TYPOGRAPHY_PASS "),
         "Actual Settings typography failed; inspect quickshell.log",
@@ -46,7 +74,7 @@ fn run(options: &Options) -> Result<()> {
             "typography_timeout",
         ]
         .iter()
-        .any(|marker| log.to_lowercase().contains(marker)),
+        .any(|marker| checked_log.to_lowercase().contains(marker)),
         "Settings typography emitted a diagnostic",
     )?;
     let records: Value = serde_json::from_str(
