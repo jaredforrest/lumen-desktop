@@ -7,7 +7,7 @@ use std::env;
 use std::error::Error;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Write};
-use std::os::unix::fs::{FileTypeExt, MetadataExt, symlink};
+use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt, symlink};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -125,6 +125,7 @@ fn configure(
     // intentionally unrestricted; keep the live endpoint in an owned short lease.
     let runtime = tempfile::Builder::new()
         .prefix("lumen-speech-")
+        .permissions(fs::Permissions::from_mode(0o700))
         .tempdir_in("/tmp")?;
     let socket = runtime.path().join("speech.sock");
     let identity = fs::symlink_metadata(runtime.path())?;
@@ -702,6 +703,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let runtime = tempfile::Builder::new()
             .prefix("lumen-speech-")
+            .permissions(fs::Permissions::from_mode(0o700))
             .tempdir_in("/tmp")
             .unwrap();
         let info = fs::symlink_metadata(runtime.path()).unwrap();
