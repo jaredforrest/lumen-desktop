@@ -78,6 +78,7 @@ fn main() {
     assert!(success, "{reply}");
     assert_eq!(reply["preferences"]["accent"], "green");
     assert_eq!(reply["appearance"]["mode"], "light");
+    assert_eq!(reply["windowsPreferences"]["groupWindowMode"],"all_together");
     let state: Value = serde_json::from_slice(&fs::read(fixture.state.join("appearance.json")).unwrap()).unwrap();
     assert_eq!(state["palette"], reply["appearance"]["palette"]);
     assert!(!fs::read_to_string(fixture.state.join("launcher.rasi")).unwrap().contains("@accent@"));
@@ -95,4 +96,19 @@ fn main() {
     assert!(reply.get("error").is_some());
     assert_eq!(fs::read(&fixture.settings).unwrap(), before);
     assert!(!fixture.state.join("appearance.json").exists());
+
+    let fixture = Fixture::new();
+    let (success,reply) = fixture.appearance(&["--set-windows","groupWindowMode","\"one_at_a_time\""]);
+    assert!(success,"{reply}");
+    assert_eq!(reply["windowsPreferences"]["groupWindowMode"],"one_at_a_time");
+    let (success,reopened) = fixture.appearance(&["--settings"]);
+    assert!(success,"{reopened}");
+    assert_eq!(reopened["windowsPreferences"]["groupWindowMode"],"one_at_a_time");
+    for invalid in ["true","12","null","\"one_at_a_time; kill\"","\"ONE_AT_A_TIME\""] {
+        let before=fs::read(&fixture.settings).unwrap();
+        let (success,reply)=fixture.appearance(&["--set-windows","groupWindowMode",invalid]);
+        assert!(!success,"Accepted invalid group presentation: {reply}");
+        assert!(reply.get("error").is_some());
+        assert_eq!(fs::read(&fixture.settings).unwrap(),before,"Invalid transaction changed persisted settings");
+    }
 }

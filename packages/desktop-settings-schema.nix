@@ -89,6 +89,7 @@ let
       windows = mkOption {
         type = types.submodule { options = {
           rememberOwnedGeometry = mkOption { type = types.bool; default = false; };
+          groupWindowMode = mkOption { type = types.enum [ "all_together" "one_at_a_time" ]; default = "all_together"; };
           tileMargins = mkOption { type = types.bool; default = true; };
           tileGap = mkOption { type = types.ints.between 0 32; default = 8; };
           edgeTiling = mkOption { type = types.bool; default = true; };

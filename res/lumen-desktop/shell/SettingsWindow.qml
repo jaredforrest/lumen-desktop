@@ -310,6 +310,17 @@ FloatingWindow {
                     DesktopComboBox {objectName:"settings-control-sort-desktop-files";width:parent.width;model:["Name","Modified","Size","Kind"];currentIndex:["name","modified","size","kind"].indexOf(root.service.desktopPreferences.fileSort || "name");enabled:root.service.available && !root.service.busy;Accessible.name:"Sort desktop files";onActivated:index=>root.service.setDesktopPreference("fileSort",["name","modified","size","kind"][index])}
                     SettingsToggle {objectName:"settings-control-descending-desktop-order";width:parent.width;text:"Descending desktop order";checked:root.service.desktopPreferences.fileDescending===true;enabled:root.service.available && !root.service.busy;onClicked:root.service.setDesktopPreference("fileDescending",checked)}
                     PanelLabel {text:"Windows";font.weight:Font.DemiBold}
+                    PanelLabel {text:"Application windows in a group"}
+                    DesktopComboBox {
+                        objectName:"settings-control-group-window-presentation";width:parent.width
+                        model:["All together","One at a time"]
+                        currentIndex:["all_together","one_at_a_time"].indexOf(root.service.windowsPreferences.groupWindowMode || "all_together")
+                        enabled:root.service.available && !root.service.busy && !!root.shell.windowGroupPresentation && root.shell.windowGroupPresentation.available===true && root.shell.windowGroupPresentation.presentationSupported===true && root.shell.windowGroupPresentation.locked===false
+                        Accessible.name:"Application windows in a group"
+                        Accessible.description:"Show each application's windows all together or one at a time in the selected group"
+                        onActivated:index=>root.service.setWindowPreference("groupWindowMode",["all_together","one_at_a_time"][index])
+                    }
+                    PanelLabel {width:parent.width;wrapMode:Text.WordWrap;color:Theme.colors.muted;font.pixelSize:Theme.textSize(11);text:!root.shell.windowGroupPresentation || root.shell.windowGroupPresentation.presentationSupported!==true?"Group window presentation requires a compatible compositor.":root.shell.windowGroupPresentation.locked?"Group window presentation is unavailable while locked.":"One at a time keeps the most recently focused window of each application and its dialogs visible. Other windows retain their placement."}
                     SettingsToggle {objectName:"settings-control-leave-margins-around-tiled-windows";width:parent.width;text:"Leave margins around tiled windows";checked:root.service.windowsPreferences.tileMargins!==false;enabled:root.service.available && !root.service.busy;onClicked:root.service.setWindowPreference("tileMargins",checked)}
                     SettingsToggle {objectName:"settings-control-drag-windows-to-screen-edges-to-tile";width:parent.width;text:"Drag windows to screen edges to tile";checked:root.service.windowsPreferences.edgeTiling!==false;enabled:root.service.available && !root.service.busy;onClicked:root.service.setWindowPreference("edgeTiling",checked)}
                     SettingsToggle {objectName:"settings-control-hold-option-while-dragging-to-tile";width:parent.width;text:"Hold Option while dragging to tile";checked:root.service.windowsPreferences.optionTiling!==false;enabled:root.service.available && !root.service.busy;onClicked:root.service.setWindowPreference("optionTiling",checked)}

@@ -7,6 +7,7 @@ index 6cd1610..73c8d7e 100644
  
  struct sway_container {
 + uint64_t lumen_group_id;
++ uint64_t lumen_group_focus;
  	struct sway_node node;
  	struct sway_view *view;
  
@@ -77,14 +78,14 @@ index 39fbeb9..f54147d 100644
  #include <assert.h>
  #include <json-c/json.h>
  #include <linux/input-event-codes.h>
-@@ -1184,6 +1185,7 @@ static void seat_set_workspace_focus(struct sway_seat *seat, struct sway_node *n
- 			if (depth == 63) return;
- 		}
- 	}
-+ if (node && node_is_view(node)) lumen_groups_focus(node->sway_container);
- 	struct sway_node *last_focus = seat_get_focus(seat);
- 	if (last_focus == node) {
+@@ -1206,6 +1207,7 @@ static void seat_set_workspace_focus(struct sway_seat *seat, struct sway_node *n
  		return;
+ 	}
+ 
++ if (container && container->view) lumen_groups_focus(container);
+ 	// Find the output's last workspace, which might have to be removed if empty
+ 	struct sway_output *new_output =
+ 		new_workspace ? new_workspace->output : NULL;
 diff --git a/sway/ipc-json.c b/sway/ipc-json.c
 index ceb4190..a97eabd 100644
 --- a/sway/ipc-json.c
@@ -99,6 +100,7 @@ index ceb4190..a97eabd 100644
  	int major = 0, minor = 0, patch = 0;
  	json_object *version = json_object_new_object();
 + json_object_object_add(version, "native_window_groups", json_object_new_boolean(true));
++ json_object_object_add(version, "native_window_group_presentation", json_object_new_boolean(true));
  	json_object_object_add(version, "desktop_rehome", json_object_new_boolean(true));
  	json_object_object_add(version, "native_window_relationships", json_object_new_boolean(true));
  
@@ -160,8 +162,8 @@ index 0000000..60bf41d
 + bool selected;
 +};
 +static struct group groups[GROUP_LIMIT];
-+static bool enabled, changing;
-+static uint64_t revision, counter, next_id;
++static bool enabled, changing, one_at_a_time;
++static uint64_t revision, counter, next_id, focus_counter;
 +
 +static bool con_id(struct sway_container *con, void *data) {
 + return !con->node.destroying && con->node.id == *(uint64_t *)data;
@@ -260,10 +262,35 @@ index 0000000..60bf41d
 + }
 + changing = false;
 +}
++static struct sway_container *presentation_owner(struct sway_container *con) {
++ unsigned depth = 0;
++ while (parent(con) && depth++ < 64) con = parent(con);
++ return depth < 64 ? con : NULL;
++}
++static bool same_application(struct sway_container *a, struct sway_container *b) {
++ if (a == b) return true;
++ const char *left = view_get_app_id(a->view), *right = view_get_app_id(b->view);
++ return left && *left && right && *right && !strcmp(left, right);
++}
++struct presentation_candidate {struct sway_container *owner, *winner;};
++static void presentation_candidate(struct sway_container *con, void *data) {
++ struct presentation_candidate *p = data;
++ if (!eligible(con) || parent(con) || con->lumen_group_id != p->owner->lumen_group_id ||
++     con->lumen_app_hidden || con->lumen_minimized || !same_application(con, p->owner)) return;
++ if (!p->winner || con->lumen_group_focus > p->winner->lumen_group_focus ||
++     (con->lumen_group_focus == p->winner->lumen_group_focus && con->node.id < p->winner->node.id)) p->winner = con;
++}
 +bool lumen_groups_visible(struct sway_container *con) {
 + if (!enabled || !con || server.session_lock.lock) return true;
 + struct group *g = find(con->lumen_group_id);
-+ return !g || g->selected || suspended(g->workspace);
++ if (!g || suspended(g->workspace)) return true;
++ if (!g->selected) return false;
++ if (!one_at_a_time) return true;
++ struct sway_container *owner = presentation_owner(con);
++ if (!owner || !eligible(owner)) return true;
++ struct presentation_candidate p = {.owner = owner};
++ root_for_each_container(presentation_candidate, &p);
++ return !p.winner || p.winner == owner;
 +}
 +static void mask(struct sway_container *con, void *data) {
 + (void)data;
@@ -275,12 +302,19 @@ index 0000000..60bf41d
 + if (con->view && !lumen_groups_visible(con)) view_close_popups(con->view);
 +}
 +void lumen_groups_focus(struct sway_container *con) {
-+ if (!enabled || changing || server.session_lock.lock) return;
++ if (changing || server.session_lock.lock) return;
++ struct sway_container *owner = presentation_owner(con);
++ if (owner && eligible(owner)) owner->lumen_group_focus = ++focus_counter;
++ if (!enabled) return;
 + lumen_groups_reconcile();
 + struct group *g = find(con->lumen_group_id);
 + if (g && !g->selected && !suspended(g->workspace)) {
 +  select_group(g); root_for_each_container(close_outgoing_popup, NULL);
 +  node_set_dirty(&root->node);
++ }
++ if (g && one_at_a_time && !suspended(g->workspace) && owner && eligible(owner)) {
++  revision++;
++  root_for_each_container(close_outgoing_popup, NULL); node_set_dirty(&root->node);
 + }
 +}
 +static bool number(const char *text, uint64_t *value) {
@@ -293,7 +327,10 @@ index 0000000..60bf41d
 +struct focus_candidate {struct group *group; struct sway_container *con;};
 +static void candidate(struct sway_container *con, void *data) {
 + struct focus_candidate *f = data;
-+ if (!f->con && con->lumen_group_id == f->group->id && eligible(con) && !con->lumen_app_hidden && !con->lumen_minimized) f->con = con;
++ if (con->lumen_group_id != f->group->id || !eligible(con) || parent(con) ||
++     con->lumen_app_hidden || con->lumen_minimized || !lumen_groups_visible(con)) return;
++ if (!f->con || con->lumen_group_focus > f->con->lumen_group_focus ||
++     (con->lumen_group_focus == f->con->lumen_group_focus && con->node.id < f->con->node.id)) f->con = con;
 +}
 +static void focus_selected(struct group *g) {
 + struct focus_candidate f = {.group = g}; root_for_each_container(candidate, &f);
@@ -313,7 +350,11 @@ index 0000000..60bf41d
 +  return cmd_results_new(CMD_INVALID, "Window groups changed; refresh before acting");
 + if (server.session_lock.lock) return cmd_results_new(CMD_INVALID, "Window groups are unavailable while locked");
 + const char *action = argv[1];
-+ if (argc == 2 && (!strcmp(action, "on") || !strcmp(action, "off"))) {
++ if (argc == 3 && !strcmp(action, "mode")) {
++  if (strcmp(argv[2], "all_together") && strcmp(argv[2], "one_at_a_time")) return cmd_results_new(CMD_INVALID, "Invalid window presentation mode");
++  bool value = !strcmp(argv[2], "one_at_a_time");
++  if (one_at_a_time != value) {one_at_a_time = value; revision++;}
++ } else if (argc == 2 && (!strcmp(action, "on") || !strcmp(action, "off"))) {
 +  bool value = !strcmp(action, "on");
 +  if (enabled != value) {
 +   enabled = value; revision++;
@@ -362,6 +403,7 @@ index 0000000..60bf41d
 + json_object *state = json_object_new_object(), *items = json_object_new_array();
 + json_object_object_add(state, "version", json_object_new_int(1));
 + json_object_object_add(state, "enabled", json_object_new_boolean(enabled));
++ json_object_object_add(state, "window_mode", json_object_new_string(one_at_a_time ? "one_at_a_time" : "all_together"));
 + json_object_object_add(state, "revision", json_object_new_int64(revision));
 + json_object_object_add(state, "separate_displays", json_object_new_boolean(true));
 + json_object_object_add(state, "locked", json_object_new_boolean(server.session_lock.lock != NULL));

@@ -1,6 +1,7 @@
 // Authored controls have stable identifiers; provider-owned dynamic rows remain
 // discoverable within their page rather than receiving fabricated static IDs.
 const controls = [
+    {"id":"group-window-presentation","page":"Desktop & Dock","label":"Application windows in a group","target":"settings-control-group-window-presentation"},
     {"id":"minimized-window-destination","page":"Desktop & Dock","label":"Minimized window destination","target":"settings-control-minimized-window-destination"},
     {"id":"separate-display-spaces","page":"Desktop & Dock","label":"Separate display spaces","target":"settings-control-separate-display-spaces"},
     {"id":"main-display","page":"Desktop & Dock","label":"Main display","target":"settings-control-main-display"},

@@ -14,6 +14,9 @@ fn id(value: &Value, zero: bool) -> Result<u64> {
     value.as_u64().filter(|number| (zero || *number > 0) && *number <= i64::MAX as u64).ok_or("Invalid native group identity".into())
 }
 fn flag(value: &Value) -> bool { value.as_bool() == Some(true) }
+fn window_mode(value: &Value) -> Result<&str> {
+    value.as_str().filter(|mode| matches!(*mode,"all_together"|"one_at_a_time")).ok_or("Invalid group window presentation mode".into())
+}
 fn object(value: &Value) -> Result<&serde_json::Map<String, Value>> { value.as_object().ok_or("Invalid native group facts".into()) }
 fn rows(value: &Value, max: usize) -> Result<&Vec<Value>> { value.as_array().filter(|rows| rows.len() <= max).ok_or("Invalid native group list".into()) }
 fn group_facts(data: &Value) -> Result<Value> {
@@ -120,7 +123,20 @@ fn project(tree: &Value, outputs: &Value, workspaces: &Value, version: &Value, e
         result.push(json!({"name":name,"workspace":workspace,"suspended":items.iter().any(|group| flag(&group["suspended"])),"groups":items.iter().map(|group| json!({"id":group["id"],"selected":group["selected"],"recent":group["recent"],"count":group["members"].as_array().unwrap().len()})).collect::<Vec<_>>()}));
     }
     let focused = rows(outputs, 256)?.iter().find(|output| flag(&output["active"]) && flag(&output["focused"])).and_then(|output| output["name"].as_str()).unwrap_or("");
-    Ok(json!({"available":true,"membershipSupported":flag(&version["native_window_group_membership"]),"enabled":groups["enabled"],"locked":flag(&groups["locked"]) || flag(&lock["locked"]),"epoch":epoch,"revision":groups["revision"],"focusedOutput":focused,"outputs":result}))
+    let presentation = flag(&version["native_window_group_presentation"]);
+    let mode = if presentation { Some(window_mode(&groups["window_mode"])?) } else { None };
+    Ok(json!({"available":true,"membershipSupported":flag(&version["native_window_group_membership"]),"presentationSupported":presentation,"windowMode":mode,"enabled":groups["enabled"],"locked":flag(&groups["locked"]) || flag(&lock["locked"]),"epoch":epoch,"revision":groups["revision"],"focusedOutput":focused,"outputs":result}))
+}
+
+fn mode_command(snapshot: &Value, data: &Value) -> Result<String> {
+    let fields = object(data)?;
+    if fields.len()!=3 || !fields.keys().all(|key| ["epoch","revision","windowMode"].contains(&key.as_str())) { return Err("Invalid captured group presentation request".into()); }
+    if snapshot["available"]!=true || snapshot["presentationSupported"]!=true { return Err("This compositor does not support group window presentation".into()); }
+    if snapshot["locked"]!=false { return Err("Group window presentation is unavailable while locked".into()); }
+    let epoch = data["epoch"].as_str().filter(|epoch|!epoch.is_empty()).ok_or("Missing captured compositor epoch")?;
+    if Some(epoch) != snapshot["epoch"].as_str() || id(&data["revision"],true)?!=id(&snapshot["revision"],true)? { return Err("The group list or compositor session changed; refresh before acting".into()); }
+    let mode = window_mode(&data["windowMode"])?;
+    Ok(format!("lumen_window groups {} mode {mode}",snapshot["revision"]))
 }
 
 fn captured<'a>(snapshot: &'a Value, data: &Value) -> Result<&'a Value> {
@@ -175,6 +191,16 @@ fn activate(membership: bool, data: &Value) -> Result<Value> {
     native.verify()?;
     accept(&native.query(0, &command)?)?;
     Ok(json!({"ok":true}))
+}
+
+fn apply_mode(data: &Value) -> Result<Value> {
+    let mut native = Native::open()?;
+    let snapshot = native.group_snapshot()?;
+    let command = mode_command(&snapshot,data)?;
+    native.verify()?;
+    accept(&native.query(0,&command)?)?;
+    native.verify()?;
+    Ok(json!({"ok":true,"epoch":snapshot["epoch"],"windowMode":data["windowMode"]}))
 }
 
 fn watch_groups() -> Result<()> {
@@ -240,12 +266,12 @@ fn main() {
     let result = match args.as_slice() {
         [mode] if mode == "watch" => watch_groups(),
         [mode] if mode == "drag" => watch_drag(),
-        [mode] if mode == "select" || mode == "membership" => {
+        [mode] if mode == "select" || mode == "membership" || mode == "mode" => {
             let mut bytes = Vec::new();
             let result = std::io::stdin().lock().take((MAX + 1) as u64).read_until(b'\n', &mut bytes).map_err(|error| error.to_string()).and_then(|_| {
                 if bytes.len() > MAX { return Err("Group request exceeds its declared limit".into()); }
                 let data: Value = serde_json::from_slice(&bytes).map_err(|_| "Invalid group request")?;
-                let response = activate(mode == "membership", &data)?;
+                let response = if mode=="mode" { apply_mode(&data)? } else { activate(mode == "membership", &data)? };
                 println!("{response}");
                 Ok(())
             });
@@ -260,6 +286,20 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn presentation_requires_supported_fresh_unlocked_typed_capture() {
+        let snapshot=serde_json::json!({"available":true,"presentationSupported":true,"locked":false,"enabled":false,"epoch":"owned-session","revision":7});
+        let request=serde_json::json!({"epoch":"owned-session","revision":7,"windowMode":"one_at_a_time"});
+        assert_eq!(super::mode_command(&snapshot,&request).unwrap(),"lumen_window groups 7 mode one_at_a_time");
+        for (key,value) in [("epoch",serde_json::json!("replaced-session")),("epoch",serde_json::Value::Null),("revision",serde_json::json!(6)),("revision",serde_json::json!(true)),("windowMode",serde_json::json!("one_at_a_time; kill")),("windowMode",serde_json::json!(true)),("extra",serde_json::json!(true))] {
+            let mut invalid=request.clone();invalid[key]=value;assert!(super::mode_command(&snapshot,&invalid).is_err(),"Accepted {invalid}");
+        }
+        for (key,value) in [("presentationSupported",serde_json::json!(false)),("available",serde_json::json!(false)),("locked",serde_json::json!(true)),("locked",serde_json::Value::Null)] {
+            let mut invalid=snapshot.clone();invalid[key]=value;assert!(super::mode_command(&invalid,&request).is_err());
+        }
+        let mut all=request.clone();all["windowMode"]=serde_json::json!("all_together");
+        assert_eq!(super::mode_command(&snapshot,&all).unwrap(),"lumen_window groups 7 mode all_together");
+    }
     use super::*;
     #[test]
     fn selected_group_requires_exact_capture() {

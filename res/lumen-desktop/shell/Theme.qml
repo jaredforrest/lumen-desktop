@@ -8,7 +8,7 @@ Singleton {
     id: root
     property var preferences: ({mode:"auto",accent:"blue",iconAppearance:"auto",switchToAppSpace:true,dockMagnification:true,reduceMotion:false})
     property var desktopPreferences: ({showFiles:false,fileSort:"name",fileDescending:false})
-    property var windowsPreferences: ({rememberOwnedGeometry:false,tileMargins:true,tileGap:8,titlebarDoubleClick:"fill",edgeTiling:true,optionTiling:true,topEdgeFill:true,topEdgeOverview:true})
+    property var windowsPreferences: ({rememberOwnedGeometry:false,groupWindowMode:"all_together",tileMargins:true,tileGap:8,titlebarDoubleClick:"fill",edgeTiling:true,optionTiling:true,topEdgeFill:true,topEdgeOverview:true})
     property var menuBarPreferences: ({order:["battery","sound","focus","search","controls"],hourCycle:"locale",locale:"",visibility:"desktop",showDate:true,showWeekday:true,showSeconds:false})
     property var controlCentrePreferences: ({order:["wifi","bluetooth","sharing","media","displays","appearance","focus","brightness","sound"],hidden:[]})
     property var notificationsPreferences: ({preview:"when_unlocked"})

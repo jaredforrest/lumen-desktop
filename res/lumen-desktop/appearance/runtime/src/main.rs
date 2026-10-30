@@ -97,6 +97,7 @@ fn valid_option(section: &str, key: &str, value: &Value) -> bool {
             _ => false,
         },
         "windows" => match key {
+            "groupWindowMode" => value.as_str().is_some_and(|v| ["all_together", "one_at_a_time"].contains(&v)),
             "tileMargins" | "edgeTiling" | "optionTiling" | "topEdgeFill" | "topEdgeOverview" => value.is_boolean(),
             "tileGap" => value.as_u64().is_some_and(|v| v <= 32),
             "titlebarDoubleClick" => value.as_str().is_some_and(|v| ["fill", "zoom", "minimize", "none"].contains(&v)),
@@ -296,6 +297,7 @@ fn execute() -> Result<(), String> {
     let mut control = all.get("controlCentre").cloned().unwrap_or(json!({"order":["wifi","bluetooth","sharing","media","displays","appearance","focus","brightness","sound"],"hidden":[]}));
     let mut menu = all.get("menuBar").cloned().unwrap_or(json!({"order":["battery","sound","focus","search","controls"],"hourCycle":"locale","locale":"","visibility":"desktop","showDate":true,"showWeekday":true,"showSeconds":false}));
     let mut windows = all.get("windows").cloned().unwrap_or(json!({"tileMargins":true,"tileGap":8,"titlebarDoubleClick":"fill","edgeTiling":true,"optionTiling":true,"topEdgeFill":true,"topEdgeOverview":true}));
+    if windows.get("groupWindowMode").is_none() { windows["groupWindowMode"] = json!("all_together"); }
     let mut desktop = all.get("desktop").cloned().unwrap_or(json!({"showFiles":false,"fileSort":"name","fileDescending":false}));
     update("menuBar", &args.set_menu_bar, &mut menu, "Unsupported menu bar preference or value")?;
     update("desktop", &args.set_desktop, &mut desktop, "Unsupported desktop preference or value")?;
