@@ -77,6 +77,8 @@ Item {
     property real createdAt:Date.now()/1000
     property var volumes:[]
     property bool canUndo:false
+    property string undoKind:""
+    property string undoLabel:"Undo Last Move"
     readonly property var currentJob:jobs.length?jobs[jobs.length-1]:null
     readonly property bool working:jobs.some(j=>j.state==="running" || j.state==="cancelling")
     property string requestedPath:""
@@ -124,11 +126,11 @@ Item {
         let states=Object.assign({},jobStates),changed=false;
         for(const job of data.jobs || []){
             if(states[job.id]!==job.state && !["running","cancelling"].includes(job.state)){
-                if(states[job.id] || job.started>=createdAt){changed=true;if(job.errors.length)error=job.errors.join("\n");}
+                if(states[job.id] || job.started>=createdAt){changed=true;if(job.recoveryPath && job.undoMessage)error=job.undoMessage+"\nRecovery: "+job.recoveryPath;else if(job.errors.length)error=job.errors.join("\n");else if(job.undoWarning)error=job.undoWarning;}
             }
             states[job.id]=job.state;
         }
-        jobs=data.jobs || [];jobStates=states;if(data.historyWarning)error=data.historyWarning;for(const job of jobs){if(job.state==="interrupted")error=job.errors.join("\n");}canUndo=!!data.canUndo;
+        jobs=data.jobs || [];jobStates=states;if(data.historyWarning)error=data.historyWarning;for(const job of jobs){if(job.state==="interrupted")error=job.errors.join("\n");}canUndo=!!data.canUndo;undoKind=["copy","move"].includes(data.undoKind)?data.undoKind:"";undoLabel=typeof data.undoLabel==="string"?data.undoLabel:"Undo Last Move";
         if(changed)refresh();
     }
     onActiveChanged:if(active){if(persistViewPreferences && !preferencesLoaded)send("preferences");send("job-status");send("volumes");}

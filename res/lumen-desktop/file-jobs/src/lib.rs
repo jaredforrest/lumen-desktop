@@ -18,6 +18,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 pub type JobResult<T> = Result<T, String>;
 pub mod trash;
+mod copy_undo;
 
 fn now() -> JobResult<f64> {
     Ok(SystemTime::now()
@@ -414,10 +415,17 @@ struct UndoRecord {
     expected: BTreeMap<PathBuf, Signature>,
 }
 
+#[derive(Clone)]
+enum UndoEntry { Move(UndoRecord), Copy(copy_undo::Record) }
+impl UndoEntry {
+    fn kind(&self) -> &str {match self {Self::Move(_)=>"move",Self::Copy(_)=>"copy"}}
+    fn label(&self) -> String {match self {Self::Move(_)=>"Undo Last Move".into(),Self::Copy(record)=>record.label()}}
+}
+struct Transfer { destination: PathBuf, undo: Option<copy_undo::Record>, warning: Option<String> }
 struct Inner {
     jobs: Vec<Value>,
     tokens: HashMap<String, Arc<AtomicBool>>,
-    undo: Vec<UndoRecord>,
+    undo: Vec<UndoEntry>,
     warning: String,
 }
 
@@ -492,7 +500,7 @@ impl Jobs {
 
     pub fn state(&self) -> Value {
         let inner = self.inner.lock().unwrap();
-        json!({"jobs":inner.jobs,"canUndo":!inner.undo.is_empty(),"historyWarning":inner.warning})
+        json!({"jobs":inner.jobs,"canUndo":!inner.undo.is_empty(),"undoKind":inner.undo.last().map(UndoEntry::kind),"undoLabel":inner.undo.last().map(UndoEntry::label).unwrap_or_else(||"Undo Last Move".into()),"historyWarning":inner.warning})
     }
 
     fn update(&self, id: &str, fields: Value) {
@@ -507,6 +515,13 @@ impl Jobs {
         if self.persist(&inner).is_err() {
             inner.warning = "File-operation history could not be saved; check disk space.".into();
         }
+    }
+
+    fn recovery(&self,id:&str,path:&Path,message:&str)->JobResult<()> {
+        let mut inner=self.inner.lock().unwrap();
+        let job=inner.jobs.iter_mut().find(|job|job["id"]==id).ok_or("Copy Undo job is no longer available")?;
+        job["recoveryPath"]=json!(path);job["undoMessage"]=json!(message);
+        self.persist(&inner).map_err(|error|format!("Unable to save Copy Undo recovery details: {error}"))
     }
 
     fn cancelled(&self, id: &str) -> bool {
@@ -759,14 +774,20 @@ impl Jobs {
         Ok(())
     }
 
-    fn transfer(
+    fn transfer(&self,id:&str,source:&Path,destination:&Path,moving:bool,conflict:&str)->JobResult<PathBuf> {
+        self.transfer_captured(id,source,destination,moving,conflict,false).map(|value|value.destination)
+    }
+    fn transfer_captured(
         &self,
         id: &str,
         source: &Path,
         destination: &Path,
         moving: bool,
         conflict: &str,
-    ) -> JobResult<PathBuf> {
+        capture_undo: bool,
+    ) -> JobResult<Transfer> {
+        let mut undo_record=None;
+        let mut undo_warning=None;
         let src = fs::canonicalize(source).map_err(|error| error.to_string())?;
         let parent = fs::canonicalize(destination.parent().ok_or("Invalid destination")?)
             .map_err(|error| error.to_string())?;
@@ -810,7 +831,7 @@ impl Jobs {
                     if source.parent() != dst.parent() {
                         sync_directory(source.parent().ok_or("Invalid source")?)?;
                     }
-                    return Ok(dst);
+                    return Ok(Transfer {destination:dst,undo:None,warning:None});
                 }
                 Err(error) if error.raw_os_error() == Some(libc::EXDEV) => (),
                 Err(error) => return Err(error.to_string()),
@@ -832,6 +853,13 @@ impl Jobs {
             if moving {
                 sync_tree(&partial)?;
             }
+            if capture_undo {
+                match copy_undo::Record::for_publication(&partial,&dst) {
+                    Ok(record)=>undo_record=Some(record),
+                    Err(error)=>undo_warning=Some(format!("Copy completed; Undo unavailable: {error}")),
+                }
+            }
+            self.check(id)?;
             // Some filesystems refuse to rename a directory whose final mode
             // has no owner write bit. Keep the staging root writable through
             // publication, then restore its observed metadata at the target.
@@ -848,6 +876,7 @@ impl Jobs {
                 } else {
                     None
                 };
+            self.check(id)?;
             move_exact(&partial, &dst).map_err(|error| format!("publish: {error}"))?;
             if let Some(mode) = restore_mode {
                 fs::set_permissions(&dst, fs::Permissions::from_mode(mode))
@@ -883,7 +912,10 @@ impl Jobs {
                     }
                 }
             }
-            Ok(dst.clone())
+            if let Some(record)=undo_record.take() {
+                match record.published() {Ok(record)=>undo_record=Some(record),Err(error)=>undo_warning=Some(format!("Copy completed; Undo unavailable: {error}"))}
+            }
+            Ok(Transfer {destination:dst.clone(),undo:undo_record.take(),warning:undo_warning.take()})
         })();
         make_writable(&staging);
         let _ = fs::remove_dir_all(staging);
@@ -903,13 +935,26 @@ impl Jobs {
                     .undo
                     .last()
                     .cloned()
-                    .ok_or("No reversible move is available")?;
-                if snapshot(&record.destination)? != record.expected {
-                    return Err("The moved item has changed; Undo cannot safely restore it".into());
+                    .ok_or("No reversible copy or move is available")?;
+                match record {
+                    UndoEntry::Move(record)=>{
+                        if snapshot(&record.destination)? != record.expected {return Err("The moved item has changed; Undo cannot safely restore it".into());}
+                        self.transfer(id,&record.destination,&record.source,true,"skip")?;
+                        self.inner.lock().unwrap().undo.pop();
+                        self.update(id,json!({"completed":1,"selected":record.source}));
+                    }
+                    UndoEntry::Copy(record)=>match record.undo(||self.check(id),|path,message|self.recovery(id,path,message)) {
+                        copy_undo::Outcome::Complete(path)=>{
+                            self.inner.lock().unwrap().undo.pop();
+                            self.update(id,json!({"completed":1,"recoveryPath":path,"undoMessage":"Copy undone. The copied item is in Trash; use Put Back to restore it."}));
+                        }
+                        copy_undo::Outcome::Refused(error)=>{self.update(id,json!({"undoMessage":error}));return Err(error)},
+                        copy_undo::Outcome::Preserved{path,error}=>{
+                            self.inner.lock().unwrap().undo.pop();
+                            self.update(id,json!({"recoveryPath":path,"undoMessage":error}));return Err(error);
+                        }
+                    }
                 }
-                self.transfer(id, &record.destination, &record.source, true, "skip")?;
-                self.inner.lock().unwrap().undo.pop();
-                self.update(id, json!({"completed":1,"selected":record.source}));
             } else {
                 for value in data["paths"].as_array().ok_or("Missing paths")? {
                     self.check(id)?;
@@ -929,19 +974,18 @@ impl Jobs {
                                     data["destination"].as_str().ok_or("Missing destination")?,
                                 )?
                                 .join(path.file_name().ok_or("Invalid source name")?);
-                                let target = self.transfer(
-                                    id,
-                                    &path,
-                                    &destination,
-                                    action == "move",
-                                    data["conflict"].as_str().unwrap_or("skip"),
+                                let transfer = self.transfer_captured(
+                                    id,&path,&destination,action=="move",data["conflict"].as_str().unwrap_or("skip"),action=="copy",
                                 )?;
+                                let target=transfer.destination;
+                                if let Some(record)=transfer.undo {records.push(UndoEntry::Copy(record));if records.len()>20 {records.remove(0);}}
+                                if let Some(warning)=transfer.warning {self.update(id,json!({"undoWarning":format!("{warning}. Earlier eligible Undo history, if any, remains available by its named item.")}));}
                                 if action == "move" {
-                                    records.push(UndoRecord {
+                                    records.push(UndoEntry::Move(UndoRecord {
                                         source: path.clone(),
                                         expected: snapshot(&target)?,
                                         destination: target.clone(),
-                                    });
+                                    }));
                                 }
                                 Ok(Some(target))
                             }

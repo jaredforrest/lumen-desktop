@@ -132,7 +132,7 @@ ShellRoot {
         const selected=!!filesWindow.current,ready=!filesState.busy;
         const item=(label,action,enabled=true)=>({label:label,action:enabled && ready?"files:"+action:""});
         if(menu==="File")return [item("Open","open",selected),item("Get Info","info",selected),item("New Window","new-window"),item("New Tab","new-tab"),item("New Folder…","mkdir",filesState.writable),item("Rename…","rename",selected),item("Move to Trash…","trash",selected)];
-        if(menu==="Edit")return [item("Cut","cut",selected),item("Copy","copy",selected),item("Paste","paste",filesState.writable),item("Undo Last Move","undo",filesState.canUndo)];
+        if(menu==="Edit")return [item("Cut","cut",selected),item("Copy","copy",selected),item("Paste","paste",filesState.writable),item(filesState.undoLabel || "Undo Last Move","undo",filesState.canUndo)];
         if(menu==="View")return [item("as Icons","grid"),item("as List","list"),item(filesWindow.previewOpen?"Hide Preview":"Show Preview","preview"),item(filesState.hidden?"Hide Hidden Files":"Show Hidden Files","hidden"),item("Refresh","refresh")];
         if(menu==="Go")return [item("Back","back",filesState.historyIndex>0),item("Forward","forward",filesState.historyIndex<filesState.history.length-1),item("Enclosing Folder","up"),item("Home","home"),item("Go to Folder…","goto")];
         return null;

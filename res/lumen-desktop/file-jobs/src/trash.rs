@@ -29,17 +29,17 @@ const CONFIRM_SECONDS: u64 = 120;
 const PUBLIC_ENVELOPE_BYTES: usize = 128;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct Facts {
-    dev: u64,
-    ino: u64,
-    mode: u32,
-    size: i64,
-    mtime_ns: i128,
-    ctime_ns: i128,
+pub(crate) struct Facts {
+    pub(crate) dev: u64,
+    pub(crate) ino: u64,
+    pub(crate) mode: u32,
+    pub(crate) size: i64,
+    pub(crate) mtime_ns: i128,
+    pub(crate) ctime_ns: i128,
 }
 
 impl Facts {
-    fn from_stat(info: &libc::stat) -> Self {
+    pub(crate) fn from_stat(info: &libc::stat) -> Self {
         Self {
             dev: info.st_dev,
             ino: info.st_ino,
@@ -49,31 +49,31 @@ impl Facts {
             ctime_ns: info.st_ctime as i128 * 1_000_000_000 + info.st_ctime_nsec as i128,
         }
     }
-    fn directory(self) -> bool {
+    pub(crate) fn directory(self) -> bool {
         self.mode & libc::S_IFMT == libc::S_IFDIR
     }
-    fn regular(self) -> bool {
+    pub(crate) fn regular(self) -> bool {
         self.mode & libc::S_IFMT == libc::S_IFREG
     }
-    fn symlink(self) -> bool {
+    pub(crate) fn symlink(self) -> bool {
         self.mode & libc::S_IFMT == libc::S_IFLNK
     }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct Identity {
-    dev: u64,
-    ino: u64,
-    mode: u32,
-    uid: u32,
-    mount: u64,
+pub(crate) struct Identity {
+    pub(crate) dev: u64,
+    pub(crate) ino: u64,
+    pub(crate) mode: u32,
+    pub(crate) uid: u32,
+    pub(crate) mount: u64,
 }
 
 fn name(value: &OsStr) -> JobResult<CString> {
     CString::new(value.as_bytes()).map_err(|_| "Invalid Trash path".into())
 }
 
-fn open_at(
+pub(crate) fn open_at(
     parent: libc::c_int,
     path: &OsStr,
     flags: libc::c_int,
@@ -87,7 +87,7 @@ fn open_at(
     Ok(unsafe { File::from_raw_fd(fd) })
 }
 
-fn stat_fd(file: &File) -> JobResult<libc::stat> {
+pub(crate) fn stat_fd(file: &File) -> JobResult<libc::stat> {
     let mut info: libc::stat = unsafe { std::mem::zeroed() };
     if unsafe { libc::fstat(file.as_raw_fd(), &mut info) } != 0 {
         return Err(std::io::Error::last_os_error().to_string());
@@ -95,7 +95,7 @@ fn stat_fd(file: &File) -> JobResult<libc::stat> {
     Ok(info)
 }
 
-fn mount_id(fd: libc::c_int) -> JobResult<u64> {
+pub(crate) fn mount_id(fd: libc::c_int) -> JobResult<u64> {
     let raw =
         fs::read_to_string(format!("/proc/self/fdinfo/{fd}")).map_err(|error| error.to_string())?;
     raw.lines()
@@ -103,7 +103,7 @@ fn mount_id(fd: libc::c_int) -> JobResult<u64> {
         .ok_or_else(|| "Native mount identity is unavailable".into())
 }
 
-fn identity(file: &File) -> JobResult<Identity> {
+pub(crate) fn identity(file: &File) -> JobResult<Identity> {
     let info = stat_fd(file)?;
     Ok(Identity {
         dev: info.st_dev,
@@ -114,7 +114,7 @@ fn identity(file: &File) -> JobResult<Identity> {
     })
 }
 
-fn directory(parent: libc::c_int, path: &OsStr, secure: bool) -> JobResult<File> {
+pub(crate) fn directory(parent: libc::c_int, path: &OsStr, secure: bool) -> JobResult<File> {
     let file = open_at(
         parent,
         path,
@@ -128,7 +128,7 @@ fn directory(parent: libc::c_int, path: &OsStr, secure: bool) -> JobResult<File>
     Ok(file)
 }
 
-fn observed(parent: &File, path: &OsStr) -> JobResult<(Facts, u64)> {
+pub(crate) fn observed(parent: &File, path: &OsStr) -> JobResult<(Facts, u64)> {
     let file = open_at(parent.as_raw_fd(), path, libc::O_PATH | libc::O_NOFOLLOW, 0)?;
     Ok((
         Facts::from_stat(&stat_fd(&file)?),
@@ -136,7 +136,7 @@ fn observed(parent: &File, path: &OsStr) -> JobResult<(Facts, u64)> {
     ))
 }
 
-fn rename_exact(source: &str, source_dir: &File, target: &str, target_dir: &File) -> JobResult<()> {
+pub(crate) fn rename_exact(source: &str, source_dir: &File, target: &str, target_dir: &File) -> JobResult<()> {
     let source = name(OsStr::new(source))?;
     let target = name(OsStr::new(target))?;
     if unsafe {
@@ -154,7 +154,7 @@ fn rename_exact(source: &str, source_dir: &File, target: &str, target_dir: &File
     Ok(())
 }
 
-fn mkdir_at(parent: &File, item: &str) -> JobResult<()> {
+pub(crate) fn mkdir_at(parent: &File, item: &str) -> JobResult<()> {
     let item = name(OsStr::new(item))?;
     if unsafe { libc::mkdirat(parent.as_raw_fd(), item.as_ptr(), 0o700) } != 0 {
         return Err(std::io::Error::last_os_error().to_string());
@@ -162,7 +162,7 @@ fn mkdir_at(parent: &File, item: &str) -> JobResult<()> {
     Ok(())
 }
 
-fn remove_at(parent: &File, item: &str, expected: Facts, directory_entry: bool) -> JobResult<()> {
+pub(crate) fn remove_at(parent: &File, item: &str, expected: Facts, directory_entry: bool) -> JobResult<()> {
     let (current, _) = observed(parent, OsStr::new(item))?;
     if directory_entry {
         if (current.dev, current.ino, current.mode) != (expected.dev, expected.ino, expected.mode) {
@@ -183,7 +183,7 @@ fn remove_at(parent: &File, item: &str, expected: Facts, directory_entry: bool) 
     Ok(())
 }
 
-fn bounded_names(parent: &File, limit: usize, deadline: Instant) -> JobResult<Vec<String>> {
+pub(crate) fn bounded_names(parent: &File, limit: usize, deadline: Instant) -> JobResult<Vec<String>> {
     let mut names = Vec::new();
     for entry in fs::read_dir(format!("/proc/self/fd/{}", parent.as_raw_fd()))
         .map_err(|error| error.to_string())?

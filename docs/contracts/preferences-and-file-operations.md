@@ -42,6 +42,51 @@ A changed source aborts before deletion. Cancellation removes unpublished
 staging and keeps uncopied source data. No replace or permanent-delete API is
 implied. Journaling errors stay visible, and job snapshots cannot mutate history.
 
+### Recoverable Copy Undo
+
+Eligible Copy and Duplicate outputs enter the same per-item, last-20 Undo stack
+as Move. Copy labels identify the actual created destination, including keep-both
+names. A partial batch records only outputs that were successfully published.
+Undo capability is session-local and is not reconstructed after service restart.
+An ineligible copy still completes successfully and reports a separate
+`undoWarning`; any earlier eligible item remains available by its named label.
+The status API exposes `undoKind` and `undoLabel` alongside `canUndo`.
+
+Copy Undo moves only the unchanged captured destination into the user's personal
+Trash on the same volume. Its source is untouched. The existing Put Back action
+restores the trashed output without overwriting collisions. No recursive
+permanent deletion or automatic cleanup is used. Cross-volume Trash, replaced
+parents or outputs, modified contents, new descendants, mounted contents,
+special files and inaccessible no-atime inspection all refuse safely.
+
+Each manifest is limited to 4,096 entries, 64 descendant levels, 64 MiB of regular
+file content and 1 MiB of encoded manifest data. Hashing a growing file reads at
+most the captured content size plus one detection byte before refusal. Each
+inspection checks a cooperative two-second deadline between operations; this
+does not impose a hard deadline on a blocking filesystem read. Pending batch
+records are evicted above 20 immediately, as is the retained final Undo stack;
+at most 20 prior and 20 pending manifests coexist during a batch. The manifest
+bound is an encoded-data bound, not a total allocator-memory measurement.
+Cancellation is checked at Undo admission and again immediately before claiming
+the item. Once claimed, recovery completion and reporting continue even if a
+cancel arrives; cancellation never suppresses recovery instructions.
+
+Undo saves a recovery journal entry before claiming a destination. A private
+0700 staging directory contains recovery instructions until normal Trash
+publication is durable and recorded. On a post-claim race, Undo attempts a
+no-overwrite return to the original slot. If that slot is occupied, or Trash
+publication partially succeeds, it retains the payload and reports the current
+reachable recovery path. If that path cannot be verified, the error explicitly
+says so; it does not claim the item remained at its original destination.
+Retained staging is never silently expired or retried. Follow its recovery
+record, or use Put Back when an ordinary Trash entry is available. Existing
+Move Undo behavior is unchanged.
+Inspection samples inode, owner/group, mode, content, timestamps and descendants;
+rename comparison permits the root ctime change caused by the rename itself.
+This is not an atomic tree lock or a complete ACL/arbitrary-xattr witness.
+Concurrent root-only extended-metadata changes inside that rename seam are not
+independently distinguished. Payloads are always retained recoverably.
+
 ## Verification scope
 
 Disposable filesystem tests exercise conflicts, cancellation, changed sources,
