@@ -4,9 +4,9 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::env;
 use std::error::Error;
-use std::fs::{self, File};
+use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::os::unix::net::UnixStream;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -305,7 +305,8 @@ fn outer(options: &Options) -> Result<()> {
         &dependencies,
     )
     .map_err(|error| fail(error.to_string()))?;
-    let parent_namespaces = namespaces()?;
+    let mut parent_namespaces = namespaces()?;
+    parent_namespaces["devptsDevice"] = json!(fs::metadata("/dev/pts")?.dev());
     let mut command = Command::new(env!("LUMEN_EDGE_ISOLATION"));
     command
         .arg("run")
@@ -349,6 +350,15 @@ fn outer(options: &Options) -> Result<()> {
         command.arg("--constraints-only");
     }
     command.env("PATH", env!("LUMEN_EDGE_HELPER_PATH"));
+    // Drop any inherited controlling terminal before entering the new PTY mount.
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setsid() < 0 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
     let status = command.status();
     generated(&output, &output).map_err(|error| fail(error.to_string()))?;
     frozen
@@ -391,11 +401,21 @@ fn private_session(options: &Options) -> Result<()> {
     }
     require(
         !Path::new("/.old-root").exists()
-            && !["dri", "snd", "video0", "tty"]
+            && !["dri", "snd", "video0"]
                 .iter()
                 .any(|name| Path::new("/dev").join(name).exists())
             && Path::new("/dev/udmabuf").exists() == options.effects,
         "Unexpected host root or hardware device",
+    )?;
+    require(
+        Path::new("/dev/pts/ptmx").exists()
+            && Some(fs::metadata("/dev/pts")?.dev()) != parent["devptsDevice"].as_u64()
+            && OpenOptions::new()
+                .read(true)
+                .write(true)
+                .open("/dev/tty")
+                .is_err(),
+        "Private PTY instance or controlling-terminal detachment missing",
     )?;
     fs::write(
         options.output.join("namespace-boundary.json"),
