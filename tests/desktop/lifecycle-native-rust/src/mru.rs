@@ -31,6 +31,7 @@ fn picker(f: &Fixture, action: &str) -> Result<Value> {
 fn focus(f: &Fixture, id: &str) -> Result<()> {
     f.call("swaymsg", &[&format!("[app_id=\"{id}\"]"), "focus"])?;
     wait_true("captured native application focus", || {
+        save(&f.options.output.join("focus-native-tree.json"), &f.tree()?)?;
         Ok(state(f)?["active"] == id)
     })
 }
@@ -93,6 +94,13 @@ pub fn run(options: Options) -> Result<()> {
             Ok(client(&f, index)?["windows"] == 2)
         })?;
     }
+    // GTK window objects may exist before their surfaces have mapped. Require
+    // both compositor observation and shell toplevel enumeration before focus.
+    wait_true("all native application surfaces mapped", || {
+        let value=state(&f)?;
+        Ok(IDS.iter().all(|id| value["windows"].as_array().is_some_and(|windows|windows.iter().filter(|window|window.as_str()==Some(id)).count()==2)
+            && value["apps"].as_array().is_some_and(|apps|apps.iter().any(|app|app["appId"]==*id && app["windowCount"]==2))))
+    })?;
     for id in IDS {
         focus(&f, id)?;
     }
