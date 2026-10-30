@@ -371,7 +371,7 @@ index 72ceb1a..d0f4e94 100644
  	void parentChanged();
  	void activatedChanged();
 diff --git a/src/wayland/toplevel/wlr_toplevel.cpp b/src/wayland/toplevel/wlr_toplevel.cpp
-index 6055e22..1f8173d 100644
+index 6055e22..7ee46c1 100644
 --- a/src/wayland/toplevel/wlr_toplevel.cpp
 +++ b/src/wayland/toplevel/wlr_toplevel.cpp
 @@ -1,4 +1,5 @@
@@ -389,11 +389,18 @@ index 6055e22..1f8173d 100644
  
  #include "../../core/logcat.hpp"
  #include "qwayland-wlr-foreign-toplevel-management-unstable-v1.h"
-@@ -24,6 +27,46 @@ namespace qs::wayland::toplevel::wlr {
+@@ -24,6 +27,53 @@ namespace qs::wayland::toplevel::wlr {
  
  QS_LOGGING_CATEGORY(logToplevelManagement, "quickshell.wayland.toplevelManagement", QtWarningMsg);
  
-+IdentityManager::IdentityManager(): QWaylandClientExtensionTemplate(1) { this->initialize(); }
++IdentityManager::IdentityManager(): QWaylandClientExtensionTemplate(1) {
++	// Qt marks a removed global inactive but does not retire its generated
++	// wrapper. Retire before live handles clear/reissue on a replacement global.
++	QObject::connect(this, &QWaylandClientExtension::activeChanged, this, [this] {
++		if (!this->isActive() && this->isInitialized()) this->destroy();
++	});
++	this->initialize();
++}
 +IdentityManager* IdentityManager::instance() {
 +	static auto* instance = new IdentityManager(); // NOLINT
 +	return instance;
@@ -436,7 +443,7 @@ index 6055e22..1f8173d 100644
  ToplevelManager::ToplevelManager(): QWaylandClientExtensionTemplate(3) { this->initialize(); }
  
  bool ToplevelManager::available() const { return this->isActive(); }
-@@ -168,12 +211,19 @@ void ToplevelHandle::zwlr_foreign_toplevel_handle_v1_done() {
+@@ -168,12 +218,19 @@ void ToplevelHandle::zwlr_foreign_toplevel_handle_v1_done() {
  	this->isReady = true;
  
  	if (!wasReady) {
