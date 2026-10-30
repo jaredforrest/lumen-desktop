@@ -676,7 +676,7 @@ fn run(options: &Options) -> Result<()> {
         original.insert(cid, fixture.box_rect(cid)?);
         original_ws.insert(cid, fixture.workspace(cid)?);
     }
-    scratchpad_preflight::run(&fixture,aa,bb,cc)?;
+    scratchpad_preflight::run(&mut fixture,aa,bb)?;
     if options.scratchpad_only {return Ok(());}
     fixture.yes(&format!("lumen_pair create {aa} {bb}"))?;
     let parent = fixture.required_parent(aa)?;
