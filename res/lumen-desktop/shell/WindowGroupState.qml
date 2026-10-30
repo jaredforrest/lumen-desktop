@@ -11,13 +11,13 @@ QtObject {
     function reconcileMode(){
         if(modeWorker.running || state.available!==true || state.presentationSupported!==true || state.locked!==false)return;
         if(!["all_together","one_at_a_time"].includes(desiredMode) || !["all_together","one_at_a_time"].includes(state.windowMode))return;
-        if(state.windowMode===desiredMode){presentationError="";return;}
+        if(state.windowMode===desiredMode){presentationError="";lastModeAttempt="";return;}
         const captured={epoch:state.epoch,revision:state.revision,windowMode:desiredMode};
         const signature=JSON.stringify(captured);
         if(signature===lastModeAttempt)return;
         lastModeAttempt=signature;modeRequest=captured;modeWorker.running=true;
     }
-    onDesiredModeChanged:modeApply.restart()
+    onDesiredModeChanged:{lastModeAttempt="";modeApply.restart();}
     onStateChanged:modeApply.restart()
     function unavailable(){state={available:false,enabled:false,locked:true,outputs:[]};}
     property Process observer:Process {

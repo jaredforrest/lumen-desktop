@@ -91,6 +91,7 @@ ShellRoot {
     function forceQuit(entry){forceQuitDialog.show(appLabel(entry),windowsFor(entry).map(window=>({appId:window.appId,title:window.title || ""})));}
     WindowGroupState {id:windowGroupState}
     readonly property var windowGroupPresentation:windowGroupState.state
+    readonly property string windowGroupPresentationError:windowGroupState.presentationError
     GroupMembershipDrag {id:membershipDrag;shell:root;service:windowGroupState}
     property alias groupMembershipDrag:membershipDrag
     signal requestGroupSelector(string name)

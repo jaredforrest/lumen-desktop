@@ -27,9 +27,10 @@
     if (!number(argv[3], &wid) || wid != g->workspace || !output ||
 --- a/sway/ipc-json.c
 +++ b/sway/ipc-json.c
-@@ -231,6 +231,7 @@
+@@ -231,7 +231,8 @@
  	json_object *version = json_object_new_object();
   json_object_object_add(version, "native_window_groups", json_object_new_boolean(true));
+  json_object_object_add(version, "native_window_group_presentation", json_object_new_boolean(true));
   json_object_object_add(version, "native_window_group_selector", json_object_new_boolean(true));
 + json_object_object_add(version, "native_window_group_membership", json_object_new_boolean(true));
  	json_object_object_add(version, "desktop_rehome", json_object_new_boolean(true));

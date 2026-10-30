@@ -26,10 +26,11 @@
     if (!number(argv[3], &cid) || !number(argv[4], &pid)) return cmd_results_new(CMD_INVALID, "Invalid exact window identity");
 --- a/sway/ipc-json.c
 +++ b/sway/ipc-json.c
-@@ -230,6 +230,7 @@
+@@ -230,7 +230,8 @@
  	int major = 0, minor = 0, patch = 0;
  	json_object *version = json_object_new_object();
   json_object_object_add(version, "native_window_groups", json_object_new_boolean(true));
+  json_object_object_add(version, "native_window_group_presentation", json_object_new_boolean(true));
 + json_object_object_add(version, "native_window_group_selector", json_object_new_boolean(true));
  	json_object_object_add(version, "desktop_rehome", json_object_new_boolean(true));
  	json_object_object_add(version, "native_window_relationships", json_object_new_boolean(true));
