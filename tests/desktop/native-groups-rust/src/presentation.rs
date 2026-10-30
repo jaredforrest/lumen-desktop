@@ -9,7 +9,11 @@ fn focus(ctx: &Context, n: usize) -> Result<()> {
 }
 fn masks(ctx: &Context) -> Result<Vec<bool>> {
     (0..4)
-        .map(|n| Ok(truth(&window(ctx, n)?["lumen_state"]["group_hidden"])))
+        .map(|n| {
+            window(ctx, n)?["lumen_state"]["group_hidden"]
+                .as_bool()
+                .ok_or_else(|| fail("Native group visibility missing"))
+        })
         .collect()
 }
 fn expected(ctx: &Context, wanted: &[bool]) -> Result<()> {
@@ -31,7 +35,10 @@ fn mode(ctx: &Context, value: &str) -> Result<()> {
 fn placements(ctx: &Context) -> Result<Value> {
     Ok(Value::Array((0..4).map(|n|{
         let w=window(ctx,n)?;
-        Ok(json!({"id":w["id"],"pid":w["pid"],"app_id":w["app_id"],"rect":w["rect"],"window_rect":w["window_rect"],"floating":w["floating"],"fullscreen_mode":w["fullscreen_mode"],"minimized":w["lumen_state"]["minimized"],"hidden":w["lumen_state"]["application_hidden"]}))
+        let mut state=w["lumen_state"].clone();
+        state.as_object_mut().ok_or("Native placement state missing")?.remove("group_hidden");
+        ensure(state["minimised"].is_boolean() && state["hidden"].is_boolean(),"Native independent visibility facts absent")?;
+        Ok(json!({"id":w["id"],"pid":w["pid"],"app_id":w["app_id"],"rect":w["rect"],"window_rect":w["window_rect"],"floating":w["floating"],"fullscreen_mode":w["fullscreen_mode"],"state":state}))
     }).collect::<Result<Vec<_>>>()?))
 }
 pub fn run(ctx: &mut Context) -> Result<()> {
