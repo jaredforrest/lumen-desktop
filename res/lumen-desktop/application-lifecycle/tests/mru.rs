@@ -41,6 +41,30 @@ const EPOCH: &str = "0123456789abcdef01234567";
 const BOOT: &str = "01234567-89ab-cdef-0123-456789abcdef";
 
 #[test]
+fn queued_native_focus_receipts_preserve_brief_focus_with_later_tree_snapshots() {
+    let clients=clients();
+    let latest=nodes(&clients,2);
+    let mut lifecycle=Lifecycle::default();
+    lifecycle.refresh(EPOCH,&latest);
+    for focused in [0,1,2]{
+        let receipt=json!({"change":"focus","container":nodes(&clients,focused)[focused]});
+        lifecycle.refresh(EPOCH,&latest);
+        lifecycle.observe_focus_event(&receipt,&latest);
+    }
+    assert_eq!(lifecycle.activation_history.order(),["app2","app1","app0"]);
+    // A queued receipt for a retired container, unrelated change, or false
+    // focus flag cannot promote a different or replacement native surface.
+    let mut stale=json!({"change":"focus","container":nodes(&clients,0)[0]});
+    stale["container"]["id"]=json!(999);
+    lifecycle.observe_focus_event(&stale,&latest);
+    let other=json!({"change":"title","container":nodes(&clients,0)[0]});
+    lifecycle.observe_focus_event(&other,&latest);
+    let not_focused=json!({"change":"focus","container":latest[0]});
+    lifecycle.observe_focus_event(&not_focused,&latest);
+    assert_eq!(lifecycle.activation_history.order(),["app2","app1","app0"]);
+}
+
+#[test]
 fn actual_live_process_order_survives_recovery_and_zero_windows_but_not_replacement_or_epoch() {
     let clients = clients();
     let mut lifecycle = Lifecycle::default();

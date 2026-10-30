@@ -31,7 +31,7 @@ fn refresh(query:&mut UnixStream,path:&PathBuf,expected:&str,lifecycle:&mut Life
     if kind!=4{return Err("Unexpected compositor reply".into());}
     if epoch(path)?!=expected{return Err("Compositor session changed".into());}
     let nodes=window_nodes(&tree)?;
-    lifecycle.refresh(expected,&nodes);lifecycle.observe_focus(&nodes);session.tick(&nodes,lifecycle,protocol);
+    lifecycle.refresh(expected,&nodes);session.tick(&nodes,lifecycle,protocol);
     emit(true,lifecycle,session,store,last,"",None);
     Ok(nodes)
 }
@@ -84,6 +84,7 @@ fn watch()->Result<()>{
         query.set_write_timeout(Some(Duration::from_secs(5))).map_err(|error|error.to_string())?;
         if let Some(store)=&mut store{let saved=store.load_state();lifecycle.recover(&identity,&saved.processes);lifecycle.activation_history=saved.history;lifecycle.prune();}
         let mut nodes=refresh(&mut query,&path,&identity,&mut lifecycle,&mut session,&protocol,&mut store,&mut last)?;
+        lifecycle.observe_focus(&nodes);emit(true,&lifecycle,&session,&mut store,&mut last,"",None);
         events.set_read_timeout(None).map_err(|error|error.to_string())?;
         let mut input=Vec::new();
         loop{
@@ -96,6 +97,7 @@ fn watch()->Result<()>{
                 if kind==0x8000_0006{if let Some(store)=&mut store{store.save(&[])?;}return Ok(());}
                 if kind==0x8000_0003{lifecycle.observe(&event["container"]);}
                 nodes=refresh(&mut query,&path,&identity,&mut lifecycle,&mut session,&protocol,&mut store,&mut last)?;
+                if kind==0x8000_0003{lifecycle.observe_focus_event(&event,&nodes);}
             }
             if polls[1].revents!=0{
                 let mut chunk=[0_u8;65537];let count=std::io::stdin().read(&mut chunk).map_err(|error|error.to_string())?;

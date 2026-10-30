@@ -131,6 +131,14 @@ impl Lifecycle{
         if exited(&process.handle)||process_identity(pid).ok().as_ref()!=Some(&process.identity)||!process.apps.contains(app){return;}
         let rows=self.rows();self.activation_history.promote(app,&rows);
     }
+    pub fn observe_focus_event(&mut self,event:&Value,nodes:&[Value]){
+        if event["change"]!="focus"{return;}
+        let focused=&event["container"];
+        // Consume ordered native focus receipts, rather than a later tree's
+        // focus flag. Retired containers cannot lend rank to a replacement.
+        if !nodes.iter().any(|node|node["id"]==focused["id"] && node["pid"]==focused["pid"] && node["app_id"]==focused["app_id"] && node["shell"]=="xdg_shell" && node["window"].is_null()){return;}
+        self.observe_focus(std::slice::from_ref(focused));
+    }
     pub fn records(&self)->Vec<Value>{self.processes.values().map(|process|json!({"identity":process.identity,"apps":process.apps.iter().collect::<Vec<_>>()})).collect()}
     pub fn rows(&self)->Vec<Value>{
         let mut apps:BTreeMap<String,(usize,usize,Vec<String>,bool)>=BTreeMap::new();

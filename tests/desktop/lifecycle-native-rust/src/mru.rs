@@ -18,7 +18,8 @@ fn ordered(value: &Value, key: &str) -> Vec<String> {
 }
 fn order(f: &Fixture, expected: &[&str]) -> Result<()> {
     wait_true("real application activation order", || {
-        Ok(ordered(&state(f)?, "history") == expected)
+        let value=state(f)?;
+        Ok(ordered(&value,"history")==expected && ordered(&value,"observerHistory")==expected)
     })
 }
 fn picker(f: &Fixture, action: &str) -> Result<Value> {
