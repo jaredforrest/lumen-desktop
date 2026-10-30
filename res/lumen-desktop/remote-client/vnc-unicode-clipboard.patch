@@ -1,12 +1,13 @@
 --- a/plugins/vnc/vnc_plugin.c
 +++ b/plugins/vnc/vnc_plugin.c
-@@ -325,6 +325,63 @@
+@@ -325,6 +325,76 @@
  	return event;
  }
  
 +typedef struct {
 +	GWeakRef connection;
 +	const gchar *message;
++	gchar *rejected_hash;
 +} RemminaVncClipboardWarning;
 +
 +static void remmina_plugin_vnc_clipboard_warning_destroy(GtkWidget *dialog, gpointer data)
@@ -19,6 +20,7 @@
 +		g_object_unref(connection);
 +	}
 +	g_weak_ref_clear(&warning->connection);
++	g_free(warning->rejected_hash);
 +	g_free(warning);
 +}
 +
@@ -33,6 +35,11 @@
 +	GtkWidget *connection = g_weak_ref_get(&warning->connection);
 +	REMMINA_PLUGIN_DEBUG("VNC clipboard warning dispatched; originating connection present: %d", connection != NULL);
 +	if (connection && !gtk_widget_in_destruction(connection)) {
++		if (warning->rejected_hash) {
++			RemminaPluginVncData *gpdata = GET_PLUGIN_DATA(connection);
++			g_free(gpdata->clipboard_rejected_hash);
++			gpdata->clipboard_rejected_hash = g_strdup(warning->rejected_hash);
++		}
 +		GtkWidget *parent = gtk_widget_get_toplevel(connection);
 +		REMMINA_PLUGIN_DEBUG("VNC clipboard warning originating toplevel live: %d", GTK_IS_WINDOW(parent) && gtk_widget_get_realized(parent) && !gtk_widget_in_destruction(parent));
 +		if (GTK_IS_WINDOW(parent) && gtk_widget_get_realized(parent) && !gtk_widget_in_destruction(parent)) {
@@ -50,7 +57,7 @@
 +	return FALSE;
 +}
 +
-+static void remmina_plugin_vnc_queue_clipboard_warning(RemminaProtocolWidget *gp, const gchar *message)
++static void remmina_plugin_vnc_queue_clipboard_warning_for_text(RemminaProtocolWidget *gp, const gchar *message, const gchar *rejected_text)
 +{
 +	RemminaPluginVncData *gpdata = GET_PLUGIN_DATA(gp);
 +	if (!g_atomic_int_compare_and_exchange(&gpdata->clipboard_warning_pending, 0, 1)) return;
@@ -58,13 +65,19 @@
 +	RemminaVncClipboardWarning *warning = g_new(RemminaVncClipboardWarning, 1);
 +	g_weak_ref_init(&warning->connection, G_OBJECT(gp));
 +	warning->message = message;
++	warning->rejected_hash = rejected_text ? g_compute_checksum_for_string(G_CHECKSUM_SHA256, rejected_text, -1) : NULL;
 +	IDLE_ADD(remmina_plugin_vnc_clipboard_warning, warning);
++}
++
++static void remmina_plugin_vnc_queue_clipboard_warning(RemminaProtocolWidget *gp, const gchar *message)
++{
++	remmina_plugin_vnc_queue_clipboard_warning_for_text(gp, message, NULL);
 +}
 +
  static void remmina_plugin_vnc_process_vnc_event(RemminaProtocolWidget *gp)
  {
  	TRACE_CALL(__func__);
-@@ -346,8 +403,24 @@
+@@ -346,8 +416,24 @@
  				break;
  			case REMMINA_PLUGIN_VNC_EVENT_CUTTEXT:
  				if (event->event_data.text.text) {
@@ -85,13 +98,13 @@
 +								remmina_plugin_vnc_queue_clipboard_warning(gp, _("Clipboard transfer failed. The text was not sent."));
 +							g_free(legacy);
 +						} else {
-+							remmina_plugin_vnc_queue_clipboard_warning(gp, _("This VNC server only supports Latin-1 clipboard text. The text was not sent because it contains unsupported characters."));
++						remmina_plugin_vnc_queue_clipboard_warning_for_text(gp, _("This VNC server only supports Latin-1 clipboard text. The text was not sent because it contains unsupported characters."), event->event_data.text.text);
 +						}
 +					}
  				}
  				break;
  			case REMMINA_PLUGIN_VNC_EVENT_CHAT_OPEN:
-@@ -376,6 +449,7 @@
+@@ -376,6 +462,7 @@
  	RemminaProtocolWidget * gp;
  	gchar *			text;
  	gint			textlen;
@@ -99,7 +112,7 @@
  } RemminaPluginVncCuttextParam;
  
  static void remmina_plugin_vnc_update_quality(rfbClient *cl, gint quality)
-@@ -734,25 +808,26 @@
+@@ -734,25 +821,27 @@
  	TRACE_CALL(__func__);
  	RemminaProtocolWidget *gp = param->gp;
  	RemminaPluginVncData *gpdata = GET_PLUGIN_DATA(gp);
@@ -130,6 +143,7 @@
 +				text = g_convert(param->text, param->textlen, "UTF-8", "ISO-8859-1", NULL, &bw, NULL);
 +			}
 +			if (text && g_utf8_validate(text, bw, NULL)) {
++				g_clear_pointer(&gpdata->clipboard_rejected_hash, g_free);
 +				g_free(gpdata->clipboard_remote_hash);
 +				gpdata->clipboard_remote_hash = g_compute_checksum_for_string(G_CHECKSUM_SHA256, text, bw);
 +				gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), text, bw);
@@ -141,7 +155,7 @@
  		}
  	}
  	g_free(param->text);
-@@ -760,19 +835,36 @@
+@@ -760,19 +849,36 @@
  	return FALSE;
  }
  
@@ -181,7 +195,7 @@
  static char *
  remmina_plugin_vnc_rfb_password(rfbClient *cl)
  {
-@@ -1242,6 +1334,9 @@
+@@ -1242,6 +1348,9 @@
  		cl->GotXCutText = (
  			remmina_plugin_service->file_get_int(remminafile, "disableclipboard", FALSE) ?
  			NULL : remmina_plugin_vnc_rfb_cuttext);
@@ -191,7 +205,7 @@
  		cl->GotCursorShape = remmina_plugin_vnc_rfb_cursor_shape;
  		cl->Bell = remmina_plugin_vnc_rfb_bell;
  		cl->HandleTextChat = remmina_plugin_vnc_rfb_chat;
-@@ -1665,26 +1760,16 @@
+@@ -1665,26 +1774,18 @@
  {
  	TRACE_CALL(__func__);
  	RemminaPluginVncData *gpdata = GET_PLUGIN_DATA(gp);
@@ -209,9 +223,11 @@
 +		/* Suppress only the exact remote selection echo, never a time-adjacent user copy. */
 +		gchar *hash = g_compute_checksum_for_string(G_CHECKSUM_SHA256, text, -1);
 +		gboolean echo = g_strcmp0(hash, gpdata->clipboard_remote_hash) == 0;
++		gboolean rejected = g_strcmp0(hash, gpdata->clipboard_rejected_hash) == 0;
++		if (!rejected) g_clear_pointer(&gpdata->clipboard_rejected_hash, g_free);
 +		g_free(hash);
 +		g_clear_pointer(&gpdata->clipboard_remote_hash, g_free);
-+		if (echo)
++		if (echo || rejected)
  			return;
 -		g_date_time_unref(gpdata->clipboard_timer);
 -		gpdata->clipboard_timer = t;
@@ -225,16 +241,17 @@
  	}
  }
  
-@@ -1833,7 +1918,7 @@
+@@ -1833,7 +1934,8 @@
  		gpdata->vnc_buffer = NULL;
  	}
  	g_ptr_array_free(gpdata->pressed_keys, TRUE);
 -	g_date_time_unref(gpdata->clipboard_timer);
 +	g_clear_pointer(&gpdata->clipboard_remote_hash, g_free);
++	g_clear_pointer(&gpdata->clipboard_rejected_hash, g_free);
  	remmina_plugin_vnc_event_free_all(gp);
  	g_queue_free(gpdata->vnc_event_queue);
  	pthread_mutex_destroy(&gpdata->vnc_event_queue_mutex);
-@@ -2053,7 +2138,7 @@
+@@ -2053,7 +2155,7 @@
  	g_signal_connect(G_OBJECT(gpdata->drawing_area), "size-allocate", G_CALLBACK(remmina_plugin_vnc_on_size_allocate), gp);
  #endif
  	gpdata->auth_first = TRUE;
@@ -245,12 +262,13 @@
  	gpdata->vnc_event_queue = g_queue_new();
 --- a/plugins/vnc/vnc_plugin.h
 +++ b/plugins/vnc/vnc_plugin.h
-@@ -95,7 +95,8 @@
+@@ -95,7 +95,9 @@
  	guint			queuedraw_handler;
  
  	gulong			clipboard_handler;
 -	GDateTime		*clipboard_timer;
 +	gchar			*clipboard_remote_hash;
++	gchar			*clipboard_rejected_hash;
 +	gint			clipboard_warning_pending;
  
  	cairo_surface_t *	queuecursor_surface;
