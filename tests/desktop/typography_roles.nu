@@ -4,7 +4,7 @@ let theme = (open --raw ($shell | path join Theme.qml))
 let matches = ($theme | parse --regex 'typography:\s*\(\{(?<values>[^}]+)\}\)')
 if ($matches | length) != 1 { error make {msg: 'The named typography roles are missing'} }
 let actual = ($matches | first | get values | parse --regex '(?<key>\w+):(?<size>\d+)' | reduce --fold {} {|row, acc| $acc | upsert $row.key ($row.size | into int)})
-let expected = {caption: 10, metadata: 11, label: 12, body: 13, subheading: 15, title: 16, heading: 18, display: 29}
+let expected = {caption: 10, metadata: 11, label: 12, body: 13, subheading: 15, title: 16, dialogHeading: 17, heading: 18, display: 29}
 if $actual != $expected { error make {msg: 'The default typography role sizes changed'} }
 if not ($theme | str contains 'return textSize(typography[role]') { error make {msg: 'Role scaling is missing'} }
 if not ((open --raw ($shell | path join PanelLabel.qml)) | str contains 'font.pixelSize: Theme.textRole(textRole)') {

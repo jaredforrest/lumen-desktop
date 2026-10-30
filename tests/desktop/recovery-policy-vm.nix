@@ -88,7 +88,9 @@ in pkgs.runCommand "lumen-recovery-policy-vm" { nativeBuildInputs = [ pkgs.coreu
   export NIX_DISK_IMAGE="$TMPDIR/recovery-policy.qcow2"
   set -o pipefail
   set +e
-  timeout 300 ${vm.config.system.build.vm}/bin/run-recovery-policy-vm 2>&1 | tee "$out/serial.log"
+  # Software-emulated boot on hosted CPUs has a separate budget from the
+  # unchanged thirty-second assertions inside the guest controller.
+  timeout 600 ${vm.config.system.build.vm}/bin/run-recovery-policy-vm 2>&1 | tee "$out/serial.log"
   result=''${PIPESTATUS[0]}
   set -e
   test "$result" -eq 1

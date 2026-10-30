@@ -16,7 +16,8 @@ jobs:
         with:
           fetch-depth: 0
       - uses: cachix/install-nix-action@v31
-      - run: nix flake check --print-build-logs --option abort-on-warn true
+      # Keep the software VM out of concurrent compiler memory/CPU contention.
+      - run: nix flake check --print-build-logs --option abort-on-warn true --max-jobs 1 --cores 2
       - run: nix develop --command nu tests/ci/test_prepare_software_effects.nu
       - run: nix develop --command nu tests/ci/test_run_native.nu
   integration:
