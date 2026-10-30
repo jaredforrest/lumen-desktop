@@ -7,7 +7,7 @@ use std::env;
 use std::error::Error;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Write};
-use std::os::unix::fs::{FileTypeExt, symlink};
+use std::os::unix::fs::{FileTypeExt, MetadataExt, symlink};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -101,7 +101,10 @@ fn shell_proof(dispatcher: &Path) -> Result<Value> {
     Ok(Value::Object(object))
 }
 
-fn configure(output: &Path, dispatcher: &Path) -> Result<(PathBuf, PathBuf, Vec<String>)> {
+fn configure(
+    output: &Path,
+    dispatcher: &Path,
+) -> Result<(PathBuf, PathBuf, Vec<String>, tempfile::TempDir)> {
     let proof = shell_proof(dispatcher)?;
     fs::write(
         output.join("execution-shell-proof.json"),
@@ -118,7 +121,19 @@ fn configure(output: &Path, dispatcher: &Path) -> Result<(PathBuf, PathBuf, Vec<
         dispatcher.join("libexec/speech-dispatcher-modules/sd_generic"),
         modules.join("sd_generic"),
     )?;
-    let socket = output.join("speech.sock");
+    // sockaddr_un has a 107-byte pathname limit on Linux. Artifact paths are
+    // intentionally unrestricted; keep the live endpoint in an owned short lease.
+    let runtime = tempfile::Builder::new()
+        .prefix("lumen-speech-")
+        .tempdir_in("/tmp")?;
+    let socket = runtime.path().join("speech.sock");
+    let identity = fs::symlink_metadata(runtime.path())?;
+    fs::write(
+        output.join("speech-runtime.json"),
+        serde_json::to_vec_pretty(&json!({
+            "path": runtime.path(), "device": identity.dev(), "inode": identity.ino(), "uid": identity.uid()
+        }))?,
+    )?;
     let protocol = output.join("speech-protocol.log");
     let empty_bin = output.join("speech-empty-bin");
     fs::create_dir(&empty_bin)?;
@@ -150,10 +165,44 @@ fn configure(output: &Path, dispatcher: &Path) -> Result<(PathBuf, PathBuf, Vec<
         format!("--pid-file={}", output.join("speech.pid").display()),
         "--timeout=0".into(),
     ];
-    Ok((socket, protocol, command))
+    Ok((socket, protocol, command, runtime))
 }
 
 fn retire(root: &Path) -> Result<()> {
+    let lease = root.join("speech-runtime.json");
+    if lease.exists() {
+        let value: Value = serde_json::from_slice(&fs::read(&lease)?)?;
+        let path = Path::new(
+            value["path"]
+                .as_str()
+                .ok_or("Missing speech runtime path")?,
+        );
+        if path.parent() != Some(Path::new("/tmp"))
+            || !path
+                .file_name()
+                .is_some_and(|name| name.as_encoded_bytes().starts_with(b"lumen-speech-"))
+        {
+            return Err(fail("Invalid speech runtime lease path"));
+        }
+        if let Ok(info) = fs::symlink_metadata(path) {
+            if !info.is_dir()
+                || info.dev() != value["device"].as_u64().ok_or("Missing runtime device")?
+                || info.ino() != value["inode"].as_u64().ok_or("Missing runtime inode")?
+                || u64::from(info.uid()) != value["uid"].as_u64().ok_or("Missing runtime uid")?
+                || info.uid() != unsafe { libc::geteuid() }
+                || info.mode() & 0o777 != 0o700
+            {
+                return Err(fail("Speech runtime lease identity changed"));
+            }
+            let endpoint = path.join("speech.sock");
+            if fs::symlink_metadata(&endpoint)
+                .is_ok_and(|metadata| metadata.file_type().is_socket())
+            {
+                fs::remove_file(endpoint)?;
+            }
+            fs::remove_dir(path)?;
+        }
+    }
     let socket = root.join("speech.sock");
     if fs::symlink_metadata(&socket).is_ok_and(|info| info.file_type().is_socket()) {
         fs::remove_file(socket)?;
@@ -290,11 +339,12 @@ fn utility_command() -> Result<bool> {
         "configure" => {
             let root = PathBuf::from(args.next().ok_or("Missing output directory")?);
             let dispatcher = PathBuf::from(args.next().ok_or("Missing dispatcher")?);
-            let (socket, protocol, command) = configure(&root, &dispatcher)?;
+            let (socket, protocol, command, runtime) = configure(&root, &dispatcher)?;
             println!(
                 "{}",
                 json!({"address":format!("unix_socket:{}",socket.display()),"socket":socket,"protocol":protocol,"emptyBin":root.join("speech-empty-bin"),"command":command})
             );
+            let _ = runtime.keep();
         }
         "retire" => retire(&PathBuf::from(
             args.next().ok_or("Missing output directory")?,
@@ -472,8 +522,10 @@ fn run_transport(socket: &Path, protocol: &Path, output: &Path, private: &Path) 
 fn wait_for_socket(socket: &Path, child: &mut Child) -> Result<()> {
     let deadline = Instant::now() + Duration::from_secs(5);
     while !socket.exists() {
-        if child.try_wait()?.is_some() {
-            return Err(fail("Speech Dispatcher exited before socket readiness"));
+        if let Some(status) = child.try_wait()? {
+            return Err(fail(format!(
+                "Speech Dispatcher exited before socket readiness: {status}"
+            )));
         }
         if Instant::now() >= deadline {
             return Err(fail("Speech Dispatcher socket timed out"));
@@ -500,7 +552,7 @@ fn main_inner() -> Result<()> {
         serde_json::to_string_pretty(&source_proof(&source)?)?,
     )?;
     let private = tempfile::tempdir()?;
-    let (socket, protocol, command) = configure(&output, &dispatcher)?;
+    let (socket, protocol, command, _runtime) = configure(&output, &dispatcher)?;
     let mut environment = env::vars_os().collect::<std::collections::BTreeMap<_, _>>();
     for key in [
         "DISPLAY",
@@ -548,10 +600,12 @@ fn main_inner() -> Result<()> {
         .stdout(Stdio::from(log.try_clone()?))
         .stderr(Stdio::from(log))
         .spawn()?;
+    let started = Instant::now();
     let result = (|| {
         wait_for_socket(&socket, &mut child)?;
         run_transport(&socket, &protocol, &output, private.path())
     })();
+    let before_cleanup = child.try_wait()?;
     if child.try_wait()?.is_none() {
         if unsafe { libc::kill(child.id() as i32, libc::SIGTERM) } != 0 {
             return Err(std::io::Error::last_os_error().into());
@@ -569,13 +623,18 @@ fn main_inner() -> Result<()> {
             thread::sleep(Duration::from_millis(20));
         }
     }
-    if socket.exists() {
-        fs::remove_file(&socket)?;
-    }
-    let link = output.join("speech-modules/sd_generic");
-    if link.is_symlink() {
-        fs::remove_file(link)?;
-    }
+    fs::write(
+        output.join("dispatcher-process.json"),
+        serde_json::to_vec_pretty(&json!({
+            "command": command, "socket": socket, "socketPathBytes": socket.as_os_str().len(),
+            "elapsedSeconds": started.elapsed().as_secs_f64(), "pid": child.id(),
+            "statusBeforeCleanup": before_cleanup.map(|status| status.to_string()),
+            "statusAfterCleanup": child.try_wait()?.map(|status| status.to_string()),
+            "result": result.as_ref().err().map(|error| error.to_string()),
+            "stdoutAndStderr": output.join("dispatcher.log"), "providerLogs": output.join("speech-logs")
+        }))?,
+    )?;
+    retire(&output)?;
     result
 }
 
@@ -629,5 +688,49 @@ mod tests {
         assert!(!root.path().join("speech-modules/sd_generic").is_symlink());
         assert_eq!(fs::read_to_string(&target).unwrap(), "retained");
         drop(socket);
+    }
+    #[test]
+    fn startup_failure_reports_actual_child_exit() {
+        let root = tempfile::tempdir().unwrap();
+        let mut child = Command::new(env!("LUMEN_TRUE")).spawn().unwrap();
+        let error = wait_for_socket(&root.path().join("absent.sock"), &mut child).unwrap_err();
+        assert!(error.to_string().contains("exit status: 0"));
+        assert!(child.try_wait().unwrap().is_some());
+    }
+    #[test]
+    fn retirement_requires_exact_private_runtime_identity() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = tempfile::Builder::new()
+            .prefix("lumen-speech-")
+            .tempdir_in("/tmp")
+            .unwrap();
+        let info = fs::symlink_metadata(runtime.path()).unwrap();
+        fs::write(root.path().join("speech-runtime.json"), serde_json::to_vec(&json!({
+            "path": runtime.path(), "device": info.dev(), "inode": info.ino() + 1, "uid": info.uid()
+        })).unwrap()).unwrap();
+        assert!(
+            retire(root.path())
+                .unwrap_err()
+                .to_string()
+                .contains("identity changed")
+        );
+        assert!(runtime.path().is_dir());
+        fs::write(
+            root.path().join("speech-runtime.json"),
+            serde_json::to_vec(&json!({
+                "path": runtime.path(), "device": info.dev(), "inode": info.ino(), "uid": info.uid()
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let _socket =
+            std::os::unix::net::UnixListener::bind(runtime.path().join("speech.sock")).unwrap();
+        fs::write(root.path().join("retained.log"), "diagnostic").unwrap();
+        retire(root.path()).unwrap();
+        assert!(!runtime.path().exists());
+        assert_eq!(
+            fs::read_to_string(root.path().join("retained.log")).unwrap(),
+            "diagnostic"
+        );
     }
 }
