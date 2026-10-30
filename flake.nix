@@ -149,7 +149,7 @@
         test-trash-confirmation-fixture = import ./tests/desktop/trash-confirmation-rust { inherit pkgs; };
         test-files-layout-fixture = import ./tests/desktop/files-layout-rust { inherit pkgs; };
         test-appearance-controls-fixture = import ./tests/desktop/appearance-controls-rust { inherit pkgs; };
-        test-desktop-surface-fixture = import ./tests/desktop/desktop-surface-rust { inherit pkgs; };
+        test-desktop-surface-fixture = import ./tests/desktop/desktop-surface-rust { inherit pkgs privateBus; };
         test-dock-interaction-fixture = import ./tests/desktop/dock-interaction-rust { inherit pkgs; };
         test-files-share-menu-fixture = import ./tests/desktop/files-share-menu-rust { inherit pkgs; };
         test-screen-reader-atspi = import ./tests/desktop/screen_reader_atspi.nix { inherit pkgs; };

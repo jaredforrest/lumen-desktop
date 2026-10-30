@@ -119,7 +119,7 @@ pub fn private_session() -> Result<()> {
     fs::create_dir(&root)?;
     fs::set_permissions(&root, fs::Permissions::from_mode(0o700))?;
     let mut command = Command::new(env!("LUMEN_FIXTURE_DBUS_RUN_SESSION"));
-    command.arg(format!("--dbus-daemon={}",env!("LUMEN_FIXTURE_DBUS_DAEMON"))).arg("--").arg(env::current_exe()?);
+    command.arg("--").arg(env::current_exe()?);
     command
         .args(env::args_os().skip(1))
         .arg("--inside")
