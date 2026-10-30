@@ -22,7 +22,7 @@ fn network_locations() {
         let shell = source_path.parent().unwrap().parent().unwrap().parent().unwrap().join("res/lumen-desktop/shell");
         let provider = root.join("network-locations-provider");
         let compiled = Command::new("rustc")
-            .args(["--edition=2024", source_path.with_file_name("network_locations_stub.rs").to_str().unwrap(), "-o", provider.to_str().unwrap()])
+            .args(["--edition=2024","-Dwarnings", source_path.with_file_name("network_locations_stub.rs").to_str().unwrap(), "-o", provider.to_str().unwrap()])
             .status()?;
         assert!(compiled.success(), "Network Locations peer compilation failed");
         fs::write(

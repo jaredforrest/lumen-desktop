@@ -37,7 +37,7 @@ fn force_quit() {
         fs::write(fixture.join("Theme.qml"), "pragma Singleton\nimport QtQuick\nQtObject {property real textScale:1;property var preferences:({});function textSize(value){return value;}function textRole(role){return 13;}property string font:\"Sans\";property color errorText:\"#b42318\";property string outline:\"#999999\";property string popoverMaterial:\"#eeeeee\";property bool dark:false;property var colors:({background:\"#eeeeee\",hover:\"#dddddd\",field:\"#ffffff\",accent:\"#0088ff\",text:\"#000000\",muted:\"#666666\"})}")?;
         let helper = root.join("lumen-application-control");
         let compiled = Command::new("rustc")
-            .args(["--edition=2024", source_path.with_file_name("force_quit_stub.rs").to_str().unwrap(), "-o", helper.to_str().unwrap()])
+            .args(["--edition=2024","-Dwarnings", source_path.with_file_name("force_quit_stub.rs").to_str().unwrap(), "-o", helper.to_str().unwrap()])
             .status()?;
         assert!(compiled.success(), "Force Quit peer compilation failed");
         fs::write(

@@ -24,7 +24,7 @@ fn clipboard_launcher() {
         fs::create_dir(&bin)?;
         let clipboard = bin.join("lumen-clipboard-history");
         let compiled = Command::new("rustc")
-            .args(["--edition=2024", source_path.with_file_name("clipboard_launcher_stub.rs").to_str().unwrap(), "-o", clipboard.to_str().unwrap()])
+            .args(["--edition=2024","-Dwarnings", source_path.with_file_name("clipboard_launcher_stub.rs").to_str().unwrap(), "-o", clipboard.to_str().unwrap()])
             .status()?;
         assert!(compiled.success(), "clipboard peer compilation failed");
         fs::write(

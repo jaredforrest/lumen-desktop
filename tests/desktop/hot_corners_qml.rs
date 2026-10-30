@@ -23,7 +23,7 @@ fn hot_corners() {
         let bin = root.join("bin");
         fs::create_dir(&bin)?;
         let compiled = Command::new("rustc")
-            .args(["--edition=2024", source_path.with_file_name("hot_corners_stub.rs").to_str().unwrap(), "-o", bin.join("lumen-hot-corners").to_str().unwrap()])
+            .args(["--edition=2024","-Dwarnings", source_path.with_file_name("hot_corners_stub.rs").to_str().unwrap(), "-o", bin.join("lumen-hot-corners").to_str().unwrap()])
             .status()?;
         assert!(compiled.success(), "Hot Corners stub compilation failed");
         fs::write(

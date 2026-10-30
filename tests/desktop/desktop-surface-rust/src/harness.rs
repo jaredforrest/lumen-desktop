@@ -136,9 +136,6 @@ pub fn private_session() -> Result<()> {
 }
 pub struct Managed(pub Child);
 impl Managed {
-    pub fn alive(&mut self) -> Result<bool> {
-        Ok(self.0.try_wait()?.is_none())
-    }
     pub fn stop(&mut self) {
         if self.0.try_wait().ok().flatten().is_none() {
             unsafe {

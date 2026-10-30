@@ -24,7 +24,7 @@ fn control_centre() {
         fs::create_dir(&bin)?;
         let appearance = bin.join("lumen-appearance");
         let compiled = Command::new("rustc")
-            .args(["--edition=2024", source_path.with_file_name("control_centre_stub.rs").to_str().unwrap(), "-o", appearance.to_str().unwrap()])
+            .args(["--edition=2024","-Dwarnings", source_path.with_file_name("control_centre_stub.rs").to_str().unwrap(), "-o", appearance.to_str().unwrap()])
             .status()?;
         assert!(compiled.success(), "Control Centre peer compilation failed");
         fs::copy(&appearance, bin.join("lumen-nearby-sharing"))?;

@@ -24,7 +24,7 @@ fn shell_request_lifecycle() {
         fs::create_dir(&bin)?;
         let search = bin.join("search-peer");
         let compiled = Command::new("rustc")
-            .args(["--edition=2024", source_path.with_file_name("shell_request_search_stub.rs").to_str().unwrap(), "-o", search.to_str().unwrap()])
+            .args(["--edition=2024","-Dwarnings", source_path.with_file_name("shell_request_search_stub.rs").to_str().unwrap(), "-o", search.to_str().unwrap()])
             .status()?;
         assert!(compiled.success(), "search peer compilation failed");
         fs::write(

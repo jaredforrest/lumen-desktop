@@ -25,7 +25,7 @@ fn capture_lifecycle() {
         let bin = root.join("bin");
         fs::create_dir(&bin)?;
         let compiled = Command::new("rustc")
-            .args(["--edition=2024", source_path.with_file_name("capture_lifecycle_stub.rs").to_str().unwrap(), "-o", bin.join("lumen-capture-observation").to_str().unwrap()])
+            .args(["--edition=2024","-Dwarnings", source_path.with_file_name("capture_lifecycle_stub.rs").to_str().unwrap(), "-o", bin.join("lumen-capture-observation").to_str().unwrap()])
             .status()?;
         assert!(compiled.success(), "capture observation stub compilation failed");
         fs::write(

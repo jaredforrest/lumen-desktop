@@ -32,7 +32,7 @@ fn child() {
     let root=tempfile::tempdir().unwrap();let bin=root.path().join("bin");fs::create_dir(&bin).unwrap();
     let sway=bin.join("swaymsg");
     let source=concat!(env!("CARGO_MANIFEST_DIR"),"/tests/support/mock_sway.rs");
-    assert!(Command::new("rustc").args(["--edition=2024",source,"-o"]).arg(&sway).status().unwrap().success());
+    assert!(Command::new("rustc").args(["--edition=2024","-Dwarnings",source,"-o"]).arg(&sway).status().unwrap().success());
     let exporter_path=env::var("LUMEN_TEST_EXPORT_BIN").unwrap_or_else(|_|"lumen-menu-export".into());
     let helper=bin.join("export-helper");symlink(exporter_path,&helper).unwrap();
     let tree=json!({"type":"root","nodes":[{"type":"output","name":"DP-1","nodes":[{"type":"workspace","nodes":[{"type":"con","id":77,"window":23,"pid":std::process::id(),"focused":true,"name":"Editor","window_properties":{"class":"codex"}}]}]}]});
