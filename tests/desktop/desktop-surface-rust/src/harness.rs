@@ -434,9 +434,9 @@ impl Fixture {
         let path = self.options.output.join(name);
         let value = path.to_str().ok_or("Screenshot path")?;
         if include_cursor {
-            self.call("grim", &["-c", value])?;
+            self.call(env!("LUMEN_FIXTURE_GRIM"), &["-c", value])?;
         } else {
-            self.call("grim", &[value])?;
+            self.call(env!("LUMEN_FIXTURE_GRIM"), &[value])?;
         }
         Ok(())
     }

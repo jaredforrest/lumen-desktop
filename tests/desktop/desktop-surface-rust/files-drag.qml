@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Window
 import Quickshell
 import Quickshell.Io
-import "file:@ASSETS@" as D
+import "@ASSETS@" as D
 ShellRoot {
  id:root
  property var nativeDrop:null
