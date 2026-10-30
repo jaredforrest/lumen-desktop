@@ -2,6 +2,7 @@ use lumen_application_lifecycle::{Lifecycle, ObservationStore, mru::History};
 use serde_json::{Value, json};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
+use std::os::fd::AsRawFd;
 use std::process::{Child, Command};
 
 struct Clients(Vec<Child>);
@@ -40,27 +41,71 @@ impl Drop for Directory {
 const EPOCH: &str = "0123456789abcdef01234567";
 const BOOT: &str = "01234567-89ab-cdef-0123-456789abcdef";
 
+// Capture only these three disposable clients, never ambient process data.
+// Keep the pre-refresh samples: a later successful probe cannot explain an
+// earlier failed identity read or an unexpected pidfd readiness observation.
+fn diagnostic(stage: &str, clients: &mut Clients, lifecycle: &Lifecycle) -> Value {
+    let children = clients.0.iter_mut().map(|child| {
+        let pid = child.id();
+        let status = format!("{:?}", child.try_wait());
+        let identity = match lumen_application_lifecycle::process_identity(pid) {
+            Ok(identity) => json!({"identity": identity}),
+            Err(error) => json!({"error": error}),
+        };
+        let observed = lifecycle.processes.get(&pid).map(|process| {
+            let mut fd = libc::pollfd { fd: process.handle.as_raw_fd(), events: libc::POLLIN, revents: 0 };
+            let result = unsafe { libc::poll(&mut fd, 1, 0) };
+            let error = (result < 0).then(|| std::io::Error::last_os_error().to_string());
+            json!({"identity": process.identity, "pollResult": result, "revents": fd.revents, "pollError": error})
+        });
+        json!({"pid": pid, "status": status, "current": identity, "observed": observed})
+    }).collect::<Vec<_>>();
+    json!({"stage": stage, "children": children, "records": lifecycle.records(), "windows": format!("{:?}", lifecycle.windows), "order": lifecycle.activation_history.order()})
+}
+
+#[test]
+fn bounded_client_diagnostics_distinguish_live_and_reaped_processes() {
+    let mut clients = clients();
+    let mut lifecycle = Lifecycle::default();
+    lifecycle.refresh(EPOCH, &nodes(&clients, 0));
+    let live = diagnostic("live", &mut clients, &lifecycle);
+    assert_eq!(live["children"].as_array().unwrap().len(), 3);
+    assert_eq!(live["children"][0]["observed"]["pollResult"], 0);
+    assert!(live["children"][0]["current"]["identity"].is_object());
+    clients.0[0].kill().unwrap();
+    clients.0[0].wait().unwrap();
+    let dead = diagnostic("reaped", &mut clients, &lifecycle);
+    assert_eq!(dead["children"][0]["observed"]["pollResult"], 1);
+    assert!(dead["children"][0]["current"]["error"].is_string());
+    assert!(serde_json::to_vec(&dead).unwrap().len() < 16 * 1024);
+}
+
 #[test]
 fn queued_native_focus_receipts_preserve_brief_focus_with_later_tree_snapshots() {
     let mut clients=clients();
     let latest=nodes(&clients,2);
     let mut lifecycle=Lifecycle::default();
+    let mut samples=vec![diagnostic("before first refresh", &mut clients, &lifecycle)];
     lifecycle.refresh(EPOCH,&latest);
     for focused in [0,1,2]{
         let receipt=json!({"change":"focus","container":nodes(&clients,focused)[focused]});
         lifecycle.refresh(EPOCH,&latest);
         lifecycle.observe_focus_event(&receipt);
+        samples.push(diagnostic(&format!("initial focus {focused}"), &mut clients, &lifecycle));
     }
-    assert_eq!(lifecycle.activation_history.order(),["app2","app1","app0"]);
+    assert_eq!(lifecycle.activation_history.order(),["app2","app1","app0"], "{samples:#?}");
     // The middle application's surface can retire while its ordered focus
     // receipt is queued. Its exact still-live process retains that receipt.
     lifecycle.activation_history=History::default();
     let remaining=latest.iter().filter(|node|node["app_id"]!="app1").cloned().collect::<Vec<_>>();
+    samples.push(diagnostic("before retired-surface refresh", &mut clients, &lifecycle));
     lifecycle.refresh(EPOCH,&remaining);
+    samples.push(diagnostic("after retired-surface refresh", &mut clients, &lifecycle));
     for focused in [0,1,2]{
         lifecycle.observe_focus_event(&json!({"change":"focus","container":nodes(&clients,focused)[focused]}));
+        samples.push(diagnostic(&format!("retired-surface focus {focused}"), &mut clients, &lifecycle));
     }
-    assert_eq!(lifecycle.activation_history.order(),["app2","app1","app0"]);
+    assert_eq!(lifecycle.activation_history.order(),["app2","app1","app0"], "{samples:#?}");
     // A queued receipt for a retired container, unrelated change, or false
     // focus flag cannot promote a different or replacement native surface.
     let mut stale=json!({"change":"focus","container":nodes(&clients,0)[0]});
