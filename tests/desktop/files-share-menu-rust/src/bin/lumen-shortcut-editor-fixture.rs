@@ -537,6 +537,26 @@ fn run(options: &Options) -> Result<()> {
             publish(&initial["bundle"], &config)?;
         }
     }
+    for (field, name) in [
+        ("editor", "shortcut-editor.json"),
+        ("registry", "shortcuts.json"),
+    ] {
+        let path = config.join(name);
+        fs::remove_file(&path)?;
+        symlink(
+            default_bundle[field]
+                .as_str()
+                .ok_or("Immutable declaration")?,
+            &path,
+        )?;
+    }
+    let response = invoke(helper, &json!({"action":"status"}), &values)?;
+    require(
+        response["runtimeConfirmed"] == true && response["editable"] == true,
+        "Declarative store symlink was rejected",
+    )?;
+    evidence.push(json!({"case":"declarative immutable symlink targets","response":response}));
+    publish(&initial["bundle"], &config)?;
     let backup = record.with_extension("safe");
     fs::rename(&record, &backup)?;
     use std::os::unix::ffi::OsStrExt;
