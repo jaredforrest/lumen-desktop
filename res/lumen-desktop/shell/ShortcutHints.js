@@ -14,7 +14,7 @@ function actionName(action) {
     return names[action] || (slot?"Application command "+slot[1]:"Custom shortcut");
 }
 function readableChord(chord) {
-    const names={Mod4:"Super",Mod1:"Alt",Control:"Ctrl"};
+    const names={Mod4:"Super",Mod1:"Alt",Control:"Ctrl",XF86AudioRaiseVolume:"Volume Up",XF86AudioLowerVolume:"Volume Down",XF86AudioMute:"Mute",XF86AudioPlay:"Play/Pause",XF86AudioNext:"Next Track",XF86AudioPrev:"Previous Track"};
     return String(chord).split("+").map(key=>names[key] || (key.length===1?key.toUpperCase():key)).join("+");
 }
 function read(value) {
