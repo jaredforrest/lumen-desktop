@@ -1,12 +1,11 @@
 --- a/include/sway/commands.h
 +++ b/include/sway/commands.h
-@@ -172,6 +172,9 @@
+@@ -172,6 +172,8 @@
  sway_cmd cmd_rename;
  sway_cmd cmd_resize;
  sway_cmd cmd_scratchpad;
 +sway_cmd cmd_lumen_space_transfer;
 +bool lumen_space_transfer_wire_ready(void);
-+bool lumen_space_transfer_family_supported(struct sway_container *con);
  sway_cmd cmd_lumen_window;
  sway_cmd cmd_lumen_focus_guard;
  bool lumen_focus_guard_wire_ready(void);
@@ -35,13 +34,12 @@
  	json_object_object_add(version, "native_focus_guard", json_object_new_int(lumen_focus_guard_wire_ready() ? 2 : 0));
  	json_object_object_add(version, "native_window_relationships", json_object_new_boolean(true));
  
-@@ -775,6 +776,9 @@
+@@ -775,6 +776,8 @@
  	json_object_object_add(lumen_state, "zoomed", json_object_new_boolean(c->lumen_zoomed && c->lumen_filled));
  	json_object_object_add(lumen_state, "preferred_zoom", json_object_new_boolean(container_lumen_zoom_supported(c)));
   json_object_object_add(lumen_state, "group_hidden", json_object_new_boolean(!lumen_groups_visible(c)));
 + json_object_object_add(lumen_state, "group_member", json_object_new_boolean(c->lumen_group_id != 0));
 + json_object_object_add(lumen_state, "pair_owned", json_object_new_boolean(c->lumen_pair_dialog_owner != 0));
-+ json_object_object_add(lumen_state, "transfer_family_supported", json_object_new_boolean(lumen_space_transfer_family_supported(c)));
  	json_object_object_add(lumen_state, "minimised",
  		json_object_new_boolean(c->lumen_minimized != NULL));
  	json_object_object_add(lumen_state, "filled",
@@ -105,7 +103,7 @@
  static void container_move_to_container(struct sway_container *container,
 --- /dev/null
 +++ b/sway/commands/lumen_space_transfer.c
-@@ -0,0 +1,199 @@
+@@ -0,0 +1,193 @@
 +/* Captured transfer preflight and dispatch share one compositor callback. */
 +#include <inttypes.h>
 +#include <json.h>
@@ -218,12 +216,6 @@
 +  if(family->count>=16 || family->depth[i]>=15 || !family_eligible(family->members[0],family->members[0]) || !family_eligible(other,family->members[0])){family->invalid=true;return;}
 +  unsigned slot=family->count++;family->members[slot]=other;family->depth[slot]=family->depth[i]+1;return;
 + }
-+}
-+bool lumen_space_transfer_family_supported(struct sway_container *source){
-+ if(!source || !family_eligible(source,source) || protocol_parent(source->view))return false;
-+ struct family family={.members={source},.count=1};
-+ for(unsigned pass=0;pass<16;pass++){unsigned count=family.count;root_for_each_container(collect_family,&family);if(family.invalid)return false;if(count==family.count)return true;}
-+ return false;
 +}
 +static bool projection_retained(struct sway_container *con){
 + json_object *observed=ipc_json_describe_node(&con->node),*projection=field(observed,"lumen_all_desktops");

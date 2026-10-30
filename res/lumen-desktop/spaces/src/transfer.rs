@@ -178,7 +178,6 @@ pub fn source_family(tree: &Value, wanted: &Value) -> Result<(Value, Vec<Value>)
     let state = &node["lumen_state"];
     let group_hidden = state["group_hidden"] != false;
     if !managed_role(node)
-        || state["transfer_family_supported"] != true
         || lumen_window_policy::projection::parse(node)?.is_some_and(|p| p.enabled)
         || node["sticky"] != false
         || node["fullscreen_mode"] != 0
@@ -209,7 +208,18 @@ pub fn source_family(tree: &Value, wanted: &Value) -> Result<(Value, Vec<Value>)
     while next < family.len() {
         let (parent, depth) = family[next];
         for (child, child_workspace, child_output) in &all {
-            if child["lumen_relationships"]["parent"] != parent["id"] {
+            let validated_parent = child["lumen_relationships"]["parent"] == parent["id"];
+            // An unsupported X11 edge cannot authorize membership. Its raw XID
+            // observation can only refuse an otherwise misleading transfer offer.
+            let unsupported_x11_edge = child["shell"] == "xwayland"
+                && parent["shell"] == "xwayland"
+                && parent["window"].as_u64().is_some_and(|id| id > 0 && id <= u32::MAX.into())
+                && child["lumen_relationships"]["parent_supported"] != true
+                && child["window_properties"]["transient_for"] == parent["window"];
+            if unsupported_x11_edge {
+                return Err("An unsupported owned window retains this desktop".into());
+            }
+            if !validated_parent {
                 continue;
             }
             if family.len() >= 16
@@ -434,7 +444,7 @@ mod tests {
         assert_ne!(snapshot(&a).unwrap(), snapshot(&b).unwrap());
     }
     fn tree() -> Value {
-        json!({"type":"root","id":1,"space_transfer_guard":3,"display_spaces":{"available":true,"session":"ab".repeat(16),"generation":"3"},"window_groups":{"locked":false,"enabled":false,"groups":[]},"nodes":[{"type":"output","id":2,"name":"HEADLESS-1","nodes":[{"type":"workspace","id":4,"name":"one","nodes":[{"type":"con","id":8,"pid":19,"shell":"xdg_shell","app_id":"org.example.Editor","foreign_toplevel_identifier":"surface-a","sticky":false,"fullscreen_mode":0,"rect":{"x":3,"y":4,"width":320,"height":240},"lumen_relationships":{"version":1,"parent_supported":true,"parent":null,"modal":null},"lumen_pair":{"id":null,"survivor":false},"lumen_state":{"group_member":false,"group_hidden":false,"transfer_family_supported":true,"pair_owned":false,"hidden":false,"minimised":false,"filled":false,"desktop_hidden":false,"restore_workspace":null}}]}]}]})
+        json!({"type":"root","id":1,"space_transfer_guard":3,"display_spaces":{"available":true,"session":"ab".repeat(16),"generation":"3"},"window_groups":{"locked":false,"enabled":false,"groups":[]},"nodes":[{"type":"output","id":2,"name":"HEADLESS-1","nodes":[{"type":"workspace","id":4,"name":"one","nodes":[{"type":"con","id":8,"pid":19,"shell":"xdg_shell","app_id":"org.example.Editor","foreign_toplevel_identifier":"surface-a","sticky":false,"fullscreen_mode":0,"rect":{"x":3,"y":4,"width":320,"height":240},"lumen_relationships":{"version":1,"parent_supported":true,"parent":null,"modal":null},"lumen_pair":{"id":null,"survivor":false},"lumen_state":{"group_member":false,"group_hidden":false,"pair_owned":false,"hidden":false,"minimised":false,"filled":false,"desktop_hidden":false,"restore_workspace":null}}]}]}]})
     }
     #[test]
     fn native_frame_projection_golden_accepts_zero_and_overwrites_reserved_field() {
@@ -492,9 +502,13 @@ mod tests {
     #[test]
     fn native_family_refusal_is_observed_even_when_unsupported_parent_is_redacted() {
         let mut tree = ordinary_family_tree();
+        tree["nodes"][0]["nodes"][0]["nodes"][0]["shell"] = json!("xwayland");
+        tree["nodes"][0]["nodes"][0]["nodes"][0]["window"] = json!(100);
+        tree["nodes"][0]["nodes"][0]["nodes"][1]["shell"] = json!("xwayland");
+        tree["nodes"][0]["nodes"][0]["nodes"][1]["window"] = json!(101);
+        tree["nodes"][0]["nodes"][0]["nodes"][1]["window_properties"]["transient_for"] = json!(100);
         tree["nodes"][0]["nodes"][0]["nodes"][1]["lumen_relationships"]["parent"] = Value::Null;
         tree["nodes"][0]["nodes"][0]["nodes"][1]["lumen_relationships"]["parent_supported"] = json!(false);
-        tree["nodes"][0]["nodes"][0]["nodes"][0]["lumen_state"]["transfer_family_supported"] = json!(false);
         assert!(source(&tree, &json!(8)).is_err());
     }
     #[test]
