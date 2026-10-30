@@ -17,6 +17,7 @@ pub enum Workflow {
     Library,
     PageFullscreen,
     Overwrite,
+    KeyboardSave,
 }
 impl Workflow {
     pub fn as_str(self) -> &'static str {
@@ -28,6 +29,7 @@ impl Workflow {
             Self::Library => "library",
             Self::PageFullscreen => "page-fullscreen",
             Self::Overwrite => "overwrite",
+            Self::KeyboardSave => "keyboard-save",
         }
     }
     pub fn parse(value: &str) -> Result<Self> {
@@ -39,6 +41,7 @@ impl Workflow {
             "library" => Self::Library,
             "page-fullscreen" => Self::PageFullscreen,
             "overwrite" => Self::Overwrite,
+            "keyboard-save" => Self::KeyboardSave,
             _ => return Err(fail("Unknown browser workflow")),
         })
     }
@@ -117,7 +120,9 @@ impl Options {
             .remove("--portal-tools")
             .map(|v| immutable(Path::new(&v), false))
             .transpose()?;
-        if workflow == Workflow::Overwrite && portal_tools.is_none() {
+        if matches!(workflow, Workflow::Overwrite | Workflow::KeyboardSave)
+            && portal_tools.is_none()
+        {
             return Err(fail(
                 "Overwrite acceptance requires explicit real portal providers",
             ));

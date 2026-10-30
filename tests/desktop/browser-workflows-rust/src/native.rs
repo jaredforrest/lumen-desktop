@@ -105,6 +105,7 @@ pub struct Native {
     pub command: Vec<String>,
     chooser_mapped: BTreeMap<i64, Instant>,
     portal_facts: Option<Value>,
+    keyboard_route_active: bool,
 }
 impl Drop for Native {
     fn drop(&mut self) {
@@ -149,6 +150,7 @@ impl Native {
             command: Vec::new(),
             chooser_mapped: BTreeMap::new(),
             portal_facts: None,
+            keyboard_route_active: false,
         })
     }
     fn command(&self, program: impl AsRef<std::ffi::OsStr>) -> Command {
@@ -264,6 +266,16 @@ impl Native {
         )
     }
     fn key(&mut self, values: &[&str]) -> Result<()> {
+        if self.keyboard_route_active {
+            writeln!(
+                fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(self.out.join("keyboard-save-input.jsonl"))?,
+                "{}",
+                json!({"keys":values})
+            )?;
+        }
         self.keyboard.as_mut().ok_or("keyboard")?.key(values)
     }
     fn navigate(&mut self, url: &str) -> Result<()> {
@@ -273,6 +285,10 @@ impl Native {
         self.key(&["-k", "Return"])
     }
     fn pointer_click(&mut self, x: f64, y: f64) -> Result<()> {
+        ensure(
+            !self.keyboard_route_active,
+            "Pointer action forbidden during keyboard-only save route",
+        )?;
         let reply = self.swaymsg(&[
             "seat",
             "seat0",
@@ -1133,6 +1149,9 @@ impl Native {
         Ok(chooser)
     }
     fn choose_path(&mut self, path: &Path, chooser: &Value, finish_entry: bool) -> Result<()> {
+        if self.keyboard_route_active {
+            return self.choose_path_keyboard(path, chooser);
+        }
         let id = as_i64(chooser, "id")?;
         self.chooser_mapped.entry(id).or_insert_with(Instant::now);
         ensure(
@@ -1227,6 +1246,38 @@ impl Native {
         ])?;
         Ok(())
     }
+    fn choose_path_keyboard(&mut self, path: &Path, chooser: &Value) -> Result<()> {
+        ensure(
+            self.portal_facts.is_some(),
+            "Keyboard save requires captured standard portal providers",
+        )?;
+        ensure(
+            path.parent() == Some(self.downloads.as_path()),
+            "Unexpected keyboard save target",
+        )?;
+        ensure(
+            self.windows()?
+                .iter()
+                .any(|row| row["id"] == chooser["id"] && row["focused"] == true),
+            "Captured chooser lost keyboard focus",
+        )?;
+        self.key(&["-M", "ctrl", "-k", "l", "-m", "ctrl"])?;
+        self.key(&["-M", "ctrl", "-k", "a", "-m", "ctrl"])?;
+        self.key(&[&path.file_name().ok_or("Target name")?.to_string_lossy()])?;
+        self.key(&["-k", "Tab"])?;
+        let mapped = self
+            .chooser_mapped
+            .get(&as_i64(chooser, "id")?)
+            .copied()
+            .ok_or("Chooser mapping time")?;
+        wait(
+            "keyboard chooser minimum display duration",
+            Duration::from_secs(3),
+            || Ok((mapped.elapsed() >= Duration::from_millis(500)).then_some(())),
+        )?;
+        self.capture("keyboard-save-before-accept.png")?;
+        self.key(&["-M", "alt", "-k", "s", "-m", "alt"])
+    }
     fn ui_downloads(&mut self) -> Result<Vec<Value>> {
         Ok(self.evaluate("document.querySelector('downloads-manager')?.items_?.map(row=>({id:row.id,filePath:row.filePath,fileName:row.fileName,state:row.state,percent:row.percent,total:String(row.total)}))")?.as_array().cloned().unwrap_or_default())
     }
@@ -1293,7 +1344,11 @@ impl Native {
                 .into(),
         );
         fs::copy(&target, self.out.join("new-saved-page.html"))?;
-        self.finish_result()
+        if self.keyboard_route_active {
+            Ok(())
+        } else {
+            self.finish_result()
+        }
     }
     fn download_control(identity: &Value, selector: &str) -> Result<String> {
         Ok(format!(
@@ -1996,6 +2051,43 @@ impl Native {
         self.capture(&format!("overwrite-{name}.png"))?;
         Ok(question)
     }
+    fn keyboard_save(&mut self) -> Result<()> {
+        self.keyboard_route_active = true;
+        let chooser = self.open_save()?;
+        self.key(&["-k", "Escape"])?;
+        wait(
+            "keyboard-only initial save cancellation",
+            Duration::from_secs(15),
+            || {
+                Ok(self
+                    .windows()?
+                    .iter()
+                    .all(|row| row["id"] != chooser["id"])
+                    .then_some(()))
+            },
+        )?;
+        ensure(
+            fs::read_dir(&self.downloads)?.next().is_none(),
+            "Keyboard Cancel wrote a file",
+        )?;
+        wait(
+            "keyboard-only Cancel returns page focus",
+            Duration::from_secs(15),
+            || Ok((self.evaluate("document.hasFocus()")? == true).then_some(())),
+        )?;
+        self.checks
+            .push("Keyboard-only Save As and Escape Cancel preserve files and page focus".into());
+        self.new_save()?;
+        let origin = self.server.as_ref().ok_or("Server")?.origin().to_string();
+        self.navigate(&format!("{origin}/page"))?;
+        self.wait_eval(
+            "document.title",
+            json!("Fixture browser workflow"),
+            "synthetic page before keyboard overwrite",
+        )?;
+        self.checks.push("Keyboard-only new target save uses captured chooser and exact complete provider/file identity".into());
+        self.overwrite()
+    }
     fn overwrite(&mut self) -> Result<()> {
         let target = self.downloads.join("report.html");
         fs::write(&target, "original disposable contents")?;
@@ -2207,5 +2299,6 @@ pub fn run(options: Options) -> Result<()> {
         Workflow::Permissions => fixture.permissions(),
         Workflow::PageFullscreen => fixture.page_fullscreen(),
         Workflow::Overwrite => fixture.overwrite(),
+        Workflow::KeyboardSave => fixture.keyboard_save(),
     }
 }
