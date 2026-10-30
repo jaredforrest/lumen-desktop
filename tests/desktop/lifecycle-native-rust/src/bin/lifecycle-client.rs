@@ -6,6 +6,7 @@ use serde_json::json;
 use std::cell::RefCell;
 use std::env;
 use std::fs;
+use std::io::Write;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
@@ -46,7 +47,35 @@ fn add_window(app: &gtk::Application, state: &mut State, index: usize) {
         format!("Lifecycle document {}", index + 1)
     });
     window.set_default_size(300, 200);
-    window.add(&gtk::Label::new(Some(DOCUMENTS[index % 2])));
+    let label = gtk::Label::new(Some(DOCUMENTS[index % 2]));
+    if env::args().any(|arg| arg == "--projection-input") {
+        let input = gtk::EventBox::new();
+        input.add(&label);
+        window.add(&input);
+        let root = state.root.clone();
+        window.connect_size_allocate(move |_, allocation| {
+            fs::write(
+                root.join(format!("allocation-{index}.json")),
+                json!({"index":index,"width":allocation.width(),"height":allocation.height()})
+                    .to_string(),
+            )
+            .expect("owned allocation evidence");
+        });
+        input.add_events(gdk::EventMask::BUTTON_PRESS_MASK);
+        let root = state.root.clone();
+        input.connect_button_press_event(move |_, event| {
+            let mut journal = fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(root.join("clicks.jsonl"))
+                .expect("owned pointer journal");
+            assert!(journal.metadata().expect("journal metadata").len() < 65536);
+            writeln!(journal, "{}", json!({"index":index,"type":format!("{:?}",event.event_type()),"time":event.time(),"button":event.button(),"position":event.position()})).expect("owned pointer evidence");
+            gtk::glib::Propagation::Stop
+        });
+    } else {
+        window.add(&label);
+    }
     window.show_all();
     if state.empty_app_id {
         assert_eq!(env::var("GDK_BACKEND").as_deref(), Ok("wayland"));

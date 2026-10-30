@@ -1,0 +1,480 @@
+diff --git a/include/sway/commands.h b/include/sway/commands.h
+index 0540242..187298b 100644
+--- a/include/sway/commands.h
++++ b/include/sway/commands.h
+@@ -173,2 +173,3 @@ sway_cmd cmd_resize;
+ sway_cmd cmd_scratchpad;
++sway_cmd cmd_lumen_projection;
+ sway_cmd cmd_lumen_window;
+diff --git a/include/sway/tree/container.h b/include/sway/tree/container.h
+index 0a4480a..7151778 100644
+--- a/include/sway/tree/container.h
++++ b/include/sway/tree/container.h
+@@ -81,2 +81,4 @@ struct sway_lumen_placement {
+ struct sway_container {
++ bool lumen_projection_enabled, lumen_projection_exhausted, lumen_projection_supported;
++ uint64_t lumen_projection_revision, lumen_projection_origin, lumen_projection_output, lumen_projection_effective;
+  uint64_t lumen_group_id;
+diff --git a/include/sway/tree/lumen_projection.h b/include/sway/tree/lumen_projection.h
+new file mode 100644
+index 0000000..f70eaf7
+--- /dev/null
++++ b/include/sway/tree/lumen_projection.h
+@@ -0,0 +1,17 @@
++#ifndef SWAY_LUMEN_PROJECTION_H
++#define SWAY_LUMEN_PROJECTION_H
++#include <stdbool.h>
++#include <json.h>
++struct sway_container;
++struct sway_workspace;
++struct sway_workspace *lumen_projection_workspace(struct sway_container *con);
++bool lumen_projection_presented(struct sway_container *con);
++bool lumen_projection_reserved(struct sway_container *con);
++void lumen_projection_reconcile(void);
++void lumen_projection_origin_changed(struct sway_container *con);
++void lumen_projection_workspace_changed(struct sway_workspace *old_ws, struct sway_workspace *new_ws);
++bool lumen_projection_prepare_fullscreen(struct sway_container *con);
++void lumen_projection_raise(struct sway_container *con);
++json_object *lumen_projection_json(struct sway_container *con);
++struct cmd_results *cmd_lumen_projection(int argc, char **argv);
++#endif
+diff --git a/sway/commands.c b/sway/commands.c
+index 7b140c3..7172a74 100644
+--- a/sway/commands.c
++++ b/sway/commands.c
+@@ -126,2 +126,3 @@ static const struct cmd_handler command_handlers[] = {
+  { "lumen_pair", cmd_lumen_pair },
++ { "lumen_projection", cmd_lumen_projection },
+  { "lumen_window", cmd_lumen_window },
+diff --git a/sway/commands/fullscreen.c b/sway/commands/fullscreen.c
+index 21c1e9a..61c20b5 100644
+--- a/sway/commands/fullscreen.c
++++ b/sway/commands/fullscreen.c
+@@ -6,2 +6,3 @@
+ #include "sway/tree/container.h"
++#include "sway/tree/lumen_projection.h"
+ #include "sway/tree/view.h"
+@@ -53,2 +54,3 @@ struct cmd_results *cmd_fullscreen(int argc, char **argv) {
+ 
++ if (mode != FULLSCREEN_NONE && !lumen_projection_prepare_fullscreen(container)) return cmd_results_new(CMD_INVALID, "Focus projected window before fullscreen");
+ 	container_set_fullscreen(container, mode);
+diff --git a/sway/commands/scratchpad.c b/sway/commands/scratchpad.c
+index 365442f..0935d4c 100644
+--- a/sway/commands/scratchpad.c
++++ b/sway/commands/scratchpad.c
+@@ -2,2 +2,3 @@
+ #include "sway/tree/lumen_groups.h"
++#include "sway/tree/lumen_projection.h"
+ #include <errno.h>
+@@ -186,2 +187,4 @@ struct cmd_results *cmd_lumen_window(int argc, char **argv) {
+  }
++ if (!strcmp(argv[0], "fullscreen") && !fullscreen_exit && !lumen_projection_prepare_fullscreen(con))
++  return cmd_results_new(CMD_INVALID, "Focus projected window before fullscreen");
+  if (strcmp(argv[0], "close") == 0) view_close(con->view);
+diff --git a/sway/desktop/xdg_shell.c b/sway/desktop/xdg_shell.c
+index 5a8eb26..1e97425 100644
+--- a/sway/desktop/xdg_shell.c
++++ b/sway/desktop/xdg_shell.c
+@@ -19,2 +19,3 @@
+ #include "sway/tree/container.h"
++#include "sway/tree/lumen_projection.h"
+ #include "sway/tree/view.h"
+@@ -480,3 +481,10 @@ static void handle_request_fullscreen(struct wl_listener *listener, void *data)
+ 	struct wlr_xdg_toplevel_requested *req = &toplevel->requested;
+-	if (req->fullscreen && req->fullscreen_output && req->fullscreen_output->data) {
++ if (req->fullscreen && container->lumen_projection_enabled &&
++     ((req->fullscreen_output && (!container->pending.workspace ||
++       !container->pending.workspace->output || req->fullscreen_output->data != container->pending.workspace->output)) ||
++      !lumen_projection_prepare_fullscreen(container))) {
++  wlr_xdg_surface_schedule_configure(toplevel->base);
++  return;
++ }
++	if (req->fullscreen && !container->lumen_projection_enabled && req->fullscreen_output && req->fullscreen_output->data) {
+ 		struct sway_output *output = req->fullscreen_output->data;
+diff --git a/sway/desktop/xwayland.c b/sway/desktop/xwayland.c
+index 4f1f328..dddba19 100644
+--- a/sway/desktop/xwayland.c
++++ b/sway/desktop/xwayland.c
+@@ -1 +1,2 @@
++#include "sway/tree/lumen_projection.h"
+ #include <float.h>
+@@ -617,2 +618,6 @@ static void handle_request_fullscreen(struct wl_listener *listener, void *data)
+ 	}
++ if (xsurface->fullscreen && !lumen_projection_prepare_fullscreen(view->container)) {
++  wlr_xwayland_surface_set_fullscreen(xsurface, view->container->pending.fullscreen_mode != FULLSCREEN_NONE);
++  return;
++ }
+ 	container_set_fullscreen(view->container, xsurface->fullscreen);
+diff --git a/sway/input/seat.c b/sway/input/seat.c
+index abafbc1..f05f929 100644
+--- a/sway/input/seat.c
++++ b/sway/input/seat.c
+@@ -2,2 +2,3 @@
+ #include "sway/tree/lumen_groups.h"
++#include "sway/tree/lumen_projection.h"
+ #include <assert.h>
+@@ -269,2 +270,5 @@ static void handle_seat_node_destroy(struct wl_listener *listener, void *data) {
+ 		(focus == node || node_has_ancestor(focus, node));
++ struct sway_workspace *projection_focus_workspace = needs_new_focus && focus->type == N_CONTAINER &&
++  focus->sway_container->lumen_projection_enabled && seat->workspace &&
++  seat->workspace != focus->sway_container->pending.workspace ? seat->workspace : NULL;
+ 
+@@ -302,2 +306,8 @@ static void handle_seat_node_destroy(struct wl_listener *listener, void *data) {
+ 
++ if (projection_focus_workspace && !projection_focus_workspace->node.destroying &&
++   workspace_is_visible(projection_focus_workspace)) {
++  next_focus = seat_get_focus_inactive(seat, &projection_focus_workspace->node);
++  if (!next_focus || next_focus->destroying) next_focus = &projection_focus_workspace->node;
++ }
++
+ 	if (next_focus->type == N_WORKSPACE &&
+@@ -323,5 +333,7 @@ static void handle_seat_node_destroy(struct wl_listener *listener, void *data) {
+ 		focus = seat_get_focus_inactive(seat, &root->node);
++  struct sway_workspace *focus_workspace = focus->type == N_CONTAINER ?
++   lumen_projection_workspace(focus->sway_container) : NULL;
+ 		seat_set_raw_focus(seat, next_focus);
+-		if (focus->type == N_CONTAINER && focus->sway_container->pending.workspace) {
+-			seat_set_raw_focus(seat, &focus->sway_container->pending.workspace->node);
++		if (focus_workspace) {
++			seat_set_raw_focus(seat, &focus_workspace->node);
+ 		}
+@@ -1141,2 +1153,3 @@ static void set_workspace(struct sway_seat *seat,
+ 
++ lumen_projection_workspace_changed(seat->workspace, new_ws);
+ 	ipc_event_workspace(seat->workspace, new_ws, "focus");
+@@ -1203,2 +1216,3 @@ static void seat_set_workspace_focus(struct sway_seat *seat, struct sway_node *n
+ 		node->sway_container : NULL;
++ if (container && lumen_projection_reserved(container)) new_workspace = lumen_projection_workspace(container);
+ 
+@@ -1507,3 +1521,3 @@ struct sway_workspace *seat_get_focused_workspace(struct sway_seat *seat) {
+ 	if (focus->type == N_CONTAINER) {
+-		return focus->sway_container->pending.workspace;
++		return lumen_projection_workspace(focus->sway_container);
+ 	}
+diff --git a/sway/input/seatop_default.c b/sway/input/seatop_default.c
+index 0b1e50b..28bb83b 100644
+--- a/sway/input/seatop_default.c
++++ b/sway/input/seatop_default.c
+@@ -1,2 +1,3 @@
+ #include "sway/tree/lumen_pair.h"
++#include "sway/tree/lumen_projection.h"
+ #include <float.h>
+@@ -405,3 +406,3 @@ static void handle_button(struct sway_seat *seat, uint32_t time_msec,
+                 else if (modifiers & WLR_MODIFIER_ALT) container_lumen_fill(cont);
+-                else container_set_fullscreen(cont, FULLSCREEN_WORKSPACE);
++                else if (lumen_projection_prepare_fullscreen(cont)) container_set_fullscreen(cont, FULLSCREEN_WORKSPACE);
+ 				transaction_commit_dirty();
+diff --git a/sway/ipc-json.c b/sway/ipc-json.c
+index 9b125c8..3c14eb0 100644
+--- a/sway/ipc-json.c
++++ b/sway/ipc-json.c
+@@ -2,2 +2,3 @@
+ #include "sway/tree/lumen_groups.h"
++#include "sway/tree/lumen_projection.h"
+ #include "sway/tree/lumen_pair.h"
+@@ -234,2 +235,5 @@ json_object *ipc_json_get_version(void) {
+ 	json_object *version = json_object_new_object();
++ json_object *projection_capabilities = json_object_new_object();
++ json_object_object_add(projection_capabilities, "all_desktops_projection", json_object_new_int(1));
++ json_object_object_add(version, "lumen_capabilities", projection_capabilities);
+ 	json_object_object_add(version, "owned_geometry_events", json_object_new_boolean(true));
+@@ -801,2 +805,3 @@ static void ipc_json_describe_container(struct sway_container *c, json_object *o
+ 	json_object_object_add(object, "lumen_state", lumen_state);
++ if (c->view) json_object_object_add(object, "lumen_all_desktops", lumen_projection_json(c));
+ 
+diff --git a/sway/meson.build b/sway/meson.build
+index 883f495..f8c05c5 100644
+--- a/sway/meson.build
++++ b/sway/meson.build
+@@ -220,2 +220,3 @@ sway_sources = files(
+  'tree/lumen_groups.c',
++ 'tree/lumen_projection.c',
+  'tree/lumen_display_spaces.c',
+diff --git a/sway/tree/container.c b/sway/tree/container.c
+index abc9d80..eb02ad8 100644
+--- a/sway/tree/container.c
++++ b/sway/tree/container.c
+@@ -1,2 +1,3 @@
+ #include "sway/tree/lumen_pair.h"
++#include "sway/tree/lumen_projection.h"
+ #include <assert.h>
+@@ -1475,2 +1476,3 @@ void container_add_child(struct sway_container *parent,
+ void container_detach(struct sway_container *child) {
++ lumen_projection_origin_changed(child);
+  lumen_pair_detach(child);
+@@ -1662,2 +1664,3 @@ void container_add_mark(struct sway_container *con, char *mark) {
+ void container_raise_floating(struct sway_container *con) {
++ if (lumen_projection_presented(con)) { lumen_projection_raise(con); return; }
+ 	// Bring container to front by putting it at the end of the floating list.
+diff --git a/sway/tree/lumen_projection.c b/sway/tree/lumen_projection.c
+new file mode 100644
+index 0000000..31c6bff
+--- /dev/null
++++ b/sway/tree/lumen_projection.c
+@@ -0,0 +1,194 @@
++/* One scene node, structural origin retained. This is floating presentation of
++ * ordinary tiled views, not a second tiled layout or an always-on-top plane. */
++#include <errno.h>
++#include <inttypes.h>
++#include <limits.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <wlr/types/wlr_ext_foreign_toplevel_list_v1.h>
++#include <wlr/types/wlr_output.h>
++#include <wlr/types/wlr_xdg_shell.h>
++#include "sway/commands.h"
++#include "sway/desktop/transaction.h"
++#include "sway/ipc-server.h"
++#include "sway/input/input-manager.h"
++#include "sway/input/seat.h"
++#include "sway/output.h"
++#include "sway/server.h"
++#include "sway/tree/container.h"
++#include "sway/tree/lumen_groups.h"
++#include "sway/tree/lumen_projection.h"
++#include "sway/tree/root.h"
++#include "sway/tree/view.h"
++#include "sway/tree/workspace.h"
++
++static bool name_ok(const char *name) {
++ if (!name || !*name || strlen(name) > 4096) return false;
++ for (const unsigned char *p = (const unsigned char *)name; *p; ++p)
++  if (*p < 32 || *p == 127 || (*p == 0xc2 && p[1] >= 0x80 && p[1] <= 0x9f)) return false;
++ return true;
++}
++struct modal_search {struct sway_view *owner; bool blocked;};
++static void modal_child(struct sway_container *con, void *data) {
++ struct modal_search *search = data;
++ if (!con->view || con->node.destroying) return;
++ struct sway_view *parent = NULL; int modal = -1;
++ if (!lumen_view_relationship(con->view, &parent, &modal)) return;
++ if (parent == search->owner && modal == 1) search->blocked = true;
++}
++static const char *reason(struct sway_container *con) {
++ if (!con || !con->view || con->node.destroying || con->view->pid <= 0) return "native-view-required";
++ bool managed_role = con->view->type == SWAY_VIEW_XDG_SHELL;
++#if WLR_HAS_XWAYLAND
++ managed_role = managed_role || con->view->type == SWAY_VIEW_XWAYLAND;
++#endif
++ if (!managed_role) return "native-view-required";
++ if (!con->view->ext_foreign_toplevel) return "identity-unavailable";
++ if (!con->pending.workspace || !con->pending.workspace->output || con->pending.workspace->node.destroying) return "origin-unavailable";
++ struct sway_output *output = con->pending.workspace->output;
++ if (output->node.destroying || !output->wlr_output || !output->enabled || !output->wlr_output->enabled) return "output-unavailable";
++ if (con->lumen_projection_exhausted) return "revision-exhausted";
++ struct sway_view *parent = NULL; int modal = -1;
++ if (!lumen_view_relationship(con->view, &parent, &modal) || parent || modal == 1) return "relationship-unsupported";
++ struct modal_search search = {.owner = con->view}; root_for_each_container(modal_child, &search);
++ if (search.blocked) return "modal-owner-suspended";
++ if (con->lumen_pair || con->lumen_pair_restore || con->lumen_pair_dialog_owner) return "paired-layout-unsupported";
++ if (con->pending.fullscreen_mode != FULLSCREEN_NONE || root->fullscreen_global) return "fullscreen-suspended";
++ struct sway_workspace *active = output_get_active_workspace(output);
++ if (con->pending.workspace->fullscreen || (active && active->fullscreen)) return "fullscreen-suspended";
++ if (container_is_sticky_or_child(con)) return "native-sticky-owned-elsewhere";
++ if (!name_ok(con->pending.workspace->name) || !name_ok(output->wlr_output->name) ||
++     (con->lumen_projection_enabled && active && !name_ok(active->name))) return "metadata-bounds";
++ return NULL;
++}
++struct sway_workspace *lumen_projection_workspace(struct sway_container *con) {
++ struct sway_workspace *origin = con ? con->pending.workspace : NULL;
++ if (!con || !con->lumen_projection_enabled || reason(con) || !origin) return origin;
++ struct sway_output *output = origin->output;
++ if (!output || !output->enabled || !output->wlr_output || !output->wlr_output->enabled) return origin;
++ struct sway_workspace *active = output_get_active_workspace(output);
++ return active && !active->node.destroying && strlen(active->name) <= 4096 ? active : origin;
++}
++bool lumen_projection_reserved(struct sway_container *con) {
++ return con && con->lumen_projection_enabled && !reason(con);
++}
++bool lumen_projection_presented(struct sway_container *con) {
++ if (!lumen_projection_reserved(con) || !con->pending.workspace) return false;
++ struct sway_workspace *effective = lumen_projection_workspace(con);
++ return effective && effective->output && effective->output->enabled &&
++  output_get_active_workspace(effective->output) == effective && !effective->fullscreen &&
++  !con->scratchpad && !con->lumen_minimized && !con->lumen_app_hidden && !con->lumen_desktop_hidden && lumen_groups_visible(con);
++}
++static void advance(struct sway_container *con) {
++ if (con->lumen_projection_revision == UINT64_MAX) con->lumen_projection_exhausted = true;
++ else ++con->lumen_projection_revision;
++}
++static void origin_changed(struct sway_container *con, void *data) {
++ (void)data;
++ if (con->view && con->lumen_projection_enabled) advance(con);
++}
++void lumen_projection_origin_changed(struct sway_container *con) {
++ origin_changed(con, NULL); container_for_each_child(con, origin_changed, NULL);
++}
++static void output_changed(struct sway_container *con, void *data) {
++ if (con->view && con->lumen_projection_enabled && con->pending.workspace &&
++     con->pending.workspace->output == data) {
++  advance(con); ipc_event_window(con, "lumen_projection");
++ }
++}
++void lumen_projection_workspace_changed(struct sway_workspace *old_ws, struct sway_workspace *new_ws) {
++ if (new_ws && new_ws->output && old_ws != new_ws &&
++     ((old_ws && old_ws->output == new_ws->output) || new_ws->output->current.active_workspace != new_ws))
++  root_for_each_container(output_changed, new_ws->output);
++}
++static bool projected_child(struct sway_container *con, void *data) {
++ (void)data;
++ return con->lumen_projection_enabled && con->pending.workspace && con->pending.workspace->output &&
++  output_get_active_workspace(con->pending.workspace->output) != con->pending.workspace;
++}
++bool lumen_projection_prepare_fullscreen(struct sway_container *con) {
++ if (!con) return false;
++ struct sway_container *target = projected_child(con, NULL) ? con :
++  container_find_child(con, projected_child, NULL);
++ if (!target) return true;
++ if (reason(target)) return false;
++ struct sway_seat *seat = input_manager_current_seat();
++ struct sway_container *focused = seat_get_focused_container(seat);
++ if (!focused || (focused != con && !container_has_ancestor(focused, con))) return false;
++ /* Fullscreen is a deliberate origin-Space transition, never an implicit move
++  * of a retained structural slot. Background requests cannot steal focus. */
++ seat_set_focus(seat, &target->pending.workspace->node);
++ return seat_get_focused_workspace(seat) == target->pending.workspace;
++}
++static void reconcile(struct sway_container *con, void *data) {
++ (void)data;
++ if (!con->view || con->node.destroying) return;
++ struct sway_workspace *origin = con->pending.workspace;
++ struct sway_workspace *effective = lumen_projection_workspace(con);
++ uint64_t ws = origin ? origin->node.id : 0;
++ uint64_t out = origin && origin->output ? origin->output->node.id : 0;
++ uint64_t effective_id = effective ? effective->node.id : 0;
++ bool supported = reason(con) == NULL;
++ if (con->lumen_projection_origin != ws || con->lumen_projection_output != out ||
++     con->lumen_projection_effective != effective_id || con->lumen_projection_supported != supported) {
++  con->lumen_projection_origin = ws; con->lumen_projection_output = out;
++  con->lumen_projection_effective = effective_id; con->lumen_projection_supported = supported;
++  advance(con);
++  ipc_event_window(con, "lumen_projection");
++ }
++}
++void lumen_projection_reconcile(void) { root_for_each_container(reconcile, NULL); }
++void lumen_projection_raise(struct sway_container *con) {
++ if (lumen_projection_presented(con)) wlr_scene_node_raise_to_top(&con->scene_tree->node);
++}
++static json_object *named(struct sway_node *node, const char *name) {
++ if (!node || !name_ok(name)) return NULL;
++ char id[32]; snprintf(id, sizeof(id), "%"PRIu64, node->id);
++ json_object *result = json_object_new_object();
++ json_object_object_add(result, "id", json_object_new_string(id));
++ json_object_object_add(result, "name", json_object_new_string(name ? name : ""));
++ return result;
++}
++json_object *lumen_projection_json(struct sway_container *con) {
++ json_object *result = json_object_new_object();
++ struct sway_workspace *origin = con->pending.workspace, *effective = lumen_projection_workspace(con);
++ struct sway_output *out = origin ? origin->output : NULL, *effective_out = effective ? effective->output : NULL;
++ char revision[32]; snprintf(revision, sizeof(revision), "%"PRIu64, con->lumen_projection_revision);
++ const char *why = reason(con);
++ json_object_object_add(result, "version", json_object_new_int(1));
++ json_object_object_add(result, "enabled", json_object_new_boolean(con->lumen_projection_enabled));
++ json_object_object_add(result, "supported", json_object_new_boolean(!why));
++ json_object_object_add(result, "reason", why ? json_object_new_string(why) : NULL);
++ json_object_object_add(result, "revision", json_object_new_string(revision));
++ json_object_object_add(result, "projected", json_object_new_boolean(effective && effective != origin));
++ json_object_object_add(result, "origin_workspace", named(origin ? &origin->node : NULL, origin ? origin->name : NULL));
++ json_object_object_add(result, "origin_output", named(out ? &out->node : NULL, out && out->wlr_output ? out->wlr_output->name : NULL));
++ json_object_object_add(result, "effective_workspace", named(effective ? &effective->node : NULL, effective ? effective->name : NULL));
++ json_object_object_add(result, "effective_output", named(effective_out ? &effective_out->node : NULL, effective_out && effective_out->wlr_output ? effective_out->wlr_output->name : NULL));
++ return result;
++}
++static bool decimal(const char *text, uint64_t *value) {
++ if (!text || !*text || strlen(text) > 20 || (text[0] == '0' && text[1])) return false;
++ for (const char *p = text; *p; ++p) if (*p < '0' || *p > '9') return false;
++ errno = 0; char *end; unsigned long long parsed = strtoull(text, &end, 10);
++ if (errno || *end) return false;
++ *value = parsed; return true;
++}
++static bool find_id(struct sway_container *con, void *data) { return !con->node.destroying && con->node.id == *(uint64_t *)data; }
++struct cmd_results *cmd_lumen_projection(int argc, char **argv) {
++ uint64_t id, pid, workspace, output, revision;
++ if (argc != 7 || !decimal(argv[0], &id) || !decimal(argv[2], &pid) || !decimal(argv[3], &workspace) || !decimal(argv[4], &output) || !decimal(argv[5], &revision) || (strcmp(argv[6], "on") && strcmp(argv[6], "off"))) return cmd_results_new(CMD_INVALID, "Invalid projection witness");
++ if (strlen(argv[1]) != 32 || strspn(argv[1], "0123456789abcdef") != 32) return cmd_results_new(CMD_INVALID, "Invalid projection identity");
++ struct sway_container *con = root_find_container(find_id, &id);
++ if (!con || !con->view || !con->view->ext_foreign_toplevel || (uint64_t)con->view->pid != pid || strcmp(con->view->ext_foreign_toplevel->identifier, argv[1]) || !con->pending.workspace || con->pending.workspace->node.id != workspace || !con->pending.workspace->output || con->pending.workspace->output->node.id != output || con->lumen_projection_revision != revision || con->lumen_projection_exhausted) return cmd_results_new(CMD_INVALID, "Projection witness unavailable");
++ if (server.session_lock.lock) return cmd_results_new(CMD_INVALID, "Projection unavailable while session locked");
++ bool enabled = !strcmp(argv[6], "on");
++ if (enabled && reason(con)) return cmd_results_new(CMD_INVALID, "Projection unavailable");
++ if (con->lumen_projection_enabled != enabled) {
++  con->lumen_projection_enabled = enabled; advance(con);
++  node_set_dirty(&con->node); lumen_projection_reconcile();
++  ipc_event_window(con, "lumen_projection"); transaction_commit_dirty();
++ }
++ return cmd_results_new(CMD_SUCCESS, NULL);
++}
+diff --git a/sway/tree/root.c b/sway/tree/root.c
+index f16bd22..0c91c2b 100644
+--- a/sway/tree/root.c
++++ b/sway/tree/root.c
+@@ -19,2 +19,3 @@
+ #include "sway/tree/lumen_pair.h"
++#include "sway/tree/lumen_projection.h"
+ #include "list.h"
+@@ -243,4 +244,5 @@ static void lumen_desktop_collect(struct sway_container *con, void *data) {
+   if (con->lumen_desktop_hidden) list_add(targets, con);
+- } else if (!con->scratchpad && con->pending.workspace && workspace_is_visible(con->pending.workspace)) {
+-  list_add(targets, con);
++ } else if (!con->scratchpad) {
++  struct sway_workspace *effective = lumen_projection_workspace(con);
++  if (effective && workspace_is_visible(effective)) list_add(targets, con);
+  }
+@@ -518,2 +520,8 @@ void root_scratchpad_add_container(struct sway_container *con, struct sway_works
+ 	struct sway_workspace *workspace = con->pending.workspace;
++ struct sway_seat *projection_seat = input_manager_current_seat();
++ struct sway_node *projection_focus = seat_get_focus(projection_seat);
++ bool projection_owned_focus = projection_focus &&
++  (projection_focus == &con->node || node_has_ancestor(projection_focus, &con->node));
++ struct sway_workspace *projection_focus_workspace = con->lumen_projection_enabled ?
++  projection_seat->workspace : NULL;
+ 
+@@ -551,3 +559,10 @@ void root_scratchpad_add_container(struct sway_container *con, struct sway_works
+ 		}
+-		seat_set_focus(seat, new_focus);
++  if (projection_focus_workspace) {
++   if (projection_owned_focus) {
++    new_focus = seat_get_focus_inactive(seat, &projection_focus_workspace->node);
++    seat_set_focus(seat, new_focus ? new_focus : &projection_focus_workspace->node);
++   }
++  } else {
++   seat_set_focus(seat, new_focus);
++  }
+ 	}
+@@ -641,2 +656,3 @@ void root_scratchpad_hide(struct sway_container *con) {
+ 	struct sway_workspace *ws = con->pending.workspace;
++ struct sway_workspace *focus_workspace = con->lumen_projection_enabled ? seat->workspace : ws;
+ 
+@@ -653,3 +669,3 @@ void root_scratchpad_hide(struct sway_container *con) {
+ 	if (&con->node == focus || node_has_ancestor(focus, &con->node)) {
+-		seat_set_focus(seat, seat_get_focus_inactive(seat, &ws->node));
++		seat_set_focus(seat, seat_get_focus_inactive(seat, &focus_workspace->node));
+ 	}
+diff --git a/sway/tree/view.c b/sway/tree/view.c
+index 8068328..9eb3bcb 100644
+--- a/sway/tree/view.c
++++ b/sway/tree/view.c
+@@ -1,2 +1,3 @@
+ #include "sway/tree/lumen_groups.h"
++#include "sway/tree/lumen_projection.h"
+ #include "sway/tree/lumen_pair.h"
+@@ -753,3 +754,3 @@ static struct sway_workspace *select_workspace(struct sway_view *view) {
+ 	} else if (node && node->type == N_CONTAINER) {
+-		return node->sway_container->pending.workspace;
++		return lumen_projection_workspace(node->sway_container);
+ 	}
+@@ -843,3 +844,6 @@ static void handle_foreign_fullscreen_request(
+ 
+-	if (event->fullscreen && event->output && event->output->data) {
++ if (event->fullscreen && container->lumen_projection_enabled &&
++     ((event->output && (!container->pending.workspace || !container->pending.workspace->output ||
++       event->output->data != container->pending.workspace->output)) || !lumen_projection_prepare_fullscreen(container))) return;
++	if (event->fullscreen && !container->lumen_projection_enabled && event->output && event->output->data) {
+ 		struct sway_output *output = event->output->data;
+@@ -1258,3 +1262,3 @@ bool view_is_visible(struct sway_view *view) {
+ 
+-	if (!container_is_sticky_or_child(view->container) && workspace &&
++	if (!lumen_projection_presented(view->container) && !container_is_sticky_or_child(view->container) && workspace &&
+ 			!workspace_is_visible(workspace)) {

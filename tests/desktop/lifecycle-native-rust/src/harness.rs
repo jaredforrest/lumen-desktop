@@ -78,6 +78,12 @@ impl Options {
                     | "focus-guard"
                     | "identity"
                     | "identity-absent"
+                    | "projection-probe"
+                    | "projection"
+                    | "projection-interaction"
+                    | "projection-focus"
+                    | "projection-protocol"
+                    | "projection-lock"
                     | "focus-guard-unsupported",
                 ) => scenario = Some(arg.to_string_lossy().into_owned()),
                 Some("--output") => {
@@ -359,9 +365,12 @@ impl Fixture {
         Ok(self.processes.len() - 1)
     }
     pub fn launch_input(&mut self, program: &Path, log: &str) -> Result<usize> {
+        self.launch_input_args(program, &[], log)
+    }
+    pub fn launch_input_args(&mut self, program: &Path, args: &[&str], log: &str) -> Result<usize> {
         self.processes.push(Managed::launch(
             program,
-            &[],
+            args,
             &self.vars,
             &self.options.output.join(log),
             true,
@@ -437,12 +446,13 @@ impl Fixture {
         )?;
         let sway = self.options.sway.clone();
         let mut arguments = vec!["--unsupported-gpu", "-c", config.to_str().unwrap()];
-        if self.options.scenario == "identity" || self.options.scenario.starts_with("window-mru") { arguments.push("-d"); }
-        self.launch(
-            &sway,
-            &arguments,
-            "sway.log",
-        )?;
+        if self.options.scenario == "identity"
+            || self.options.scenario.starts_with("window-mru")
+            || self.options.scenario.starts_with("projection")
+        {
+            arguments.push("-d");
+        }
+        self.launch(&sway, &arguments, "sway.log")?;
         let socket = wait("private compositor", || {
             first_file(&self.runtime, "sway-ipc", ".lock")
         })?;
@@ -480,6 +490,10 @@ impl Fixture {
             split,
             if self.options.scenario == "recovery" {
                 include_str!("../recovery.qml.inc")
+            } else if self.options.scenario.starts_with("projection")
+                && self.options.scenario != "projection-probe"
+            {
+                include_str!("../projection.qml.inc")
             } else if self.options.scenario == "mru" {
                 include_str!("../mru.qml.inc")
             } else if self.options.scenario.starts_with("window-mru")
@@ -518,8 +532,13 @@ impl Fixture {
             helper.join("lumen-calendar"),
         )?;
         self.prepend_path(&helper)?;
-        if self.options.scenario.starts_with("window-mru") {
-            symlink(self.sibling("desktop-network-diagnose")?,helper.join("desktop-network-diagnose"))?;
+        if self.options.scenario.starts_with("window-mru")
+            || self.options.scenario.starts_with("projection")
+        {
+            symlink(
+                self.sibling("desktop-network-diagnose")?,
+                helper.join("desktop-network-diagnose"),
+            )?;
         }
         let applications = PathBuf::from(
             self.vars
@@ -536,7 +555,10 @@ impl Fixture {
                 gapplication.display()
             ),
         )?;
-        if self.options.scenario == "mru" || self.options.scenario.starts_with("window-mru") {
+        if self.options.scenario == "mru"
+            || self.options.scenario.starts_with("window-mru")
+            || self.options.scenario.starts_with("projection")
+        {
             for suffix in ["A", "B", "C"] {
                 let id = format!("org.example.Mru{suffix}");
                 fs::write(

@@ -1,0 +1,27 @@
+--- a/sway/input/seatop_default.c
++++ b/sway/input/seatop_default.c
+@@ -427,6 +427,16 @@
+ 		return;
+ 	}
+ 
++ // Native lock owns input; background hits must not rewrite return focus.
++ // Permitted locked mouse bindings have already had their normal opportunity.
++ if (server.session_lock.lock) {
++  if (surface && seat_is_input_allowed(seat, surface)) {
++   wlr_seat_pointer_notify_enter(seat->wlr_seat, surface, sx, sy);
++   seat_pointer_notify_button(seat, time_msec, button, state);
++  }
++  return;
++ }
++
+ 	// Handle clicking an empty workspace
+ 	if (node && node->type == N_WORKSPACE) {
+ 		if (state == WL_POINTER_BUTTON_STATE_PRESSED) {
+@@ -595,6 +605,7 @@
+ 
+ static void check_focus_follows_mouse(struct sway_seat *seat,
+ 		struct seatop_default_event *e, struct sway_node *hovered_node) {
++ if (server.session_lock.lock) return;
+ 	struct sway_node *focus = seat_get_focus(seat);
+ 
+ 	// This is the case if a layer-shell surface is hovered.

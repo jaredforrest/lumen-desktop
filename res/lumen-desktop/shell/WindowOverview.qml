@@ -127,7 +127,7 @@ FloatingWindow {
                 id:windowCard
                 required property var modelData;required property int index
                 width:grid.cellWidth-8;height:root.cardHeight;enabled:!root.busy
-                Accessible.name:modelData.title+" · "+modelData.app+" · workspace "+modelData.workspace;Accessible.selected:index===root.selected
+                Accessible.name:modelData.title+" · "+modelData.app+" · "+(modelData.projectionScopeUnavailable?"Desktop placement unavailable":modelData.allDesktops?"All desktops · current "+modelData.effectiveWorkspaceLabel+" · origin "+modelData.workspaceLabel:"workspace "+modelData.workspaceLabel);Accessible.selected:index===root.selected
                 onClicked:{root.draggedId=0;root.selected=index;root.activate();}
                 background:Rectangle {radius:12;color:Theme.colors.surface;border.width:parent.index===root.selected?2:1;border.color:parent.index===root.selected?Theme.colors.accent:Theme.hairline}
                 contentItem:Item {
@@ -143,7 +143,7 @@ FloatingWindow {
                     PanelLabel {id:cardTitle;objectName:"overview-card-title";x:46;y:13;width:parent.width-58;height:Math.max(38,Math.ceil(titleMetrics.height*2)+8);text:modelData.title;textFormat:Text.PlainText;wrapMode:Text.Wrap;maximumLineCount:2;font.weight:Font.DemiBold;font.pixelSize:Theme.textRole("label")}
                     GroupDragHandle {id:groupDragHandle;sourceLabel:windowCard.modelData.title;objectName:"group-drag-"+windowCard.modelData.id;x:parent.width-88;y:parent.height-height-2;controller:root.shell.groupMembershipDrag;sourceFactory:()=>root.captureGroupWindow(windowCard.modelData);enabled:!!root.captureGroupWindow(windowCard.modelData)}
                     GroupDragHandle {id:desktopDragHandle;text:"Desktop…";Accessible.name:"Move "+sourceLabel+" to desktop";Accessible.description:windowCard.modelData.transferUnavailable || "Drag to a desktop in the strip, or activate then select the destination desktop";intentMimeType:"application/x-lumen-desktop-window-intent";sourceLabel:windowCard.modelData.title;objectName:"desktop-window-drag-"+windowCard.modelData.id;x:parent.width-184;y:parent.height-height-2;controller:desktopWindowDrag;sourceFactory:()=>root.captureDesktopWindow(windowCard.modelData);enabled:!!root.captureDesktopWindow(windowCard.modelData) && !desktopWindowDrag.busy}
-                    PanelLabel {id:cardDesktop;objectName:"overview-card-desktop";x:12;y:cardTitle.y+cardTitle.height+10;width:parent.width-24;text:modelData.workspace==="__i3_scratch"?"Minimised":modelData.workspaceLabel || "Desktop "+modelData.workspace;textFormat:Text.PlainText;color:Theme.colors.muted;font.pixelSize:Theme.textRole("metadata")}
+                    PanelLabel {id:cardDesktop;objectName:"overview-card-desktop";x:12;y:cardTitle.y+cardTitle.height+10;width:parent.width-24;text:modelData.projectionScopeUnavailable?"Desktop placement unavailable":modelData.workspace==="__i3_scratch"?"Minimised":modelData.allDesktops?"All desktops · "+modelData.effectiveWorkspaceLabel:modelData.workspaceLabel || "Desktop "+modelData.workspace;textFormat:Text.PlainText;color:Theme.colors.muted;font.pixelSize:Theme.textRole("metadata")}
                 }
             }
             PanelLabel {visible:root.matches.length===0;anchors.centerIn:parent;text:"No matching windows";color:Theme.colors.muted}

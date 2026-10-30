@@ -1,0 +1,76 @@
+diff --git a/sway/desktop/transaction.c b/sway/desktop/transaction.c
+index bf15fc0..e3faf50 100644
+--- a/sway/desktop/transaction.c
++++ b/sway/desktop/transaction.c
+@@ -10,2 +10,3 @@
+ #include "sway/tree/lumen_groups.h"
++#include "sway/tree/lumen_projection.h"
+ #include "sway/input/cursor.h"
+@@ -279,3 +280,3 @@ static void disable_container(struct sway_container *con) {
+ 
+-			wlr_scene_node_reparent(&child->scene_tree->node, con->content_tree);
++			if (!lumen_projection_reserved(child)) wlr_scene_node_reparent(&child->scene_tree->node, con->content_tree);
+ 
+@@ -314,3 +315,3 @@ static void arrange_children(enum sway_container_layout layout, list_t *children
+ 			wlr_scene_node_set_position(&child->scene_tree->node, 0, title_bar_height);
+-			wlr_scene_node_reparent(&child->scene_tree->node, content);
++			if (!lumen_projection_reserved(child)) wlr_scene_node_reparent(&child->scene_tree->node, content);
+ 
+@@ -344,3 +345,3 @@ static void arrange_children(enum sway_container_layout layout, list_t *children
+ 			wlr_scene_node_set_position(&child->scene_tree->node, 0, title_height);
+-			wlr_scene_node_reparent(&child->scene_tree->node, content);
++			if (!lumen_projection_reserved(child)) wlr_scene_node_reparent(&child->scene_tree->node, content);
+ 
+@@ -363,3 +364,3 @@ static void arrange_children(enum sway_container_layout layout, list_t *children
+ 			wlr_scene_node_set_position(&child->scene_tree->node, 0, off);
+-			wlr_scene_node_reparent(&child->scene_tree->node, content);
++			if (!lumen_projection_reserved(child)) wlr_scene_node_reparent(&child->scene_tree->node, content);
+ 			if (width > 0 && cheight > 0) {
+@@ -379,3 +380,3 @@ static void arrange_children(enum sway_container_layout layout, list_t *children
+ 			wlr_scene_node_set_position(&child->scene_tree->node, off, 0);
+-			wlr_scene_node_reparent(&child->scene_tree->node, content);
++			if (!lumen_projection_reserved(child)) wlr_scene_node_reparent(&child->scene_tree->node, content);
+ 			if (cwidth > 0 && height > 0) {
+@@ -541,3 +542,3 @@ static void arrange_workspace_floating(struct sway_workspace *ws) {
+ 
+-		wlr_scene_node_reparent(&floater->scene_tree->node, layer);
++		if (!lumen_projection_reserved(floater)) wlr_scene_node_reparent(&floater->scene_tree->node, layer);
+ 		wlr_scene_node_set_position(&floater->scene_tree->node,
+@@ -566,3 +567,3 @@ static void disable_workspace(struct sway_workspace *ws) {
+ 
+-		wlr_scene_node_reparent(&child->scene_tree->node, ws->layers.tiling);
++		if (!lumen_projection_reserved(child)) wlr_scene_node_reparent(&child->scene_tree->node, ws->layers.tiling);
+ 		disable_container(child);
+@@ -572,3 +573,3 @@ static void disable_workspace(struct sway_workspace *ws) {
+ 		struct sway_container *floater = ws->current.floating->items[i];
+-		wlr_scene_node_reparent(&floater->scene_tree->node, root->layers.floating);
++		if (!lumen_projection_reserved(floater)) wlr_scene_node_reparent(&floater->scene_tree->node, root->layers.floating);
+ 		disable_container(floater);
+@@ -589,3 +590,3 @@ static void arrange_output(struct sway_output *output, int width, int height) {
+ 			struct sway_container *floater = child->current.floating->items[i];
+-			wlr_scene_node_reparent(&floater->scene_tree->node, root->layers.floating);
++			if (!lumen_projection_reserved(floater)) wlr_scene_node_reparent(&floater->scene_tree->node, root->layers.floating);
+ 			wlr_scene_node_set_enabled(&floater->scene_tree->node, activated);
+@@ -754,2 +755,16 @@ static void transaction_apply(struct sway_transaction *transaction) {
+ 
++static void arrange_projection(struct sway_container *con, void *data) {
++ (void)data;
++ if (!lumen_projection_reserved(con) || !con->current.workspace ||
++     con->current.workspace != con->pending.workspace) return;
++ /* Preserve the one native scene/container identity. Reparenting to the same
++  * parent is a no-op: ordinary transactions must not raise projected views. */
++ wlr_scene_node_reparent(&con->scene_tree->node, root->layers.floating);
++ arrange_container(con, con->current.width, con->current.height, true,
++  container_get_gaps(con));
++ wlr_scene_node_set_position(&con->scene_tree->node, con->current.x, con->current.y);
++ wlr_scene_node_set_enabled(&con->scene_tree->node,
++  lumen_projection_presented(con) && view_is_visible(con->view));
++}
++
+ static void transaction_commit_pending(void);
+@@ -765,3 +780,5 @@ static void transaction_progress(void) {
+  lumen_groups_reconcile();
++ lumen_projection_reconcile();
+ 	arrange_root(root);
++ root_for_each_container(arrange_projection, NULL);
+  lumen_groups_mask();

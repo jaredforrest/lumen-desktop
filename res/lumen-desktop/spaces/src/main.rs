@@ -1,4 +1,4 @@
-use lumen_spaces::{Policy,Result,windows,reconcile_membership,display_runtime};
+use lumen_spaces::{Policy,Result,windows,display_runtime};
 use serde_json::{Value,json};
 use sha2::{Digest,Sha256};
 use std::collections::HashSet;
@@ -16,6 +16,11 @@ fn sway(args:&[&str])->Result<Value>{
     let output=Command::new("timeout").arg("5s").arg("swaymsg").arg("-r").args(args).output().map_err(|e|e.to_string())?;
     if !output.status.success(){return Err("Compositor command failed".into());}
     serde_json::from_slice(&output.stdout).map_err(|e|e.to_string())
+}
+fn membership_command(operation:&str)->Result<lumen_spaces::projection::CommandOutcome> {
+    if !operation.starts_with("lumen_projection ") {command(operation)?;return Ok(lumen_spaces::projection::CommandOutcome::Applied);}
+    let output=Command::new("timeout").arg("5s").arg("swaymsg").arg("-r").arg(operation).output().map_err(|e|e.to_string())?;
+    lumen_spaces::projection::checked_reply(output.status.code(),&output.stdout)
 }
 fn command(command:&str)->Result<()> {
     let reply=sway(&[command])?;
@@ -69,7 +74,7 @@ fn run_watch(mut policy:Policy)->Result<()>{
     let (kind,ack)=receive(&mut events)?;
     if kind!=2||ack["success"]!=true{return Err("Compositor subscription failed".into());}
     refresh(&mut policy)?;
-    let tree=sway(&["-t","get_tree"])?;reconcile_membership(&mut policy,&tree,&expected,command)?;
+    let tree=sway(&["-t","get_tree"])?;lumen_spaces::reconcile_membership_observed(&mut policy,&tree,&expected,&sway(&["-t","get_version"])?,membership_command)?;
     println!("{}",json!({"ready":true}));std::io::stdout().flush().map_err(|e|e.to_string())?;
     events.set_read_timeout(None).map_err(|e|e.to_string())?;policy.release();
     let mut pending=HashSet::<u64>::new();
@@ -90,7 +95,7 @@ fn run_watch(mut policy:Policy)->Result<()>{
             if let Some(id)=node["id"].as_u64(){pending.remove(&id);}
         }
         if event["change"]=="close"{if let Some(id)=node["id"].as_u64(){pending.remove(&id);}}
-        let tree=sway(&["-t","get_tree"])?;reconcile_membership(&mut policy,&tree,&expected,command)?;policy.release();
+        let tree=sway(&["-t","get_tree"])?;lumen_spaces::reconcile_membership_observed(&mut policy,&tree,&expected,&sway(&["-t","get_version"])?,membership_command)?;policy.release();
     }
 }
 fn run()->Result<()> {
@@ -111,9 +116,9 @@ fn run()->Result<()> {
         "assign"=>{
             let app=args.get(1).ok_or("Missing application")?;let kind=args.get(2).ok_or("Missing assignment kind")?;
             let tree=sway(&["-t","get_tree"])?;
-            if kind=="all"&&windows(&tree).iter().any(|node|node["_grouped"]==true&&Policy::application(node).as_deref()==Some(app)){return Err("Turn off window groups before assigning all desktops".into());}
+            if kind=="all"&&windows(&tree).iter().any(|node|lumen_spaces::projection::grouped_assignment_blocked(node)&&Policy::application(node).as_deref()==Some(app)){return Err("Turn off window groups before assigning all desktops".into());}
             policy.assign(app,kind,args.get(3).map(String::as_str))?;
-            let identity=epoch(&socket()?)?;reconcile_membership(&mut policy,&tree,&identity,command)?;
+            let identity=epoch(&socket()?)?;lumen_spaces::reconcile_membership_observed(&mut policy,&tree,&identity,&sway(&["-t","get_version"])?,membership_command)?;
         },
         "switch"=>{
             let direction=args.get(1).map(String::as_str).ok_or("Missing switch direction")?;

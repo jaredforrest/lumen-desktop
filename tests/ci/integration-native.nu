@@ -62,6 +62,8 @@ def main [] {
     build test-owned-font-config owned-font-config
     build test-owned-geometry-legacy-compositor compositor-legacy
     build test-display-spaces-legacy-compositor compositor-display-legacy
+    build test-all-desktops-legacy-compositor compositor-all-desktops-legacy
+    build test-all-desktops-legacy-effects compositor-all-desktops-legacy-effects
     build test-menu-exporter-fixture menu-exporter-fixture
     build test-menu-native-fixture menu-native-fixture
     build test-lifecycle-native-fixture lifecycle-native-fixture
@@ -252,6 +254,8 @@ def main [] {
     ^nu tests/ci/run-native.nu spaces_placement -- (artifact 'spaces-placement-fixture/bin/lumen-spaces-placement-fixture') --launcher $shell --sway $basic --output artifacts/spaces
     ^nu tests/ci/run-native.nu application_desktops_basic -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') application --launcher $shell --sway $basic --client $client --output artifacts/application-desktops-basic
     ^nu tests/ci/run-native.nu application_desktops_effects -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') application --launcher $shell --sway $effects --client $client --effects --output artifacts/application-desktops-effects
+    ^nu tests/ci/run-native.nu application_desktops_legacy_basic -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') application --launcher $shell --sway (artifact 'compositor-all-desktops-legacy/bin/sway') --client $client --output artifacts/application-desktops-legacy-basic
+    ^nu tests/ci/run-native.nu application_desktops_legacy_effects -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') application --launcher $shell --sway (artifact 'compositor-all-desktops-legacy-effects/bin/sway') --client $client --effects --output artifacts/application-desktops-legacy-effects
     ^nu tests/ci/run-native.nu display_spaces_native -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') display --launcher $shell --sway $basic --client $client --output artifacts/display-spaces-native
     for variant in [basic effects] {
         let sway = if $variant == 'effects' { $effects } else { $basic }

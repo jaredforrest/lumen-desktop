@@ -4,6 +4,7 @@ mod harness;
 mod identity;
 mod lifecycle;
 mod mru;
+mod projection;
 mod recovery;
 mod session;
 mod window_mru;
@@ -23,6 +24,12 @@ fn main() -> Result<()> {
         "window-mru" | "window-mru-baseline" | "window-mru-inventory" => window_mru::run(options),
         "focus-guard" | "focus-guard-unsupported" => focus_guard::run(options),
         "identity" | "identity-absent" => identity::run(options),
+        "projection-probe"
+        | "projection"
+        | "projection-interaction"
+        | "projection-focus"
+        | "projection-protocol"
+        | "projection-lock" => projection::run(options),
         _ => Err("Unknown scenario".into()),
     }
 }

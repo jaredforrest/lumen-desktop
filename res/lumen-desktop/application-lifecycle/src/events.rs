@@ -8,6 +8,18 @@ use std::{
 };
 pub const MAX_FRAMES: usize = 32;
 pub const MAX_BYTES: usize = 256 * 1024;
+/// Workspace/output observations refresh placement without manufacturing an
+/// application-focus event or changing activation history.
+pub fn window_event(kind:u32)->Result<bool>{
+    match kind {0x8000_0003=>Ok(true),0x8000_0000|0x8000_0001=>Ok(false),_=>Err("Unexpected compositor event".into())}
+}
+#[cfg(test)] mod scope_event_tests {
+    #[test] fn placement_events_are_not_focus_events(){
+        assert_eq!(super::window_event(0x8000_0003),Ok(true));
+        for kind in [0x8000_0000,0x8000_0001]{assert_eq!(super::window_event(kind),Ok(false));}
+        assert!(super::window_event(0x8000_0002).is_err());
+    }
+}
 fn transfer(stream: &UnixStream, bytes: &mut [u8], write: bool, deadline: Instant) -> Result<()> {
     let mut offset = 0;
     while offset < bytes.len() {

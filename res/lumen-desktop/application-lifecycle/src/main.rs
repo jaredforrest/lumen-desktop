@@ -44,12 +44,13 @@ fn pending(events:&mut UnixStream,nodes:&mut Vec<Value>,query:&mut UnixStream,pa
     let any=!batch.is_empty();
     for (kind,event) in batch {
         if kind==0x8000_0006{if let Some(store)=store{store.save(&[])?;}return Ok(None);}
-        if kind!=0x8000_0003{return Err("Unexpected compositor event".into());}
-        lifecycle.inventory.observe_event(&event);lifecycle.observe(&event["container"]);
+        let window_event=lumen_application_lifecycle::events::window_event(kind)?;
+        if window_event{lifecycle.inventory.observe_event(&event);lifecycle.observe(&event["container"]);}
+        else {lifecycle.inventory.observe_scope_event();}
         let remaining=deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero(){return Err("Event processing budget exhausted".into());}
         let updated=refresh_until(query,path,expected,lifecycle,session,protocol,store,last,deadline);
-        *nodes=updated?;lifecycle.observe_focus_event(&event);
+        *nodes=updated?;if window_event{lifecycle.observe_focus_event(&event);}
         if Instant::now()>=deadline{return Err("Event processing budget exhausted".into());}
     }
     Ok(Some(any))
@@ -141,7 +142,7 @@ fn watch()->Result<()>{
         store=Some(ObservationStore::new(&runtime,&identity,boot_id.trim())?);
         let mut events=UnixStream::connect(&path).map_err(|error|error.to_string())?;
         events.set_read_timeout(Some(Duration::from_secs(5))).map_err(|error|error.to_string())?;
-        send(&mut events,2,"[\"window\",\"shutdown\"]")?;
+        send(&mut events,2,"[\"window\",\"workspace\",\"output\",\"shutdown\"]")?;
         let (kind,ack)=receive(&mut events)?;
         if kind!=2||ack["success"]!=true{return Err("Compositor subscription failed".into());}
         let mut query=UnixStream::connect(&path).map_err(|error|error.to_string())?;

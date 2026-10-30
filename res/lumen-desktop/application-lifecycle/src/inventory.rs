@@ -22,6 +22,29 @@ struct View {
 mod tests {
     use super::*;
     #[test]
+    fn unsupported_projection_does_not_poison_unrelated_inventory() {
+        let ordinary=json!({"id":1,"foreign_toplevel_identifier":"ordinary","shell":"xdg_shell","pid":1,"app_id":"ordinary"});
+        let mut suspended=ordinary.clone();suspended["id"]=json!(2);suspended["foreign_toplevel_identifier"]=json!("suspended");
+        suspended["lumen_all_desktops"]=json!({"version":1,"enabled":true,"supported":false,"reason":"suspended","revision":"1","projected":false,"origin_workspace":null,"origin_output":null,"effective_workspace":null,"effective_output":null});
+        let mut inventory=Inventory::default();inventory.refresh(&[ordinary.clone(),suspended.clone()]);
+        assert_eq!(inventory.views.as_ref().unwrap().len(),2);
+        assert_eq!(lumen_window_policy::projection::workspace(&ordinary,"current").unwrap(),"current");
+        assert!(lumen_window_policy::projection::workspace(&suspended,"origin").is_err());
+        suspended["lumen_all_desktops"]["revision"]=json!("01");
+        assert!(view(&suspended).is_err());
+    }
+    #[test]
+    fn projection_and_workspace_events_invalidate_without_mru_focus() {
+        let inventory=Inventory::default();
+        let initial=inventory.state.borrow().value;
+        inventory.observe_event(&json!({"change":"focus"}));
+        assert_eq!(inventory.state.borrow().value,initial);
+        inventory.observe_event(&json!({"change":"lumen_projection"}));
+        assert_eq!(inventory.state.borrow().value,initial+1);
+        inventory.observe_scope_event();
+        assert_eq!(inventory.state.borrow().value,initial+2);
+    }
+    #[test]
     fn revision_exhaustion_never_wraps_or_revives() {
         let inventory = Inventory::default();
         inventory.state.borrow_mut().value = MAX_REVISION;
@@ -144,6 +167,9 @@ fn view(node: &Value) -> Result<View> {
     if !(properties.is_null() || properties.is_object()) {
         return Err("Invalid inventory X11 properties".into());
     }
+    // Reject malformed enabled placement before leasing a scoped preview. Keep
+    // its complete bounded value in the digest, separate from native identity.
+    lumen_window_policy::projection::parse(node)?;
     let canonical = json!([
         id,
         foreign,
@@ -155,7 +181,8 @@ fn view(node: &Value) -> Result<View> {
         text(&properties["instance"], 256)?,
         text(&properties["window_role"], 256)?,
         number(&properties["transient_for"], 0, i64::from(u32::MAX))?,
-        relationships(&node["lumen_relationships"])?
+        relationships(&node["lumen_relationships"])?,
+        node.get("lumen_all_desktops")
     ]);
     Ok(View {
         node: json!({"id":id,"foreign_toplevel_identifier":foreign,"shell":shell,"pid":pid,"window":window,"app_id":app}),
@@ -207,6 +234,9 @@ struct Fact {
     alive: bool,
 }
 impl Inventory {
+    pub fn observe_scope_event(&self) {
+        self.state.borrow_mut().advance();
+    }
     pub fn clear(&mut self) {
         self.views = None;
         self.state.borrow_mut().advance();
@@ -214,7 +244,7 @@ impl Inventory {
     pub fn observe_event(&self, event: &Value) {
         if matches!(
             event["change"].as_str(),
-            Some("new" | "close" | "app_id" | "lumen_relationships")
+            Some("new" | "close" | "app_id" | "lumen_relationships" | "lumen_projection")
         ) {
             self.state.borrow_mut().advance();
         }

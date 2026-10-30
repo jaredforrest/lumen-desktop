@@ -220,7 +220,7 @@ mod tests {
             "window_rect":{"width":800,"height":600},"deco_rect":{"height":32},
             "lumen_relationships":{"parent_supported":true,"parent":null,"modal":false}});
         let workspace=json!({"name":"one","rect":{"x":960,"y":28,"width":800,"height":500}});
-        let row=Row{node,workspace:Some(workspace),floating:true};
+        let row=Row{node,workspace:Some(workspace),presentation_workspace:None,floating:true};
         let saved=json!({"output":"HEADLESS-1","x":600,"y":500,"width":1200,"height":900});
         let plan=restore_plan(&row,&saved,480,320,32,32).unwrap().unwrap();
         assert_eq!((plan["width"].as_i64(),plan["height"].as_i64()),(Some(766),Some(435)));

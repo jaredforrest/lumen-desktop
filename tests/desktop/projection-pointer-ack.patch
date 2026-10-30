@@ -1,0 +1,26 @@
+--- a/pointer.c
++++ b/pointer.c
+@@ -190,9 +190,11 @@
+ 		char operation;
+ 		double dx, dy;
+ 		int notches;
+-		unsigned int button_code, button_state;
++		unsigned int button_code, button_state, acknowledgement = 0;
+ 		while (scanf(" %c", &operation) == 1) {
+-			if (operation == 'm' && scanf("%lf %lf", &dx, &dy) == 2)
++			if (operation == 'a') {
++                if (scanf("%u", &acknowledgement) != 1 || acknowledgement == 0 || acknowledgement > 1000000) exit(EXIT_FAILURE);
++            } else if (operation == 'm' && scanf("%lf %lf", &dx, &dy) == 2)
+ 				pointer_move(cmd->device, wl_fixed_from_double(dx), wl_fixed_from_double(dy));
+ 			else if (operation == 'w' && scanf("%d", &notches) == 1) {
+ 				zwlr_virtual_pointer_v1_axis_source(cmd->device, WL_POINTER_AXIS_SOURCE_WHEEL);
+@@ -210,7 +212,8 @@
+ 				pointer_press(cmd->device, BTN_LEFT);
+ 			else if (operation == 'r')
+ 				pointer_release(cmd->device, BTN_LEFT);
+-			wl_display_roundtrip(state->display);
++            if (wl_display_roundtrip(state->display) < 0) exit(EXIT_FAILURE);
++            if (operation == 'a') { printf("ack %u\n", acknowledgement); fflush(stdout); }
+ 		}
+ 	} else switch (cmd->action) {
+ 	case POINTER_ACTION_CLICK:

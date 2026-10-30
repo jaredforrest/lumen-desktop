@@ -10,7 +10,7 @@ mod owned_geometry;
 
 type Result<T> = std::result::Result<T, String>;
 #[derive(Clone)]
-struct Row { node: Value, workspace: Option<Value>, floating: bool }
+struct Row { node: Value, workspace: Option<Value>, presentation_workspace: Option<Value>, floating: bool }
 #[derive(Clone, Copy)]
 struct Box4 { x:i64, y:i64, width:i64, height:i64 }
 
@@ -28,7 +28,7 @@ fn walk(node:&Value, workspace:Option<&Value>, floating:bool, app:&str, title:&s
     let workspace = if node["type"] == "workspace" {Some(node)} else {workspace};
     let floating = floating || node["type"] == "floating_con";
     if node["app_id"] == app && node["name"] == title && node["pid"].as_u64() == Some(pid as u64) && (container == 0 || node["id"].as_u64() == Some(container)) {
-        matches.push(Row {node:node.clone(),workspace:workspace.cloned(),floating});
+        matches.push(Row {node:node.clone(),workspace:workspace.cloned(),presentation_workspace:None,floating});
     }
     for kind in ["nodes","floating_nodes"] {
         if let Some(children) = node[kind].as_array() { for child in children { walk(child,workspace,floating,app,title,pid,container,matches); } }
@@ -40,7 +40,17 @@ fn matching(tree:&Value, app:&str, title:&str, pid:u32, container:u64) -> Vec<Ro
 fn exact(tree:&Value, app:&str, title:&str, pid:u32, container:u64) -> Result<Row> {
     let mut rows=matching(tree,app,title,pid,container);
     if rows.len()!=1 { return Err("Owned window is unavailable or ambiguous".into()); }
-    Ok(rows.remove(0))
+    let mut row=rows.remove(0);
+    if let Some(p)=lumen_window_policy::projection::parse(&row.node)? {if p.enabled {
+        if !p.supported{return Err("Unsupported projection fitting".into());}
+        let placement=p.effective_workspace.ok_or("Missing effective workspace")?;
+        fn workspace(node:&Value,id:u64,name:&str)->Option<Value>{
+            if node["type"]=="workspace"&&node["id"].as_u64()==Some(id)&&node["name"]==name{return Some(node.clone());}
+            for key in ["nodes","floating_nodes"] {for child in node[key].as_array().into_iter().flatten(){if let Some(found)=workspace(child,id,name){return Some(found);}}}None
+        }
+        row.presentation_workspace=Some(workspace(tree,placement.id,&placement.name).ok_or("Effective workspace is unavailable")?);
+    }}
+    Ok(row)
 }
 fn run(args:&[&str]) -> Result<Value> {
     let output=Command::new("timeout").arg("4").arg("swaymsg").arg("-r").args(args).output().map_err(|error|error.to_string())?;
@@ -75,7 +85,13 @@ fn fit(row:&Row, mut budget_width:i64, mut budget_height:i64, min_width:i64, min
     if !row.floating || node["type"]!="floating_con" || truthy(&node["fullscreen_mode"]) || !matches!(node["scratchpad_state"].as_str(),None|Some("none")) || truthy(&pair["id"]) || truthy(&pair["survivor"]) || ["filled","minimised","hidden","desktop_hidden"].iter().any(|key|truthy(&state[*key])) || !relation["parent"].is_null() || relation["modal"]==true {
         return Ok((json!({"changed":false,"supported":false,"reason":"Only visible independent floating windows are fitted"}),None));
     }
-    let workspace=row.workspace.as_ref().filter(|workspace|workspace["name"]!="__i3_scratch").ok_or("Window workspace unavailable")?;
+    let workspace=row.presentation_workspace.as_ref().or(row.workspace.as_ref()).filter(|workspace|workspace["name"]!="__i3_scratch").ok_or("Window workspace unavailable")?;
+    // Native `move position center` still targets structural ownership. Do not
+    // resize/recenter against a different presentation area until that native
+    // command has an effective-placement contract.
+    if row.workspace.as_ref().is_some_and(|origin|origin["rect"]!=workspace["rect"]) {
+        return Ok((json!({"changed":false,"supported":false,"reason":"Projected work-area fitting is unavailable"}),None));
+    }
     let box4=rect(&node["rect"],"container rectangle")?;
     let client=rect(&node["window_rect"],"client rectangle")?;
     let area=rect(&workspace["rect"],"workspace rectangle")?;
@@ -186,23 +202,24 @@ fn watch(args:&Args) -> Result<()> {
     let mut captured=if args.container==0{None}else{Some(args.container)};
     let mut previous:Option<(Value,i64,i64,i64,i64)>=None;
     let mut events=UnixStream::connect(&path).map_err(|error|error.to_string())?;
-    send(&mut events,2,"[\"window\",\"output\"]")?;
+    send(&mut events,2,"[\"window\",\"workspace\",\"output\"]")?;
     let (kind,ack)=receive(&mut events)?;
     if kind!=2||ack["success"]!=true{return Err("Native geometry subscription rejected".into());}
     println!("{}",json!({"ready":true}));
     loop {
         if owner_start(owner)?!=start||socket_identity(&path)?!=session{return Err("Owned geometry session changed".into());}
-        let rows=matching(&tree()?,&args.app,&args.title,owner,captured.unwrap_or(0));
+        let live=tree()?;
+        let rows=matching(&live,&args.app,&args.title,owner,captured.unwrap_or(0));
         if rows.len()==1 {
-            let row=&rows[0];if captured.is_none(){captured=row.node["id"].as_u64();}
-            if let Some(workspace)=&row.workspace {
+            let row=exact(&live,&args.app,&args.title,owner,captured.unwrap_or(0))?;if captured.is_none(){captured=row.node["id"].as_u64();}
+            if let Some(workspace)=row.presentation_workspace.as_ref().or(row.workspace.as_ref()) {
                 let area=rect(&workspace["rect"],"workspace rectangle")?;
                 let fingerprint=(workspace["id"].clone(),area.x,area.y,area.width,area.height);
                 if previous.as_ref()!=Some(&fingerprint){previous=Some(fingerprint);println!("{}",json!({"changed":true,"container":captured,"pid":owner,"app":args.app,"title":args.title,"workspace":workspace["id"],"area":{"x":area.x,"y":area.y,"width":area.width,"height":area.height}}));}
             }
         }
         let (kind,event)=receive(&mut events)?;
-        if !matches!(kind,0x8000_0003|0x8000_0001)||!event.is_object(){return Err("Invalid native geometry event".into());}
+        if !matches!(kind,0x8000_0003|0x8000_0001|0x8000_0000)||!event.is_object(){return Err("Invalid native geometry event".into());}
     }
 }
 fn owned_emit(args:&Args,mut value:Value) {
@@ -343,10 +360,25 @@ fn main(){
 mod tests {
     use super::*;
     #[test]
+    fn projected_fit_uses_effective_area_without_rewriting_origin() {
+        let projection=json!({"version":1,"enabled":true,"supported":true,"reason":null,"revision":"1","projected":true,"origin_workspace":{"id":"1","name":"origin"},"origin_output":{"id":"4","name":"display"},"effective_workspace":{"id":"2","name":"current"},"effective_output":{"id":"4","name":"display"}});
+        let tree=json!({"nodes":[{"type":"workspace","id":1,"name":"origin","rect":{"x":0,"y":0,"width":1000,"height":800},"floating_nodes":[{"type":"floating_con","id":3,"pid":42,"app_id":"A","name":"B","lumen_all_desktops":projection}]},{"type":"workspace","id":2,"name":"current","rect":{"x":0,"y":0,"width":700,"height":600}}]});
+        let row=exact(&tree,"A","B",42,3).unwrap();
+        assert_eq!(row.workspace.as_ref().unwrap()["id"],1);
+        assert_eq!(row.presentation_workspace.as_ref().unwrap()["id"],2);
+        assert_eq!(fingerprint(&tree,&row).unwrap()["area"]["workspace"],1);
+        let refused=fit(&row,600,400,100,100,None).unwrap();
+        assert_eq!(refused.0["supported"],false);
+        assert_eq!(refused.0["reason"],"Projected work-area fitting is unavailable");
+        assert!(refused.1.is_none());
+        let mut stale=tree.clone();stale["nodes"][1]["id"]=json!(9);
+        assert!(exact(&stale,"A","B",42,3).is_err());
+    }
+    #[test]
     fn fit_uses_exact_qualified_identity() {
         let workspace=json!({"name":"1","rect":{"x":0,"y":0,"width":1000,"height":700}});
         let node=json!({"type":"floating_con","id":7,"pid":11,"app_id":"org.example.\"Quoted\"","name":"A\\B","scratchpad_state":"none","rect":{"x":900,"y":650,"width":500,"height":300},"window_rect":{"x":0,"y":0,"width":480,"height":270},"deco_rect":{"height":10}});
-        let row=Row{node,workspace:Some(workspace),floating:true};
+        let row=Row{node,workspace:Some(workspace),presentation_workspace:None,floating:true};
         let (result,command)=fit(&row,600,400,100,100,None).unwrap();
         assert_eq!(result["changed"],true);
         let command=command.unwrap();
@@ -359,14 +391,14 @@ mod tests {
     fn ambiguous_or_tiled_windows_fail_closed() {
         let tree=json!({"type":"root","nodes":[{"type":"con","pid":9,"app_id":"A","name":"B","id":1},{"type":"con","pid":9,"app_id":"A","name":"B","id":2}]});
         assert!(exact(&tree,"A","B",9,0).is_err());
-        let row=Row{node:json!({"type":"con"}),workspace:None,floating:false};
+        let row=Row{node:json!({"type":"con"}),workspace:None,presentation_workspace:None,floating:false};
         assert_eq!(fit(&row,100,100,1,1,None).unwrap().0["supported"],false);
     }
     #[test]
     fn native_padding_margins_and_minimum_are_explicit() {
         let workspace=json!({"name":"1","rect":{"x":0,"y":28,"width":960,"height":692}});
         let node=json!({"type":"floating_con","id":5,"pid":42,"app_id":"org.quickshell","name":"Settings","scratchpad_state":"none","rect":{"x":50,"y":100,"width":792,"height":521},"window_rect":{"x":1,"y":0,"width":790,"height":520},"deco_rect":{"height":32}});
-        let mut row=Row{node,workspace:Some(workspace),floating:true};
+        let mut row=Row{node,workspace:Some(workspace),presentation_workspace:None,floating:true};
         let (result,command)=fit(&row,928,570,480,320,None).unwrap();
         assert_eq!(result["changed"],false);assert!(command.is_none());
         assert_eq!(result["paddingWidth"],2);assert_eq!(result["paddingHeight"],33);

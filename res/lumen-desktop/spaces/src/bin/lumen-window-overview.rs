@@ -1,4 +1,4 @@
-use lumen_spaces::{Policy,Result,windows as membership_windows,membership,reconcile_membership,groups,transfer};
+use lumen_spaces::{Policy,Result,windows as membership_windows,membership,groups,transfer};
 use serde_json::{Value,json};
 use sha2::{Digest,Sha256};
 use std::env;
@@ -39,6 +39,11 @@ fn run(args:&[&str])->Result<Value>{
     }
     serde_json::from_slice(&output.stdout).map_err(|e|e.to_string())
 }
+fn membership_command(operation:&str)->Result<lumen_spaces::projection::CommandOutcome> {
+    if !operation.starts_with("lumen_projection ") {checked(operation)?;return Ok(lumen_spaces::projection::CommandOutcome::Applied);}
+    let output=Command::new("timeout").arg("5s").arg("swaymsg").arg("-r").arg(operation).output().map_err(|e|e.to_string())?;
+    lumen_spaces::projection::checked_reply(output.status.code(),&output.stdout)
+}
 fn checked(command:&str)->Result<()> {
     let reply=run(&[command])?;
     if !reply.as_array().is_some_and(|items|!items.is_empty()&&items.iter().all(|item|item["success"]==true)){return Err("The window manager rejected this action".into());}
@@ -72,10 +77,19 @@ fn snapshot(model:&Policy,include_overview:bool)->Result<Value>{
                 let relation=&node["lumen_relationships"];let pair=&node["lumen_pair"];let state=&node["lumen_state"];
                 let restores=state["restore_workspaces"].as_array().cloned().unwrap_or_else(||vec![state["restore_workspace"].clone()]);
                 let membership=native_node.map(|item|membership(model,item,epoch)).unwrap_or(json!({"status":"unassigned"}));
+                let placement=lumen_window_policy::projection::parse(node);
+                let all_desktops=placement.as_ref().is_ok_and(|p|p.as_ref().is_some_and(|p|p.enabled));
+                let (effective_workspace,effective_output,projected,scope_error)=match placement {
+                    Ok(Some(p)) if p.enabled && p.supported => (p.effective_workspace.map(|p|p.name),p.effective_output.map(|p|p.name),p.projected,false),
+                    Ok(Some(p)) if p.enabled => (None,None,false,true),
+                    Ok(_) => (Some(workspace.to_owned()),Some(output.to_owned()),false,false),
+                    Err(_) => (None,None,false,true),
+                };
                 rows.push(json!({"groupSource":node["app_id"].is_string()&&node["sticky"]!=true&&relation["parent_supported"]==true&&relation["parent"].is_null()&&workspace!="__i3_scratch",
                     "id":node["id"],"pid":node["pid"],"app":app,"application":Policy::application(node),"group":group,"title":title,"workspace":workspace,"output":output,
+                    "effectiveWorkspace":effective_workspace,"effectiveOutput":effective_output,"projected":projected,"allDesktops":all_desktops,"projectionScopeUnavailable":scope_error,
                     "focused":node["focused"].as_bool().unwrap_or(false),"fullscreen":node["fullscreen_mode"].as_i64().unwrap_or(0),"paired":!pair["id"].is_null()||pair["survivor"]==true,
-                    "pairRestore":pair["restore_workspace"],"restores":restores,"allDesktopMembership":membership,"assignmentGrouped":native_node.is_some_and(|item|item["_grouped"]==true)}));
+                    "pairRestore":pair["restore_workspace"],"restores":restores,"allDesktopMembership":membership,"assignmentGrouped":native_node.is_some_and(|item|item["_grouped"]==true),"assignmentAllBlocked":native_node.is_some_and(lumen_spaces::projection::grouped_assignment_blocked)}));
             }
         }
         if let Some(children)=node["nodes"].as_array(){for child in children{walk(child,workspace,output,include,native,model,epoch,rows);}}
@@ -164,6 +178,7 @@ fn handle(data:&Value)->Result<Value>{
     let labels=catalog.iter().filter_map(|item|Some((item["name"].as_str()?.to_owned(),item["label"].clone()))).collect::<std::collections::HashMap<_,_>>();
     if let Some(rows)=state["windows"].as_array_mut(){for window in rows{
         let name=window["workspace"].as_str().unwrap_or("");window["workspaceLabel"]=labels.get(name).cloned().unwrap_or_else(||json!(name));
+        window["effectiveWorkspaceLabel"]=window["effectiveWorkspace"].as_str().map(|name|labels.get(name).cloned().unwrap_or_else(||json!(name))).unwrap_or(Value::Null);
     }}
     if let Some(rows)=state["outputs"].as_array_mut(){for output in rows{
         output["logicalId"]=model.outputs.iter().find(|(_,name)|output["name"]==**name).map(|(id,_)|json!(id)).unwrap_or(Value::Null);
@@ -171,7 +186,7 @@ fn handle(data:&Value)->Result<Value>{
     state["workspaces"]=json!(catalog);
     state["autoReorder"]=model.state["auto_reorder"].clone();state["auto_reorder"]=model.state["auto_reorder"].clone();
     state["assignments"]=model.state["assignments"].clone();state["revision"]=model.state["revision"].clone();state["sessionEpoch"]=json!(epoch);
-    state["capabilities"]=json!({"desktop_lifecycle":true,"desktop_removal":run(&["-t","get_version"])?["desktop_rehome"]==true,"all_desktops":{"supported":true,"scope":"current-display","window_kind":"independent-floating"}});
+    state["capabilities"]=json!({"desktop_lifecycle":true,"desktop_removal":run(&["-t","get_version"])?["desktop_rehome"]==true,"all_desktops":{"supported":true,"scope":"current-display","window_kind":"provider-dependent","native_projection":run(&["-t","get_version"])?["lumen_capabilities"]["all_desktops_projection"]==1}});
     if action=="transfer"{
         if data.as_object().is_none_or(|v|v.len()!=6 || ["action","sessionEpoch","revision","snapshot","source","destination"].iter().any(|k|!v.contains_key(*k))){return Err("Invalid captured desktop transfer request".into());}
         check_epoch(data,&epoch)?;
@@ -226,12 +241,12 @@ fn handle(data:&Value)->Result<Value>{
     if action=="assign"{
         check_epoch(data,&epoch)?;
         let kind=data["kind"].as_str().ok_or("Invalid application assignment")?;
-        if kind=="all"&&state["windows"].as_array().is_some_and(|rows|rows.iter().any(|row|row["application"]==window["application"]&&row["assignmentGrouped"]==true)){
+        if kind=="all"&&state["windows"].as_array().is_some_and(|rows|rows.iter().any(|row|row["application"]==window["application"]&&row["assignmentAllBlocked"]==true)){
             return Err("Turn off window groups before assigning all desktops".into());
         }
         let application=window["application"].as_str().ok_or("An exact typed application identity is required")?;
         model.assign(application,kind,data["target"].as_str())?;
-        let tree=run(&["-t","get_tree"])?;reconcile_membership(&mut model,&tree,&epoch,checked)?;
+        let tree=run(&["-t","get_tree"])?;lumen_spaces::reconcile_membership_observed(&mut model,&tree,&epoch,&run(&["-t","get_version"])?,membership_command)?;
         return Ok(json!({"ok":true}));
     }
     match action{

@@ -52,6 +52,8 @@
         global-menu-runtime = session.menuRuntime;
         compositor = import ./packages/sway-window-controls.nix { pkgs = compositorPkgs; effects = true; };
         compositor-basic = import ./packages/sway-window-controls.nix { pkgs = compositorPkgs; effects = false; };
+        test-all-desktops-legacy-compositor = import ./packages/sway-window-controls.nix { pkgs = compositorPkgs; allDesktopProjection = false; };
+        test-all-desktops-legacy-effects = import ./packages/sway-window-controls.nix { pkgs = compositorPkgs; effects = true; allDesktopProjection = false; };
         test-native-focus-legacy-compositor = import ./packages/sway-window-controls.nix { pkgs = compositorPkgs; nativeFocusGuard = false; };
         test-display-spaces-legacy-compositor = import ./packages/sway-window-controls.nix { pkgs = compositorPkgs; displaySpaces = false; };
         utilities = import ./packages/utilities.nix { inherit pkgs; };
@@ -188,6 +190,8 @@
         test-toplevel-identity-wire = import ./tests/desktop/toplevel-identity-wire-rust { inherit pkgs; };
         test-toplevel-identity-environment = pkgs.coreutils;
         test-window-inventory-environment = pkgs.buildEnv { name = "lumen-window-inventory-environment"; paths = [ pkgs.coreutils privateBus pkgs.glib (import ./tests/desktop/provider-isolation { inherit pkgs; }) ]; };
+        test-projection-environment = pkgs.buildEnv { name = "lumen-projection-environment"; paths = [ pkgs.coreutils privateBus pkgs.glib pkgs.grim (import ./tests/desktop/projection_pointer_driver.nix { inherit pkgs; }) (import ./tests/desktop/projection-client-rust { inherit pkgs; }) (import ./tests/desktop/session_lock_driver.nix { inherit pkgs; }) (import ./tests/desktop/provider-isolation { inherit pkgs; }) ]; };
+        test-projection-protocol-client = import ./tests/desktop/projection-client-rust { inherit pkgs; };
         test-toplevel-identity-legacy-compositor = compositorPkgs.sway;
         test-media-control-fixture = import ./tests/desktop/media-control-rust { inherit pkgs; };
         test-system-popover-fixture = import ./tests/desktop/system-popover-rust { inherit pkgs; };

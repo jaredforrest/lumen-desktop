@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use uuid::Uuid;
 pub mod groups;
 pub mod display_runtime;
+pub mod projection;
 
 pub type Result<T> = std::result::Result<T,String>;
 fn string<'a>(value:&'a Value,key:&str)->Result<&'a str>{value[key].as_str().ok_or_else(||format!("Missing {key}"))}
@@ -178,7 +179,7 @@ impl Policy{
         }}else if kind=="display"{if let Some(connector)=self.outputs.get(target){if let Some(ws)=self.workspaces.iter().find(|ws|ws["output"]==*connector&&ws["visible"]==true){return json!({"status":"available","workspace":ws["name"]});}}}
         json!({"status":"unavailable","reason":"Assignment target is unavailable","fallback":"keep-current-placement","assignment":assignment})
     }
-    pub fn status(&self)->Value{json!({"desktops":self.state["desktops"],"order":self.order(None),"assignments":self.state["assignments"],"auto_reorder":self.state["auto_reorder"],"displaySpaces":self.display_status,"capabilities":{"all_desktops":{"supported":true,"scope":"current-display","window_kind":"independent-floating"}},"outputs":self.outputs})}
+    pub fn status(&self)->Value{json!({"desktops":self.state["desktops"],"order":self.order(None),"assignments":self.state["assignments"],"auto_reorder":self.state["auto_reorder"],"displaySpaces":self.display_status,"capabilities":{"all_desktops":{"supported":true,"scope":"current-display","window_kind":"provider-dependent"}},"outputs":self.outputs})}
 }
 
 pub fn windows(tree:&Value)->Vec<Value>{
@@ -214,30 +215,46 @@ pub fn process_instance(node:&Value,epoch:&str)->Option<Value>{
 pub fn membership(policy:&Policy,node:&Value,epoch:&str)->Value{
     let app=Policy::application(node).unwrap_or_default();
     if policy.state["assignments"][&app]["kind"]!="all"{return json!({"status":"unassigned"});}
+    match projection::membership(node) {
+        Ok(Some(value))=>return value,
+        Err(_)=>return json!({"status":"pending","reason":"Native presentation metadata is invalid"}),
+        Ok(None)=>{}
+    }
     if let Some(reason)=membership_reason(node){return json!({"status":"pending","reason":reason});}
     if process_instance(node,epoch).is_none(){return json!({"status":"pending","reason":"The application process instance is unavailable"});}
     if node["sticky"]==true{json!({"status":"active","reason":"Every desktop on this window’s current display"})}else{json!({"status":"pending","reason":"Waiting for native membership"})}
 }
-pub fn reconcile_membership(policy:&mut Policy,tree:&Value,epoch:&str,mut command:impl FnMut(&str)->Result<()>)->Result<Value>{
+pub fn reconcile_membership_observed<R:Into<projection::CommandOutcome>>(policy:&mut Policy,tree:&Value,epoch:&str,version:&Value,command:impl FnMut(&str)->Result<R>)->Result<Value>{
+    let lock=&version["lumen_session_lock"];
+    if lock["available"]!=true{return Err("Native lock observation unavailable".into());}
+    match lock["locked"].as_bool(){
+        Some(false)=>reconcile_membership(policy,tree,epoch,command),
+        Some(true)=>Ok(Value::Object(windows(tree).iter().filter_map(|node|node["id"].as_u64().map(|id|(id.to_string(),membership(policy,node,epoch)))).collect())),
+        None=>Err("Invalid native lock observation".into())
+    }
+}
+pub fn reconcile_membership<R:Into<projection::CommandOutcome>>(policy:&mut Policy,tree:&Value,epoch:&str,mut command:impl FnMut(&str)->Result<R>)->Result<Value>{
     let before=policy.state["managed_sticky"].as_object().cloned().unwrap_or_default();let mut managed=before.clone();let observed=windows(tree);
     let live=observed.iter().filter_map(|node|node["id"].as_u64().map(|id|(id.to_string(),node))).collect::<HashMap<_,_>>();
     for (key,record) in &before{
         let Some(node)=live.get(key)else{managed.remove(key);continue;};
         if process_instance(node,epoch).as_ref()!=Some(record){managed.remove(key);continue;}
         let app=Policy::application(node).unwrap_or_default();
-        if policy.state["assignments"][&app]["kind"]!="all"||membership_reason(node).is_some(){
-            if node["sticky"]==true{command(&format!("[con_id={key}] sticky disable"))?;}managed.remove(key);
+        if policy.state["assignments"][&app]["kind"]!="all"||membership_reason(node).is_some()||projection::uses_native(node)?{
+            if node["sticky"]==true{if command(&format!("[con_id={key}] sticky disable"))?.into()!=projection::CommandOutcome::Applied{return Err("Unexpected stale legacy membership result".into());}}managed.remove(key);
         }
     }
     for node in &observed{
+        if projection::uses_native(node)?{continue;}
         let app=Policy::application(node).unwrap_or_default();
         if policy.state["assignments"][&app]["kind"]!="all"||membership_reason(node).is_some(){continue;}
         let Some(identity)=process_instance(node,epoch)else{continue;};if node["sticky"]==true{continue;}
         let key=node["id"].as_u64().ok_or("Invalid window identity")?.to_string();managed.insert(key.clone(),identity);
         policy.state["managed_sticky"]=json!(managed);policy.save()?;
-        command(&format!("[con_id={key}] sticky enable"))?;
+        if command(&format!("[con_id={key}] sticky enable"))?.into()!=projection::CommandOutcome::Applied{return Err("Unexpected stale legacy membership result".into());}
     }
     if managed!=before{policy.state["managed_sticky"]=json!(managed);policy.save()?;}
+    projection::reconcile(policy,&observed,epoch,&mut command)?;
     Ok(Value::Object(observed.iter().filter_map(|node|node["id"].as_u64().map(|id|(id.to_string(),membership(policy,node,epoch)))).collect()))
 }
 

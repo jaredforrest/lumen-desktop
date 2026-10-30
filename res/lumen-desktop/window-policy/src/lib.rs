@@ -1,5 +1,6 @@
 use serde_json::Value;
 pub mod guard;
+pub mod projection;
 pub type Result<T> = std::result::Result<T, String>;
 #[derive(Clone)]
 struct Window<'a> {
@@ -30,6 +31,15 @@ impl Window<'_> {
             .as_str()
             .filter(|s| !s.is_empty())
             .unwrap_or(&self.workspace)
+    }
+    fn effective_workspace(&self) -> Result<String> {
+        projection::workspace(self.node, self.restored_workspace())
+    }
+    fn policy_workspace(&self, switch_space: bool) -> Result<String> {
+        if switch_space {
+            projection::parse(self.node)?;
+            Ok(self.restored_workspace().to_owned())
+        } else { self.effective_workspace() }
     }
 }
 
@@ -176,7 +186,7 @@ pub fn app_focus_command(
     let current = all
         .iter()
         .find(|window| window.node["focused"] == true && !window.workspace.is_empty())
-        .map(|window| window.workspace.as_str());
+        .map(|window|window.policy_workspace(switch_space)).transpose()?;
     let candidates = all
         .iter()
         .filter(|window| {
@@ -193,11 +203,11 @@ pub fn app_focus_command(
     let candidates = if switch_space {
         candidates
     } else {
-        let current = current.ok_or("The active workspace could not be determined")?;
+        let current = current.as_deref().ok_or("The active workspace could not be determined")?;
         candidates
             .into_iter()
-            .filter(|window| window.restored_workspace() == current)
-            .collect()
+            .map(|window| Ok((window.effective_workspace()? == current).then_some(window)))
+            .collect::<Result<Vec<_>>>()?.into_iter().flatten().collect()
     };
     if candidates.is_empty() {
         return Ok((!unhide.is_empty()).then_some(unhide));
@@ -213,7 +223,8 @@ pub fn app_focus_command(
         if let Some(first) = matches.first() {
             let chosen = modal_target(&all, (*first).clone())?;
             let workspace = chosen.restored_workspace();
-            if !switch_space && Some(workspace) != current {
+            let effective_workspace = chosen.policy_workspace(switch_space)?;
+            if !switch_space && Some(effective_workspace.as_str()) != current.as_deref() {
                 return Ok((!unhide.is_empty()).then_some(unhide));
             }
             if chosen.node["focused"] == true {
@@ -289,9 +300,10 @@ pub fn native_focus_plan(
     let current = all
         .iter()
         .find(|window| window.node["focused"] == true && !window.workspace.is_empty())
-        .map(|window| window.workspace.as_str());
+        .map(|window|window.policy_workspace(switch_space)).transpose()?;
+    let target_scope = target.policy_workspace(switch_space)?;
     let allowed =
-        switch_space || current.is_some_and(|workspace| workspace == target.restored_workspace());
+        switch_space || current.as_deref().is_some_and(|workspace| workspace == target_scope);
     if !switch_space && current.is_none() {
         return Err("The active workspace could not be determined".into());
     }
@@ -337,6 +349,34 @@ mod native_tests {
     }
     fn tree(nodes: Vec<Value>) -> Value {
         json!({"type":"root","nodes":[{"type":"workspace","name":"one","nodes":nodes}]})
+    }
+    #[test]
+    fn projected_picker_scope_does_not_replace_origin_restore() {
+        let mut focused=node(1,"origin",true);
+        focused["app_id"]=json!("other");
+        focused["lumen_all_desktops"]=json!({"version":1,"enabled":true,"supported":true,"reason":null,"revision":"3","projected":true,"origin_workspace":{"id":"1","name":"origin"},"origin_output":{"id":"4","name":"display"},"effective_workspace":{"id":"2","name":"one"},"effective_output":{"id":"4","name":"display"}});
+        let mut selected=node(2,"one",false);
+        selected["lumen_state"]["minimised"]=json!(true);
+        let t=tree(vec![focused.clone(),selected]);
+        assert!(native_focus_plan(&t,2,&[],false).unwrap().focus_allowed);
+        assert_eq!(app_focus_command(&t,"app",&["identical".into()],false).unwrap(),Some("[con_id=2] scratchpad show, focus".into()));
+        focused["lumen_all_desktops"]["version"]=json!(2);
+        assert!(native_focus_plan(&tree(vec![focused,node(2,"one",false)]),2,&[],false).is_err());
+    }
+    #[test]
+    fn global_activation_preserves_well_formed_suspended_source_and_target() {
+        let unsupported=json!({"version":1,"enabled":true,"supported":false,"reason":"suspended","revision":"9","projected":false,"origin_workspace":null,"origin_output":null,"effective_workspace":null,"effective_output":null});
+        let mut focused=node(1,"one",true);focused["app_id"]=json!("other");focused["lumen_all_desktops"]=unsupported.clone();
+        let mut target=node(2,"two",false);target["lumen_all_desktops"]=unsupported;target["lumen_state"]["minimised"]=json!(true);
+        let t=tree(vec![focused.clone(),target.clone()]);
+        assert_eq!(native_focus_plan(&t,2,&[],true).unwrap().command.as_deref(),Some("[con_id=2] scratchpad show, focus"));
+        assert_eq!(app_focus_command(&t,"app",&["identical".into()],true).unwrap().as_deref(),Some("[con_id=2] scratchpad show, focus"));
+        assert!(native_focus_plan(&t,2,&[],false).is_err());
+        assert!(app_focus_command(&t,"app",&["identical".into()],false).is_err());
+        target["lumen_all_desktops"]["version"]=json!(2);
+        let malformed=tree(vec![focused,target]);
+        assert!(native_focus_plan(&malformed,2,&[],true).is_err());
+        assert!(app_focus_command(&malformed,"app",&["identical".into()],true).is_err());
     }
     #[test]
     fn exact_native_id_ignores_duplicate_titles_and_refuses_closed_target() {
