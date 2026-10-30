@@ -156,3 +156,16 @@ shortcut acceptance installs the module-generated rebinding, verifies dispatch
 and menu hints, and keeps application text input separate. This does not certify
 layout switching, arbitrary compositor modes, raw keycode configuration or keys
 that a remote client never transmitted.
+
+The separate Settings presentation corpus opens the actual Accessibility →
+Configured Shortcuts page at 480×360 and 790×640, with 100% and 150% text in
+both light and dark appearances. It follows real Qt Tab and reverse Tab focus
+through the selector, chord field and all four actions, types a disposable draft
+and discards it by keyboard. Each of 48 frames checks the actual parent
+Flickable's focus reveal, laid out text bounds and painted control foreground.
+The pane may exceed the viewport; its scrolling parent must reveal each control.
+An injected presentation service rejects all mutations, so this corpus does not
+deploy settings or certify native input masks. Qt offscreen's exact unsupported
+window-mask diagnostic is retained and counted once per window show; all other
+warnings fail the fixture. The functional editor and native runtime acceptance
+above cover application and dispatch separately.
