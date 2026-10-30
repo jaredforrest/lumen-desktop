@@ -291,6 +291,94 @@ fn projection_command(node: &Value, enabled: bool) -> Result<String> {
         if enabled { "on" } else { "off" }
     ))
 }
+fn native_parent(tree: &Value, id: &Value) -> Option<Value> {
+    for key in ["nodes", "floating_nodes"] {
+        if let Some(children) = tree[key].as_array() {
+            for child in children {
+                if child["id"] == *id {
+                    return Some(tree.clone());
+                }
+                if let Some(parent) = native_parent(child, id) {
+                    return Some(parent);
+                }
+            }
+        }
+    }
+    None
+}
+fn inactive_split_origin(f: &mut Fixture, original: &str) -> Result<()> {
+    let root = f.mapped(0, 0)?;
+    let bystander = f.mapped(1, 0)?;
+    ipc!(
+        f,
+        "[con_id={}] floating disable; [con_id={}] floating disable; [con_id={}] split v",
+        i(&root, "id")?,
+        i(&bystander, "id")?,
+        i(&root, "id")?
+    )?;
+    let parent = wait("actual single-leaf nonview split", || {
+        let parent = native_parent(&f.tree()?, &root["id"]).ok_or("Root parent missing")?;
+        Ok((parent["type"] == "con"
+            && parent["pid"].is_null()
+            && parent["nodes"]
+                .as_array()
+                .is_some_and(|nodes| nodes.len() == 1 && nodes[0]["id"] == root["id"])
+            && parent["floating_nodes"]
+                .as_array()
+                .is_none_or(Vec::is_empty))
+        .then_some(parent))
+    })?;
+    let inactive = "transfer-inactive-split-origin";
+    ipc!(
+        f,
+        "[con_id={}] move container to workspace {inactive}",
+        i(&parent, "id")?
+    )?;
+    f.focus(1, 0, None)?;
+    let tree = stable(f)?;
+    let (workspace, _) = origin(&tree, &root["id"], None, None).ok_or("Inactive origin missing")?;
+    let actual_parent = native_parent(&tree, &root["id"]).ok_or("Inactive split missing")?;
+    save(
+        "inactive-origin-precondition",
+        &json!({"tree":tree,"parent":actual_parent,"workspace":workspace}),
+    )?;
+    require(
+        workspace["name"] == inactive
+            && actual_parent["id"] == parent["id"]
+            && actual_parent["type"] == "con"
+            && actual_parent["pid"].is_null()
+            && actual_parent["nodes"]
+                .as_array()
+                .is_some_and(|nodes| nodes.len() == 1 && nodes[0]["id"] == root["id"])
+            && workspace["nodes"]
+                .as_array()
+                .is_some_and(|nodes| nodes.len() == 1 && nodes[0]["id"] == parent["id"])
+            && workspace["floating_nodes"]
+                .as_array()
+                .is_none_or(Vec::is_empty)
+            && current(f)? == original
+            && f.focused(1, 0)?,
+        "Fixture must retain an actual inactive origin containing only a nonview split and its last leaf",
+    )?;
+    move_family(f, original, false, "inactive-origin-last-leaf")?;
+    let after = f.tree()?;
+    save("inactive-origin-retired", &after)?;
+    require(
+        find_node(&after, &|node| node["id"] == parent["id"]).is_none()
+            && find_node(&after, &|node| {
+                node["type"] == "workspace" && node["name"] == inactive
+            })
+            .is_none(),
+        "Empty inactive origin split/workspace did not retire",
+    )?;
+    ipc!(
+        f,
+        "[con_id={}] floating enable; [con_id={}] floating enable",
+        i(&root, "id")?,
+        i(&bystander, "id")?
+    )?;
+    Ok(())
+}
 fn initialize_display_policy(f: &Fixture) -> Result<()> {
     let mut query = |args: &[&str]| -> lumen_spaces::Result<Value> {
         let mut raw_args = vec!["-r"];
@@ -369,6 +457,8 @@ pub(super) fn run(f: &mut Fixture, options: &Options) -> Result<()> {
     move_family(f, "transfer-floating", false, "floating")?;
     move_family(f, &original, false, "floating-return")?;
     f.checks.push("Actual floating X11 transfer and return preserve native PID/foreign/XID and visible workspace");
+    inactive_split_origin(f, &original)?;
+    f.checks.push("Actual last tiled leaf leaves an inactive nonview split and retires its origin safely while unrelated visible focus/input stay unchanged");
     let xid = f.xid(0, 0)?;
     f.command(0, "parent", 1, xid)?;
     f.command(0, "property", 1, 0)?;
