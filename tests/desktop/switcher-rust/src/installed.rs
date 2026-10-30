@@ -68,32 +68,12 @@ fn app(
     identities.insert(title.into(), json!([node["id"], node["pid"]]));
     Ok(())
 }
-fn held(ctx: &mut Context, shell: u32, reverse: bool, repeat: usize) -> Result<(usize, i64, u64)> {
+fn held(ctx: &mut Context, shell: u32, reverse: bool, repeat: usize) -> Result<(held_keyboard::Held, i64, u64)> {
     let commits = status(ctx, shell)?["picker"]["commits"]
         .as_i64()
         .ok_or("Commit count missing")?;
     let events = fs::metadata(ctx.opt.output.join("native-events.jsonl"))?.len();
-    let mut keys = vec![
-        "-M".to_owned(),
-        "logo".into(),
-        "-P".into(),
-        "Super_L".into(),
-    ];
-    if reverse {
-        keys.extend(["-M".into(), "shift".into()]);
-    }
-    for _ in 0..repeat {
-        keys.extend(["-k".into(), "Tab".into(), "-s".into(), "200".into()]);
-    }
-    keys.extend(["-s".into(), "1600".into()]);
-    if reverse {
-        keys.extend(["-m".into(), "shift".into()]);
-    }
-    keys.extend(["-p".into(), "Super_L".into(), "-m".into(), "logo".into()]);
-    let refs = keys.iter().map(String::as_str).collect::<Vec<_>>();
-    let tool = ctx.opt.wtype.clone();
-    let index = ctx.launch(&tool, &refs, &format!("keys-{}.log", ctx.procs.len()))?;
-    Ok((index, commits, events))
+    Ok((held_keyboard::Held::start(ctx,reverse,repeat)?, commits, events))
 }
 fn preview(
     ctx: &Context,
@@ -128,13 +108,6 @@ fn preview(
         }
     }
     Ok(state)
-}
-fn release(ctx: &mut Context, index: usize) -> Result<()> {
-    let status = ctx.procs[index].0.wait()?;
-    ensure(
-        status.success(),
-        format!("Physical key sequence exited {status}"),
-    )
 }
 fn kill_window(ctx: &Context, title: &str) -> Result<()> {
     let node = ctx
@@ -335,7 +308,7 @@ pub fn run(ctx: &mut Context) -> Result<()> {
         previewed["picker"]["key"] == "lumen-fixture-b",
         "Forward preview wrong app",
     )?;
-    release(ctx, proc)?;
+    proc.release()?;
     let mut trace=vec![previewed];
     let forward=wait("forward release B", || {
         let state=status(ctx,shell)?;
@@ -355,7 +328,7 @@ pub fn run(ctx: &mut Context) -> Result<()> {
         previewed["picker"]["key"] == "lumen-fixture-c",
         "Reverse preview wrong app",
     )?;
-    release(ctx, proc)?;
+    proc.release()?;
     wait("reverse release C", || {
         Ok((focused(ctx, &identities)?.as_deref() == Some("C")).then_some(()))
     })?;
@@ -363,10 +336,10 @@ pub fn run(ctx: &mut Context) -> Result<()> {
     for title in ["C", "B", "A1"] {
         focus(ctx, shell, title)?;
     }
-    let (proc, commits, offset) = held(ctx, shell, false, 1)?;
+    let (mut proc, commits, offset) = held(ctx, shell, false, 1)?;
     native_selection(&preview(ctx, shell, &identities, commits, offset)?,&identities,"B")?;
-    ctx.keys(&["-k", "Escape"])?;
-    release(ctx, proc)?;
+    proc.key(1)?;
+    proc.release()?;
     wait("cancelled picker", || {
         Ok((status(ctx, shell)?["picker"]["phase"] == "cancelled").then_some(()))
     })?;
@@ -462,7 +435,7 @@ pub fn run(ctx: &mut Context) -> Result<()> {
     let (proc, commits, offset) = held(ctx, shell, false, 1)?;
     native_selection(&preview(ctx, shell, &identities, commits, offset)?,&identities,"B")?;
     kill_window(ctx, "B")?;
-    release(ctx, proc)?;
+    proc.release()?;
     wait("removed app cancels", || {
         Ok((status(ctx, shell)?["picker"]["phase"] == "cancelled").then_some(()))
     })?;
@@ -474,7 +447,7 @@ pub fn run(ctx: &mut Context) -> Result<()> {
     for title in ["C", "B2", "A1"] {
         focus(ctx, shell, title)?;
     }
-    let (proc, commits, offset) = held(ctx, shell, false, 1)?;
+    let (mut proc, commits, offset) = held(ctx, shell, false, 1)?;
     native_selection(&preview(ctx, shell, &identities, commits, offset)?,&identities,"B2")?;
     kill_window(ctx, "B2")?;
     app(ctx, shell, &mut identities, "B3", "lumen-fixture-b")?;
@@ -482,7 +455,12 @@ pub fn run(ctx: &mut Context) -> Result<()> {
     // captured source beneath the overlay so a stale replacement dispatch
     // cannot masquerade as successful refusal.
     ctx.focus("A1")?;
-    release(ctx, proc)?;
+    proc.assert_held()?;
+    let held_state=status(ctx,shell)?;
+    ensure(held_state["picker"]["visible"]==true && held_state["picker"]["phase"]=="preview" && held_state["picker"]["commits"]==commits,"Replacement setup outlived the physical held preview")?;
+    native_selection(&held_state,&identities,"B2")?;
+    save(&out.join("replacement-still-held.json"),&held_state)?;
+    proc.release()?;
     wait("same-app replacement refused", || {
         let state=status(ctx,shell)?;
         Ok((state["picker"]["phase"]=="cancelled" && state["picker"]["commits"]==commits && focused(ctx, &identities)?.as_deref() == Some("A1")).then_some(()))
@@ -506,13 +484,13 @@ pub fn run(ctx: &mut Context) -> Result<()> {
     for title in ["C", "A1"] {
         focus(ctx, shell, title)?;
     }
-    let (proc, commits, offset) = held(ctx, shell, false, 1)?;
+    let (mut proc, commits, offset) = held(ctx, shell, false, 1)?;
     let previewed = preview(ctx, shell, &identities, commits, offset)?;
     ensure(
         previewed["picker"]["key"] == "lumen-fixture-c",
         "Minimized preview start wrong",
     )?;
-    ctx.keys(&["-k", "Tab"])?;
+    proc.key(15)?;
     wait("minimized app selection", || {
         Ok((status(ctx, shell)?["picker"]["key"] == "lumen-fixture-b").then_some(()))
     })?;
@@ -521,7 +499,7 @@ pub fn run(ctx: &mut Context) -> Result<()> {
         status(ctx, shell)?["picker"]["commits"] == commits,
         "Minimized preview committed early",
     )?;
-    release(ctx, proc)?;
+    proc.release()?;
     wait("restore minimized B3", || {
         Ok((focused(ctx, &identities)?.as_deref() == Some("B3")).then_some(()))
     })?;

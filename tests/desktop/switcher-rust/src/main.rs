@@ -1,5 +1,6 @@
 //! Real keyboard switcher acceptance against isolated and installed shells.
 mod installed;
+mod held_keyboard;
 mod model;
 
 use serde_json::{Value, json};
@@ -172,6 +173,7 @@ struct Options {
     action: Option<PathBuf>,
     sway: PathBuf,
     wtype: PathBuf,
+    keyboard: Option<PathBuf>,
     output: PathBuf,
     effects: bool,
 }
@@ -181,6 +183,7 @@ fn options() -> Result<Options> {
     let mut action = None;
     let mut sway = None;
     let mut wtype = PathBuf::from("wtype");
+    let mut keyboard = None;
     let mut output = None;
     let mut effects = false;
     let mut args = env::args_os().skip(1);
@@ -193,6 +196,7 @@ fn options() -> Result<Options> {
             Some("--action") => action = Some(PathBuf::from(args.next().ok_or("Missing action")?)),
             Some("--sway") => sway = Some(PathBuf::from(args.next().ok_or("Missing compositor")?)),
             Some("--wtype") => wtype = PathBuf::from(args.next().ok_or("Missing wtype")?),
+            Some("--keyboard") => keyboard = Some(PathBuf::from(args.next().ok_or("Missing keyboard")?)),
             Some("--output") => output = Some(PathBuf::from(args.next().ok_or("Missing output")?)),
             Some("--effects") => effects = true,
             _ => {
@@ -215,6 +219,7 @@ fn options() -> Result<Options> {
         action,
         sway: sway.ok_or("Compositor required")?,
         wtype,
+        keyboard,
         output,
         effects,
     })
