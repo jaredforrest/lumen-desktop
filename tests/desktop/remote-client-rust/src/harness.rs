@@ -96,16 +96,17 @@ impl Options {
                 "wrong-identity",
                 "wrong-password",
                 "interactions",
+                "text-clipboard",
             ]
             .contains(&o.scenario.as_str()),
             "Unknown scenario",
         )?;
         ensure(
-            o.scenario != "interactions" || o.protocol != "ssh",
+            !o.viewer_workflow() || o.protocol != "ssh",
             "Viewer interactions require VNC or RDP",
         )?;
         ensure(
-            o.scenario != "interactions"
+            !o.viewer_workflow()
                 || o.protocol != "rdp"
                 || ["xrdp", "x11vnc"]
                     .iter()
@@ -117,6 +118,9 @@ impl Options {
     }
     pub fn tool(&self, name: &str) -> PathBuf {
         self.tools[name].clone()
+    }
+    pub fn viewer_workflow(&self) -> bool {
+        ["interactions", "text-clipboard"].contains(&self.scenario.as_str())
     }
 }
 pub fn ensure(ok: bool, message: impl Into<String>) -> Result<()> {
@@ -881,7 +885,7 @@ pub fn inside(o: Options) -> Result<()> {
             (
                 "remmina",
                 "remmina.pref",
-                if f.o.scenario == "interactions" {
+                if f.o.viewer_workflow() {
                     "[remmina_pref]\nfloating_toolbar_monitor=0\ndisable_tray_icon=true\nhostkey=65481\nshortcutkey_fullscreen=102\n"
                 } else {
                     "[remmina_pref]\nfloating_toolbar_monitor=0\ndisable_tray_icon=true\n"

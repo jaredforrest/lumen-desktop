@@ -15,13 +15,16 @@ use std::{
 fn args(values: &[String]) -> Vec<OsString> {
     values.iter().map(OsString::from).collect()
 }
+const REMOTE_TEXT: &str =
+    "remote café — Ελληνικά 漢字 العربية 🌍\ncombining e\u{301}\n\nfinal line\n";
+const LOCAL_TEXT: &str = "local naïve € → 日本語 עברית 🧭\ncombining a\u{308}\n\nlast local line\n";
 pub fn target(f: &mut Harness) -> Result<()> {
     let local_display = f
         .env
         .get("WAYLAND_DISPLAY")
         .cloned()
         .ok_or("Local display")?;
-    if f.o.protocol == "vnc" && f.o.scenario == "interactions" {
+    if f.o.protocol == "vnc" && f.o.viewer_workflow() {
         let runtime = PathBuf::from(f.env.get("XDG_RUNTIME_DIR").ok_or("Runtime")?);
         let existing = fs::read_dir(&runtime)?
             .flatten()
@@ -148,7 +151,17 @@ pub fn target(f: &mut Harness) -> Result<()> {
         .parent()
         .ok_or("Fixture bin directory")?
         .join("lumen-remote-target");
-    f.launch_s(target, &[], "target.log")?;
+    if f.o.scenario == "text-clipboard" {
+        let seed = f.private.join("remote-text.txt");
+        fs::write(&seed, REMOTE_TEXT)?;
+        f.launch_s(
+            target,
+            &["--multiline", "--seed-file", &s(&seed)],
+            "target.log",
+        )?;
+    } else {
+        f.launch_s(target, &[], "target.log")?;
+    }
     if f.o.protocol == "rdp" || f.remote_display.is_some() {
         wait("independent remote target", || Ok(f.target().ok()))?;
         f.env.insert("GDK_BACKEND".into(), "wayland".into());
@@ -322,8 +335,8 @@ fn vnc(f: &mut Harness) -> Result<()> {
             .then_some(()))
     })?;
     let original = f.safe_target()?;
-    if f.o.scenario == "interactions" {
-        return interactions(f);
+    if f.o.viewer_workflow() {
+        return viewer_workflow(f);
     }
     pause(400);
     f.capture("authenticated.png")?;
@@ -395,7 +408,7 @@ fn rdp_start(f: &mut Harness, sam: &Path, log: &str) -> Result<usize> {
     Ok(index)
 }
 fn rdp(f: &mut Harness) -> Result<()> {
-    if f.o.scenario == "interactions" {
+    if f.o.viewer_workflow() {
         return rdp_clipboard(f);
     }
     let sam = f.call(
@@ -482,8 +495,8 @@ fn rdp(f: &mut Harness) -> Result<()> {
             .then_some(()))
     })?;
     let original = f.safe_target()?;
-    if f.o.scenario == "interactions" {
-        return interactions(f);
+    if f.o.viewer_workflow() {
+        return viewer_workflow(f);
     }
     pause(400);
     f.capture("authenticated.png")?;
@@ -652,7 +665,68 @@ fn rdp_clipboard(f: &mut Harness) -> Result<()> {
             .contains("VNC connection complete, connected ok")
             .then_some(()))
     })?;
-    interactions(f)
+    viewer_workflow(f)
+}
+fn viewer_workflow(f: &mut Harness) -> Result<()> {
+    if f.o.scenario == "text-clipboard" {
+        text_clipboard(f)
+    } else {
+        interactions(f)
+    }
+}
+fn text_clipboard(f: &mut Harness) -> Result<()> {
+    let original = f.safe_target()?;
+    ensure(
+        original["text"] == REMOTE_TEXT,
+        "Seeded remote document differs",
+    )?;
+    focus_viewer(f)?;
+    chord(f, "a")?;
+    chord(f, "c")?;
+    pause(1500);
+    let target = env::current_exe()?
+        .parent()
+        .ok_or("Fixture bin")?
+        .join("lumen-remote-target");
+    let local = f.launch_s(&target, &["--local", "--multiline"], "local-corpus.log")?;
+    focus_app(f, "org.lumen.LocalTarget")?;
+    let remote_to_local = paste_until(f, true, REMOTE_TEXT)?;
+    let received_local = f.target_named("org.lumen.LocalTarget")?;
+    f.stop(local)?;
+    wait("local document bus release", || {
+        Ok(f.target_named("org.lumen.LocalTarget")
+            .is_err()
+            .then_some(()))
+    })?;
+    let seed = f.private.join("local-text.txt");
+    fs::write(&seed, LOCAL_TEXT)?;
+    f.launch_s(
+        target,
+        &["--local", "--multiline", "--seed-file", &s(&seed)],
+        "local-corpus-reverse.log",
+    )?;
+    focus_app(f, "org.lumen.LocalTarget")?;
+    wait("seeded local document", || {
+        Ok((f.target_named("org.lumen.LocalTarget")?["text"] == LOCAL_TEXT).then_some(()))
+    })?;
+    chord(f, "a")?;
+    chord(f, "c")?;
+    pause(1500);
+    focus_viewer(f)?;
+    let local_to_remote = paste_until(f, false, LOCAL_TEXT)?;
+    let received_remote = f.safe_target()?;
+    ensure(
+        original["pid"] == received_remote["pid"],
+        "Remote document restarted during text transfer",
+    )?;
+    save(
+        &f.out.join("text-clipboard-acceptance.json"),
+        &json!({"protocol":f.o.protocol,"scenario":f.o.scenario,"remoteToLocal":remote_to_local,"localToRemote":local_to_remote,"remoteText":REMOTE_TEXT,"localText":LOCAL_TEXT,"localReceipt":received_local,"remoteReceipt":received_remote,"remoteTargetIdentityRetained":true,"independentDisplays":true,"corpus":["Latin diacritics","Greek","CJK","RTL scripts","supplementary-plane emoji","combining marks","multiline","blank lines","trailing newline"],"notClaimed":["HTML","files","Windows"]}),
+    )?;
+    ensure(
+        remote_to_local && local_to_remote,
+        "Unicode/multiline clipboard differs; exact receipts retained",
+    )
 }
 fn focus_app(f: &Harness, app: &str) -> Result<Value> {
     let node = wait("interaction window mapping", || {

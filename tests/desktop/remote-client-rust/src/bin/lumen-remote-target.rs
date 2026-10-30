@@ -35,6 +35,16 @@ unsafe extern "C" {
     );
     fn gtk_drawing_area_new() -> *mut c_void;
     fn gtk_entry_new() -> *mut c_void;
+    fn gtk_text_view_new() -> *mut c_void;
+    fn gtk_text_view_get_buffer(view: *mut c_void) -> *mut c_void;
+    fn gtk_text_buffer_get_bounds(buffer: *mut c_void, start: *mut c_void, end: *mut c_void);
+    fn gtk_text_buffer_get_text(
+        buffer: *mut c_void,
+        start: *const c_void,
+        end: *const c_void,
+        hidden: c_int,
+    ) -> *mut c_char;
+    fn gtk_text_buffer_set_text(buffer: *mut c_void, text: *const c_char, length: c_int);
     fn gtk_entry_get_text(entry: *mut c_void) -> *const c_char;
     fn gtk_entry_set_placeholder_text(entry: *mut c_void, text: *const c_char);
     fn gtk_widget_show_all(widget: *mut c_void);
@@ -43,6 +53,7 @@ unsafe extern "C" {
 #[link(name = "glib-2.0")]
 unsafe extern "C" {
     fn g_set_prgname(name: *const c_char);
+    fn g_free(pointer: *mut c_void);
 }
 #[link(name = "gobject-2.0")]
 unsafe extern "C" {
@@ -100,6 +111,18 @@ unsafe extern "C" fn changed(entry: *mut c_void, state: *mut c_void) {
             .into_owned();
     }
 }
+unsafe extern "C" fn document_changed(buffer: *mut c_void, state: *mut c_void) {
+    unsafe {
+        // Opaque, pointer-aligned storage exceeds GtkTextIter on supported 64-bit targets.
+        let mut start = [0usize; 16];
+        let mut end = [0usize; 16];
+        gtk_text_buffer_get_bounds(buffer, start.as_mut_ptr().cast(), end.as_mut_ptr().cast());
+        let text = gtk_text_buffer_get_text(buffer, start.as_ptr().cast(), end.as_ptr().cast(), 1);
+        let shared = &*(state as *const Arc<Mutex<State>>);
+        shared.lock().unwrap().text = CStr::from_ptr(text).to_string_lossy().into_owned();
+        g_free(text.cast());
+    }
+}
 #[repr(C)]
 struct KeyEvent {
     kind: c_int,
@@ -126,7 +149,14 @@ unsafe extern "C" fn destroy(_: *mut c_void, _: *mut c_void) {
     }
 }
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let local = std::env::args().any(|argument| argument == "--local");
+    let arguments = std::env::args().skip(1).collect::<Vec<_>>();
+    let local = arguments.iter().any(|argument| argument == "--local");
+    let multiline = arguments.iter().any(|argument| argument == "--multiline");
+    let seed = arguments
+        .windows(2)
+        .find(|pair| pair[0] == "--seed-file")
+        .map(|pair| std::fs::read_to_string(&pair[1]))
+        .transpose()?;
     let shared = Arc::new(Mutex::new(State::default()));
     let _bus = zbus::blocking::connection::Builder::session()?
         .name(if local {
@@ -165,18 +195,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
             gtk_grid_attach(grid, area, (index % 2) as i32, (index / 2) as i32, 1, 1);
         }
-        let entry = gtk_entry_new();
-        gtk_entry_set_placeholder_text(entry, c"Synthetic remote input".as_ptr());
+        let entry = if multiline {
+            gtk_text_view_new()
+        } else {
+            gtk_entry_new()
+        };
+        if !multiline {
+            gtk_entry_set_placeholder_text(entry, c"Synthetic remote input".as_ptr());
+        }
         gtk_box_pack_start(layout, entry, 0, 0, 0);
         let data = Box::into_raw(Box::new(shared)).cast();
         g_signal_connect_data(
-            entry,
+            if multiline {
+                gtk_text_view_get_buffer(entry)
+            } else {
+                entry
+            },
             c"changed".as_ptr(),
-            changed as *const c_void,
+            if multiline {
+                document_changed as *const c_void
+            } else {
+                changed as *const c_void
+            },
             data,
             std::ptr::null(),
             0,
         );
+        if let Some(seed) = seed {
+            if !multiline {
+                return Err("Seeded documents require the multiline fixture".into());
+            }
+            let seed = std::ffi::CString::new(seed)?;
+            gtk_text_buffer_set_text(
+                gtk_text_view_get_buffer(entry),
+                seed.as_ptr(),
+                seed.as_bytes().len().try_into()?,
+            );
+        }
         g_signal_connect_data(
             entry,
             c"key-press-event".as_ptr(),
