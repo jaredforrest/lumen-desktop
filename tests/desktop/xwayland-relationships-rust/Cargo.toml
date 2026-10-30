@@ -9,3 +9,5 @@ libc = "0.2"
 serde_json = "1"
 sha2 = "0.10"
 x11rb = "=0.13.2"
+lumen-spaces = { path = "../../../res/lumen-desktop/spaces" }
+lumen-window-policy = { path = "../../../res/lumen-desktop/window-policy" }

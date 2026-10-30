@@ -1,5 +1,6 @@
 //! Actual X11 ancestry, modal transitions, XRes ownership, and key recipients.
 mod projection;
+mod transfer;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
@@ -45,6 +46,7 @@ struct Options {
     without_xres: bool,
     projection: bool,
     projection_groups: bool,
+    transfer: bool,
     inside: bool,
     run: bool,
     parent_net: Option<String>,
@@ -61,6 +63,7 @@ fn options() -> Result<Options> {
     let mut without_xres = false;
     let mut projection = false;
     let mut projection_groups = false;
+    let mut transfer = false;
     let mut inside = false;
     let mut run = false;
     let mut parent_net = None;
@@ -101,6 +104,7 @@ fn options() -> Result<Options> {
             Some("--effects") => effects = true,
             Some("--without-xres") => without_xres = true,
             Some("--projection") => projection = true,
+            Some("--transfer") => transfer = true,
             Some("--projection-groups") => {
                 projection = true;
                 projection_groups = true;
@@ -121,6 +125,7 @@ fn options() -> Result<Options> {
         without_xres,
         projection,
         projection_groups,
+        transfer,
         inside,
         run,
         parent_net,
@@ -177,6 +182,9 @@ fn args_for(options: &Options, inside: bool, run: bool) -> Vec<String> {
     }
     if options.projection_groups {
         args.push("--projection-groups".into());
+    }
+    if options.transfer {
+        args.push("--transfer".into());
     }
     if inside {
         args.push("--inside".into());
@@ -865,7 +873,9 @@ impl Fixture {
 
 fn run(options: &Options) -> Result<()> {
     let mut f = Fixture::new(options)?;
-    if options.projection {
+    if options.transfer {
+        transfer::run(&mut f, options)?;
+    } else if options.projection {
         projection::run(&mut f, options)?;
     } else if options.without_xres {
         require(
@@ -943,7 +953,8 @@ fn run(options: &Options) -> Result<()> {
     .collect::<Result<serde_json::Map<String, Value>>>()?;
     let report = json!({
         "passed":true, "checks":f.checks, "sourceRevision":options.revision,
-        "effects":options.effects, "withoutXRes":options.without_xres, "projection":options.projection,
+        "effects":options.effects, "withoutXRes":options.without_xres, "projection":options.projection, "transfer":options.transfer,
+        "transferFixtureSha256":if options.transfer {Some(file_hash(Path::new("/source/tests/desktop/xwayland-relationships-rust/src/transfer.rs"))?)}else{None},
         "projectionFixtureSha256":if options.projection {Some(file_hash(Path::new("/source/tests/desktop/xwayland-relationships-rust/src/projection.rs"))?)}else{None},
         "fixtureSha256":file_hash(Path::new("/source/tests/desktop/xwayland-relationships-rust/src/main.rs"))?,
         "packages":packages,
