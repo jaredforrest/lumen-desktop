@@ -926,8 +926,10 @@ fn run_checks(t: &mut Test) -> Result<()> {
     let removed = wait("held preview selected resource removal", 12, || {
         let state = t.state()?;
         Ok((state["selected"] == -1
-            && state["results"].as_array().is_some_and(|rows| rows.iter().all(|row| row["path"] != captured)))
-            .then_some(state))
+            && state["results"]
+                .as_array()
+                .is_some_and(|rows| rows.iter().all(|row| row["path"] != captured)))
+        .then_some(state))
     })?;
     t.pointer_up()?;
     t.reopen()?;
@@ -937,10 +939,15 @@ fn run_checks(t: &mut Test) -> Result<()> {
         t.opened()?.len() == 3,
         "Held preview release opened a removed or replacement resource",
     )?;
-    let fresh = t.selected()?["path"].as_str().ok_or("fresh selected path")?.to_owned();
+    let fresh = t.selected()?["path"]
+        .as_str()
+        .ok_or("fresh selected path")?
+        .to_owned();
     fs::write(
         out.join("held-preview-refusal.json"),
-        serde_json::to_vec_pretty(&json!({"capturedPath":captured,"physicalButton":pressed,"afterRemoval":removed,"freshPath":fresh,"openedAfterRelease":t.opened()?}))?,
+        serde_json::to_vec_pretty(
+            &json!({"capturedPath":captured,"physicalButton":pressed,"afterRemoval":removed,"freshPath":fresh,"openedAfterRelease":t.opened()?}),
+        )?,
     )?;
     t.pointer("Open")?;
     wait("captured preview button", 12, || {
