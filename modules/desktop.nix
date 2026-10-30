@@ -189,6 +189,7 @@ in {
     shortcutRequests = pkgs.writeText "lumen-shortcut-requests.json" (builtins.toJSON { version = 1; bindings = rebound.requested; });
     shortcutEditor = pkgs.writeText "lumen-shortcut-editor.json" (builtins.toJSON {
       version = 1; editable = cfg.shortcuts.editable;
+      registrySource = shortcutRegistry;
       bindings = map (row: {
         inherit (row) id action defaultChord enabled;
         chord = row.chord;

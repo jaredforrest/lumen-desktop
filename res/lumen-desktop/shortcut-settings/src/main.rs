@@ -58,6 +58,16 @@ fn snapshot() -> Result<Snapshot> {
     {
         return Err("Configured shortcuts are invalid; editing is unavailable".into());
     }
+    let expected = PathBuf::from(
+        catalog["registrySource"]
+            .as_str()
+            .ok_or("Shortcut generation identity is missing")?,
+    );
+    if !expected.starts_with("/nix/store") || read(&expected)?.0 != registry_bytes {
+        return Err(
+            "Shortcut configuration is between generations; wait for publication to finish".into(),
+        );
+    }
     let mut digest = Sha256::new();
     digest.update((catalog_bytes.len() as u64).to_le_bytes());
     digest.update(catalog_bytes);
@@ -132,30 +142,42 @@ fn validate(s: &Snapshot, row: &Value, chord: Option<&str>) -> Result<()> {
     }
     Ok(())
 }
-fn confirms(id: &str, chord: Option<&str>) -> bool {
-    snapshot().is_ok_and(|s| {
-        s.catalog["editable"] == true
-            && s.catalog["bindings"].as_array().is_some_and(|rows| {
-                rows.iter().any(|r| {
-                    r["id"] == id
-                        && r["editable"] == true
-                        && match chord {
-                            None => r["enabled"] == false && r["chord"].is_null(),
-                            Some(chord) => {
-                                r["enabled"] == true
-                                    && r["chord"] == chord
-                                    && s.registry["bindings"].as_array().is_some_and(|bindings| {
-                                        bindings.iter().any(|b| {
-                                            b["id"] == format!("sway:{chord}")
-                                                && b["action"] == r["action"]
-                                                && b["enabled"] == true
-                                        })
-                                    })
-                            }
+fn confirms(id: &str, chord: Option<&str>) -> Option<Snapshot> {
+    let s = snapshot().ok()?;
+    let confirmed = s.catalog["editable"] == true
+        && s.catalog["bindings"].as_array().is_some_and(|rows| {
+            rows.iter().any(|r| {
+                r["id"] == id
+                    && r["editable"] == true
+                    && match chord {
+                        None => {
+                            r["enabled"] == false
+                                && r["chord"].is_null()
+                                && !s.registry["bindings"].as_array().unwrap().iter().any(|b| {
+                                    b["id"]
+                                        == format!(
+                                            "sway:{}",
+                                            r["defaultChord"].as_str().unwrap_or("")
+                                        )
+                                        && b["action"] == r["action"]
+                                        && b["enabled"] == true
+                                })
                         }
-                })
+                        Some(chord) => {
+                            r["enabled"] == true
+                                && r["chord"] == chord
+                                && s.registry["bindings"].as_array().is_some_and(|bindings| {
+                                    bindings.iter().any(|b| {
+                                        b["id"] == format!("sway:{chord}")
+                                            && b["action"] == r["action"]
+                                            && b["enabled"] == true
+                                    })
+                                })
+                        }
+                    }
             })
-    })
+        });
+    confirmed.then_some(s)
 }
 fn edit(request: &Value, s: &Snapshot) -> Result<Value> {
     if s.catalog["editable"] != true {
@@ -224,8 +246,8 @@ fn edit(request: &Value, s: &Snapshot) -> Result<Value> {
     ])?;
     let deadline = Instant::now() + Duration::from_secs(5);
     while Instant::now() < deadline {
-        if confirms(id, chord) {
-            let mut reply = status(&snapshot()?);
+        if let Some(witness) = confirms(id, chord) {
+            let mut reply = status(&witness);
             reply["message"] =
                 json!("Shortcut applied and confirmed in the effective configuration");
             return Ok(reply);
