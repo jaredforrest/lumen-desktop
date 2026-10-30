@@ -183,6 +183,9 @@
         test-menu-exporter-fixture = import ./tests/desktop/fixtures/menu-exporter-rust { inherit pkgs; };
         test-menu-native-fixture = import ./tests/desktop/menu-native-rust { inherit pkgs; };
         test-lifecycle-native-fixture = import ./tests/desktop/lifecycle-native-rust { inherit pkgs; };
+        test-toplevel-identity-wire = import ./tests/desktop/toplevel-identity-wire-rust { inherit pkgs; };
+        test-toplevel-identity-environment = pkgs.coreutils;
+        test-toplevel-identity-legacy-compositor = compositorPkgs.sway;
         test-media-control-fixture = import ./tests/desktop/media-control-rust { inherit pkgs; };
         test-system-popover-fixture = import ./tests/desktop/system-popover-rust { inherit pkgs; };
         test-owned-window-context-fixture = import ./tests/desktop/owned-window-context-rust { inherit pkgs; };

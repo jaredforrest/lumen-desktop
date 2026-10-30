@@ -286,4 +286,5 @@ def main [] {
     ^nu tests/ci/run-native.nu session_end_effects -- (artifact 'lifecycle-native-fixture/bin/lumen-lifecycle-native-fixture') session --launcher $shell --sway $effects --effects --output artifacts/session-end-effects
     ^nu tests/ci/run-native.nu session_recovery_basic -- (artifact 'lifecycle-native-fixture/bin/lumen-lifecycle-native-fixture') recovery --launcher $shell --sway $basic --output artifacts/session-recovery-basic
     ^nu tests/ci/run-native.nu session_recovery_effects -- (artifact 'lifecycle-native-fixture/bin/lumen-lifecycle-native-fixture') recovery --launcher $shell --sway $effects --effects --output artifacts/session-recovery-effects
+    ^nu tests/ci/toplevel-identity.nu $shell $basic $effects
 }
