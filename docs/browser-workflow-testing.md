@@ -73,3 +73,50 @@ produce the exact target and a painted completed download record. This does not
 claim every keyboard-only chooser route, error or disconnected-volume workflow.
 The retained browser's direct GTK fallback has a separately retained unsafe
 existing-target diagnostic; it is not accepted by this corpus.
+
+`--workflow keyboard-save --portal-tools <immutable-tools-json>` adds a separate
+keyboard route. After the disclosed common startup/focus checks, the runner
+forbids pointer actions and records each physical keyboard request. It checks
+Save As cancellation, a new exact target, existing-target cancellation and
+explicit Replace through the captured standard chooser. The same parent,
+provider, filesystem hash and completed-download checks remain mandatory. This
+route does not certify the unsafe direct GTK fallback or every chooser shortcut.
+
+The fixture build also reads hash-pinned upstream chooser sources and the pinned
+GTK header. A narrow parser checks the actual accept-response contract:
+Chromium's custom response zero is outside GTK's stock accept responses, so GTK
+does not run its ordinary overwrite-validation gate for that response. The
+browser deliberately avoids the stock default-button behavior to prevent
+held-Enter acceptance. This is a regression diagnostic for the known mismatch,
+not a repair; replacing the response value without testing that security
+behavior is insufficient. Source changes fail this diagnostic for reassessment.
+
+## Provider source-build feasibility
+
+The pinned package is Brave 1.96.61, distributed by the current package set as
+an upstream binary archive. Its public `brave-core` release tag resolves to
+`eb024dd75e048e2661c9e1ed29952987ee73b12a`; its release manifest selects Chromium
+154.0.8037.98. Source repair is feasible work, rather than an inherent external
+block, but changing this binary package's patches cannot rebuild its browser
+source. It needs a separately reproducible source-build derivation and then the
+same retained-feature and sandbox acceptance.
+
+The [release manifest](https://github.com/brave/brave-core/blob/v1.96.61/package.json)
+requires Node 24 and pnpm 11, selects the Chromium revision and supplies locked
+JavaScript dependencies. The [release build instructions](https://github.com/brave/brave-core/blob/v1.96.61/README.md)
+initialize Chromium plus its dependencies. Chromium additionally uses its pinned
+Clang/libc++, GN/Ninja, Python tooling, sysroot and DEPS/CIPD inputs. A reproducible
+recipe must also freeze depot_tools, downloaded toolchains, build arguments,
+source patches and all initialization outputs; the top-level browser tag alone
+does not establish that closure.
+
+The [upstream Linux instructions](https://chromium.googlesource.com/chromium/src/+/main/docs/linux/build_instructions.md)
+specify at least 100 GB free disk and recommend more than 16 GB RAM. They warn
+that checkout alone can take 30 minutes on a fast connection. Full clean compile
+time on this host has not been measured; several hours is a planning estimate,
+not an observed result. The inspected host has 16 logical processors and 30 GiB
+RAM, with roughly 106 GiB free on each of two separate filesystems. That narrowly
+meets the minimum, leaving little margin for retained Nix outputs, source caches
+and parallel builds. Before initialization, reserve persistent workspace and
+temporary/output capacity explicitly. No full source checkout, toolchain
+download or browser compilation is implied by these diagnostic tests.
