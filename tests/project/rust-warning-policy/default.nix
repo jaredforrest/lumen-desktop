@@ -18,11 +18,13 @@ let
     expectedBuilderExitCode = 101;
     expectedBuilderLogEntries = [ "unused variable: `policy_fixture_unused`" "-D warnings" ];
   };
-  rejectsCap = value: !(builtins.tryEval (builtins.deepSeq
+  rejectsOverride = value: !(builtins.tryEval (builtins.deepSeq
     (buildOwnedRust (base // value)).drvPath true)).success;
 in
-assert rejectsCap { RUSTFLAGS = "--cap-lints allow"; };
-assert rejectsCap { env.CARGO_ENCODED_RUSTFLAGS = "--cap-lints=allow"; };
+assert rejectsOverride { RUSTFLAGS = "--cap-lints allow"; };
+assert rejectsOverride { env.CARGO_ENCODED_RUSTFLAGS = "--cap-lints=allow"; };
+assert rejectsOverride { env.RUSTFLAGS = "--force-warn unused-variables"; };
+assert rejectsOverride { CARGO_ENCODED_RUSTFLAGS = "--force-warn=unused-variables"; };
 pkgs.linkFarm "lumen-owned-rust-warning-policy" [
   { name = "direct-positive"; path = direct; }
   { name = "env-positive"; path = nested; }

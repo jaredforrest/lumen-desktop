@@ -16,8 +16,8 @@ let
         (environment.${encodedName} or "")
       ]);
     in
-    assert lib.assertMsg (!(lib.hasInfix "--cap-lints" (original + encoded)))
-      "Owned Rust flags cannot cap compiler diagnostics below the warning policy";
+    assert lib.assertMsg (!(lib.any (flag: lib.hasInfix flag (original + encoded)) [ "--cap-lints" "--force-warn" ]))
+      "Owned Rust flags cannot override the compiler warning policy";
     { ${name} = original + " -D warnings"; }
     // lib.optionalAttrs (encoded != "") { ${encodedName} = encoded + separator + "-Dwarnings"; };
 in

@@ -13,8 +13,8 @@ omissions; the offscreen QML check actually compiles and runs those fixtures.
 The builder appends `-D warnings` to compiler and documentation flags while
 preserving existing direct or `env` flags. Encoded Cargo flags take precedence
 over ordinary flags, so the policy also appends the denial to those when present.
-Package-supplied `--cap-lints` is rejected because it could silently downgrade the
-policy. Existing standard Cargo treatment of registry dependencies is unchanged:
+Package-supplied `--cap-lints` and `--force-warn` are rejected because they could
+downgrade the policy. Existing standard Cargo treatment of registry dependencies is unchanged:
 this policy does not globally change upstream packages or claim that their
 diagnostics are warning-free. The three pinned office providers retain their
 existing separate compiler policy and upstream source boundary.
