@@ -1291,7 +1291,9 @@ impl Native {
             || Ok((mapped.elapsed() >= Duration::from_millis(500)).then_some(())),
         )?;
         self.capture("keyboard-save-before-accept.png")?;
-        self.key(&["-M", "alt", "-k", "s", "-m", "alt"])
+        // The captured standard chooser supplies a default Save action; its
+        // browser-provided label does not promise an Alt+S mnemonic.
+        self.key(&["-k", "Return"])
     }
     fn ui_downloads(&mut self) -> Result<Vec<Value>> {
         Ok(self.evaluate("document.querySelector('downloads-manager')?.items_?.map(row=>({id:row.id,filePath:row.filePath,fileName:row.fileName,state:row.state,percent:row.percent,total:String(row.total)}))")?.as_array().cloned().unwrap_or_default())
