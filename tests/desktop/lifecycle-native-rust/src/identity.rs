@@ -72,6 +72,28 @@ fn start_observer(f: &mut Fixture, name: &str, epoch: &str) -> Result<(usize, st
 pub fn run(options: Options) -> Result<()> {
     let absent = options.scenario == "identity-absent";
     let mut f = Fixture::new(options)?;
+    let quickshell = env::split_paths(std::ffi::OsStr::new(
+        f.vars.get("PATH").ok_or("Runtime PATH")?,
+    ))
+    .map(|folder| folder.join("quickshell"))
+    .find(|path| path.is_file())
+    .ok_or("Runtime Quickshell")?
+    .canonicalize()?;
+    require(
+        quickshell.starts_with("/nix/store"),
+        "Immutable Quickshell required",
+    )?;
+    let lifecycle_log = quickshell
+        .parent()
+        .and_then(Path::parent)
+        .ok_or("Quickshell package root")?
+        .join("share/lumen-desktop/toplevel-identity-lifecycle-test.log");
+    fs::copy(
+        lifecycle_log,
+        f.options
+            .output
+            .join("quickshell-identity-lifecycle-test.log"),
+    )?;
     let directory = f.options.output.join("owned-client");
     fs::create_dir(&directory)?;
     let client = f.sibling("lifecycle-client")?;
@@ -104,7 +126,7 @@ pub fn run(options: Options) -> Result<()> {
         f.stop(owner)?;
         return save(
             &f.options.output.join("result.json"),
-            &json!({"passed":true,"missingCapability":true,"ownedPid":pid,"scope":"Actual patched Quickshell connected to an older provider exposes empty optional identifiers for all owned windows; switcher fallback separately covered by actual command fixture"}),
+            &json!({"passed":true,"missingCapability":true,"ownedPid":pid,"quickshell":quickshell,"scope":"Actual patched Quickshell connected to an older provider exposes empty optional identifiers for all owned windows; switcher fallback separately covered by actual command fixture"}),
         );
     }
     let wire = fs::canonicalize(
@@ -236,6 +258,28 @@ pub fn run(options: Options) -> Result<()> {
     }
     f.stop(restarted)?;
     f.stop(second)?;
+    for entry in fs::read_dir(&f.options.output)? {
+        let path = entry?.path();
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("");
+        if path.extension().is_some_and(|extension| extension == "log") && name != "sway.log" {
+            let log = fs::read_to_string(&path)?;
+            require(
+                ![
+                    "WARN",
+                    "TypeError",
+                    "ReferenceError",
+                    "Binding loop",
+                    "CRITICAL",
+                ]
+                .iter()
+                .any(|marker| log.contains(marker)),
+                format!("Owned identity client diagnostic: {name}"),
+            )?;
+        }
+    }
     let renderer = fs::read_to_string(f.options.output.join("sway.log"))?;
     if f.options.effects {
         require(
@@ -245,6 +289,6 @@ pub fn run(options: Options) -> Result<()> {
     }
     save(
         &f.options.output.join("result.json"),
-        &json!({"passed":true,"ownedPid":pid,"originalIdentifiers":ids,"remainingAfterOneClose":remaining,"wireClient":wire,"wireConnections":wire_clients.len(),"checks":["actual QObject property exactly matches owned PID tree identifier set","same app and duplicate titles have distinct stable identifiers","independent observer connections map to the same ext identifier set","new observer binds while both views are hidden in scratchpad","ordinary closure retires exact QObject identities on both connections","owned process exit leaves both observers empty","four independent actual wire connections retain resources after Closed and receive unavailable empty identity"],"scope":"Actual Quickshell optional property and compositor live/inert resource membership; no title/appId join or mixed switcher routing claim","effectsSoftware":!f.options.effects || renderer.contains("llvmpipe")}),
+        &json!({"passed":true,"ownedPid":pid,"originalIdentifiers":ids,"remainingAfterOneClose":remaining,"quickshell":quickshell,"wireClient":wire,"wireConnections":wire_clients.len(),"checks":["actual QObject property exactly matches owned PID tree identifier set","same app and duplicate titles have distinct stable identifiers","independent observer connections map to the same ext identifier set","new observer binds while both views are hidden in scratchpad","ordinary closure retires exact QObject identities on both connections","owned process exit leaves both observers empty","four independent actual wire connections retain resources after Closed and receive unavailable empty identity"],"scope":"Actual Quickshell optional property and compositor live/inert resource membership; no title/appId join or mixed switcher routing claim","effectsSoftware":!f.options.effects || renderer.contains("llvmpipe")}),
     )
 }
