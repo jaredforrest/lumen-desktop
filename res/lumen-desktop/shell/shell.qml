@@ -92,6 +92,7 @@ ShellRoot {
     WindowGroupState {id:windowGroupState}
     readonly property var windowGroupPresentation:windowGroupState.state
     readonly property string windowGroupPresentationError:windowGroupState.presentationError
+    function retryGroupPresentation(){windowGroupState.retryPresentation();}
     GroupMembershipDrag {id:membershipDrag;shell:root;service:windowGroupState}
     property alias groupMembershipDrag:membershipDrag
     signal requestGroupSelector(string name)

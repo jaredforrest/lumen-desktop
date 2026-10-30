@@ -195,6 +195,10 @@
         test-consumer-fit-fixture = import ./tests/desktop/consumer-fit-rust { inherit pkgs; };
         test-settings-search-fixture = import ./tests/desktop/settings-search-rust { inherit pkgs; };
         test-native-groups-fixture = import ./tests/desktop/native-groups-rust { inherit pkgs; };
+        test-group-presentation-environment = pkgs.buildEnv {
+          name = "lumen-group-presentation-environment";
+          paths = [ pkgs.coreutils pkgs.dbus pkgs.grim pkgs.wtype pkgs.nushell ];
+        };
         test-switcher-fixture = import ./tests/desktop/switcher-rust { inherit pkgs; };
         test-spaces-placement-fixture = import ./tests/desktop/spaces-placement-rust { inherit pkgs; };
         test-notification-native-fixture = import ./tests/desktop/notification-rust { inherit pkgs; };

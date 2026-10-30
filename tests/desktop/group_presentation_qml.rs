@@ -127,12 +127,13 @@ fn captured_group_presentation_transport() {
         let lines = requests.lines().collect::<Vec<_>>();
         assert_eq!(
             lines.len(),
-            5,
+            6,
             "Unexpected retry/unsupported dispatch: {requests}"
         );
-        for (line, epoch) in lines
-            .iter()
-            .zip(["owned", "stale", "malformed", "stall", "fresh"])
+        for (line, epoch) in
+            lines
+                .iter()
+                .zip(["owned", "stale", "stale", "malformed", "stall", "fresh"])
         {
             assert!(
                 line.contains(&format!("\"epoch\":\"{epoch}\""))

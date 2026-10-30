@@ -8,6 +8,7 @@ QtObject {
     property string presentationError:""
     property string lastModeAttempt:""
     property var modeRequest:null
+    function retryPresentation(){if(modeWorker.running)return;lastModeAttempt="";modeApply.restart();}
     function reconcileMode(){
         if(modeWorker.running || state.available!==true || state.presentationSupported!==true || state.locked!==false)return;
         if(!["all_together","one_at_a_time"].includes(desiredMode) || !["all_together","one_at_a_time"].includes(state.windowMode))return;
@@ -29,7 +30,7 @@ QtObject {
     property Timer expiry:Timer {interval:2200;onTriggered:root.unavailable()}
     property Timer retry:Timer {interval:3000;onTriggered:root.observer.running=true}
     property Timer modeApply:Timer {interval:100;onTriggered:root.reconcileMode()}
-    property Timer modeDeadline:Timer {interval:15000;onTriggered:{modeWorker.timedOut=true;root.presentationError="Group presentation confirmation timed out. The current native state will be observed before another attempt.";modeWorker.signal(15);modeKill.restart();}}
+    property Timer modeDeadline:Timer {interval:15000;onTriggered:{modeWorker.timedOut=true;root.presentationError="Group presentation confirmation timed out. Check the current session state, then choose Retry to try again.";modeWorker.signal(15);modeKill.restart();}}
     property Timer modeKill:Timer {interval:500;onTriggered:if(modeWorker.running)modeWorker.signal(9)}
     property Process modeWorker:Process {
         property bool received:false
