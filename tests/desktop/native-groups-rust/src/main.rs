@@ -216,6 +216,14 @@ struct Context {
     held: bool,
     position: (f64, f64),
 }
+impl Drop for Context {
+    fn drop(&mut self) {
+        // Retire clients before compositor/bus, and every child before its files.
+        while let Some(child) = self.procs.pop() {
+            drop(child);
+        }
+    }
+}
 impl Context {
     fn call(&self, program: &Path, args: &[&str]) -> Result<String> {
         let output = Command::new(program)
