@@ -96,10 +96,10 @@ index 0000000..667b265
 +}
 diff --git a/src/wayland/toplevel/identity_reply_test.cpp b/src/wayland/toplevel/identity_reply_test.cpp
 new file mode 100644
-index 0000000..957dacd
+index 0000000..bdd72b5
 --- /dev/null
 +++ b/src/wayland/toplevel/identity_reply_test.cpp
-@@ -0,0 +1,169 @@
+@@ -0,0 +1,170 @@
 +#include <poll.h>
 +#include <sys/socket.h>
 +#include <unistd.h>
@@ -111,6 +111,7 @@ index 0000000..957dacd
 +#include <wayland-server-core.h>
 +#include <wayland-client-core.h>
 +#include "identity_reply.hpp"
++#include "wayland-wlr-foreign-toplevel-management-unstable-v1-client-protocol.h"
 +#include "lumen-toplevel-identity-v1-server.h"
 +#include "wlr-foreign-toplevel-management-unstable-v1-server.h"
 +
