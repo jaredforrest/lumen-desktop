@@ -26,7 +26,8 @@ ApplicationWindow {
    click("shortcut-editor-disable");waitUntil(()=>!pane.service.busy && !pane.row.enabled);equal(find(pane,"shortcut-editor-chord").text,"");
    click("shortcut-editor-restore");waitUntil(()=>!pane.service.busy && pane.row.enabled && pane.row.chord===pane.row.defaultChord);check(pane.service.message.includes("confirmed"));
    check(pane.height<=window.height-24);for(const name of ["shortcut-editor-apply","shortcut-editor-disable","shortcut-editor-restore","shortcut-editor-discard"]){const item=find(pane,name),at=item.mapToItem(window.contentItem,0,0);check(at.x>=0 && at.x+item.width<=window.width,name+" clipped");}
-   check(selector.displayText.includes(pane.row.action),"Selected action label diverged after generation replacement");
+   equal(selector.currentIndex,pane.service.bindings.findIndex(row=>row.id==="window.fullscreen.toggle"));
+   equal(selector.displayText,"Toggle full screen · Super+Ctrl+F");
    frame.grabToImage(result=>{window.imageSaved=result.saveToFile("SCREENSHOT");});waitUntil(()=>window.imageSaved);console.log("SHORTCUT_EDITOR_ACTUAL_PASS");
   }
  }
