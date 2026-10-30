@@ -273,6 +273,7 @@ ShellRoot {
         equal(Interaction.activationWindow([a1],b1,[]),a1);
     }
     function appSwitcher() {
+        deep(AppSwitcher.recoverApplicationOrder(['b','a','c'],['b','c','a'],'b',{a:['old']},{a:['new']},false,['a']),['b','a','c']);
         // An app that exited before observer hydration cannot lend its rank to
         // a later process advertising the same identifier.
         deep(AppSwitcher.recoverApplicationOrder(['short','kept'],['kept','short'],'kept',{}, {short:['replacement'],kept:['live']},false,[]),['kept','short']);

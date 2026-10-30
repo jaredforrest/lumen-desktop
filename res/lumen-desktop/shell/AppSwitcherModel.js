@@ -39,7 +39,7 @@ function applicationOrder(items, history) {
 function recoverApplicationOrder(local, recovered, active, previous, current, changedEpoch, liveLocal) {
     const kept=changedEpoch?[]:(local || []).filter(id=>{
         const old=previous[id],now=current[id];
-        return id===active || (Array.isArray(old) ? (Array.isArray(now) && old.some(instance=>now.includes(instance))) : (liveLocal || []).includes(id));
+        return id===active || (liveLocal || []).includes(id) || (Array.isArray(old) && Array.isArray(now) && old.some(instance=>now.includes(instance)));
     });
     const result=[];
     for(const id of (active?[active]:[]).concat(kept,recovered || [])){
