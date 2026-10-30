@@ -1,5 +1,5 @@
 //! Native paired full-output identity, divider, and restore lifecycle acceptance.
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::env;
 use std::error::Error;
@@ -17,11 +17,19 @@ fn fail(message: impl Into<String>) -> Box<dyn Error> {
     message.into().into()
 }
 fn require(ok: bool, message: impl Into<String>) -> Result<()> {
-    if ok {
-        Ok(())
-    } else {
-        Err(fail(message))
-    }
+    if ok { Ok(()) } else { Err(fail(message)) }
+}
+fn unavailable_reply(status: Option<i32>, stdout: &[u8]) -> Result<Value> {
+    let answer: Value = serde_json::from_slice(stdout)?;
+    require(
+        status == Some(2)
+            && answer.as_array().is_some_and(|rows| rows.len() == 1)
+            && answer[0]["success"] == false
+            && answer[0]["parse_error"] == true
+            && answer[0]["error"] == "Window action is unavailable",
+        format!("Expected exact unavailable action reply, got {status:?}: {answer}"),
+    )?;
+    Ok(answer)
 }
 fn i(value: &Value, key: &str) -> Result<i64> {
     value[key]
@@ -161,7 +169,13 @@ fn outer(options: &Options) -> Result<()> {
         fs::create_dir(private.path().join(key))?;
     }
     let config = private.path().join("bus.conf");
-    fs::write(&config, format!("<busconfig><type>session</type><listen>unix:tmpdir={}</listen><policy context=\"default\"><allow own=\"*\"/><allow send_destination=\"*\"/><allow receive_sender=\"*\"/></policy></busconfig>", private.path().display()))?;
+    fs::write(
+        &config,
+        format!(
+            "<busconfig><type>session</type><listen>unix:tmpdir={}</listen><policy context=\"default\"><allow own=\"*\"/><allow send_destination=\"*\"/><allow receive_sender=\"*\"/></policy></busconfig>",
+            private.path().display()
+        ),
+    )?;
     let values = environment(private.path(), options.effects);
     let keyboard = if options.keyboard == Path::new("wtype") {
         program("wtype", &values)?
@@ -388,7 +402,10 @@ impl<'a> Fixture<'a> {
         let grim = program("grim", &values)?;
         let mut children = Children(Vec::new());
         let config = options.output.join("sway.conf");
-        fs::write(&config, "output HEADLESS-1 resolution 1280x720 position 0 0\noutput HEADLESS-2 resolution 1000x800 position 1280 0\nseat seat0 fallback true\ndefault_border normal 2\n")?;
+        fs::write(
+            &config,
+            "output HEADLESS-1 resolution 1280x720 position 0 0\noutput HEADLESS-2 resolution 1000x800 position 1280 0\nseat seat0 fallback true\ndefault_border normal 2\n",
+        )?;
         children.launch(
             &options.sway,
             &[
@@ -503,6 +520,23 @@ impl<'a> Fixture<'a> {
     fn no(&self, command: &str) -> Result<()> {
         self.ipc(command, false)?;
         Ok(())
+    }
+    fn unavailable(&self, command: &str) -> Result<Value> {
+        let output = Command::new("timeout")
+            .arg("5s")
+            .arg(&self.swaymsg)
+            .args(["-r", command])
+            .env_clear()
+            .envs(&self.values)
+            .output()?;
+        let receipt = json!({"command":command,"exitCode":output.status.code(),
+            "stdout":String::from_utf8_lossy(&output.stdout),"stderr":String::from_utf8_lossy(&output.stderr)});
+        fs::write(
+            self.options.output.join("paired-minimize-command.json"),
+            serde_json::to_vec_pretty(&receipt)?,
+        )?;
+        unavailable_reply(output.status.code(), &output.stdout)?;
+        Ok(receipt)
     }
     fn tree(&self) -> Result<Value> {
         self.query("get_tree")
@@ -692,9 +726,18 @@ fn run(options: &Options) -> Result<()> {
         id(&fixture.required_parent(aa)?)? == parent_id && (fixture.ratio(aa)? - 0.5).abs() < 0.01,
         "Hidden pair management changed identity",
     )?;
-    fixture.yes(&format!("[con_id={aa}] lumen_window minimize"))?;
+    let before_minimize = json!({"member":fixture.required(aa)?,"partner":fixture.required(bb)?,"parent":fixture.required_parent(aa)?});
+    let unavailable = fixture.unavailable(&format!("[con_id={aa}] lumen_window minimize"))?;
+    let after_minimize = json!({"member":fixture.required(aa)?,"partner":fixture.required(bb)?,"parent":fixture.required_parent(aa)?});
+    fs::write(
+        x.join("paired-minimize-rejection.json"),
+        serde_json::to_vec_pretty(
+            &json!({"before":before_minimize,"after":after_minimize,"command":unavailable}),
+        )?,
+    )?;
     require(
-        id(&fixture.required_parent(aa)?)? == parent_id
+        before_minimize == after_minimize
+            && id(&fixture.required_parent(aa)?)? == parent_id
             && fixture.required(aa)?["lumen_state"]["minimised"] == false,
         "Paired member was minimized",
     )?;
@@ -1170,6 +1213,42 @@ fn run(options: &Options) -> Result<()> {
         fixture.query("get_version")?["native_paired_layouts"] == true,
         "Paired capability disappeared",
     )?;
+    fixture.launch_foot("pair-minimize-positive")?;
+    let ordinary = id(&fixture
+        .app("pair-minimize-positive")?
+        .ok_or("Ordinary minimize client missing")?)?;
+    fixture.yes(&format!("[con_id={ordinary}] floating enable, resize set 360 px 300 px, move absolute position 1400 px 100 px"))?;
+    let ordinary_before = fixture.required(ordinary)?;
+    let ordinary_box = fixture.box_rect(ordinary)?;
+    let ordinary_workspace = fixture.workspace(ordinary)?;
+    require(
+        ordinary_before["lumen_pair"]["id"].is_null()
+            && ordinary_before["lumen_state"]["minimised"] == false,
+        "Positive minimize subject is not an ordinary available window",
+    )?;
+    fixture.yes(&format!("[con_id={ordinary}] lumen_window minimize"))?;
+    let ordinary_minimized = fixture.required(ordinary)?;
+    require(
+        ordinary_minimized["lumen_state"]["minimised"] == true
+            && fixture.workspace(ordinary)? == "__i3_scratch",
+        "Ordinary minimize did not actually minimize the window",
+    )?;
+    fixture.yes(&format!("[con_id={ordinary}] scratchpad show"))?;
+    let ordinary_restored = fixture.required(ordinary)?;
+    require(
+        ordinary_restored["pid"] == ordinary_before["pid"]
+            && ordinary_restored["lumen_state"]["minimised"] == false
+            && ordinary_restored["lumen_state"]["restore_workspace"].is_null()
+            && fixture.box_rect(ordinary)? == ordinary_box
+            && fixture.workspace(ordinary)? == ordinary_workspace,
+        "Ordinary minimize restore lost identity or original placement",
+    )?;
+    fs::write(
+        x.join("ordinary-minimize-positive.json"),
+        serde_json::to_vec_pretty(
+            &json!({"id":ordinary,"before":ordinary_before,"minimized":ordinary_minimized,"restored":ordinary_restored}),
+        )?,
+    )?;
     let log = fs::read_to_string(x.join("sway.log"))?;
     require(
         ![
@@ -1196,6 +1275,7 @@ fn run(options: &Options) -> Result<()> {
         "bounded client limits constrain physical and command ratios",
         "group reveal and child activation preserve pair",
         "hidden pair management normalizes group before actions",
+        "paired minimize rejects with full native state unchanged while ordinary minimize and restore remain functional",
         "full-screen source exits to ordinary saved geometry",
         "hide exits without stranding restore state",
         "new app routes outside pair",
@@ -1225,5 +1305,25 @@ fn main() {
     if let Err(error) = result {
         eprintln!("Paired layouts fixture failed: {error}");
         std::process::exit(1);
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn unavailable_action_requires_exact_native_failure() {
+        let body =
+            br#"[{"success":false,"parse_error":true,"error":"Window action is unavailable"}]"#;
+        assert!(unavailable_reply(Some(2), body).is_ok());
+        assert!(unavailable_reply(Some(0), body).is_err());
+        assert!(unavailable_reply(None, body).is_err());
+        assert!(unavailable_reply(Some(2), b"[]").is_err());
+        assert!(
+            unavailable_reply(
+                Some(2),
+                br#"[{"success":false,"parse_error":true,"error":"Unknown command"}]"#
+            )
+            .is_err()
+        );
     }
 }
