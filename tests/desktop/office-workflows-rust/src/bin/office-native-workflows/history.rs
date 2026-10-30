@@ -14,6 +14,7 @@ impl Native {
                "History decision changed complete working content or saved source")
     }
     fn history_click(&mut self, name: &str, button: bool, events: &[&str]) -> Result<()> {
+        let is_history = self.app_ui()?["dialog"]["dialog"] == "versionHistory";
         let row = self.copy_button(name)?;
         ensure(!button || ["button", "push button", "role:43"].contains(&row["role"].as_str().unwrap_or("")),
                "Captured history action is not a button")?;
@@ -21,8 +22,8 @@ impl Native {
         let bounds = a11y.bounds_captured(&row)?;
         ensure(bounds.0 >= 0 && bounds.1 >= 0 && bounds.0 + bounds.2 <= number(&self.window["rect"]["width"])? as i32 + 1 && bounds.1 + bounds.3 <= number(&self.window["rect"]["height"])? as i32 + 1,
                "History action falls outside its captured native window")?;
-        let frame = a11y.find(self.pid as u32, "Version History", true)?
-            .filter(|frame| frame["role"] == "frame" || frame["role"] == "role:23");
+        let frame = a11y.find_roles(self.pid as u32, "Version History", true, &["frame","role:23"])?;
+        ensure(!is_history || frame.is_some(), "Visible document history dialog has no captured owned frame")?;
         let dialog = frame.as_ref().map(|frame| a11y.bounds_captured(frame)).transpose()?;
         if let Some(frame) = dialog {
             ensure(bounds.0 >= frame.0 && bounds.1 >= frame.1 && bounds.0 + bounds.2 <= frame.0 + frame.2 + 1 && bounds.1 + bounds.3 <= frame.1 + frame.3 + 1,
@@ -131,8 +132,9 @@ impl Native {
         ensure(rows.iter().any(|row| row["id"] == saved["id"]) && rows.iter().any(|row| row["id"] == recovery["id"]), "Process reopen lost stable captured versions")?;
         self.history_select(rows.iter().find(|row| row["id"] == recovery["id"]).ok_or("Reopened recovery version")?)?;
         self.history_recovery_preview()?; self.screenshot("history-process-reopened.png")?; self.history_close()?;
-        self.set_fact("historyReopen", json!({"previous":previous,"current":{"conId":self.window["id"],"pid":self.pid,"profileWrapperPid":self.processes[reopened].0.id()},"persisted":rows,"controlFrames":self.control.as_ref().ok_or("Reopened controller unavailable")?.frames}));
+        self.history_same(original, source_hash)?;
+        self.set_fact("historyReopen", json!({"previous":previous,"current":{"conId":self.window["id"],"pid":self.pid,"profileWrapperPid":self.processes[reopened].0.id(),"controlPort":self.port,"source":self.source},"persisted":rows,"controlFrames":self.control.as_ref().ok_or("Reopened controller unavailable")?.frames}));
         self.checks.push("Independent native provider process reopens original source and browses persistent captured and pre-restore versions".into());
-        self.history_same(original, source_hash)
+        Ok(())
     }
 }

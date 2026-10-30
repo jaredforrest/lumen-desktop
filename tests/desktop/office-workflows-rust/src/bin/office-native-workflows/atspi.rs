@@ -42,6 +42,9 @@ impl Atspi {
         Ok((values.first().and_then(Value::as_str).ok_or("Accessible owner")?.into(),values.get(1).and_then(Value::as_str).ok_or("Accessible object")?.into()))
     }
     pub fn find(&self, owner_pid:u32, wanted:&str, exact:bool) -> Result<Option<Value>> {
+        self.find_roles(owner_pid,wanted,exact,&[])
+    }
+    pub fn find_roles(&self, owner_pid:u32, wanted:&str, exact:bool, roles:&[&str]) -> Result<Option<Value>> {
         let mut pending=VecDeque::from([("org.a11y.atspi.Registry".to_owned(),"/org/a11y/atspi/accessible/root".to_owned())]);
         let mut seen=HashSet::new();let end=Instant::now()+Duration::from_secs(5);
         while let Some(reference)=pending.pop_front() {
@@ -52,7 +55,7 @@ impl Atspi {
                     let role=self.role(&reference)?;
                     let showing=self.state(&reference,25)?;
                     let sensitive=self.state(&reference,24)?;
-                    if showing {return Ok(Some(json!({"reference":[reference.0,reference.1],"pid":owner_pid,"name":name,"role":role,"showing":showing,"sensitive":sensitive})));}
+                    if showing && (roles.is_empty() || roles.contains(&role.as_str())) {return Ok(Some(json!({"reference":[reference.0,reference.1],"pid":owner_pid,"name":name,"role":role,"showing":showing,"sensitive":sensitive})));}
                 }
             }
             if let Ok(children)=self.children(&reference) {pending.extend(children);}

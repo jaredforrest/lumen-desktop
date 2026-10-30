@@ -1,0 +1,142 @@
+diff --git a/crates/engine/Cargo.toml b/crates/engine/Cargo.toml
+index b559b83..9b22d04 100644
+--- a/crates/engine/Cargo.toml
++++ b/crates/engine/Cargo.toml
+@@ -9,6 +9,7 @@ description = "GridCraft engine: sessions, commands, history, clipboard, fill, s
+ workspace = true
+ 
+ [dependencies]
++lumen-document-history = { path = "../lumen-document-history" }
+ gridcraft-core = { workspace = true }
+ gridcraft-numfmt = { workspace = true }
+ gridcraft-formula = { workspace = true }
+diff --git a/crates/engine/src/cmd/file.rs b/crates/engine/src/cmd/file.rs
+index 4f96806..73894df 100644
+--- a/crates/engine/src/cmd/file.rs
++++ b/crates/engine/src/cmd/file.rs
+@@ -7,6 +7,7 @@ use crate::DocState;
+ 
+ pub fn specs() -> Vec<CommandSpec> {
+     vec![
++        CommandSpec { id:"file.history", label:"Version History…", menu:&["File"], shortcut:None, params:"{action?: list|capture|preview|restore, id?, document?, revision?, allowDiscard?, historyPassword?, label?}", enabled:has_doc, run:crate::lumen_history::command, journal:false, undoable:true },
+         cmd!(noundo "file.new", "New Workbook", ["File"], Some("Cmd+N"), "{sample?: \"budget\"|\"sales\"|\"grades\"}", always, new_workbook),
+         cmd!(noundo "file.open", "Open…", ["File"], Some("Cmd+O"), "{path} | {name, base64} (xlsx, xlsm, xlsb and ods data import, csv, tsv, txt, json)", always, open),
+         cmd!(noundo "file.save", "Save", ["File"], Some("Cmd+S"), "{path?} (xlsx by default; .csv/.tsv/.json/.html by extension)", has_doc, save),
+diff --git a/crates/engine/src/lib.rs b/crates/engine/src/lib.rs
+index 6132d78..f6fdf3b 100644
+--- a/crates/engine/src/lib.rs
++++ b/crates/engine/src/lib.rs
+@@ -10,6 +10,7 @@ pub mod catalog;
+ pub mod cf;
+ #[cfg(not(target_arch = "wasm32"))]
+ mod lumen_atomic_output;
++mod lumen_history;
+ #[cfg(not(target_arch = "wasm32"))]
+ pub use lumen_atomic_output::{CapturedOutput, capture_output, write_captured};
+ pub mod cmd;
+@@ -22,6 +23,7 @@ pub mod selection;
+ pub mod tables;
+ 
+ use std::sync::Arc;
++pub use lumen_document_history::Password as HistoryPassword;
+ 
+ use gridcraft_calc::Calc;
+ use gridcraft_core::{CellRef, RangeRef};
+diff --git a/crates/ui-egui/src/control.rs b/crates/ui-egui/src/control.rs
+index e6da0f0..e7e8d5c 100644
+--- a/crates/ui-egui/src/control.rs
++++ b/crates/ui-egui/src/control.rs
+@@ -72,7 +72,7 @@ pub fn inspect(app: &SheetApp, ctx: &egui::Context) -> Json {
+         "grid": app.grid.cells_rect.map(|c| json!([c.left(), c.top(), c.width(), c.height()])),
+         "scroll": [v.scroll.x, v.scroll.y],
+         "editor": app.editor.as_ref().map(|e| json!({"cell": e.cell.a1(), "text": e.text, "formulaBar": e.from_formula_bar, "point": e.can_point()})),
+-        "dialog": app.dialog.as_ref().map(|d| json!({"name": d.name, "title": d.title, "values": d.values, "tab": d.tab})),
++        "dialog": app.dialog.as_ref().map(|d| json!({"name": d.name, "title": d.title, "values": d.values, "tab": d.tab, "history": d.history_state()})),
+         "message": app.message.as_ref().map(|(t, m)| json!({"title": t, "text": m})),
+         "selectedChart": app.selected_chart,
+         "mode": format!("{:?}", app.session.mode),
+diff --git a/crates/ui-egui/src/dialogs.rs b/crates/ui-egui/src/dialogs.rs
+index 631193f..3b8ad39 100644
+--- a/crates/ui-egui/src/dialogs.rs
++++ b/crates/ui-egui/src/dialogs.rs
+@@ -33,9 +33,14 @@ pub struct Dialog {
+     pub result: Option<Json>,
+     picture_inbox: Option<crate::Inbox>,
+     picture_target: Option<(u64, usize)>,
++    pub(crate) history: Option<crate::history_ui::HistoryDialog>,
+ }
+ 
+ impl Dialog {
++    /// Safe public state omits captured ownership and archive credentials.
++    pub fn history_state(&self) -> Option<Json> {
++        self.history.as_ref().and_then(|state| serde_json::to_value(state).ok())
++    }
+     pub fn name(&self) -> &str {
+         &self.name
+     }
+@@ -53,6 +58,7 @@ impl Dialog {
+             result: None,
+             picture_inbox: None,
+             picture_target: None,
++            history: None,
+         }
+     }
+ 
+@@ -69,6 +75,7 @@ impl Dialog {
+             result: None,
+             picture_inbox: None,
+             picture_target: None,
++            history: None,
+         }
+     }
+ 
+@@ -78,6 +85,7 @@ impl Dialog {
+         let p = |k: &str| params.get(k).cloned().unwrap_or(Json::Null);
+         use Field::*;
+         let d = match name {
++            "history" => {let mut d=Dialog::custom("history","Version History",json!({}));d.history=Some(crate::history_ui::HistoryDialog::new(app));d},
+             "insertCells" => Dialog::form(
+                 "insertCells",
+                 "Insert",
+@@ -656,6 +664,7 @@ pub fn show(app: &mut SheetApp, ctx: &egui::Context) {
+     let mut win_open = true;
+     let mut confirm = false;
+     let width = match d.name.as_str() {
++        "history" => 540.0,
+         "formatCells" => 560.0,
+         "about" => 660.0,
+         "insertFunction" | "commandSearch" | "nameManager" | "manageRules" | "journal" | "agents" => 520.0,
+@@ -669,7 +678,9 @@ pub fn show(app: &mut SheetApp, ctx: &egui::Context) {
+         .anchor(egui::Align2::CENTER_CENTER, vec2(0.0, -40.0))
+         .open(&mut win_open);
+     let window = if d.name == "insertPicture" { window.default_height(240.0) } else { window };
++    let window = if d.name == "history" {window.fixed_size(vec2((ctx.content_rect().width()-48.0).clamp(280.0,540.0),(ctx.content_rect().height()-120.0).clamp(200.0,640.0)))}else{window};
+     window.show(ctx, |ui| {
++            if d.name == "history" {if let Some(state)=&mut d.history{if state.body(app,ui){open=false;}}else{ui.label("Close and reopen Version History.");}return;}
+             ui.set_min_width(width - 20.0);
+             match d.name.as_str() {
+                 "formatCells" => format_cells(app, ui, &mut d, &mut confirm),
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index c133379..381f6e2 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -17,6 +17,7 @@ pub mod formula_bar;
+ mod formula_locale;
+ mod native_close;
+ mod pdf_output;
++mod history_ui;
+ mod pdf_publication;
+ pub mod grid;
+ pub mod i18n;
+diff --git a/crates/ui-egui/src/ribbon.rs b/crates/ui-egui/src/ribbon.rs
+index 717b64c..50af987 100644
+--- a/crates/ui-egui/src/ribbon.rs
++++ b/crates/ui-egui/src/ribbon.rs
+@@ -217,6 +217,7 @@ fn file_menu(app: &mut SheetApp, ui: &mut Ui) {
+             ("Open…", "file.open", false),
+             ("Save", "file.save", true),
+             ("Save As…", "file.saveAs", true),
++            ("Version History…", "file.history", true),
+             ("Close", "file.close", true),
+         ] {
+             if id == "file.save" || id == "file.close" {

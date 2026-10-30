@@ -1,0 +1,251 @@
+diff --git a/crates/engine/Cargo.toml b/crates/engine/Cargo.toml
+index 1f4dbfc..51a7b27 100644
+--- a/crates/engine/Cargo.toml
++++ b/crates/engine/Cargo.toml
+@@ -9,6 +9,7 @@ description = "DeckCraft engine: sessions, undo history, selection, the command
+ workspace = true
+ 
+ [dependencies]
++lumen-document-history = { path = "../lumen-document-history" }
+ deckcraft-geom = { workspace = true }
+ deckcraft-color = { workspace = true }
+ deckcraft-model = { workspace = true }
+diff --git a/crates/engine/src/cmd/file.rs b/crates/engine/src/cmd/file.rs
+index 31bb4a1..20ab759 100644
+--- a/crates/engine/src/cmd/file.rs
++++ b/crates/engine/src/cmd/file.rs
+@@ -8,6 +8,7 @@ use crate::{DocState, EngineError, Result, Session};
+ 
+ pub fn specs() -> Vec<CommandSpec> {
+     vec![
++        CommandSpec { id:"file.history",label:"Version History…",menu:&["File"],shortcut:None,params:"{action?: list|capture|preview|restore,id?,label?,historyPassword?,document?,revision?,allowDiscard?}",enabled:has_doc,run:crate::lumen_history::command,journal:false,undoable:true },
+         cmd!(noundo "file.new", "New Presentation", ["File"], Some("Cmd+N"), "{theme?: name, size?: [w,h] pt, blank?: bool}", always, new),
+         cmd!(noundo "file.open", "Open…", ["File"], Some("Cmd+O"), "{path}", always, open),
+         cmd!(noundo "file.openBytes", "Open Data", [], None, "{name, data: base64}", always, open_bytes),
+diff --git a/crates/engine/src/lib.rs b/crates/engine/src/lib.rs
+index 20dea5e..65a82c6 100644
+--- a/crates/engine/src/lib.rs
++++ b/crates/engine/src/lib.rs
+@@ -16,8 +16,10 @@ pub mod recovery;
+ pub mod sample;
+ pub mod tools;
+ mod output_formats;
++mod lumen_history;
+ 
+ use std::sync::Arc;
++pub use lumen_document_history::Password as HistoryPassword;
+ 
+ use deckcraft_model::{Presentation, Shape, ShapeId, Slide, SlideId};
+ use serde::{Deserialize, Serialize};
+diff --git a/crates/ui-egui/src/canvas.rs b/crates/ui-egui/src/canvas.rs
+index d267f76..c2b9c97 100644
+--- a/crates/ui-egui/src/canvas.rs
++++ b/crates/ui-egui/src/canvas.rs
+@@ -294,6 +294,7 @@ fn ruler(p: &egui::Painter, avail: Rect, slide: Rect, scale: f32, t: &Tokens) {
+ }
+ 
+ fn pointer(app: &mut SlideApp, ui: &Ui, resp: &egui::Response, xf: Xf) {
++    if app.dialog.as_ref().is_some_and(|dialog| dialog.id == "history") { return; }
+     let tol = (4.0 / xf.scale) as f64;
+     let m = mods(ui);
+     let Some(pos) = resp.interact_pointer_pos().or(resp.hover_pos()) else { return };
+diff --git a/crates/ui-egui/src/control.rs b/crates/ui-egui/src/control.rs
+index 067610b..aab09d9 100644
+--- a/crates/ui-egui/src/control.rs
++++ b/crates/ui-egui/src/control.rs
+@@ -73,6 +73,7 @@ pub fn inspect(app: &SlideApp, ctx: &egui::Context) -> Value {
+         "slideRect": app.slide_rect.map(|c| json!([c.left(), c.top(), c.width(), c.height()])),
+         "canvasScale": app.canvas_scale,
+         "dialog": app.dialog.as_ref().map(|d| d.id.clone()),
++        "history": app.dialog.as_ref().and_then(|d| d.history.as_ref()).and_then(|history| serde_json::to_value(history).ok()),
+         "home": app.home_open(),
+         "showing": app.show.as_ref().map(|s| json!({"slide": s.state.slide, "step": s.state.step, "ended": s.ended})),
+         "documents": app.session.documents().iter().map(|d| json!({"title": d.title(), "dirty": d.is_dirty(), "path": d.path})).collect::<Vec<_>>(),
+diff --git a/crates/ui-egui/src/dialogs.rs b/crates/ui-egui/src/dialogs.rs
+index bc640e3..21797f4 100644
+--- a/crates/ui-egui/src/dialogs.rs
++++ b/crates/ui-egui/src/dialogs.rs
+@@ -16,11 +16,12 @@ pub struct Dialog {
+     /// Field values while the dialog is open.
+     #[serde(skip)]
+     pub fields: std::collections::HashMap<String, String>,
++    pub(crate) history: Option<crate::history_ui::HistoryDialog>,
+ }
+ 
+ impl Dialog {
+     pub fn new(id: &str) -> Self {
+-        Dialog { id: id.into(), params: Value::Null, fields: Default::default(), source: None }
++        Dialog { id: id.into(), params: Value::Null, fields: Default::default(), source: None, history: None }
+     }
+     pub fn modal(&self) -> bool {
+         true
+@@ -32,6 +33,7 @@ impl Dialog {
+ 
+ fn title(id: &str) -> &'static str {
+     match id {
++        "history" => "Version History",
+         "table" => "Insert Table",
+         "slideSize" => "Slide Size",
+         "headerFooter" => "Header and Footer",
+@@ -71,13 +73,20 @@ pub fn show(app: &mut SlideApp, ctx: &egui::Context) {
+     }
+     let mut open = true;
+     let mut close = false;
+-    egui::Window::new(title(&d.id))
++    let history = d.id == "history";
++    let mut window = egui::Window::new(title(&d.id))
+         .id(egui::Id::new(("dialog", d.id.clone())))
+         .collapsible(false)
+         .resizable(false)
+         .anchor(Align2::CENTER_CENTER, vec2(0.0, -40.0))
+-        .open(&mut open)
+-        .show(ctx, |ui| {
++        .open(&mut open);
++    if history { window = window.fixed_size(vec2((ctx.content_rect().width()-48.0).clamp(280.0,540.0),(ctx.content_rect().height()-120.0).clamp(200.0,640.0))); }
++    window.show(ctx, |ui| {
++            if history {
++                if let Some(state) = &mut d.history { close = state.body(app, ui); }
++                else { ui.label("Close and reopen Version History."); }
++                return;
++            }
+             ui.set_min_width(340.0);
+             close = body(app, ui, &mut d);
+         });
+diff --git a/crates/ui-egui/src/lib.rs b/crates/ui-egui/src/lib.rs
+index 1fffe33..dc9ed48 100644
+--- a/crates/ui-egui/src/lib.rs
++++ b/crates/ui-egui/src/lib.rs
+@@ -11,6 +11,7 @@ pub mod control;
+ pub mod credits;
+ pub mod dialogs;
+ mod pdf_output;
++mod history_ui;
+ mod pdf_publication;
+ pub mod fillui;
+ pub mod icons;
+@@ -358,7 +359,11 @@ impl SlideApp {
+             "app.printPdfDialog" => self.open_export_dialog(true)?,
+             "app.dialog" => {
+                 let d = p.get("id").and_then(Value::as_str).ok_or("missing `id`")?;
+-                if d == "export" { self.open_export_dialog(false)?; } else if d == "printPdf" { self.open_export_dialog(true)?; } else { self.dialog = Some(dialogs::Dialog::new(d)); }
++                if d == "export" { self.open_export_dialog(false)?; } else if d == "printPdf" { self.open_export_dialog(true)?; } else {
++                    let mut dialog = dialogs::Dialog::new(d);
++                    if d == "history" { dialog.history = Some(crate::history_ui::HistoryDialog::new(self)); }
++                    self.dialog = Some(dialog);
++                }
+             }
+             "app.links" => {
+                 use deckcraft_engine::links::*;
+@@ -471,6 +476,7 @@ impl SlideApp {
+                 UiRequest::Dialog { id, params } => {
+                     let mut d = dialogs::Dialog::new(&id);
+                     d.params = params;
++                    if id == "history" { d.history = Some(crate::history_ui::HistoryDialog::new(self)); }
+                     self.dialog = Some(d);
+                 }
+                 UiRequest::Pane { id } => self.ui.pane = Some(id),
+diff --git a/crates/ui-egui/src/menus.rs b/crates/ui-egui/src/menus.rs
+index 64b472f..7a62033 100644
+--- a/crates/ui-egui/src/menus.rs
++++ b/crates/ui-egui/src/menus.rs
+@@ -141,6 +141,7 @@ pub fn menu_tree() -> Vec<(&'static str, Vec<(&'static str, &'static str)>)> {
+                 ("Print to PDF…", "app.printPdfDialog"),
+                 ("-", ""),
+                 ("Properties", "file.properties"),
++                ("Version History…", "file.history"),
+             ],
+         ),
+         (
+diff --git a/crates/ui-egui/src/ribbon.rs b/crates/ui-egui/src/ribbon.rs
+index c7c251e..3340a89 100644
+--- a/crates/ui-egui/src/ribbon.rs
++++ b/crates/ui-egui/src/ribbon.rs
+@@ -133,6 +133,22 @@ fn contextual(app: &SlideApp) -> Vec<&'static str> {
+ 
+ const TABS: [&str; 10] = ["Home", "Insert", "Draw", "Design", "Transitions", "Animations", "Slide Show", "Record", "Review", "View"];
+ 
++/// Visible File actions share the catalogue and command enablement with other frontends.
++fn file_menu(app: &mut SlideApp, ui: &mut Ui, rect: Rect) {
++    let response = ui.put(rect, egui::Button::new("File").frame(false));
++    egui::Popup::menu(&response).show(|ui| {
++        if let Some((_, commands)) = crate::menus::menu_tree().into_iter().find(|(name, _)| *name == "File") {
++            for (label, id) in commands {
++                if label == "-" { ui.separator(); continue; }
++                if ui.add_enabled(enabled(app, id), egui::Button::new(label)).clicked() {
++                    run(app, id, json!({}));
++                    ui.close();
++                }
++            }
++        }
++    });
++}
++
+ /// Tab row and the ribbon card.
+ pub fn show(app: &mut SlideApp, ui: &mut Ui) {
+     let t = Tokens::get(ui.ctx());
+@@ -146,6 +162,8 @@ pub fn show(app: &mut SlideApp, ui: &mut Ui) {
+         // Tabs.
+         let mut x = rect.min.x + 12.0;
+         let y = rect.min.y + 2.0;
++        file_menu(app, ui, Rect::from_min_size(pos2(x, y), vec2(46.0, 24.0)));
++        x += 52.0;
+         let all: Vec<(&str, bool)> = TABS.iter().map(|s| (*s, false)).chain(ctx_tabs.iter().map(|s| (*s, true))).collect();
+         for (name, contextual) in all {
+             let font = theme::font(13.0);
+@@ -2405,3 +2423,56 @@ fn paint_freeform_icon(p: &egui::Painter, r: Rect, name: &str, ink: Color32) {
+     };
+     p.add(egui::Shape::line(pts, egui::Stroke::new(1.3, ink)));
+ }
++
++#[cfg(test)]
++mod persistent_history_file_menu_tests {
++    use super::*;
++    use crate::Services;
++    use deckcraft_engine::Session;
++    use egui_kittest::kittest::Queryable;
++    use std::sync::atomic::{AtomicU64, Ordering};
++    static NEXT: AtomicU64 = AtomicU64::new(0);
++    struct Fixture(std::path::PathBuf);
++    impl Drop for Fixture { fn drop(&mut self) { std::fs::remove_dir_all(&self.0).unwrap(); } }
++    #[test]
++    fn persistent_history_actual_file_menu_opens_owned_dialog_without_replacing_ribbon_tab() {
++        for size in [vec2(1100.0, 900.0), vec2(700.0, 480.0)] {
++            let root = Fixture(std::env::temp_dir().join(format!("deck-file-history-{}-{}", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed))));
++            std::fs::create_dir(&root.0).unwrap();
++            let mut session = Session::with_new();
++            session.execute("file.saveAs", &json!({"path":root.0.join("source.deckcraft")})).unwrap();
++            let mut app = SlideApp::new(session, Services::default());
++            app.ui.tab = "Review".into();
++            let mut h = egui_kittest::Harness::builder().with_size(size).build_ui_state(|ui, app: &mut SlideApp| {
++                let ctx = ui.ctx().clone(); app.logic(&ctx); app.ui(ui);
++            }, app);
++            h.run_steps(4);
++            assert!(h.state().dialog.is_none());
++            h.get_by_label("File").click();
++            h.run_steps(4);
++            h.get_by_label("Version History…").click();
++            h.run_steps(4);
++            let dialog = h.state().dialog.as_ref().unwrap();
++            assert_eq!(dialog.id, "history");
++            assert!(dialog.history.is_some());
++            assert_eq!(h.state().ui.tab, "Review");
++            assert!(!h.state().ui.ribbon_collapsed);
++            let viewport = egui::Rect::from_min_size(egui::Pos2::ZERO, size);
++            assert!(viewport.contains_rect(h.get_by_label("Capture version").rect()));
++            h.get_by_label("Close").click();
++            h.run_steps(4);
++            assert!(h.state().dialog.is_none());
++            assert_eq!(h.state().ui.tab, "Review");
++        }
++    }
++    #[test]
++    fn persistent_history_file_catalogue_respects_document_command_enablement() {
++        let mut app = SlideApp::new(Session::with_new(), Services::default());
++        assert!(enabled(&app, "file.history"));
++        app.session.close_document(0);
++        assert!(!enabled(&app, "file.history"));
++        assert!(!enabled(&app, "file.save"));
++        assert!(enabled(&app, "file.new"));
++        assert!(crate::menus::menu_tree().into_iter().find(|(name, _)| *name == "File").unwrap().1.contains(&("Version History…", "file.history")));
++    }
++}

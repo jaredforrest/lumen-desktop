@@ -209,6 +209,7 @@
       };
       checks.${system} = {
         recovery-policy-vm = import ./tests/desktop/recovery-policy-vm.nix { inherit nixpkgs system; };
+        document-history-safety = import ./packages/document-history.nix { inherit pkgs; };
         fixture-providers = import ./tests/desktop/provider-isolation { inherit pkgs; };
         capture-observation-shim = import ./tests/desktop/capture-observation-shim { inherit pkgs; };
         gi-deprecation-rust = import ./tests/desktop/gi-deprecation-rust { inherit pkgs; };

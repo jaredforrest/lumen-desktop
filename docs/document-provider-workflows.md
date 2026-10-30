@@ -9,17 +9,19 @@ It never connects to a host printer service.
 
 ## Confirmed command-line observations
 
-The word processor can capture a labelled session snapshot, restore its content,
+The word processor's original `file.versions` commands capture a labelled session snapshot, restore its content,
 and refuse an invalid snapshot index without writing a misleading output file.
 The saved document reopens with an empty snapshot list. These snapshots therefore
-provide session-local recovery only; this is not persistent version browsing.
+provide session-local recovery only. Persistent browsing uses the separate
+`file.history` capability described below.
 The source document remains unchanged when a restored copy is written.
 Snapshots belong to the current logical document: New and a successful Open
 clear the previous document's snapshots. A failed Open preserves the current
 document and its snapshots. Restoring within the same document keeps its
 snapshot list available for repeated restores. The installed
 `document-capabilities` separately checks these boundaries inside the disposable namespace.
-This ownership fix does not add persistent history or a version-browser UI.
+These session-snapshot ownership checks do not establish the separate durable
+history browser's behavior.
 
 The spreadsheet's `file.print` action can produce a PDF at a chosen file path.
 The test independently parses the PDF's pages and text, checks the source hash,
@@ -79,8 +81,8 @@ The Rust 2024 `office-native-workflows --document-probe` exercises the native wo
 and `--pdf-tools` must name immutable selected dependencies. The browser gets a
 fresh private profile and private PDF association. Native checks cover the
 configured viewer route; a separate unavailable-viewer run checks immediate
-failure visibility. Persistent version browsing remains unsupported by the
-observed session snapshots. These optional installed-provider fixtures are
+failure visibility. These session snapshots remain in memory; durable-history
+acceptance uses separate installed and native history fixtures. These optional installed-provider fixtures are
 separate from the ordinary shell CI lane.
 
 For the spreadsheet and presentation subset, use `office-native-workflows`
@@ -208,7 +210,25 @@ and selection across refusal, and exercise legitimate outline and image output.
 These checks establish format honesty and source preservation, not complete
 cross-format fidelity or a new format engine.
 
-A separate persistent local-history capability is now provided by the packaged
-`file.history` extension and its document-owned Version History browser. It does
-not change these historical `file.versions` observations. See
-[word-local-history.md](word-local-history.md) for its limits and separate proof.
+## Persistent local history
+
+The three packaged providers separately implement `file.history` and a
+document-owned Version History browser. These explicit local full-document
+captures persist beside a saved source, unlike the original `file.versions`
+session snapshots. Restore requires captured ownership and consent, publishes
+Before restore recovery, preserves source bytes and supports normal Undo.
+
+The document provider retains its established archive format and document-password
+integration. The spreadsheet and presentation providers share a separate archive
+store with an optional archive-only password; it does not encrypt their source
+files. No automatic, cloud or external-application history is claimed.
+
+See [document history](word-local-history.md),
+[workbook history](grid-local-history.md),
+[presentation history](deck-local-history.md) and
+[the shared archive contract](document-history-archive.md) for their individual
+limits and proof. Installed tests use `word-durable-history` or
+`provider-durable-history --app sheet|slides`; native history uses
+`office-native-workflows --history-probe --app writer|sheet|slides`. Print,
+session-snapshot and atomic-publication tests alone do not establish these
+durable-history interactions.

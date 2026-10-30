@@ -252,11 +252,20 @@ jobs:
       - run: PATH="$PWD/artifacts/application-isolation/bin:$PATH" nix develop --command nu tests/ci/run-native.nu word_durable_history -- "$PWD/artifacts/provider-integrity-fixture/bin/word-durable-history" --writer "$PWD/artifacts/wordcraft/bin/wordcraft-cli" --output artifacts/word-durable-history
       - run: PATH="$PWD/artifacts/application-isolation/bin:$PATH" nix develop --command nu tests/ci/run-native.nu word_history_capacity -- "$PWD/artifacts/provider-integrity-fixture/bin/word-durable-history" --capacity-probe --writer "$PWD/artifacts/wordcraft/bin/wordcraft-cli" --output artifacts/word-history-capacity
       - run: |
+          for app in sheet slides; do
+            provider=gridcraft
+            if [[ "$app" == slides ]]; then provider=deckcraft; fi
+            PATH="$PWD/artifacts/application-isolation/bin:$PATH" nix develop --command nu tests/ci/run-native.nu "provider_history_${app}" -- "$PWD/artifacts/provider-integrity-fixture/bin/provider-durable-history" --app "$app" --provider-cli "$PWD/artifacts/$provider/bin/$provider-cli" --output "artifacts/provider-history-$app"
+          done
+      - run: |
           for backend in basic effects; do
             compositor=provider-compositor
             flags=()
             if [[ "$backend" == effects ]]; then compositor=provider-compositor-effects; flags+=(--effects); fi
             nix develop --command nu tests/ci/run-native.nu "word_history_${backend}" -- "$PWD/artifacts/provider-integrity-fixture/bin/office-native-workflows" "${flags[@]}" --app writer --history-probe --writer "$PWD/artifacts/wordcraft/bin/wordcraft" --sheet "$PWD/artifacts/gridcraft/bin/gridcraft" --slides "$PWD/artifacts/deckcraft/bin/deckcraft" --sway "$PWD/artifacts/$compositor/bin/sway" --keyboard-tool "$PWD/artifacts/provider-keyboard/bin/lumen-test-physical-keyboard" --pointer-tool "$PWD/artifacts/provider-pointer/bin/wlrctl" --software-driver "$PWD/artifacts/provider-software-driver" --dialog-tools "$PWD/artifacts/provider-dialog-tools" --at-spi-prefix "$PWD/artifacts/provider-atspi" --output "artifacts/word-history-$backend"
+            for app in sheet slides; do
+              nix develop --command nu tests/ci/run-native.nu "provider_history_${app}_${backend}" -- "$PWD/artifacts/provider-integrity-fixture/bin/office-native-workflows" "${flags[@]}" --app "$app" --history-probe --writer "$PWD/artifacts/wordcraft/bin/wordcraft" --sheet "$PWD/artifacts/gridcraft/bin/gridcraft" --slides "$PWD/artifacts/deckcraft/bin/deckcraft" --sway "$PWD/artifacts/$compositor/bin/sway" --keyboard-tool "$PWD/artifacts/provider-keyboard/bin/lumen-test-physical-keyboard" --pointer-tool "$PWD/artifacts/provider-pointer/bin/wlrctl" --software-driver "$PWD/artifacts/provider-software-driver" --dialog-tools "$PWD/artifacts/provider-dialog-tools" --at-spi-prefix "$PWD/artifacts/provider-atspi" --output "artifacts/provider-history-$app-$backend"
+            done
             for format in docx odt; do
               nix develop --command nu tests/ci/run-native.nu "provider_copy_${backend}_${format}" -- "$PWD/artifacts/provider-integrity-fixture/bin/office-native-workflows" "${flags[@]}" --app writer --copy-export-probe --copy-export-format "$format" --writer "$PWD/artifacts/wordcraft/bin/wordcraft" --sheet "$PWD/artifacts/gridcraft/bin/gridcraft" --slides "$PWD/artifacts/deckcraft/bin/deckcraft" --sway "$PWD/artifacts/$compositor/bin/sway" --keyboard-tool "$PWD/artifacts/provider-keyboard/bin/lumen-test-physical-keyboard" --pointer-tool "$PWD/artifacts/provider-pointer/bin/wlrctl" --software-driver "$PWD/artifacts/provider-software-driver" --dialog-tools "$PWD/artifacts/provider-dialog-tools" --at-spi-prefix "$PWD/artifacts/provider-atspi" --output "artifacts/provider-copy-$backend-$format"
             done
@@ -273,6 +282,7 @@ jobs:
             artifacts/document-capabilities
             artifacts/word-durable-history
             artifacts/word-history-*
+            artifacts/provider-history-*
             artifacts/native-command-logs/word*
             artifacts/provider-copy-*
             artifacts/provider-software-effects-kernel

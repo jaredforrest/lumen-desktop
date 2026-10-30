@@ -20,6 +20,8 @@ use zbus::blocking::Proxy;
 mod atspi;
 #[path = "office-native-workflows/history.rs"]
 mod history;
+#[path = "office-native-workflows/provider_history.rs"]
+mod provider_history;
 
 fn fail(message: impl Into<String>) -> Box<dyn std::error::Error> {
     error(message)
@@ -270,7 +272,7 @@ impl Options {
         )?;
         ensure(!picker_ownership || (app == "writer" && dialog_tools.is_some() && !new_saveas && !close_probe && writer_close_outcome == "cancel"), "Picker ownership requires writer and private dialog tools")?;
         ensure(!copy_export_probe || (app == "writer" && dialog_tools.is_some() && at_spi_prefix.is_some() && !picker_ownership && !new_saveas && !close_probe && writer_close_outcome == "cancel"), "Copy export requires writer, private chooser and AT-SPI")?;
-        ensure(!history_probe || (app == "writer" && dialog_tools.is_some() && at_spi_prefix.is_some() && !copy_export_probe && !picker_ownership && !new_saveas && !close_probe && !document_probe && !pdf_output && writer_close_outcome == "cancel"), "History requires its own document provider, private bus and accessibility fixture")?;
+        ensure(!history_probe || (dialog_tools.is_some() && at_spi_prefix.is_some() && !copy_export_probe && !picker_ownership && !new_saveas && !close_probe && !document_probe && !pdf_output && writer_close_outcome == "cancel" && sheet_close_outcome.is_empty() && slides_close_outcome.is_empty()), "History requires its own document provider, private bus and accessibility fixture")?;
         ensure(["docx","odt"].contains(&copy_export_format.as_str()), "Copy export format must be docx or odt")?;
         ensure([pdf_viewer.is_some(),xdg_tools.is_some(),mime_data.is_some()].into_iter().all(|value|value==pdf_viewer.is_some()),"PDF viewer requires browser, XDG tools and MIME data together")?;
         ensure(!document_probe || (app == "writer" && dialog_tools.is_some() && pdf_tools.is_some() && !new_saveas && !picker_ownership && !close_probe && writer_close_outcome == "cancel"),"Document Print probe requires writer, private chooser and PDF tools")?;
@@ -541,6 +543,7 @@ impl Native {
             "tests/desktop/office-workflows-rust/src/keyboard.rs",
             "tests/desktop/office-workflows-rust/src/bin/office-native-workflows/atspi.rs",
             "tests/desktop/office-workflows-rust/src/bin/office-native-workflows/history.rs",
+            "tests/desktop/office-workflows-rust/src/bin/office-native-workflows/provider_history.rs",
         ] {
             let path = Path::new("/source").join(name);
             test_sources.insert(name.to_owned(), sha(&path)?);
@@ -2196,7 +2199,8 @@ impl Native {
 fn run(mut fixture: Native) -> Result<()> {
     let before = fixture.start()?;
     if fixture.options.history_probe {
-        fixture.history()?;
+        if fixture.options.app == "writer" { fixture.history()?; }
+        else { fixture.provider_history()?; }
     } else { match fixture.options.app.as_str() {
         "writer" => fixture.writer_basic(&before)?,
         "sheet" => fixture.sheet_basic(&before)?,
