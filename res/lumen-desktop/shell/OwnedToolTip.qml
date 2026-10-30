@@ -22,7 +22,7 @@ ToolTip {
     onHoverChanged:if(!hover)lifecycle.dismiss();else if(available && !suppressed)lifecycle.restart()
     onVisibleChanged:if(!visible && lifecycle.shown)lifecycle.dismiss()
     onTargetChanged:lifecycle.restart()
-    contentItem:Text {id:label;text:root.text;textFormat:Text.PlainText;wrapMode:Text.Wrap;elide:Text.ElideRight;color:Theme.colors.text;font.family:Theme.font;font.pixelSize:Theme.textRole("metadata")}
+    contentItem:Text {id:label;text:root.text;textFormat:Text.PlainText;wrapMode:Text.Wrap;clip:true;color:Theme.colors.text;font.family:Theme.font;font.pixelSize:Theme.textRole("metadata")}
     background:Rectangle {radius:6;color:Theme.colors.background;border.color:Theme.outline;border.width:1}
     Shortcut {sequence:"F1";context:Qt.WindowShortcut;enabled:root.available && !!root.target && root.target.activeFocus && !root.suppressed;onActivated:lifecycle.help()}
     Shortcut {sequence:"Escape";context:Qt.WindowShortcut;enabled:root.visible;onActivated:lifecycle.dismiss()}
