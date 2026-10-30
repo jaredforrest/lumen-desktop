@@ -1,0 +1,215 @@
+diff --git a/include/sway/toplevel_identity.h b/include/sway/toplevel_identity.h
+new file mode 100644
+index 0000000..cc802be
+--- /dev/null
++++ b/include/sway/toplevel_identity.h
+@@ -0,0 +1,8 @@
++#ifndef SWAY_TOPLEVEL_IDENTITY_H
++#define SWAY_TOPLEVEL_IDENTITY_H
++#include <stdbool.h>
++struct wl_display;
++struct wl_global;
++bool sway_toplevel_identity_init(struct wl_display *display);
++bool sway_toplevel_identity_is_privileged(const struct wl_global *global);
++#endif
+diff --git a/protocols/lumen-toplevel-identity-v1.xml b/protocols/lumen-toplevel-identity-v1.xml
+new file mode 100644
+index 0000000..37b66a2
+--- /dev/null
++++ b/protocols/lumen-toplevel-identity-v1.xml
+@@ -0,0 +1,45 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<protocol name="lumen_toplevel_identity_v1">
++  <copyright>Copyright 2026 Lumen Desktop contributors.
++    Permission to use, copy, modify, distribute, and sell this software and its
++    documentation for any purpose is hereby granted without fee, provided that
++    this copyright notice appear in all copies. THE SOFTWARE IS PROVIDED AS IS,
++    WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
++  </copyright>
++  <interface name="lumen_toplevel_identity_manager_v1" version="1">
++    <description summary="optional identity bridge for an existing foreign handle">
++      This project-owned protocol links a live wlr foreign toplevel handle to
++      its compositor's existing ext-foreign-toplevel-list identifier. It grants
++      no actuation authority. An unavailable bridge must preserve existing
++      foreign-toplevel behavior. All objects belong to one Wayland connection.
++    </description>
++    <request name="destroy" type="destructor"/>
++    <request name="resolve">
++      <description summary="resolve an exact live resource without heuristic joins">
++        handle must be a non-null zwlr_foreign_toplevel_handle_v1 resource on
++        this connection. A valid but inert, closed, or unsupported resource
++        returns unavailable. A malformed wire object ID or null argument may
++        cause a core protocol error before this request is dispatched.
++        The reply is one-shot and independent of the manager lifetime.
++      </description>
++      <arg name="id" type="new_id" interface="lumen_toplevel_identity_reply_v1"/>
++      <arg name="handle" type="object"/>
++    </request>
++  </interface>
++  <interface name="lumen_toplevel_identity_reply_v1" version="1">
++    <description summary="one terminal identity result">
++      The server immediately snapshots the requested live resource membership
++      and sends exactly one result, destroying this server resource. A client
++      may locally destroy its proxy before the result to abandon observation;
++      there is no cancellation request racing the terminal result.
++    </description>
++    <enum name="status">
++      <entry name="unavailable" value="0"/>
++      <entry name="available" value="1"/>
++    </enum>
++    <event name="result" type="destructor">
++      <arg name="status" type="uint" enum="status"/>
++      <arg name="identifier" type="string" summary="existing ext identifier, or empty when unavailable"/>
++    </event>
++  </interface>
++</protocol>
+diff --git a/protocols/meson.build b/protocols/meson.build
+index a1cb353..553109b 100644
+--- a/protocols/meson.build
++++ b/protocols/meson.build
+@@ -13,6 +13,7 @@ protocols = [
+ 	wl_protocol_dir / 'unstable/xdg-output/xdg-output-unstable-v1.xml',
+ 	'wlr-layer-shell-unstable-v1.xml',
+ 	'wlr-output-power-management-unstable-v1.xml',
++	'lumen-toplevel-identity-v1.xml',
+ ]
+ 
+ wl_protos_src = []
+diff --git a/sway/meson.build b/sway/meson.build
+index cb03a4d..866db34 100644
+--- a/sway/meson.build
++++ b/sway/meson.build
+@@ -10,6 +10,7 @@ sway_sources = files(
+ 	'realtime.c',
+ 	'scene_descriptor.c',
+ 	'server.c',
++	'toplevel_identity.c',
+ 	'sway_text_node.c',
+ 	'swaynag.c',
+ 	'xdg_activation_v1.c',
+diff --git a/sway/server.c b/sway/server.c
+index 8fe79c0..c94fd3b 100644
+--- a/sway/server.c
++++ b/sway/server.c
+@@ -20,6 +20,7 @@
+ #include <wlr/types/wlr_data_device.h>
+ #include <wlr/types/wlr_export_dmabuf_v1.h>
+ #include <wlr/types/wlr_ext_foreign_toplevel_list_v1.h>
++#include "sway/toplevel_identity.h"
+ #include <wlr/types/wlr_fixes.h>
+ #include <wlr/types/wlr_foreign_toplevel_management_v1.h>
+ #include <wlr/types/wlr_ext_image_capture_source_v1.h>
+@@ -107,7 +108,7 @@ static bool is_privileged(const struct wl_global *global) {
+ 	}
+ #endif
+ 
+-	return
++	return sway_toplevel_identity_is_privileged(global) ||
+ 		global == server.output_manager_v1->global ||
+ 		global == server.output_power_manager_v1->global ||
+ 		global == server.input_method->global ||
+@@ -478,6 +479,10 @@ bool server_init(struct sway_server *server) {
+ 		sway_log(SWAY_ERROR, "Failed to create foreign toplevel manager");
+ 		return false;
+ 	}
++	if (!sway_toplevel_identity_init(server->wl_display)) {
++		sway_log(SWAY_ERROR, "Failed to create toplevel identity bridge");
++		return false;
++	}
+ 
+ 	if (!sway_session_lock_init()) {
+ 		return false;
+diff --git a/sway/toplevel_identity.c b/sway/toplevel_identity.c
+new file mode 100644
+index 0000000..79e843a
+--- /dev/null
++++ b/sway/toplevel_identity.c
+@@ -0,0 +1,88 @@
++#include <stdbool.h>
++#include <stdint.h>
++#include <wayland-server-core.h>
++#include <wlr/types/wlr_ext_foreign_toplevel_list_v1.h>
++#include <wlr/types/wlr_foreign_toplevel_management_v1.h>
++#include "sway/toplevel_identity.h"
++#include "sway/tree/container.h"
++#include "sway/tree/root.h"
++#include "sway/tree/view.h"
++#include "lumen-toplevel-identity-v1-protocol.h"
++
++struct identity_lookup {
++	struct wl_resource *handle;
++	const char *identifier;
++	unsigned matches;
++};
++
++static void lookup_container(struct sway_container *container, void *data) {
++	struct identity_lookup *lookup = data;
++	struct sway_view *view = container->view;
++	if (!view || !view->foreign_toplevel || !view->ext_foreign_toplevel) {
++		return;
++	}
++	// Never interpret user data from the generic argument. Exact membership
++	// validates both its interface and its current live view ownership.
++	struct wl_resource *resource;
++	wl_resource_for_each(resource, &view->foreign_toplevel->resources) {
++		if (resource == lookup->handle) {
++			++lookup->matches;
++			lookup->identifier = view->ext_foreign_toplevel->identifier;
++		}
++	}
++}
++
++static void manager_destroy(struct wl_client *client, struct wl_resource *resource) {
++	(void)client;
++	wl_resource_destroy(resource);
++}
++
++static void manager_resolve(struct wl_client *client, struct wl_resource *manager,
++		uint32_t id, struct wl_resource *handle) {
++	(void)manager;
++	struct wl_resource *reply = wl_resource_create(client,
++		&lumen_toplevel_identity_reply_v1_interface, 1, id);
++	if (!reply) {
++		wl_client_post_no_memory(client);
++		return;
++	}
++	struct identity_lookup lookup = {.handle = handle};
++	if (handle && wl_resource_get_client(handle) == client) {
++		root_for_each_container(lookup_container, &lookup);
++	}
++	bool available = lookup.matches == 1 && lookup.identifier && lookup.identifier[0];
++	lumen_toplevel_identity_reply_v1_send_result(reply,
++		available ? LUMEN_TOPLEVEL_IDENTITY_REPLY_V1_STATUS_AVAILABLE
++			: LUMEN_TOPLEVEL_IDENTITY_REPLY_V1_STATUS_UNAVAILABLE,
++		available ? lookup.identifier : "");
++	// Immediate one-shot result: no deferred work, retained argument pointer,
++	// cancellation race or per-client resource accumulation.
++	wl_resource_destroy(reply);
++}
++
++static const struct lumen_toplevel_identity_manager_v1_interface manager_impl = {
++	.destroy = manager_destroy,
++	.resolve = manager_resolve,
++};
++
++static void manager_bind(struct wl_client *client, void *data, uint32_t version, uint32_t id) {
++	(void)data;
++	struct wl_resource *resource = wl_resource_create(client,
++		&lumen_toplevel_identity_manager_v1_interface, version, id);
++	if (!resource) {
++		wl_client_post_no_memory(client);
++		return;
++	}
++	wl_resource_set_implementation(resource, &manager_impl, NULL, NULL);
++}
++
++bool sway_toplevel_identity_init(struct wl_display *display) {
++	return wl_global_create(display, &lumen_toplevel_identity_manager_v1_interface,
++		1, NULL, manager_bind) != NULL;
++}
++
++bool sway_toplevel_identity_is_privileged(const struct wl_global *global) {
++	// Interface comparison works during wl_global_create before its return and
++	// keeps security-context visibility aligned with both foreign managers.
++	return wl_global_get_interface(global) == &lumen_toplevel_identity_manager_v1_interface;
++}
