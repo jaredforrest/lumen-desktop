@@ -744,6 +744,20 @@ fn legacy_clipboard(f: &mut Harness) -> Result<()> {
     wait("legacy connection input after clipboard rejection", || {
         Ok((f.safe_target()?["text"] == "still-connected").then_some(()))
     })?;
+    let input_receipt = f.safe_target()?;
+    focus_app(f, "org.lumen.LocalTarget")?;
+    chord(f, "a")?;
+    f.keyboard
+        .as_mut()
+        .ok_or("Keyboard")?
+        .type_text("new-compatible-selection")?;
+    chord(f, "a")?;
+    chord(f, "c")?;
+    focus_viewer(f)?;
+    ensure(
+        paste_until(f, false, "new-compatible-selection")?,
+        "Changed compatible clipboard remained blocked after a rejection",
+    )?;
     save(
         &f.out.join("legacy-clipboard-acceptance.json"),
         &json!({
@@ -753,7 +767,7 @@ fn legacy_clipboard(f: &mut Harness) -> Result<()> {
         "actualServerReceivedLatin1Bytes":wire_received,
         "unrepresentableSource":LOCAL_TEXT, "rejection":warning, "unchangedReceipt":unchanged,
         "originatingViewer":viewer, "ownedModalDialog":dialog,
-        "connectionInputReceipt":f.safe_target()?, "remoteTargetIdentityRetained":true,
+        "connectionInputReceipt":input_receipt, "changedCompatibleClipboardReceipt":f.safe_target()?, "remoteTargetIdentityRetained":true,
         "rejectedPastePreservedPriorClipboard":rejected_paste_preserved,
         "notClaimed":["encrypted legacy connection", "HTML", "files", "Windows"]}),
     )
