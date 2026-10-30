@@ -329,10 +329,21 @@ fn inactive_split_origin(f: &mut Fixture, original: &str) -> Result<()> {
         .then_some(parent))
     })?;
     let inactive = "transfer-inactive-split-origin";
+    // A nonempty destination keeps the split intact instead of native unwrapping.
+    ipc!(
+        f,
+        "[con_id={}] move container to workspace {inactive}",
+        i(&bystander, "id")?
+    )?;
     ipc!(
         f,
         "[con_id={}] move container to workspace {inactive}",
         i(&parent, "id")?
+    )?;
+    ipc!(
+        f,
+        "[con_id={}] move container to workspace {original}",
+        i(&bystander, "id")?
     )?;
     f.focus(1, 0, None)?;
     let tree = stable(f)?;
