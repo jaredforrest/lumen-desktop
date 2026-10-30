@@ -913,21 +913,45 @@ fn run_checks(t: &mut Test) -> Result<()> {
         .ok_or("captured path")?
         .to_owned();
     t.pointer_down("Open")?;
+    let pressed = wait("physical preview button press and focus", 12, || {
+        let button: Value = serde_json::from_str(&t.ipc("button", &["Open"])?)?;
+        Ok((button["pressed"] == true && button["activeFocus"] == true).then_some(button))
+    })?;
     t.key(&["-k", "Down"])?;
     ensure(
-        t.selected()?["path"] != captured,
-        "Keyboard selection did not change during held press",
+        t.selected()?["path"] == captured && t.opened()?.len() == 3,
+        "Preview-focused Down changed the selected resource or dispatched during held press",
     )?;
+    fs::remove_file(&captured)?;
+    let removed = wait("held preview selected resource removal", 12, || {
+        let state = t.state()?;
+        Ok((state["selected"] == -1
+            && state["results"].as_array().is_some_and(|rows| rows.iter().all(|row| row["path"] != captured)))
+            .then_some(state))
+    })?;
     t.pointer_up()?;
+    t.reopen()?;
+    t.query("neighbor")?;
+    t.settled("neighbor")?;
+    ensure(
+        t.opened()?.len() == 3,
+        "Held preview release opened a removed or replacement resource",
+    )?;
+    let fresh = t.selected()?["path"].as_str().ok_or("fresh selected path")?.to_owned();
+    fs::write(
+        out.join("held-preview-refusal.json"),
+        serde_json::to_vec_pretty(&json!({"capturedPath":captured,"physicalButton":pressed,"afterRemoval":removed,"freshPath":fresh,"openedAfterRelease":t.opened()?}))?,
+    )?;
+    t.pointer("Open")?;
     wait("captured preview button", 12, || {
         Ok((t.opened()?.len() == 4).then_some(()))
     })?;
     ensure(
-        t.opened()?.last() == Some(&json!([uri(Path::new(&captured))])),
-        "Held press opened wrong resource",
+        t.opened()?.last() == Some(&json!([uri(Path::new(&fresh))])),
+        "Fresh preview press opened wrong resource",
     )?;
     t.check(
-        "held preview Open button preserves pressed resource despite keyboard selection change",
+        "physical preview focus keeps Down in preview; held Open refuses removed selection and fresh press opens exact current resource",
     );
     t.reopen()?;
     wait("fresh quota provider", 12, || {

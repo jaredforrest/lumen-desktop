@@ -20,6 +20,6 @@ ShellRoot {
   function status():string{return JSON.stringify({provider:launcher.provider,results:launcher.results,selected:launcher.selectedIndex,key:launcher.selectedKey,query:launcher.queryText,available:search.available,searching:search.searching,opening:search.opening,error:search.error,preview:search.preview,previewId:search.previewId,searchId:search.searchId,previewOpen:launcher.previewOpen,visible:stage.visible,browsed:root.browsed});}
   function image():string{const b=root.find(launcher,item=>item.source!==undefined && item.fillMode!==undefined && String(item.source).indexOf("lumen-preview-snapshots-")>=0);if(!b)return "{}";const point=b.mapToItem(stage.contentItem,b.width/2,b.height/2);return JSON.stringify({x:point.x,y:point.y,status:b.status,source:String(b.source)});}
   function reopen():void{stage.visible=true;launcher.focusSearch();}
-  function button(text:string):string{const b=root.find(launcher,item=>item.text===text && item.visible);if(!b)return "{}";const point=b.mapToItem(stage.contentItem,b.width/2,b.height/2);return JSON.stringify({x:point.x,y:point.y,enabled:b.enabled});}
+  function button(text:string):string{const b=root.find(launcher,item=>item.text===text && item.visible);if(!b)return "{}";const point=b.mapToItem(stage.contentItem,b.width/2,b.height/2);return JSON.stringify({x:point.x,y:point.y,enabled:b.enabled,pressed:b.pressed,activeFocus:b.activeFocus});}
  }
 }
