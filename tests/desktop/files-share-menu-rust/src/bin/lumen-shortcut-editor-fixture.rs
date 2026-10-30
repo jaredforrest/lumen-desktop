@@ -18,14 +18,11 @@ fn store(path: impl AsRef<Path>, value: &Value) -> Result<()> {
 fn publish(bundle: &Value, config: &Path) -> Result<()> {
     let bundle = load(bundle.as_str().ok_or("Bundle path")?)?;
     fs::create_dir_all(config)?;
-    fs::copy(
-        bundle["registry"].as_str().ok_or("Registry")?,
-        config.join("shortcuts.json"),
-    )?;
-    fs::copy(
-        bundle["editor"].as_str().ok_or("Editor")?,
-        config.join("shortcut-editor.json"),
-    )?;
+    for (field,name) in [("registry","shortcuts.json"),("editor","shortcut-editor.json")] {
+        let next=config.join(format!(".{name}.next"));
+        fs::write(&next,fs::read(bundle[field].as_str().ok_or("Generation path")?)?)?;
+        fs::rename(next,config.join(name))?;
+    }
     Ok(())
 }
 fn provider() -> Result<()> {
