@@ -411,9 +411,13 @@ impl Fixture {
             ),
         )?;
         let sway = self.options.sway.clone();
+        let mut arguments = vec!["--unsupported-gpu", "-c", config.to_str().unwrap()];
+        if self.options.scenario == "identity" {
+            arguments.push("-d");
+        }
         self.launch(
             &sway,
-            &["--unsupported-gpu", "-c", config.to_str().unwrap()],
+            &arguments,
             "sway.log",
         )?;
         let socket = wait("private compositor", || {
