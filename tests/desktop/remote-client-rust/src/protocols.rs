@@ -570,6 +570,7 @@ fn legacy_clipboard(f: &mut Harness) -> Result<()> {
             "-shared",
             "-noxdamage",
             "-noshm",
+            "-debug_sel",
         ],
         "legacy-x11vnc.log",
     )?;
@@ -615,6 +616,14 @@ fn legacy_clipboard(f: &mut Harness) -> Result<()> {
     save(
         &f.out.join("legacy-compatible-receipt.json"),
         &before_reject,
+    )?;
+    let raw_latin1 = b"Set CLIPBOARD 'legacy caf\xe9 \xa3\ncompatible\ttext\n'";
+    let wire_received = fs::read(f.out.join("legacy-x11vnc.log"))?
+        .windows(raw_latin1.len())
+        .any(|bytes| bytes == raw_latin1);
+    ensure(
+        wire_received,
+        "Actual legacy server did not receive exact Latin-1 bytes",
     )?;
     ensure(compatible, "Representable legacy clipboard text differs")?;
     f.stop(local)?;
@@ -675,6 +684,8 @@ fn legacy_clipboard(f: &mut Harness) -> Result<()> {
         &json!({
         "protocol":"VNC", "actualServer":"x11vnc with X11 TARGETS property type repair; legacy RFB capabilities unchanged", "transport":"unencrypted RFB inside disposable loopback namespace only",
         "independentDisplays":true, "representableLatin1Source":LEGACY, "representableReceipt":before_reject,
+        "actualServerReceivedLatin1Hex":"6c656761637920636166e920a30a636f6d70617469626c6509746578740a",
+        "actualServerReceivedLatin1Bytes":wire_received,
         "unrepresentableSource":LOCAL_TEXT, "rejection":warning, "unchangedReceipt":unchanged,
         "connectionInputReceipt":f.safe_target()?, "remoteTargetIdentityRetained":true,
         "rejectedPastePreservedPriorClipboard":rejected_paste_preserved,
