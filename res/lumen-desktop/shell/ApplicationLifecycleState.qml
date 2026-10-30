@@ -7,6 +7,8 @@ QtObject {
     property bool available:false
     property bool recoveryAvailable:false
     property var applications:[]
+    property var activationHistory:[]
+    property string sessionEpoch:""
     property string error:""
     property bool pending:false
     property var session:({phase:"idle",token:"",error:""})
@@ -26,10 +28,11 @@ QtObject {
             try {
                 const value=JSON.parse(data);
                 root.available=value.available===true;root.recoveryAvailable=root.available && value.recoveryAvailable===true;root.applications=root.available && Array.isArray(value.applications)?value.applications:[];root.error=value.error || "";root.session=value.session || {phase:"idle",token:"",error:""};
+                root.activationHistory=root.available && Array.isArray(value.activationHistory)?value.activationHistory:[];root.sessionEpoch=root.available && typeof value.sessionEpoch==="string"?value.sessionEpoch:"";
                 if(value.result){root.pending=false;if(value.result.sessionAuthorization)root.sessionAuthorized(value.result.sessionAuthorization);else root.resultReady(value.result);}
-            }catch(error){root.recoveryAvailable=false;root.available=false;root.applications=[];root.pending=false;}
+            }catch(error){root.recoveryAvailable=false;root.available=false;root.applications=[];root.activationHistory=[];root.sessionEpoch="";root.pending=false;}
         }}
-        onExited:{root.recoveryAvailable=false;root.available=false;root.applications=[];root.pending=false;root.session={phase:"idle",token:"",error:""};retry.restart();}
+        onExited:{root.recoveryAvailable=false;root.available=false;root.applications=[];root.activationHistory=[];root.sessionEpoch="";root.pending=false;root.session={phase:"idle",token:"",error:""};retry.restart();}
     }
     property Timer retry:Timer {interval:3000;onTriggered:root.observer.running=true}
 }

@@ -9,6 +9,7 @@ use std::os::unix::net::UnixStream;
 use std::path::{Path,PathBuf};
 pub mod session;
 pub mod cooperative;
+pub mod mru;
 
 pub type Result<T>=std::result::Result<T,String>;
 pub const MAX_PROCESSES:usize=512;
@@ -79,10 +80,10 @@ pub fn valid_identity(value:&Value)->bool{
     value.as_object().is_some_and(|row|row.len()==4&&["pid","start","device","inode"].iter().all(|key|row.get(*key).and_then(Value::as_u64).is_some())&&row["pid"].as_u64().is_some_and(|pid|pid>=2&&pid<=u32::MAX as u64))
 }
 pub struct Process{pub identity:Value,pub handle:OwnedFd,pub apps:BTreeSet<String>}
-pub struct Lifecycle{pub processes:BTreeMap<u32,Process>,pub windows:HashMap<(u32,String),Vec<Value>>,pub epoch:Option<String>}
-impl Default for Lifecycle{fn default()->Self{Self{processes:BTreeMap::new(),windows:HashMap::new(),epoch:None}}}
+pub struct Lifecycle{pub processes:BTreeMap<u32,Process>,pub windows:HashMap<(u32,String),Vec<Value>>,pub epoch:Option<String>,pub activation_history:mru::History}
+impl Default for Lifecycle{fn default()->Self{Self{processes:BTreeMap::new(),windows:HashMap::new(),epoch:None,activation_history:mru::History::default()}}}
 impl Lifecycle{
-    pub fn close(&mut self){self.processes.clear();self.windows.clear();self.epoch=None;}
+    pub fn close(&mut self){self.processes.clear();self.windows.clear();self.epoch=None;self.activation_history=mru::History::default();}
     pub fn observe(&mut self,node:&Value){
         if node["shell"]!="xdg_shell"||!node["window"].is_null(){return;}
         let Some(app)=node["app_id"].as_str().filter(|app|valid_app_id(app))else{return;};
@@ -122,7 +123,14 @@ impl Lifecycle{
         }
         self.prune();self.rows()
     }
-    pub fn prune(&mut self){self.processes.retain(|pid,process|!exited(&process.handle)&&process_identity(*pid).ok().as_ref()==Some(&process.identity));}
+    pub fn prune(&mut self){self.processes.retain(|pid,process|!exited(&process.handle)&&process_identity(*pid).ok().as_ref()==Some(&process.identity));let rows=self.rows();self.activation_history.prune(&rows);}
+    pub fn observe_focus(&mut self,nodes:&[Value]){
+        let Some(node)=nodes.iter().find(|node|node["focused"]==true&&node["shell"]=="xdg_shell"&&node["window"].is_null())else{return;};
+        let Some(app)=node["app_id"].as_str()else{return;};let Some(pid)=node["pid"].as_u64().and_then(|n|u32::try_from(n).ok())else{return;};
+        let Some(process)=self.processes.get(&pid)else{return;};
+        if exited(&process.handle)||process_identity(pid).ok().as_ref()!=Some(&process.identity)||!process.apps.contains(app){return;}
+        let rows=self.rows();self.activation_history.promote(app,&rows);
+    }
     pub fn records(&self)->Vec<Value>{self.processes.values().map(|process|json!({"identity":process.identity,"apps":process.apps.iter().collect::<Vec<_>>()})).collect()}
     pub fn rows(&self)->Vec<Value>{
         let mut apps:BTreeMap<String,(usize,usize,Vec<String>,bool)>=BTreeMap::new();
@@ -144,6 +152,7 @@ impl Lifecycle{
 }
 
 pub struct ObservationStore{pub directory:PathBuf,pub epoch:String,pub boot_id:String,lock:File,previous:Option<Vec<u8>>,pub warning:String}
+pub struct Recovery{pub processes:Vec<Value>,pub history:mru::History}
 impl ObservationStore{
     pub fn new(runtime:&Path,epoch:&str,boot_id:&str)->Result<Self>{
         if epoch.len()!=24||!epoch.bytes().all(|byte|byte.is_ascii_digit()||(b'a'..=b'f').contains(&byte))||boot_id.len()!=36||!boot_id.bytes().enumerate().all(|(index,byte)|if matches!(index,8|13|18|23){byte==b'-'}else{byte.is_ascii_digit()||(b'a'..=b'f').contains(&byte)}){return Err("Invalid recovery scope".into());}
@@ -161,17 +170,21 @@ impl ObservationStore{
     }
     fn path(&self)->PathBuf{self.directory.join(format!("{}.json",self.epoch))}
     pub fn load(&mut self)->Vec<Value>{
-        match self.read(){Ok(value)=>value,Err(error)=>{if error!="missing"{self.warning="Previous application observations were not restored.".into();}Vec::new()}}
+        self.load_state().processes
     }
-    fn read(&self)->Result<Vec<Value>>{
+    pub fn load_state(&mut self)->Recovery{
+        match self.read(){Ok(value)=>value,Err(error)=>{if error!="missing"{self.warning="Previous application observations were not restored.".into();}Recovery{processes:Vec::new(),history:mru::History::default()}}}
+    }
+    fn read(&self)->Result<Recovery>{
         let file=OpenOptions::new().read(true).custom_flags(libc::O_NOFOLLOW|libc::O_NONBLOCK).open(self.path()).map_err(|error|if error.kind()==std::io::ErrorKind::NotFound{"missing".into()}else{error.to_string()})?;
         let info=file.metadata().map_err(|error|error.to_string())?;
         if !info.is_file()||info.uid()!=unsafe{libc::getuid()}||info.mode()&0o077!=0||info.nlink()!=1||info.len()>1024*1024{return Err("Invalid recovery record".into());}
         let mut bytes=Vec::new();file.take(1024*1024+1).read_to_end(&mut bytes).map_err(|error|error.to_string())?;
         if bytes.len()>1024*1024{return Err("Recovery record exceeds limit".into());}
         let data:Value=serde_json::from_slice(&bytes).map_err(|_|"Invalid recovery record")?;
-        let obj=data.as_object().filter(|obj|obj.len()==4&&["version","epoch","bootId","processes"].iter().all(|key|obj.contains_key(*key))).ok_or("Invalid recovery record")?;
-        if obj["version"].as_u64()!=Some(1)||obj["epoch"]!=self.epoch||obj["bootId"]!=self.boot_id{return Err("Recovery scope changed".into());}
+        let version=data["version"].as_u64().filter(|v|matches!(v,1|2)).ok_or("Unsupported recovery record")?;
+        let obj=data.as_object().filter(|obj|obj.len()==(if version==1{4}else{5})&&["version","epoch","bootId","processes"].iter().all(|key|obj.contains_key(*key))&&(version==1||obj.contains_key("activationHistory"))).ok_or("Invalid recovery record")?;
+        if obj["epoch"]!=self.epoch||obj["bootId"]!=self.boot_id{return Err("Recovery scope changed".into());}
         let rows=obj["processes"].as_array().filter(|rows|rows.len()<=MAX_PROCESSES).ok_or("Invalid recovery process list")?;
         let mut pids=HashSet::new();
         for row in rows{
@@ -181,12 +194,24 @@ impl ObservationStore{
             let mut seen=HashSet::new();
             if !apps.iter().all(|value|value.as_str().is_some_and(|app|valid_app_id(app)&&seen.insert(app))){return Err("Invalid recovered advertisement".into());}
         }
-        Ok(rows.clone())
+        let history=if version==2{mru::History::from_saved(&obj["activationHistory"],rows)?}else{mru::History::default()};
+        Ok(Recovery{processes:rows.clone(),history})
     }
     pub fn invalidate(&mut self)->Result<()>{match fs::remove_file(self.path()){Ok(())=>(),Err(error)if error.kind()==std::io::ErrorKind::NotFound=>(),Err(error)=>return Err(error.to_string())};self.previous=None;self.sync_directory()}
     fn sync_directory(&self)->Result<()>{File::open(&self.directory).map_err(|error|error.to_string())?.sync_all().map_err(|error|error.to_string())}
     pub fn save(&mut self,rows:&[Value])->Result<()>{
-        let data=json!({"version":1,"epoch":self.epoch,"bootId":self.boot_id,"processes":rows});
+        self.save_state(rows,&mru::History::default())
+    }
+    pub fn save_state(&mut self,rows:&[Value],history:&mru::History)->Result<()>{
+        let history=mru::History::from_saved(&history.value(),rows)?.value();
+        let mut data=json!({"version":2,"epoch":self.epoch,"bootId":self.boot_id,"processes":rows,"activationHistory":[]});
+        let base=serde_json::to_vec(&data).map_err(|error|error.to_string())?.len();
+        let mut used=base;let mut retained=Vec::new();
+        for row in history.as_array().ok_or("Invalid application order")?{
+            let size=serde_json::to_vec(row).map_err(|error|error.to_string())?.len()+usize::from(!retained.is_empty());
+            if used+size>1024*1024{break;}used+=size;retained.push(row.clone());
+        }
+        data["activationHistory"]=Value::Array(retained);
         let encoded=serde_json::to_vec(&data).map_err(|error|error.to_string())?;
         if self.previous.as_ref()==Some(&encoded){return Ok(());}
         if encoded.len()>1024*1024{return Err("Recovery record exceeds limit".into());}

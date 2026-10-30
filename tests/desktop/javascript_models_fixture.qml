@@ -273,6 +273,14 @@ ShellRoot {
         equal(Interaction.activationWindow([a1],b1,[]),a1);
     }
     function appSwitcher() {
+        // An app that exited before observer hydration cannot lend its rank to
+        // a later process advertising the same identifier.
+        deep(AppSwitcher.recoverApplicationOrder(['short','kept'],['kept','short'],'kept',{}, {short:['replacement'],kept:['live']},false,[]),['kept','short']);
+        deep(AppSwitcher.recoverApplicationOrder(['short','kept'],['kept','short'],'kept',{}, {short:['replacement'],kept:['live']},false,['short']),['kept','short']);
+        deep(AppSwitcher.recoverApplicationOrder(['short','kept'],['short','kept'],'new', {short:['old']},{short:['replacement']},false,[]),['new','short','kept']);
+        deep(AppSwitcher.recoverApplicationOrder(['short'],[],'',{}, {short:['replacement']},false,[]),[]);
+        deep(AppSwitcher.recoverApplicationOrder(['short'],[],'',{}, {},false,['short']),['short']);
+        deep(AppSwitcher.recoverApplicationOrder(['old'],['recovered'],'new',{}, {},true,['old']),['new','recovered']);
         const odd={app:'__proto__'};
         equal(AppSwitcher.snapshot([odd],[],window=>window.app).length,1);
         const a1={app:'a'},a2={app:'a'},b1={app:'b'},c1={app:'c'},gone={app:'gone'};

@@ -34,3 +34,16 @@ function applicationOrder(items, history) {
     for(const key of history || []){const item=items.find(item=>item.key===key);if(item && !result.includes(item))result.push(item);}
     return result.concat(items.filter(item=>!result.includes(item)));
 }
+
+// Recovery is ordering preference data, never a captured activation request.
+function recoverApplicationOrder(local, recovered, active, previous, current, changedEpoch, liveLocal) {
+    const kept=changedEpoch?[]:(local || []).filter(id=>{
+        const old=previous[id],now=current[id];
+        return id===active || (Array.isArray(old) ? (Array.isArray(now) && old.some(instance=>now.includes(instance))) : (liveLocal || []).includes(id));
+    });
+    const result=[];
+    for(const id of (active?[active]:[]).concat(kept,recovered || [])){
+        if(typeof id==="string" && id && !result.includes(id))result.push(id);
+    }
+    return result.slice(0,512);
+}

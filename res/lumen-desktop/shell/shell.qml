@@ -159,9 +159,44 @@ ShellRoot {
     property var active: ToplevelManager.activeToplevel
     property var activationHistory: []
     property var applicationActivationHistory:[]
+    property string applicationHistoryEpoch:""
+    property var applicationHistoryInstances:Object.create(null)
+    // Live object witnesses cover focus observed before the native observer responds.
+    // These references never leave this shell process.
+    property var applicationHistoryWindows:Object.create(null)
+    function recoverApplicationOrder(){
+        if(!applicationLifecycle.available || !applicationLifecycle.sessionEpoch)return;
+        const instances=Object.create(null);
+        for(const app of runningApplications){
+            const entry=entryFor({appId:app.appId,title:""}),id=entry?entry.id:app.appId;
+            if(!Array.isArray(instances[id]))instances[id]=[];
+            for(const instance of app.instanceIds || [])if(!instances[id].includes(instance))instances[id].push(instance);
+        }
+        const recovered=applicationLifecycle.activationHistory.map(appId=>{const entry=entryFor({appId:appId,title:""});return entry?entry.id:appId;});
+        const current=active && windows.includes(active)?windowIdentity(active):"";
+        const liveLocal=Object.keys(applicationHistoryWindows).filter(id=>(applicationHistoryWindows[id] || []).some(window=>windows.includes(window)));
+        applicationActivationHistory=SwitcherModel.recoverApplicationOrder(applicationActivationHistory,recovered,current,applicationHistoryInstances,instances,!!applicationHistoryEpoch && applicationHistoryEpoch!==applicationLifecycle.sessionEpoch,liveLocal);
+        applicationHistoryInstances=instances;applicationHistoryEpoch=applicationLifecycle.sessionEpoch;
+    }
+    Connections {target:applicationLifecycle
+        function onActivationHistoryChanged(){Qt.callLater(root.recoverApplicationOrder);}
+        function onApplicationsChanged(){Qt.callLater(root.recoverApplicationOrder);}
+        function onSessionEpochChanged(){Qt.callLater(root.recoverApplicationOrder);}
+        function onAvailableChanged(){Qt.callLater(root.recoverApplicationOrder);}
+    }
     onActiveChanged: {
         if(active && focusFallback.running && (active===focusFallback.targetWindow || active!==focusFallback.initialWindow))focusFallback.stop();
         ownedAssociationTimer.restart();
+        const witnesses=Object.create(null);
+        for(const id of Object.keys(applicationHistoryWindows)){
+            const live=applicationHistoryWindows[id].filter(window=>windows.includes(window));
+            if(live.length)witnesses[id]=live;
+        }
+        if(active && windows.includes(active)){
+            const id=windowIdentity(active);
+            witnesses[id]=[active].concat((witnesses[id] || []).filter(window=>window!==active));
+        }
+        applicationHistoryWindows=witnesses;
         if (active) {activationHistory=[active].concat(activationHistory.filter(w=>w!==active && windows.includes(w)));const recent=entryFor(active);const identity=recent?recent.id:active.appId;if(identity)applicationActivationHistory=[identity].concat(applicationActivationHistory.filter(id=>id!==identity)).slice(0,512);if(recent)recentAppIds=[recent.id].concat(recentAppIds.filter(id=>!DockModel.sameEntry(id,recent.id))).slice(0,12);}
     }
     property var entries: DesktopEntries.applications.values

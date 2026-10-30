@@ -13,13 +13,13 @@ fn emit(available:bool,lifecycle:&Lifecycle,session:&SessionEnd,store:&mut Optio
     let mut error=error.to_owned();let mut recovery=false;
     if available{
         if let Some(store)=store{
-            match store.save(&lifecycle.records()){
+            match store.save_state(&lifecycle.records(),&lifecycle.activation_history){
                 Ok(())=>recovery=true,
                 Err(_)=>{let _=store.invalidate();error="Application observations could not be saved for shell recovery.".into();}
             }
         }
     }
-    let mut value=json!({"available":available,"applications":if available{lifecycle.rows()}else{Vec::new()},"error":error,"recoveryAvailable":recovery,"session":session.state()});
+    let mut value=json!({"available":available,"applications":if available{lifecycle.rows()}else{Vec::new()},"activationHistory":if available{lifecycle.activation_history.order()}else{Vec::new()},"sessionEpoch":if available{lifecycle.epoch.clone()}else{None},"error":error,"recoveryAvailable":recovery,"session":session.state()});
     if let Some(result)=result{value["result"]=result;}
     if let Ok(encoded)=serde_json::to_string(&value){
         if last.as_ref()!=Some(&encoded){println!("{encoded}");let _=std::io::stdout().flush();*last=Some(encoded);}
@@ -31,7 +31,7 @@ fn refresh(query:&mut UnixStream,path:&PathBuf,expected:&str,lifecycle:&mut Life
     if kind!=4{return Err("Unexpected compositor reply".into());}
     if epoch(path)?!=expected{return Err("Compositor session changed".into());}
     let nodes=window_nodes(&tree)?;
-    lifecycle.refresh(expected,&nodes);session.tick(&nodes,lifecycle,protocol);
+    lifecycle.refresh(expected,&nodes);lifecycle.observe_focus(&nodes);session.tick(&nodes,lifecycle,protocol);
     emit(true,lifecycle,session,store,last,"",None);
     Ok(nodes)
 }
@@ -82,7 +82,7 @@ fn watch()->Result<()>{
         let mut query=UnixStream::connect(&path).map_err(|error|error.to_string())?;
         query.set_read_timeout(Some(Duration::from_secs(5))).map_err(|error|error.to_string())?;
         query.set_write_timeout(Some(Duration::from_secs(5))).map_err(|error|error.to_string())?;
-        if let Some(store)=&mut store{lifecycle.recover(&identity,&store.load());}
+        if let Some(store)=&mut store{let saved=store.load_state();lifecycle.recover(&identity,&saved.processes);lifecycle.activation_history=saved.history;lifecycle.prune();}
         let mut nodes=refresh(&mut query,&path,&identity,&mut lifecycle,&mut session,&protocol,&mut store,&mut last)?;
         events.set_read_timeout(None).map_err(|error|error.to_string())?;
         let mut input=Vec::new();
