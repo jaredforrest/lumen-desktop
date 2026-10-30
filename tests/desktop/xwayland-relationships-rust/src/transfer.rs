@@ -166,6 +166,13 @@ fn move_family(f: &mut Fixture, name: &str, child: bool, label: &str) -> Result<
         .transpose()?;
     let visible = current(f)?;
     let reply = f.ipc(&captured.command)?;
+    let after_ack = f.tree()?;
+    save(
+        &format!("{label}-ack"),
+        &json!({"capturedTree":captured.tree,
+        "capturedSnapshot":captured.snapshot,"command":captured.command,"reply":reply,
+        "focusedWorkspaceBefore":visible,"treeAfterAcknowledgement":after_ack}),
+    )?;
     require(
         reply
             .as_array()
@@ -179,6 +186,14 @@ fn move_family(f: &mut Fixture, name: &str, child: bool, label: &str) -> Result<
     })?;
     let after = f.mapped(0, 0)?;
     let after_child = if child { Some(f.mapped(0, 1)?) } else { None };
+    let (outputs_status, outputs_raw) = f.call(&["-r", "-t", "get_outputs"])?;
+    require(outputs_status.success(), "Output observation failed")?;
+    let outputs: Value = serde_json::from_str(&outputs_raw)?;
+    save(
+        &format!("{label}-settled"),
+        &json!({"tree":f.tree()?,"outputs":outputs,
+        "focusedWorkspaceBefore":visible,"focusedWorkspaceAfter":current(f)?}),
+    )?;
     require(
         identity(&root) == identity(&after),
         "Transfer replaced native root identity",
