@@ -144,9 +144,15 @@ impl std::ops::DerefMut for OwnedChild {
 }
 impl Drop for OwnedChild {
     fn drop(&mut self) {
-        if !matches!(self.0.try_wait(), Ok(Some(_))) {
-            let _ = self.0.kill();
-            let _ = self.0.wait();
+        match self.0.try_wait() {
+            Ok(None) => {
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+            }
+            Ok(Some(_)) => {}
+            Err(error) => eprintln!(
+                "speech child status unavailable; not signaling an unverified PID: {error}"
+            ),
         }
     }
 }
