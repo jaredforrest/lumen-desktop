@@ -117,7 +117,9 @@ pub fn execute(mut command: Command, budget: Duration, diagnostic: &Path) -> Res
                     }
                     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
                     Err(_) => {
-                        return Err("Settings provider output failed; outcome is unconfirmed".into());
+                        return Err(
+                            "Settings provider output failed; outcome is unconfirmed".into()
+                        );
                     }
                 }
             }
@@ -209,11 +211,15 @@ mod tests {
             }
             fs::write(file, format!("{} {child}", std::process::id())).unwrap();
         }
-        if role == "flood" {
+        if role == "flood" || role == "stderr" {
             use std::io::Write;
             let bytes = [b'x'; 4096];
             loop {
-                std::io::stdout().write_all(&bytes).unwrap();
+                if role == "stderr" {
+                    std::io::stderr().write_all(&bytes).unwrap();
+                } else {
+                    std::io::stdout().write_all(&bytes).unwrap();
+                }
             }
         }
         loop {
@@ -224,7 +230,7 @@ mod tests {
     fn bounded_process_cleanup() {
         let root = std::env::temp_dir().join(format!("shortcut-process-{}", std::process::id()));
         fs::create_dir_all(&root).unwrap();
-        for role in ["hang", "flood", "tree"] {
+        for role in ["hang", "flood", "stderr", "tree"] {
             let file = root.join(format!("{role}.pids"));
             let mut cmd = Command::new(std::env::current_exe().unwrap());
             cmd.args(["--exact", "process::tests::provider_child", "--nocapture"])

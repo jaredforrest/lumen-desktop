@@ -3,8 +3,8 @@ use lumen_files_share_menu_fixture::*;
 use serde_json::{Value, json};
 use std::{
     env, fs,
-    io::Write,
-    os::unix::fs::symlink,
+    io::{Read, Write},
+    os::unix::{fs::symlink, net::UnixListener},
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
@@ -18,12 +18,80 @@ fn store(path: impl AsRef<Path>, value: &Value) -> Result<()> {
 fn publish(bundle: &Value, config: &Path) -> Result<()> {
     let bundle = load(bundle.as_str().ok_or("Bundle path")?)?;
     fs::create_dir_all(config)?;
-    for (field,name) in [("registry","shortcuts.json"),("editor","shortcut-editor.json")] {
-        let next=config.join(format!(".{name}.next"));
-        fs::write(&next,fs::read(bundle[field].as_str().ok_or("Generation path")?)?)?;
-        fs::rename(next,config.join(name))?;
+    for (field, name) in [
+        ("registry", "shortcuts.json"),
+        ("editor", "shortcut-editor.json"),
+    ] {
+        let next = config.join(format!(".{name}.next"));
+        fs::write(
+            &next,
+            fs::read(bundle[field].as_str().ok_or("Generation path")?)?,
+        )?;
+        fs::rename(next, config.join(name))?;
     }
     Ok(())
+}
+fn compositor(root: &Path) -> Result<PathBuf> {
+    let socket = root.join("runtime/disposable-compositor.sock");
+    let listener = UnixListener::bind(&socket)?;
+    let root = root.to_owned();
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            let Ok(mut stream) = stream else {
+                break;
+            };
+            let _ = stream.set_read_timeout(Some(std::time::Duration::from_millis(500)));
+            let mut header = [0u8; 14];
+            if stream.read_exact(&mut header).is_err() {
+                continue;
+            }
+            let generation = fs::read_to_string(root.join("live-generation")).unwrap_or_default();
+            let witness = load(root.join("manifest.json"))
+                .ok()
+                .and_then(|v| v["witness"].as_str().map(str::to_owned))
+                .unwrap_or_default();
+            let mut value = json!({"config":format!("exec_always --no-startup-id {witness} {generation}\n"),"lumen_config_valid":true});
+            match fs::read_to_string(root.join("runtime-mode"))
+                .unwrap_or_default()
+                .as_str()
+            {
+                "old-provider" => {
+                    value.as_object_mut().unwrap().remove("lumen_config_valid");
+                }
+                "invalid-config" => value["lumen_config_valid"] = json!(false),
+                _ => {}
+            }
+            let bytes = value.to_string().into_bytes();
+            header[..6].copy_from_slice(b"i3-ipc");
+            header[6..10].copy_from_slice(&(bytes.len() as u32).to_le_bytes());
+            header[10..].copy_from_slice(&9u32.to_le_bytes());
+            let _ = stream.write_all(&header);
+            let _ = stream.write_all(&bytes);
+        }
+    });
+    Ok(socket)
+}
+fn activate(
+    bundle: &Value,
+    root: &Path,
+    manifest: &Value,
+    values: &std::collections::BTreeMap<String, String>,
+) -> Result<()> {
+    let bundle = load(bundle.as_str().ok_or("Bundle")?)?;
+    let source = bundle["registry"].as_str().ok_or("Registry")?;
+    fs::write(root.join("live-generation"), source)?;
+    let output = Command::new(manifest["witness"].as_str().ok_or("Witness")?)
+        .arg(source)
+        .env_clear()
+        .envs(values)
+        .output()?;
+    require(
+        output.status.success(),
+        &format!(
+            "Actual runtime witness failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ),
+    )
 }
 fn provider() -> Result<()> {
     let root = PathBuf::from(env::var("SHORTCUT_FIXTURE_ROOT")?);
@@ -71,6 +139,7 @@ fn provider() -> Result<()> {
             .find(|state| state["settings"] == saved)
             .ok_or("No actual module generation for request")?;
         publish(&state["bundle"], &root.join("config/lumen-desktop"))?;
+        activate(&state["bundle"], &root, &manifest, &env::vars().collect())?;
     }
     println!("{saved}");
     Ok(())
@@ -109,6 +178,8 @@ fn run(options: &Options) -> Result<()> {
     let root = &options.output;
     fs::create_dir_all(root.join("bin"))?;
     fs::create_dir_all(root.join("runtime"))?;
+    store(root.join("manifest.json"), &manifest)?;
+    let socket = compositor(root)?;
     symlink(env::current_exe()?, root.join("bin/lumen-nix-settings"))?;
     symlink(validator, root.join("bin/lumen-shortcuts"))?;
     let mut values = private_environment()?;
@@ -139,6 +210,7 @@ fn run(options: &Options) -> Result<()> {
         ),
     );
     values.insert("SHORTCUT_FIXTURE_ROOT".into(), root.display().to_string());
+    values.insert("SWAYSOCK".into(), socket.display().to_string());
     values.insert(
         "SHORTCUT_FIXTURE_MANIFEST".into(),
         manifest_path.display().to_string(),
@@ -163,6 +235,7 @@ fn run(options: &Options) -> Result<()> {
         "Read-only edit reached settings",
     )?;
     publish(&initial["bundle"], &config)?;
+    activate(&initial["bundle"], root, &manifest, &values)?;
     let mut evidence = vec![json!({"case":"read-only opt-in","response":refused})];
     let request = |action: &str, chord: Value, generation: Value| json!({"action":action,"id":"window.fullscreen.toggle","chord":chord,"generation":generation});
     for (name, req) in [
@@ -190,8 +263,19 @@ fn run(options: &Options) -> Result<()> {
         )?;
         evidence.push(json!({"case":name,"response":response}));
     }
-    let security=invoke(helper,&request("set",json!("Super+Ctrl+F12"),invoke(helper,&json!({"action":"status"}),&values)?["generation"].clone()),&values)?;
-    require(security["exitSuccess"]==false && !root.join("calls.jsonl").exists(),"Security reservation was silently overridden")?;
+    let security = invoke(
+        helper,
+        &request(
+            "set",
+            json!("Super+Ctrl+F12"),
+            invoke(helper, &json!({"action":"status"}), &values)?["generation"].clone(),
+        ),
+        &values,
+    )?;
+    require(
+        security["exitSuccess"] == false && !root.join("calls.jsonl").exists(),
+        "Security reservation was silently overridden",
+    )?;
     evidence.push(json!({"case":"security reservation","response":security}));
     for (action, chord, index) in [
         ("set", json!("Mod4+Control+x"), 1),
@@ -284,13 +368,84 @@ fn run(options: &Options) -> Result<()> {
     )?;
     evidence.push(json!({"case":"malformed map","response":malformed}));
     publish(&initial["bundle"], &config)?;
-    store(root.join("process-result.json"),&json!({"passed":true,"cases":evidence,"groups":evidence.len(),"scope":"Real edit helper, actual validator and immutable module configurations; disposable deployment provider"}))?;
+    activate(&initial["bundle"], root, &manifest, &values)?;
+    for (name, registry_index, catalog_index) in [
+        ("disabled catalog with old map", 0, 2),
+        ("restored catalog with disabled map", 2, 0),
+    ] {
+        let registry_bundle = load(
+            manifest["states"][registry_index]["bundle"]
+                .as_str()
+                .unwrap(),
+        )?;
+        let catalog_bundle = load(
+            manifest["states"][catalog_index]["bundle"]
+                .as_str()
+                .unwrap(),
+        )?;
+        fs::write(
+            config.join("shortcuts.json"),
+            fs::read(registry_bundle["registry"].as_str().unwrap())?,
+        )?;
+        fs::write(
+            config.join("shortcut-editor.json"),
+            fs::read(catalog_bundle["editor"].as_str().unwrap())?,
+        )?;
+        let response = invoke(helper, &json!({"action":"status"}), &values)?;
+        require(
+            response["available"] == false && response["editable"] == false,
+            "Skewed generation pair was accepted",
+        )?;
+        evidence.push(json!({"case":name,"response":response}));
+    }
+    publish(&initial["bundle"], &config)?;
+    for mode in ["old-provider", "invalid-config"] {
+        fs::write(root.join("runtime-mode"), mode)?;
+        let response = invoke(helper, &json!({"action":"status"}), &values)?;
+        require(
+            response["runtimeConfirmed"] == false && response["editable"] == false,
+            "Unvalidated compositor was advertised as active",
+        )?;
+        evidence.push(json!({"case":mode,"response":response}));
+    }
+    fs::write(root.join("runtime-mode"), "")?;
+    let record = root.join("runtime/lumen-desktop/shortcuts-runtime.json");
+    let mut stale = load(&record)?;
+    stale["epoch"]["start"] = json!("another-process-epoch");
+    store(&record, &stale)?;
+    let response = invoke(helper, &json!({"action":"status"}), &values)?;
+    require(
+        response["runtimeConfirmed"] == false && response["editable"] == false,
+        "Stale manager epoch was accepted",
+    )?;
+    evidence.push(json!({"case":"stale process epoch","response":response}));
+    activate(&initial["bundle"], root, &manifest, &values)?;
+    use std::os::unix::fs::PermissionsExt;
+    fs::set_permissions(&record, fs::Permissions::from_mode(0o644))?;
+    let response = invoke(helper, &json!({"action":"status"}), &values)?;
+    require(
+        response["runtimeConfirmed"] == false,
+        "Public runtime record accepted",
+    )?;
+    evidence.push(json!({"case":"unsafe witness permissions","response":response}));
+    fs::set_permissions(&record, fs::Permissions::from_mode(0o600))?;
+    store(
+        root.join("process-result.json"),
+        &json!({"passed":true,"cases":evidence,"groups":evidence.len(),"scope":"Real edit helper, actual validator and immutable module configurations; disposable deployment provider"}),
+    )?;
     fs::write(root.join("mode"), "publish")?;
     let assets = root.join("assets");
     copy_tree(Path::new("/source/res/lumen-desktop"), &assets)?;
-    let palette=load(assets.join("appearance/palette.json"))?;
-    let appearance=root.join("appearance.json");store(&appearance,&json!({"font":palette["font"],"palette":palette["dark"],"preferences":{"textScale":1}}))?;
-    values.insert("LUMEN_APPEARANCE_STATE".into(),appearance.display().to_string());
+    let palette = load(assets.join("appearance/palette.json"))?;
+    let appearance = root.join("appearance.json");
+    store(
+        &appearance,
+        &json!({"font":palette["font"],"palette":palette["dark"],"preferences":{"textScale":1}}),
+    )?;
+    values.insert(
+        "LUMEN_APPEARANCE_STATE".into(),
+        appearance.display().to_string(),
+    );
     let state = assets.join("shell/ShortcutEditorState.qml");
     let mut seams = vec![];
     replace_once(
@@ -314,6 +469,9 @@ fn run(options: &Options) -> Result<()> {
             },
             &config,
         )?;
+        if editable {
+            activate(&initial["bundle"], root, &manifest, &values)?;
+        }
         store(root.join("settings.json"), &initial["settings"])?;
         let qml = root.join(format!("{name}.qml"));
         let screenshot = root.join(format!("{name}.png"));

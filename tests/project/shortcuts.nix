@@ -31,4 +31,9 @@ let
     };
   };
   registry = home.xdg.configFile."lumen-desktop/shortcuts.json".source;
-in if !bundle then registry else pkgs.writeText "lumen-shortcut-fixture.json" (builtins.toJSON { inherit registry; editor = home.xdg.configFile."lumen-desktop/shortcut-editor.json".source; dispatch = lib.filterAttrs (_: command: command != null) effective; })
+in if !bundle then registry else pkgs.writeText "lumen-shortcut-fixture.json" (builtins.toJSON {
+  inherit registry;
+  editor = home.xdg.configFile."lumen-desktop/shortcut-editor.json".source;
+  runtimeCommand = (lib.findFirst (item: lib.hasInfix "/bin/lumen-shortcut-runtime-witness " item.command) { command = ""; } home.wayland.windowManager.sway.config.startup).command;
+  dispatch = lib.filterAttrs (_: command: command != null) effective;
+})

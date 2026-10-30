@@ -151,7 +151,7 @@ fn safe_record(path: &Path) -> Result<fs::File> {
 pub fn confirmed(source: &Path) -> Result<Value> {
     let path = record_path()?;
     let mut bytes = Vec::new();
-    safe_record(&path)?
+    safe_record(&path).map_err(|error|format!("Waiting for a valid compositor load witness ({error}). If this persists, start a new session with the updated compositor."))?
         .take(65537)
         .read_to_end(&mut bytes)
         .map_err(|e| e.to_string())?;

@@ -14,5 +14,6 @@ in pkgs.writeText "lumen-shortcut-editor-fixtures.json" (builtins.toJSON {
   ];
   inherit readOnly;
   helper = "${pkgs.callPackage ../../packages/shortcut-settings.nix {}}/bin/lumen-shortcut-settings";
+  witness = "${pkgs.callPackage ../../packages/shortcut-settings.nix {}}/bin/lumen-shortcut-runtime-witness";
   validator = "${pkgs.callPackage ../../packages/shortcuts.nix {}}/bin/lumen-shortcuts";
 })

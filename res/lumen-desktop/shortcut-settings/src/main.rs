@@ -10,7 +10,6 @@ use std::{
         unix::fs::{DirBuilderExt, OpenOptionsExt},
     },
     path::PathBuf,
-    process::Command,
     thread,
     time::{Duration, Instant},
 };
