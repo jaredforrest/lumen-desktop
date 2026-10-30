@@ -75,6 +75,9 @@ def main [consumer?: string, width?: int, mode?: string] {
             LUMEN_FILE_JOBS_BIN: ($jobs_package | path join bin lumen-file-jobs)
         } { ^timeout --kill-after=5s 30s quickshell -p ($sandbox | path join fixture.qml) | complete })
         let log = ($run.stdout + $run.stderr)
+        $run.stdout | save --force ($output | path join stdout.log)
+        $run.stderr | save --force ($output | path join stderr.log)
+        {exit_code: $run.exit_code, stdout_bytes: ($run.stdout | str length --utf-8-bytes), stderr_bytes: ($run.stderr | str length --utf-8-bytes)} | to json | save --force ($output | path join process.json)
         $log | save --force ($output | path join fixture.log)
         if $run.exit_code != 0 or ($log | str contains OWNED_TYPOGRAPHY_FAILURE) or ($log | str contains ReferenceError) or ($log | str contains TypeError) or ($log | str contains 'binding loop') {
             error make {msg: $'Owned typography QML failed ($batch), exit=($run.exit_code), evidence=($output): ($log)'}
