@@ -342,6 +342,7 @@ pub(super) fn run(f: &mut Fixture, id: u64) -> Result<()> {
     request(f, &format!("[con_id={id}] move position 300 200"), None)?;
     request(f, "workspace 2", None)?;
     request(f, &format!("[con_id={id}] focus"), None)?;
+    request(f, "output HEADLESS-1 position 0 0", None)?;
     request(f, "create_output", None)?;
     request(f, "output HEADLESS-2 position 1440 0", None)?;
     let before = f.tree()?;
