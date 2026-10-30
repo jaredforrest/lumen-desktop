@@ -23,6 +23,7 @@ let
   runtime = pkgs.callPackage ./settings-runtime.nix { };
 in pkgs.writeTextFile {
   name = "lumen-nix-settings";
+  passthru.schema = "${schemaSource}/packages/desktop-settings-schema.nix";
   destination = "/bin/lumen-nix-settings";
   executable = true;
   text = ''
