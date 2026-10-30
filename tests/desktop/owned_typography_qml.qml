@@ -15,7 +15,7 @@ ShellRoot {
  property int ticks:0
  property var focusTarget:null
  property var palettes:__PALETTES__
- function progress(phase){console.log("OWNED_TYPOGRAPHY_PROGRESS "+JSON.stringify({phase:phase,now:Date.now(),index:audit.index,stage:audit.stage,ticks:audit.ticks,painting:audit.painting,case:audit.cases[audit.index],filesReady:service.ready,filesBusy:service.busy}));}
+ function progress(phase){const entry=audit.cases[audit.index],window=entry?(entry.app==="Files"?files:calendar):null,viewport=entry && entry.app==="Calendar"?audit.walk(calendar.contentItem).find(item=>item.objectName==="calendar-content-viewport"):null;console.log("OWNED_TYPOGRAPHY_PROGRESS "+JSON.stringify({phase:phase,now:Date.now(),index:audit.index,stage:audit.stage,ticks:audit.ticks,painting:audit.painting,case:entry,filesReady:service.ready,filesBusy:service.busy,window:window?{visible:window.visible,width:window.width,height:window.height}:null,viewport:viewport?{width:viewport.width,height:viewport.height,availableWidth:viewport.availableWidth,availableHeight:viewport.availableHeight,contentWidth:viewport.contentWidth,contentHeight:viewport.contentHeight}:null}));}
  QtObject {id:exported;property var state:({appName:"",title:"",windowId:0})}
  QtObject {id:stub;property date currentDate:new Date(2026,9,20);property int focusEpoch:0;property var windows:[];property var exportedMenu:exported;function claimPopup(name){}function focusOwnedWindow(name){}function focusWindow(window){}function activeFiles(window){}function openSettings(name){}}
  D.FilesState {id:service;persistViewPreferences:false;path:"__DOCUMENTS__";viewMode:"list"}

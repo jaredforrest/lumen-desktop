@@ -42,7 +42,7 @@ def main [consumer?: string, width?: int, mode?: string] {
     let palette = (open ($repository | path join res lumen-desktop appearance palette.json))
     {font: $palette.font, palette: $palette.light, preferences: {reduceMotion: true}} | to json | save ($sandbox | path join appearance.json)
     let batches = (segments $consumer $width $mode)
-    let evidence = ($repository | path join artifacts owned-typography-qml)
+    let evidence = ($repository | path join artifacts owned-typography-qml ($sandbox | path basename))
     mkdir $evidence
     mut identities = []
     for batch in $batches {
@@ -73,7 +73,7 @@ def main [consumer?: string, width?: int, mode?: string] {
             LUMEN_FILES_BIN: ($files_package | path join bin lumen-files-rust-wip)
             LUMEN_FILE_TAGS_BIN: ($tags_package | path join bin lumen-file-tags)
             LUMEN_FILE_JOBS_BIN: ($jobs_package | path join bin lumen-file-jobs)
-        } { ^timeout 30s quickshell -p ($sandbox | path join fixture.qml) | complete })
+        } { ^timeout --kill-after=5s 30s quickshell -p ($sandbox | path join fixture.qml) | complete })
         let log = ($run.stdout + $run.stderr)
         $log | save --force ($output | path join fixture.log)
         if $run.exit_code != 0 or ($log | str contains OWNED_TYPOGRAPHY_FAILURE) or ($log | str contains ReferenceError) or ($log | str contains TypeError) or ($log | str contains 'binding loop') {
