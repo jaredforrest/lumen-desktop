@@ -1,8 +1,8 @@
 diff --git a/src/wayland/toplevel/CMakeLists.txt b/src/wayland/toplevel/CMakeLists.txt
-index 0c1d555..dac3033 100644
+index 0c1d555..82f9995 100644
 --- a/src/wayland/toplevel/CMakeLists.txt
 +++ b/src/wayland/toplevel/CMakeLists.txt
-@@ -16,10 +16,14 @@ qs_add_module_deps_light(quickshell-wayland-toplevel-management
+@@ -16,12 +16,35 @@ qs_add_module_deps_light(quickshell-wayland-toplevel-management
  install_qml_module(quickshell-wayland-toplevel-management)
  
  wl_proto(wlp-foreign-toplevel wlr-foreign-toplevel-management-unstable-v1 "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -17,6 +17,258 @@ index 0c1d555..dac3033 100644
  )
  
  qs_module_pch(quickshell-wayland-toplevel-management SET large)
+ 
+ target_link_libraries(quickshell PRIVATE quickshell-wayland-toplevel-managementplugin)
++
++if (LUMEN_TOPLEVEL_IDENTITY_TESTS)
++	find_package(Qt6 REQUIRED COMPONENTS Test)
++	find_library(IDENTITY_WAYLAND_SERVER wayland-server REQUIRED)
++	set(IDENTITY_TEST_HEADERS)
++	foreach (protocol lumen-toplevel-identity-v1 wlr-foreign-toplevel-management-unstable-v1)
++		set(header "${CMAKE_CURRENT_BINARY_DIR}/${protocol}-server.h")
++		add_custom_command(OUTPUT "${header}" COMMAND Wayland::Scanner server-header
++			"${CMAKE_CURRENT_SOURCE_DIR}/${protocol}.xml" "${header}"
++			DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${protocol}.xml")
++		list(APPEND IDENTITY_TEST_HEADERS "${header}")
++	endforeach()
++	add_executable(lumen-toplevel-identity-test identity_reply_test.cpp ${IDENTITY_TEST_HEADERS})
++	target_include_directories(lumen-toplevel-identity-test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
++	target_link_libraries(lumen-toplevel-identity-test PRIVATE Qt::Core Qt::Test
++		wlp-toplevel-identity wlp-foreign-toplevel wayland-client ${IDENTITY_WAYLAND_SERVER})
++	target_compile_options(lumen-toplevel-identity-test PRIVATE -Werror -fsanitize=address,undefined -fno-omit-frame-pointer)
++	target_link_options(lumen-toplevel-identity-test PRIVATE -fsanitize=address,undefined)
++endif()
+diff --git a/src/wayland/toplevel/identity_reply.hpp b/src/wayland/toplevel/identity_reply.hpp
+new file mode 100644
+index 0000000..667b265
+--- /dev/null
++++ b/src/wayland/toplevel/identity_reply.hpp
+@@ -0,0 +1,50 @@
++#pragma once
++#include <algorithm>
++#include <functional>
++#include <utility>
++#include <qobject.h>
++#include <qpointer.h>
++#include <wayland-client-core.h>
++#include "qwayland-lumen-toplevel-identity-v1.h"
++
++namespace qs::wayland::toplevel::wlr {
++// Generated QtWayland wrappers do not retire proxies on destructor events.
++// This helper owns exactly one raw proxy, independently of its QObject owner.
++class IdentityReply: public QObject, public QtWayland::lumen_toplevel_identity_reply_v1 {
++public:
++	using Complete = std::function<void(IdentityReply*, quint64, const QString&)>;
++	IdentityReply(QObject* owner, quint64 generation,
++	    ::lumen_toplevel_identity_reply_v1* proxy, Complete complete)
++	    : QObject(owner), owner(owner), generation(generation), proxy(proxy), complete(std::move(complete)) {
++		this->init(proxy);
++	}
++	~IdentityReply() override { this->retire(); }
++private:
++	void retire() {
++		if (auto* proxy = std::exchange(this->proxy, nullptr)) {
++			wl_proxy_destroy(reinterpret_cast<wl_proxy*>(proxy));
++		}
++	}
++	void lumen_toplevel_identity_reply_v1_result(uint32_t status, const QString& identifier) override {
++		QPointer<IdentityReply> self(this);
++		auto owner = std::exchange(this->owner, nullptr);
++		const auto generation = this->generation;
++		auto complete = std::move(this->complete);
++		this->retire();
++		if (owner) {
++			QObject::disconnect(owner, nullptr, this, nullptr);
++			const bool valid = status == 1 && !identifier.isEmpty() && identifier.size() <= 32
++			    && std::all_of(identifier.cbegin(), identifier.cend(), [](QChar c) {
++				    return c.unicode() >= 0x21 && c.unicode() <= 0x7e;
++			    });
++			complete(this, generation, valid ? identifier : QString());
++		}
++		// Completion may synchronously destroy the owner and this child.
++		if (self) self->deleteLater();
++	}
++	QPointer<QObject> owner;
++	quint64 generation;
++	::lumen_toplevel_identity_reply_v1* proxy;
++	Complete complete;
++};
++}
+diff --git a/src/wayland/toplevel/identity_reply_test.cpp b/src/wayland/toplevel/identity_reply_test.cpp
+new file mode 100644
+index 0000000..957dacd
+--- /dev/null
++++ b/src/wayland/toplevel/identity_reply_test.cpp
+@@ -0,0 +1,169 @@
++#include <poll.h>
++#include <sys/socket.h>
++#include <unistd.h>
++#include <cstring>
++#include <stdexcept>
++#include <qcoreapplication.h>
++#include <qpointer.h>
++#include <qtest.h>
++#include <wayland-server-core.h>
++#include <wayland-client-core.h>
++#include "identity_reply.hpp"
++#include "lumen-toplevel-identity-v1-server.h"
++#include "wlr-foreign-toplevel-management-unstable-v1-server.h"
++
++using qs::wayland::toplevel::wlr::IdentityReply;
++
++// A real disposable Wayland connection and generated wire protocol. The fake
++// provider deliberately delays and duplicates replies to stress client lifetime;
++// it does not claim to test Sway's separate resource membership implementation.
++class Wire {
++public:
++	Wire() {
++		int sockets[2];
++		ensure(socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, sockets) == 0);
++		server = wl_display_create();
++		ensure(server);
++		ensure(wl_client_create(server, sockets[0]));
++		client = wl_display_connect_to_fd(sockets[1]);
++		ensure(client);
++		ensure(wl_global_create(server, &lumen_toplevel_identity_manager_v1_interface, 1, this, bindIdentity));
++		ensure(wl_global_create(server, &zwlr_foreign_toplevel_manager_v1_interface, 3, this, bindForeign));
++		registry = wl_display_get_registry(client);
++		static const wl_registry_listener listener = {global, removed};
++		wl_registry_add_listener(registry, &listener, this);
++		for (int i = 0; i < 8 && !handle; ++i) pump();
++		ensure(manager && handle);
++	}
++	~Wire() {
++		if (handle) wl_proxy_destroy(reinterpret_cast<wl_proxy*>(handle));
++		if (manager) wl_proxy_destroy(reinterpret_cast<wl_proxy*>(manager));
++		if (foreignManager) wl_proxy_destroy(reinterpret_cast<wl_proxy*>(foreignManager));
++		if (registry) wl_registry_destroy(registry);
++		if (client) wl_display_disconnect(client);
++		if (server) {
++			wl_display_destroy_clients(server);
++			wl_display_destroy(server);
++		}
++	}
++	IdentityReply* request(QObject* owner, quint64 generation, IdentityReply::Complete callback) {
++		auto* proxy = lumen_toplevel_identity_manager_v1_resolve(manager, handle);
++		auto* reply = new IdentityReply(owner, generation, proxy, std::move(callback));
++		pump();
++		ensure(pending);
++		return reply;
++	}
++	void result(uint32_t status, const char* identifier, bool twice = false) {
++		ensure(pending);
++		lumen_toplevel_identity_reply_v1_send_result(pending, status, identifier);
++		if (twice) lumen_toplevel_identity_reply_v1_send_result(pending, status, identifier);
++		wl_resource_destroy(pending);
++		pending = nullptr;
++		pump();
++		ensure(wl_display_get_error(client) == 0);
++	}
++	void pump() {
++		for (int i = 0; i < 4; ++i) {
++			ensure(wl_display_flush(client) >= 0);
++			ensure(wl_event_loop_dispatch(wl_display_get_event_loop(server), 0) >= 0);
++			wl_display_flush_clients(server);
++			pollfd fd{wl_display_get_fd(client), POLLIN, 0};
++			if (poll(&fd, 1, 0) > 0 && (fd.revents & POLLIN)) ensure(wl_display_dispatch(client) >= 0);
++			QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
++		}
++	}
++private:
++	static void ensure(bool value) { if (!value) throw std::runtime_error("Disposable identity wire failed"); }
++	static void global(void* data, wl_registry* registry, uint32_t name, const char* interface, uint32_t) {
++		auto* wire = static_cast<Wire*>(data);
++		if (std::strcmp(interface, "lumen_toplevel_identity_manager_v1") == 0) {
++			wire->manager = static_cast<lumen_toplevel_identity_manager_v1*>(
++			    wl_registry_bind(registry, name, &lumen_toplevel_identity_manager_v1_interface, 1));
++		} else if (std::strcmp(interface, "zwlr_foreign_toplevel_manager_v1") == 0) {
++			wire->foreignManager = static_cast<zwlr_foreign_toplevel_manager_v1*>(
++			    wl_registry_bind(registry, name, &zwlr_foreign_toplevel_manager_v1_interface, 3));
++			static const zwlr_foreign_toplevel_manager_v1_listener listener = {toplevel, finished};
++			zwlr_foreign_toplevel_manager_v1_add_listener(wire->foreignManager, &listener, wire);
++		}
++	}
++	static void removed(void*, wl_registry*, uint32_t) {}
++	static void toplevel(void* data, zwlr_foreign_toplevel_manager_v1*, zwlr_foreign_toplevel_handle_v1* handle) {
++		static_cast<Wire*>(data)->handle = handle;
++	}
++	static void finished(void*, zwlr_foreign_toplevel_manager_v1*) {}
++	static void destroyManager(wl_client*, wl_resource* resource) { wl_resource_destroy(resource); }
++	static void resolve(wl_client* client, wl_resource* manager, uint32_t id, wl_resource* handle) {
++		auto* wire = static_cast<Wire*>(wl_resource_get_user_data(manager));
++		ensure(handle == wire->foreignResource && !wire->pending);
++		wire->pending = wl_resource_create(client, &lumen_toplevel_identity_reply_v1_interface, 1, id);
++		ensure(wire->pending);
++	}
++	static void bindIdentity(wl_client* client, void* data, uint32_t version, uint32_t id) {
++		auto* resource = wl_resource_create(client, &lumen_toplevel_identity_manager_v1_interface, version, id);
++		ensure(resource);
++		static const struct lumen_toplevel_identity_manager_v1_interface implementation = {destroyManager, resolve};
++		wl_resource_set_implementation(resource, &implementation, data, nullptr);
++	}
++	static void bindForeign(wl_client* client, void* data, uint32_t version, uint32_t id) {
++		auto* wire = static_cast<Wire*>(data);
++		auto* manager = wl_resource_create(client, &zwlr_foreign_toplevel_manager_v1_interface, version, id);
++		wire->foreignResource = wl_resource_create(client, &zwlr_foreign_toplevel_handle_v1_interface, version, 0);
++		ensure(manager && wire->foreignResource);
++		zwlr_foreign_toplevel_manager_v1_send_toplevel(manager, wire->foreignResource);
++	}
++	wl_display* server = nullptr;
++	wl_display* client = nullptr;
++	wl_registry* registry = nullptr;
++	lumen_toplevel_identity_manager_v1* manager = nullptr;
++	zwlr_foreign_toplevel_manager_v1* foreignManager = nullptr;
++	zwlr_foreign_toplevel_handle_v1* handle = nullptr;
++	wl_resource* foreignResource = nullptr;
++	wl_resource* pending = nullptr;
++};
++
++class IdentityReplyTest: public QObject {
++	Q_OBJECT;
++private slots:
++	void terminal_data() {
++		QTest::addColumn<uint>("status"); QTest::addColumn<QByteArray>("identifier"); QTest::addColumn<QString>("expected");
++		QTest::newRow("available") << 1u << QByteArray("stable-identifier") << QString("stable-identifier");
++		QTest::newRow("unavailable") << 0u << QByteArray("") << QString();
++		QTest::newRow("unavailable-nonempty") << 0u << QByteArray("must-not-escape") << QString();
++		QTest::newRow("unknown-status") << 7u << QByteArray("must-not-escape") << QString();
++		QTest::newRow("oversized") << 1u << QByteArray(33, 'a') << QString();
++		QTest::newRow("control-character") << 1u << QByteArray("bad\nidentifier") << QString();
++	}
++	void terminal() {
++		QFETCH(uint, status); QFETCH(QByteArray, identifier); QFETCH(QString, expected);
++		Wire wire; QObject owner; int calls = 0; QString observed;
++		QPointer<IdentityReply> reply = wire.request(&owner, 42, [&](IdentityReply*, quint64 generation, const QString& value) {
++			QCOMPARE(generation, 42u); ++calls; observed = value;
++		});
++		wire.result(status, identifier.constData());
++		QCOMPARE(calls, 1); QCOMPARE(observed, expected); QVERIFY(reply.isNull());
++	}
++	void ownerDestroyedBeforeDelayedResult() {
++		Wire wire; auto* owner = new QObject; int calls = 0;
++		QPointer<IdentityReply> reply = wire.request(owner, 1, [&](IdentityReply*, quint64, const QString&) { ++calls; });
++		delete owner; QVERIFY(reply.isNull()); wire.result(1, "late-result"); QCOMPARE(calls, 0);
++	}
++	void cancelledGenerationBeforeDelayedResult() {
++		Wire wire; QObject owner; int calls = 0;
++		auto* pending = wire.request(&owner, 1, [&](IdentityReply*, quint64, const QString&) { ++calls; });
++		delete pending; wire.result(1, "old-generation"); QCOMPARE(calls, 0);
++		wire.request(&owner, 2, [&](IdentityReply*, quint64 generation, const QString&) { QCOMPARE(generation, 2u); ++calls; });
++		wire.result(1, "new-generation"); QCOMPARE(calls, 1);
++	}
++	void reentrantOwnerDestruction() {
++		Wire wire; auto* owner = new QObject; int calls = 0;
++		QPointer<IdentityReply> reply = wire.request(owner, 1, [&](IdentityReply*, quint64, const QString&) { ++calls; delete owner; });
++		wire.result(1, "stable"); QCOMPARE(calls, 1); QVERIFY(reply.isNull());
++	}
++	void malformedDuplicateTerminal() {
++		Wire wire; QObject owner; int calls = 0;
++		wire.request(&owner, 1, [&](IdentityReply*, quint64, const QString&) { ++calls; });
++		wire.result(1, "stable", true); QCOMPARE(calls, 1);
++	}
++};
++QTEST_GUILESS_MAIN(IdentityReplyTest)
++#include "identity_reply_test.moc"
 diff --git a/src/wayland/toplevel/lumen-toplevel-identity-v1.xml b/src/wayland/toplevel/lumen-toplevel-identity-v1.xml
 new file mode 100644
 index 0000000..9d6ce6b
@@ -118,12 +370,12 @@ index 72ceb1a..d0f4e94 100644
  	void parentChanged();
  	void activatedChanged();
 diff --git a/src/wayland/toplevel/wlr_toplevel.cpp b/src/wayland/toplevel/wlr_toplevel.cpp
-index 6055e22..fed360b 100644
+index 6055e22..1f8173d 100644
 --- a/src/wayland/toplevel/wlr_toplevel.cpp
 +++ b/src/wayland/toplevel/wlr_toplevel.cpp
 @@ -1,4 +1,5 @@
  #include "wlr_toplevel.hpp"
-+#include <algorithm>
++#include "identity_reply.hpp"
  #include <cstddef>
  
  #include <private/qwaylanddisplay_p.h>
@@ -136,7 +388,7 @@ index 6055e22..fed360b 100644
  
  #include "../../core/logcat.hpp"
  #include "qwayland-wlr-foreign-toplevel-management-unstable-v1.h"
-@@ -24,6 +27,79 @@ namespace qs::wayland::toplevel::wlr {
+@@ -24,6 +27,46 @@ namespace qs::wayland::toplevel::wlr {
  
  QS_LOGGING_CATEGORY(logToplevelManagement, "quickshell.wayland.toplevelManagement", QtWarningMsg);
  
@@ -145,43 +397,6 @@ index 6055e22..fed360b 100644
 +	static auto* instance = new IdentityManager(); // NOLINT
 +	return instance;
 +}
-+
-+// QtWayland's generated wrapper does not retire proxies for incoming destructor
-+// events. Own the raw proxy explicitly, retiring it before any observable signal.
-+class IdentityReply: public QObject, public QtWayland::lumen_toplevel_identity_reply_v1 {
-+public:
-+	IdentityReply(ToplevelHandle* owner, quint64 generation,
-+	    ::lumen_toplevel_identity_reply_v1* proxy)
-+	    : QObject(owner), owner(owner), generation(generation), proxy(proxy) { this->init(proxy); }
-+	~IdentityReply() override { this->retire(); }
-+private:
-+	void retire() {
-+		if (auto* proxy = std::exchange(this->proxy, nullptr)) {
-+			wl_proxy_destroy(reinterpret_cast<wl_proxy*>(proxy));
-+		}
-+	}
-+	void lumen_toplevel_identity_reply_v1_result(uint32_t status, const QString& identifier) override {
-+		QPointer<IdentityReply> self(this);
-+		auto owner = std::exchange(this->owner, nullptr);
-+		const auto generation = this->generation;
-+		this->retire();
-+		if (owner) {
-+			QObject::disconnect(owner, nullptr, this, nullptr);
-+			// The compositor supplies the existing ext identifier: never accept a
-+			// malformed identifier or invent one from a title, app key or proxy ID.
-+			const bool valid = status == 1 && !identifier.isEmpty() && identifier.size() <= 32
-+			    && std::all_of(identifier.cbegin(), identifier.cend(), [](QChar c) {
-+				    return c.unicode() >= 0x21 && c.unicode() <= 0x7e;
-+			    });
-+			owner->completeIdentity(this, generation, valid ? identifier : QString());
-+		}
-+		// completeIdentity can synchronously destroy the owner and this child.
-+		if (self) self->deleteLater();
-+	}
-+	QPointer<ToplevelHandle> owner;
-+	quint64 generation;
-+	::lumen_toplevel_identity_reply_v1* proxy;
-+};
 +
 +ToplevelHandle::ToplevelHandle() {
 +	QObject::connect(IdentityManager::instance(), &QWaylandClientExtension::activeChanged,
@@ -201,7 +416,11 @@ index 6055e22..fed360b 100644
 +	if (!self || generation != this->identityGeneration || !this->isInitialized()
 +	    || !this->isReady || !IdentityManager::instance()->isActive()) return;
 +	auto* proxy = IdentityManager::instance()->resolve(this->object());
-+	this->identityReply = new IdentityReply(this, this->identityGeneration, proxy);
++	QPointer<ToplevelHandle> owner(this);
++	this->identityReply = new IdentityReply(this, this->identityGeneration, proxy,
++	    [owner](IdentityReply* reply, quint64 generation, const QString& identifier) {
++		    if (owner) owner->completeIdentity(reply, generation, identifier);
++	    });
 +}
 +
 +void ToplevelHandle::completeIdentity(IdentityReply* reply, quint64 generation, const QString& identifier) {
@@ -216,7 +435,7 @@ index 6055e22..fed360b 100644
  ToplevelManager::ToplevelManager(): QWaylandClientExtensionTemplate(3) { this->initialize(); }
  
  bool ToplevelManager::available() const { return this->isActive(); }
-@@ -168,12 +244,19 @@ void ToplevelHandle::zwlr_foreign_toplevel_handle_v1_done() {
+@@ -168,12 +211,19 @@ void ToplevelHandle::zwlr_foreign_toplevel_handle_v1_done() {
  	this->isReady = true;
  
  	if (!wasReady) {
