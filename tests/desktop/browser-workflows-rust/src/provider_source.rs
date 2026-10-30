@@ -8,7 +8,19 @@ mod tests {
             .split_once(signature)
             .expect("Pinned upstream function")
             .1;
-        rest.split_once('{').unwrap().1.split_once('}').unwrap().0
+        let rest = rest.split_once('{').unwrap().1;
+        let mut depth = 1;
+        for (index, character) in rest.char_indices() {
+            match character {
+                '{' => depth += 1,
+                '}' => depth -= 1,
+                _ => {}
+            }
+            if depth == 0 {
+                return &rest[..index];
+            }
+        }
+        panic!("Unterminated pinned upstream function")
     }
 
     #[test]
