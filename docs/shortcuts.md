@@ -142,6 +142,12 @@ output to 64 KiB. Timeout, interruption or excess output terminates and reaps
 the owned process group and stores private diagnostics. A failed or malformed
 mutation response can mean partial activation: it is reported as unconfirmed,
 without blindly launching rollback while the deployment outcome is unknown.
+Declaration reads follow declarative store symlinks but require regular opened
+files and consume at most their size limit plus one byte. Session records and
+transaction locks reject links and nonregular files. Transaction directories and
+locks require private ownership/modes. A second request receives a busy response
+instead of waiting behind an ongoing build; normal validation errors remain
+retryable.
 
 The isolated acceptance uses actual immutable module outputs, the real validator
 and edit helper, synthetic Qt typing/pointer input, and disposable deployment
