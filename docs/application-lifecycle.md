@@ -101,6 +101,8 @@ identifier, advertised application ID and exact process-instance witness. The
 same boot/socket scope and 1 MiB journal budget apply. Recovery revalidates all
 four fields against live native surfaces and processes; a reused container ID,
 even in the same process, cannot inherit a different surface's saved rank.
+Previously unobserved live windows receive a provider fallback position until
+actual focus is observed; past focus during an observer outage is not invented.
 
 Opening the application switcher captures the selected native backing window
 immutably. Its app icon describes an application group; it does not pretend to
@@ -108,9 +110,10 @@ show an authenticated window thumbnail. Commit uses a native broker that rereads
 the owned compositor socket, checks the source focus and exact captured target,
 then applies the shared modal, hidden, minimized and workspace policy. Closing
 the target or replacing its process/surface cancels the old decision rather than
-selecting a sibling or new window. Only captured process-group members are
-unhidden; a new process advertising the same application ID cannot join that
-old request. Protocol-linked modal descendants are validated as live native
+selecting a sibling or new window. Application-group unhiding is limited to
+captured process-group members; a new process advertising the same application
+ID cannot join that old group request. Protocol-linked modal descendants are
+validated as live native
 surfaces before redirection.
 
 The original helper uses the same policy core and retains its existing API.
