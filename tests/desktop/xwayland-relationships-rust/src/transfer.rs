@@ -92,7 +92,13 @@ fn capture(f: &Fixture, node: &Value, name: &str, forged: bool) -> Result<Captur
         command,
     })
 }
-fn refuse(f: &Fixture, captured: &Captured, label: &str, fresh: bool) -> Result<()> {
+fn refuse(
+    f: &Fixture,
+    captured: &Captured,
+    label: &str,
+    fresh: bool,
+    expected_reason: Option<&str>,
+) -> Result<()> {
     let before = stable(f)?;
     if fresh {
         require(
@@ -106,16 +112,17 @@ fn refuse(f: &Fixture, captured: &Captured, label: &str, fresh: bool) -> Result<
     let after = f.tree()?;
     save(
         label,
-        &json!({"command":command,"capturedSnapshot":captured.snapshot,"requiresFreshSnapshot":fresh,"status":status.code(),"reply":reply,"before":before,"after":after}),
+        &json!({"command":command,"capturedSnapshot":captured.snapshot,"requiresFreshSnapshot":fresh,"expectedReason":expected_reason,"status":status.code(),"reply":reply,"before":before,"after":after}),
     )?;
     require(
         !status.success()
             && reply.as_array().is_some_and(|rows| {
                 rows.len() == 1
                     && rows[0]["success"] == false
-                    && rows[0]["error"]
-                        .as_str()
-                        .is_some_and(|s| s.starts_with("LST_REJECTED:"))
+                    && rows[0]["error"].as_str().is_some_and(|s| {
+                        s.starts_with("LST_REJECTED:")
+                            && expected_reason.is_none_or(|reason| s.contains(reason))
+                    })
             }),
         "Expected exact native transfer refusal",
     )?;
@@ -306,7 +313,7 @@ pub(super) fn run(f: &mut Fixture, options: &Options) -> Result<()> {
     let current_root = f.mapped(0, 0)?;
     let stale = capture(f, &current_root, "transfer-stale", false)?;
     ipc!(f, "[con_id={}] resize set 540 330", i(&root, "id")?)?;
-    refuse(f, &stale, "stale-root-frame", false)?;
+    refuse(f, &stale, "stale-root-frame", false, None)?;
     let current_root = f.mapped(0, 0)?;
     let stale = capture(f, &current_root, "transfer-stale", false)?;
     ipc!(
@@ -314,7 +321,7 @@ pub(super) fn run(f: &mut Fixture, options: &Options) -> Result<()> {
         "[con_id={}] resize set 340 210",
         i(&f.mapped(0, 1)?, "id")?
     )?;
-    refuse(f, &stale, "stale-child-frame", false)?;
+    refuse(f, &stale, "stale-child-frame", false, None)?;
     f.checks.push(
         "Captured X11 root and descendant geometry races refuse with full native tree unchanged",
     );
@@ -331,7 +338,13 @@ pub(super) fn run(f: &mut Fixture, options: &Options) -> Result<()> {
         )?;
         let current_root = f.mapped(0, 0)?;
         let forged = capture(f, &current_root, "transfer-projected", true)?;
-        refuse(f, &forged, label, true)?;
+        refuse(
+            f,
+            &forged,
+            label,
+            true,
+            Some("retained all-desktop presentation"),
+        )?;
         let node = f.mapped(0, index)?;
         f.ipc(&projection_command(&node, false)?)?;
         wait("explicit projection cleared", || {
@@ -367,7 +380,13 @@ pub(super) fn run(f: &mut Fixture, options: &Options) -> Result<()> {
     )?;
     let current_root = f.mapped(0, 0)?;
     let forged = capture(f, &current_root, "transfer-cross-pid", true)?;
-    refuse(f, &forged, "cross-pid-child", true)?;
+    refuse(
+        f,
+        &forged,
+        "cross-pid-child",
+        true,
+        Some("unsupported or excessive window family"),
+    )?;
     f.checks.push("Actual unsupported cross-PID transient edge refuses status and forged fresh native transfer without mutation");
     f.command(1, "unmap", 1, 0)?;
     f.node_wait("cross-process child retired", |node| node.is_none(), 1, 1)?;
@@ -382,7 +401,7 @@ pub(super) fn run(f: &mut Fixture, options: &Options) -> Result<()> {
         identity(&old) != identity(&replacement),
         "Replacement did not change native identity",
     )?;
-    refuse(f, &stale, "retired-replaced-root", false)?;
+    refuse(f, &stale, "retired-replaced-root", false, None)?;
     f.checks.push("Closed/replaced X11 capture cannot transfer its replacement through stale immutable authority");
     Ok(())
 }
