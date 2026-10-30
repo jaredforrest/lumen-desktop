@@ -201,14 +201,10 @@ impl Lifecycle {
             let Some(pid) = node["pid"].as_u64().and_then(|pid| u32::try_from(pid).ok()) else {
                 return false;
             };
-            crate::source_process_identity(pid).is_ok()
-                && std::fs::canonicalize(format!("/proc/{pid}/exe"))
-                    .ok()
-                    .and_then(|path| {
-                        path.file_name()
-                            .map(|name| name.to_string_lossy().contains("quickshell"))
-                    })
-                    == Some(true)
+            self.shell_owner.as_ref().is_some_and(|owner| {
+                owner["pid"].as_u64() == Some(u64::from(pid))
+                    && crate::source_process_identity(pid).ok().as_ref() == Some(owner)
+            })
         })
     }
     pub fn native_focus_plan(

@@ -88,7 +88,7 @@ fn handle(data:&Value,nodes:&mut Vec<Value>,query:&mut UnixStream,path:&PathBuf,
     }
 }
 fn watch()->Result<()>{
-    let mut lifecycle=Lifecycle::default();let protocol=Cooperative;
+    let mut lifecycle=Lifecycle::default();lifecycle.bind_shell_owner(unsafe{libc::getppid()} as u32);let protocol=Cooperative;
     let mut session=SessionEnd::new(unsafe{libc::getppid()} as u32);
     let mut store:Option<ObservationStore>=None;let mut last=None;
     emit(false,&lifecycle,&session,&mut store,&mut last,"",None);

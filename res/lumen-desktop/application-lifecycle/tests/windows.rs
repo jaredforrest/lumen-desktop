@@ -23,6 +23,32 @@ fn owners() -> Owners {
             .collect(),
     )
 }
+#[test]
+fn similarly_named_shell_process_is_not_the_registered_owner() {
+    let path = std::env::temp_dir().join(format!("lumen-owned-shell-{}", std::process::id()));
+    fs::create_dir(&path).unwrap();
+    let executable = path.join("quickshell-untrusted");
+    let source = std::env::split_paths(&std::env::var_os("PATH").unwrap())
+        .map(|dir| dir.join("sleep"))
+        .find(|path| path.is_file())
+        .unwrap();
+    fs::copy(source, &executable).unwrap();
+    let owners = Owners(
+        (0..2)
+            .map(|_| Command::new(&executable).arg("30").spawn().unwrap())
+            .collect(),
+    );
+    let node = |index: usize| json!({"id":index+1,"pid":owners.0[index].id(),"app_id":"independent.external","window":null,"shell":"xdg_shell","foreign_toplevel_identifier":format!("surface-{index}")});
+    let mut lifecycle = Lifecycle::default();
+    lifecycle.bind_shell_owner(owners.0[0].id());
+    assert!(lifecycle.native_coverage_complete(&[node(0)]));
+    assert!(!lifecycle.native_coverage_complete(&[node(1)]));
+    assert!(!lifecycle.native_coverage_complete(&[node(0), node(1)]));
+    lifecycle.shell_owner = None;
+    assert!(!lifecycle.native_coverage_complete(&[node(0)]));
+    drop(owners);
+    fs::remove_dir_all(path).unwrap();
+}
 fn nodes(owners: &Owners, focused: i64) -> Vec<Value> {
     [(11,0,"app"),(12,0,"app"),(13,1,"other")].into_iter().map(|(id,pid,app)|json!({"id":id,"type":"con","pid":owners.0[pid].id(),"app_id":app,"name":"identical","shell":"xdg_shell","window":null,"foreign_toplevel_identifier":format!("surface-{id}"),"focused":id==focused,"lumen_state":{"version":1,"hidden":false,"minimised":false,"restore_workspace":"one"},"lumen_relationships":{"version":1,"parent_supported":true,"parent":null,"modal":null}})).collect()
 }
@@ -98,7 +124,11 @@ fn exact_duplicate_title_window_order_reopens_and_reused_id_cannot_inherit() {
         json!({"id":14,"pid":owners.0[0].id(),"window":999,"app_id":null,"shell":"xwayland"}),
     );
     assert!(!reopened.native_coverage_complete(&mixed));
-    assert!(reopened.native_focus_plan(&chosen, &tree(&mixed), true).is_err());
+    assert!(
+        reopened
+            .native_focus_plan(&chosen, &tree(&mixed), true)
+            .is_err()
+    );
     let mut unregistered = current.clone();
     unregistered.push(json!({"id":15,"pid":owners.0[0].id(),"app_id":null,"shell":"xdg_shell","window":null,"foreign_toplevel_identifier":"unknown"}));
     assert!(!reopened.native_coverage_complete(&unregistered));

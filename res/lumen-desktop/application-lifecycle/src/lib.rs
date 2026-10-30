@@ -87,9 +87,10 @@ pub fn valid_identity(value:&Value)->bool{
     value.as_object().is_some_and(|row|row.len()==4&&["pid","start","device","inode"].iter().all(|key|row.get(*key).and_then(Value::as_u64).is_some())&&row["pid"].as_u64().is_some_and(|pid|pid>=2&&pid<=u32::MAX as u64))
 }
 pub struct Process{pub identity:Value,pub handle:OwnedFd,pub apps:BTreeSet<String>}
-pub struct Lifecycle{pub processes:BTreeMap<u32,Process>,pub windows:HashMap<(u32,String),Vec<Value>>,pub epoch:Option<String>,pub activation_history:mru::History,pub window_history:windows::History,pub current_source_focus:Value,pub native_coverage_complete:bool,focus_witnesses:HashMap<i64,Option<(u32,Value,String)>>}
-impl Default for Lifecycle{fn default()->Self{Self{processes:BTreeMap::new(),windows:HashMap::new(),epoch:None,activation_history:mru::History::default(),window_history:windows::History::default(),current_source_focus:Value::Null,native_coverage_complete:false,focus_witnesses:HashMap::new()}}}
+pub struct Lifecycle{pub processes:BTreeMap<u32,Process>,pub windows:HashMap<(u32,String),Vec<Value>>,pub epoch:Option<String>,pub activation_history:mru::History,pub window_history:windows::History,pub current_source_focus:Value,pub native_coverage_complete:bool,pub shell_owner:Option<Value>,focus_witnesses:HashMap<i64,Option<(u32,Value,String)>>}
+impl Default for Lifecycle{fn default()->Self{Self{processes:BTreeMap::new(),windows:HashMap::new(),epoch:None,activation_history:mru::History::default(),window_history:windows::History::default(),current_source_focus:Value::Null,native_coverage_complete:false,shell_owner:None,focus_witnesses:HashMap::new()}}}
 impl Lifecycle{
+    pub fn bind_shell_owner(&mut self,pid:u32){self.shell_owner=source_process_identity(pid).ok();}
     pub fn close(&mut self){self.processes.clear();self.windows.clear();self.epoch=None;self.activation_history=mru::History::default();self.window_history=windows::History::default();self.current_source_focus=Value::Null;self.native_coverage_complete=false;self.focus_witnesses.clear();}
     pub fn observe(&mut self,node:&Value){
         if node["shell"]!="xdg_shell"||!node["window"].is_null(){return;}
