@@ -123,14 +123,14 @@ Item {
     function cancelJob(){if(currentJob)send("job-cancel",{job:currentJob.id});}
     function undo(){startJob("undo",[]);}
     function acceptJobs(data){
-        let states=Object.assign({},jobStates),changed=false;
+        const previousStates=jobStates;let states=Object.assign({},previousStates),changed=false;
         for(const job of data.jobs || []){
             if(states[job.id]!==job.state && !["running","cancelling"].includes(job.state)){
                 if(states[job.id] || job.started>=createdAt){changed=true;if(job.state!=="complete" && job.recoveryPath && job.undoMessage)error=job.undoMessage+"\nRecovery: "+job.recoveryPath;else if(job.errors.length)error=job.errors.join("\n");else if(job.state==="complete" && job.operation==="undo")error="";if(job.undoWarning)warning=job.undoWarning;}
             }
             states[job.id]=job.state;
         }
-        jobs=data.jobs || [];jobStates=states;if(data.historyWarning)error=data.historyWarning;for(const job of jobs){if(job.state==="interrupted" && jobStates[job.id]!=="interrupted")error=job.recoveryPath && job.undoMessage?job.undoMessage+"\nRecovery: "+job.recoveryPath:job.errors.join("\n");}canUndo=!!data.canUndo;undoKind=["copy","move"].includes(data.undoKind)?data.undoKind:"";undoLabel=typeof data.undoLabel==="string"?data.undoLabel:"Undo Last Move";
+        jobs=data.jobs || [];jobStates=states;if(data.historyWarning)error=data.historyWarning;for(const job of jobs){if(job.state==="interrupted" && previousStates[job.id]!=="interrupted")error=job.recoveryPath && job.undoMessage?job.undoMessage+"\nRecovery: "+job.recoveryPath:job.errors.join("\n");}canUndo=!!data.canUndo;undoKind=["copy","move"].includes(data.undoKind)?data.undoKind:"";undoLabel=typeof data.undoLabel==="string"?data.undoLabel:"Undo Last Move";
         if(changed)refresh();
     }
     onActiveChanged:if(active){if(persistViewPreferences && !preferencesLoaded)send("preferences");send("job-status");send("volumes");}

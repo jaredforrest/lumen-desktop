@@ -26,6 +26,9 @@ ShellRoot {
   fixture.check(service.error==="","Previously disclosed interrupted history overwrote new Undo success");
   service.acceptJobs({jobs:[recovered,next],canUndo:false});
   fixture.check(service.error==="" && fixture.refreshes===5,"Polling replayed a historical recovery error");
+  const old=fixture.receipt("older-than-startup","interrupted",{started:service.createdAt-1,errors:["Interrupted"],recoveryPath:"/private/older/RECOVERY.txt",undoMessage:"Inspect retained item"});
+  service.error="";fixture.accept(old);
+  fixture.check(service.error.includes("/private/older/RECOVERY.txt"),"Startup recovery from before this UI session was hidden");
   console.log("FILES_JOB_RECEIPTS_QT_PASS");Qt.quit();
  }catch(error){console.error("FILES_JOB_RECEIPTS_QT_FAIL "+error);Qt.quit();}}}
 }
