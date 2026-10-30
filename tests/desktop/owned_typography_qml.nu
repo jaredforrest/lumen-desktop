@@ -42,9 +42,11 @@ def main [consumer?: string, width?: int, mode?: string] {
     let palette = (open ($repository | path join res lumen-desktop appearance palette.json))
     {font: $palette.font, palette: $palette.light, preferences: {reduceMotion: true}} | to json | save ($sandbox | path join appearance.json)
     let batches = (segments $consumer $width $mode)
+    let evidence = ($repository | path join artifacts owned-typography-qml)
+    mkdir $evidence
     mut identities = []
     for batch in $batches {
-        let output = ($sandbox | path join $'($batch.consumer)-($batch.width)-($batch.mode)')
+        let output = ($evidence | path join $'($batch.consumer)-($batch.width)-($batch.mode)')
         mkdir $output
         let expected = (cases $batch.consumer $batch.width $batch.mode)
         (open --raw ($repository | path join tests desktop owned_typography_qml.qml)
@@ -75,7 +77,7 @@ def main [consumer?: string, width?: int, mode?: string] {
         let log = ($run.stdout + $run.stderr)
         $log | save --force ($output | path join fixture.log)
         if $run.exit_code != 0 or ($log | str contains OWNED_TYPOGRAPHY_FAILURE) or ($log | str contains ReferenceError) or ($log | str contains TypeError) or ($log | str contains 'binding loop') {
-            error make {msg: $'Owned typography QML failed ($batch): ($log)'}
+            error make {msg: $'Owned typography QML failed ($batch), exit=($run.exit_code), evidence=($output): ($log)'}
         }
         let receipt = ($log | lines | where {|line| $line | str contains 'OWNED_TYPOGRAPHY_RESULT '})
         if ($receipt | length) != 1 { error make {msg: $'Owned typography receipt missing ($batch): ($log)'} }
