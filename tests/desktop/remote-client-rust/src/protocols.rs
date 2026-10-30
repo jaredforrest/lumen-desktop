@@ -557,7 +557,7 @@ fn legacy_clipboard(f: &mut Harness) -> Result<()> {
     )?;
     // The disposable Xvfb has no login/display manager whose windows need protection.
     f.env.insert("X11VNC_AVOID_WINDOWS".into(), "never".into());
-    f.launch_s(
+    let legacy_server = f.launch_s(
         f.o.tool("x11vnc").join("bin/x11vnc"),
         &[
             "-display",
@@ -642,7 +642,7 @@ fn legacy_clipboard(f: &mut Harness) -> Result<()> {
             .then_some(()))
     })?;
     fs::write(&seed, LOCAL_TEXT)?;
-    f.launch_s(
+    let unsupported_local = f.launch_s(
         &target,
         &["--local", "--multiline", "--seed-file", &s(&seed)],
         "legacy-unsupported-local.log",
@@ -758,6 +758,45 @@ fn legacy_clipboard(f: &mut Harness) -> Result<()> {
         paste_until(f, false, "new-compatible-selection")?,
         "Changed compatible clipboard remained blocked after a rejection",
     )?;
+    let changed_receipt = f.safe_target()?;
+    f.stop(unsupported_local)?;
+    wait("changed document bus release", || {
+        Ok(f.target_named("org.lumen.LocalTarget")
+            .is_err()
+            .then_some(()))
+    })?;
+    f.launch_s(
+        &target,
+        &["--local", "--multiline", "--seed-file", &s(&seed)],
+        "legacy-disconnect-local.log",
+    )?;
+    focus_app(f, "org.lumen.LocalTarget")?;
+    chord(f, "a")?;
+    chord(f, "c")?;
+    focus_viewer(f)?;
+    let disconnect_dialog = wait("warning before actual server loss", || {
+        Ok(nodes(&f.tree()?)
+            .into_iter()
+            .find(|node| node["name"] == "Clipboard transfer"))
+    })?;
+    save(
+        &f.out.join("legacy-before-disconnect-tree.json"),
+        &f.tree()?,
+    )?;
+    f.stop(legacy_server)?;
+    wait("clipboard warning removed on connection loss", || {
+        Ok((!nodes(&f.tree()?)
+            .iter()
+            .any(|node| node["name"] == "Clipboard transfer"))
+        .then_some(()))
+    })?;
+    save(&f.out.join("legacy-after-disconnect-tree.json"), &f.tree()?)?;
+    let after_disconnect = f.safe_target()?;
+    ensure(
+        after_disconnect["pid"] == original["pid"]
+            && after_disconnect["text"] == changed_receipt["text"],
+        "Disconnect warning lifecycle changed the remote document",
+    )?;
     save(
         &f.out.join("legacy-clipboard-acceptance.json"),
         &json!({
@@ -767,7 +806,9 @@ fn legacy_clipboard(f: &mut Harness) -> Result<()> {
         "actualServerReceivedLatin1Bytes":wire_received,
         "unrepresentableSource":LOCAL_TEXT, "rejection":warning, "unchangedReceipt":unchanged,
         "originatingViewer":viewer, "ownedModalDialog":dialog,
-        "connectionInputReceipt":input_receipt, "changedCompatibleClipboardReceipt":f.safe_target()?, "remoteTargetIdentityRetained":true,
+        "connectionInputReceipt":input_receipt, "changedCompatibleClipboardReceipt":changed_receipt, "remoteTargetIdentityRetained":true,
+        "warningBeforeActualServerLoss":disconnect_dialog, "warningRemovedOnDisconnect":true,
+        "afterDisconnectTarget":after_disconnect,
         "rejectedPastePreservedPriorClipboard":rejected_paste_preserved,
         "notClaimed":["encrypted legacy connection", "HTML", "files", "Windows"]}),
     )
