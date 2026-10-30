@@ -37,6 +37,7 @@ struct Report {
     files: usize,
     bytes: u64,
     entries: usize,
+    metadata_bytes: u64,
     skipped: Vec<String>,
 }
 fn patterns(input: &str) -> Result<Vec<&str>> {
@@ -137,8 +138,11 @@ fn walk(
             )?;
         }
     } else if kind.is_file() {
-        if report.files >= limits.files
-            || metadata.len() > limits.bytes.saturating_sub(report.bytes)
+        if report.files >= limits.files.saturating_sub(2)
+            || metadata.len()
+                > limits
+                    .bytes
+                    .saturating_sub(report.bytes.saturating_add(report.metadata_bytes))
         {
             return Err(format!("Artifact file/byte budget exceeded at {relative:?}").into());
         }
@@ -154,7 +158,9 @@ fn walk(
         let copied = copy_bounded(
             &mut source,
             &mut target,
-            limits.bytes.saturating_sub(report.bytes),
+            limits
+                .bytes
+                .saturating_sub(report.bytes.saturating_add(report.metadata_bytes)),
         )?;
         target.set_permissions(metadata.permissions())?;
         report.files += 1;
@@ -173,7 +179,17 @@ fn walk(
         } else {
             "other"
         };
-        report.skipped.push(format!("{name}\t{relative:?}"));
+        let record = format!("{name}\t{relative:?}");
+        let size = record.len() as u64 + 1;
+        if size
+            > limits
+                .bytes
+                .saturating_sub(report.bytes.saturating_add(report.metadata_bytes))
+        {
+            return Err("Artifact manifest byte budget exceeded".into());
+        }
+        report.metadata_bytes += size;
+        report.skipped.push(record);
     }
     Ok(())
 }
@@ -193,7 +209,13 @@ fn stage(root: &Path, includes: &str, output: &Path, limits: Limits) -> Result<R
     let temporary = parent.join(format!(".lumen-artifact-stage-{}", std::process::id()));
     fs::create_dir(&temporary)?;
     let result = (|| {
-        let mut report = Report::default();
+        let mut report = Report {
+            metadata_bytes: includes.len() as u64 + 512,
+            ..Report::default()
+        };
+        if report.metadata_bytes > limits.bytes {
+            return Err("Artifact manifest byte budget exceeded".into());
+        }
         let artifacts = root.join("artifacts");
         match fs::symlink_metadata(&artifacts) {
             Ok(meta) if meta.file_type().is_dir() => {
