@@ -1083,8 +1083,13 @@ impl Fixture {
             .iter()
             .map(|row| (integer(&row["id"]).unwrap_or_default(), row["rect"].clone()))
             .collect::<BTreeMap<_, _>>();
+        let ambiguous_state = self.state()?;
+        fs::write(
+            self.options.output.join("ambiguous-fit-decision.json"),
+            serde_json::to_vec_pretty(&json!({"state":ambiguous_state,"before":before_ambiguous,"after":after_ambiguous,"original":identity,"duplicate":duplicate_id}))?,
+        )?;
         require(
-            self.state()?["fit"]["error"]
+            ambiguous_state["fit"]["error"]
                 .as_str()
                 .is_some_and(|e| !e.is_empty())
                 && after_ambiguous == before_ambiguous,
