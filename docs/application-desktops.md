@@ -90,6 +90,20 @@ case retains its exact immutable pins and full native receipts beneath
 `artifacts/native-projection-*`. `--only projection-drag` selects the finite
 pointer corpus; `--run-id` chooses a fresh output suffix and never reuses results.
 
+The physical pointer corpus has thirteen checks per provider, including a real
+green-button fullscreen control, declined off-origin tiled and ancestor gestures,
+ordinary floating move/resize, an actual on-origin edge preview and commit,
+cross-output ownership change and stale-origin refusal. Explicit desktop
+navigation and automatic back-and-forth use the effective focused desktop.
+The core corpus separately proves foreground clear remains usable at origin
+with an instrumented GTK pointer recipient, while background clear preserves an
+independent application's focus, geometry and desktop. The production AppSwitcher
+corpus freezes the exact selected foreign identity before commit, including
+direct fullscreen away/back and suspended assigned-pair activation. These last
+actions invoke the production switcher command interface; they are not a claim
+about physical shortcut delivery. Native capture is additionally required for
+the supported native cases; the paired fallback keeps the exact QObject identity.
+
 ```sh
 nix-shell -p cargo rustc --run 'CARGO_TARGET_DIR=/tmp/lumen-spaces-target cargo test --offline --manifest-path res/lumen-desktop/spaces/Cargo.toml'
 nix build .#shell .#compositor-basic .#compositor .#test-window-relationships
