@@ -187,7 +187,18 @@ impl Lifecycle{
     }
 }
 
-pub struct ObservationStore{pub directory:PathBuf,pub epoch:String,pub boot_id:String,lock:File,previous:Option<Vec<u8>>,pub warning:String}
+struct RecoveryLease{file:File,owner_pid:libc::pid_t}
+impl AsRawFd for RecoveryLease{fn as_raw_fd(&self)->i32{self.file.as_raw_fd()}}
+impl Drop for RecoveryLease{
+    fn drop(&mut self){
+        // Closing our descriptor alone can leave this open-file-description
+        // lock held by a concurrent fork until its CLOEXEC descriptor closes.
+        // The lease belongs to this store's lifetime, not that transient copy.
+        if unsafe{libc::getpid()}==self.owner_pid{unsafe{libc::flock(self.file.as_raw_fd(),libc::LOCK_UN)};}
+    }
+}
+pub struct ObservationStore{pub directory:PathBuf,pub epoch:String,pub boot_id:String,lock:RecoveryLease,previous:Option<Vec<u8>>,pub warning:String}
+#[cfg(test)]mod lease_tests;
 pub struct Recovery{pub processes:Vec<Value>,pub history:mru::History,pub windows:windows::History}
 impl ObservationStore{
     pub fn new(runtime:&Path,epoch:&str,boot_id:&str)->Result<Self>{
@@ -202,6 +213,7 @@ impl ObservationStore{
         let info=lock.metadata().map_err(|error|error.to_string())?;
         if !info.is_file()||info.uid()!=unsafe{libc::getuid()}||info.mode()&0o077!=0||info.nlink()!=1{return Err("Invalid recovery lease".into());}
         if unsafe{libc::flock(lock.as_raw_fd(),libc::LOCK_EX|libc::LOCK_NB)}!=0{return Err("Recovery lease is already held".into());}
+        let lock=RecoveryLease{file:lock,owner_pid:unsafe{libc::getpid()}};
         Ok(Self{directory,epoch:epoch.into(),boot_id:boot_id.into(),lock,previous:None,warning:String::new()})
     }
     fn path(&self)->PathBuf{self.directory.join(format!("{}.json",self.epoch))}
