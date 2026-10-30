@@ -1,0 +1,20 @@
+--- a/src/libvncclient/rfbclient.c
++++ b/src/libvncclient/rfbclient.c
+@@ -1944,6 +1944,17 @@
+     rfbClientLog("rfbClientProcessExtServerCutText. not text type. ignore\n");
+     return TRUE;
+   }
++  if ((flags & rfbExtendedClipboard_Notify) && client->GotXCutTextUTF8
++      && client->extendedClipboardServerCapabilities) {
++    /* Deferred selections announce formats; request text before expecting Provide. */
++    rfbClientCutTextMsg request = {0, };
++    const uint32_t request_flags = rfbClientSwap32IfLE(rfbExtendedClipboard_Request
++                                                     | rfbExtendedClipboard_Text);
++    request.type = rfbClientCutText;
++    request.length = rfbClientSwap32IfLE(-((uint32_t)sizeof(request_flags)));
++    return WriteToRFBServer(client, (char *)&request, sz_rfbClientCutTextMsg)
++           && WriteToRFBServer(client, (char *)&request_flags, sizeof(request_flags));
++  }
+   if (!(flags & rfbExtendedClipboard_Provide)) {
+     rfbClientLog("rfbClientProcessExtServerCutText. not provide type. ignore\n");
+     return TRUE;

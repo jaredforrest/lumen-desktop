@@ -1,7 +1,7 @@
 { pkgs }:
 let
   vnc = pkgs.libvncserver.overrideAttrs (old: {
-    patches = (old.patches or []) ++ [ ../res/lumen-desktop/remote-client/vnc-peer-identity.patch ];
+    patches = (old.patches or []) ++ [ ../res/lumen-desktop/remote-client/vnc-peer-identity.patch ../res/lumen-desktop/remote-client/vnc-clipboard-request.patch ];
   });
 in (pkgs.remmina.override { libvncserver = vnc; }).overrideAttrs (old: {
   patches = (old.patches or []) ++ [ ../res/lumen-desktop/remote-client/rdp-certificate-name.patch ../res/lumen-desktop/remote-client/windowed-toolbar-lifetime.patch ../res/lumen-desktop/remote-client/vnc-unicode-clipboard.patch ];
