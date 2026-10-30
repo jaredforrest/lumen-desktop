@@ -3,7 +3,8 @@ import QtQuick.Controls
 import QtTest
 import "assets/shell" as D
 ApplicationWindow {
- id:window;width:WIDTH;height:760;visible:true
+ id:window;width:WIDTH;height:760;visible:true;color:D.Theme.colors.background
+ property bool imageSaved:false
  function check(value,message){if(!value)throw Error(message || "Assertion failed");}
  function equal(a,b){check(a===b,"Expected "+b+", got "+a);}
  D.ShortcutEditorPane {id:pane;width:window.width-24;x:12;y:12;active:true}
@@ -23,9 +24,10 @@ ApplicationWindow {
    click("shortcut-editor-disable");waitUntil(()=>!pane.service.busy && !pane.row.enabled);equal(find(pane,"shortcut-editor-chord").text,"");
    click("shortcut-editor-restore");waitUntil(()=>!pane.service.busy && pane.row.enabled && pane.row.chord===pane.row.defaultChord);check(pane.service.message.includes("confirmed"));
    check(pane.height<=window.height-24);for(const name of ["shortcut-editor-apply","shortcut-editor-disable","shortcut-editor-restore","shortcut-editor-discard"]){const item=find(pane,name),at=item.mapToItem(window.contentItem,0,0);check(at.x>=0 && at.x+item.width<=window.width,name+" clipped");}
-   const image=grabImage(window.contentItem);check(image.save("SCREENSHOT"));console.log("SHORTCUT_EDITOR_ACTUAL_PASS");
+   check(selector.displayText.includes(pane.row.action),"Selected action label diverged after generation replacement");
+   window.contentItem.grabToImage(result=>{window.imageSaved=result.saveToFile("SCREENSHOT");});waitUntil(()=>window.imageSaved);console.log("SHORTCUT_EDITOR_ACTUAL_PASS");
   }
  }
- Timer {interval:100;running:true;onTriggered:{try{test.test_actual();Qt.quit();}catch(error){console.error("SHORTCUT_EDITOR_FAILED "+error);Qt.exit(1);}}}
+ Timer {interval:100;running:true;onTriggered:{try{test.test_actual();Qt.quit();}catch(error){console.error("SHORTCUT_EDITOR_FAILED "+error+" "+error.stack);Qt.exit(1);}}}
  Timer {interval:18000;running:true;onTriggered:{console.error("SHORTCUT_EDITOR_TIMEOUT");Qt.exit(2);}}
 }
