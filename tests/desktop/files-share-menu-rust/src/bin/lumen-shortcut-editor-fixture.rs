@@ -161,7 +161,10 @@ fn invoke(
     request: &Value,
     values: &std::collections::BTreeMap<String, String>,
 ) -> Result<Value> {
-    let mut child = Command::new(helper)
+    // timeout owns and reaps the helper; wait_with_output drains pipes while it
+    // runs, so the observer cannot itself deadlock on a complete catalog reply.
+    let mut child = Command::new("timeout")
+        .args(["--kill-after=1s", "8s", helper])
         .env_clear()
         .envs(values)
         .stdin(Stdio::piped())
@@ -169,16 +172,11 @@ fn invoke(
         .stderr(Stdio::piped())
         .spawn()?;
     writeln!(child.stdin.take().ok_or("Input")?, "{request}")?;
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(8);
-    while child.try_wait()?.is_none() {
-        if std::time::Instant::now() >= deadline {
-            child.kill()?;
-            child.wait()?;
-            return Err("Edit helper exceeded finite acceptance budget; killed and reaped".into());
-        }
-        std::thread::sleep(std::time::Duration::from_millis(10));
-    }
     let out = child.wait_with_output()?;
+    require(
+        !matches!(out.status.code(), Some(124 | 137)),
+        "Edit helper exceeded finite acceptance budget; killed and reaped",
+    )?;
     let mut value: Value = serde_json::from_slice(&out.stdout)
         .map_err(|e| format!("Helper JSON: {e}; {}", String::from_utf8_lossy(&out.stderr)))?;
     value["exitSuccess"] = json!(out.status.success());
