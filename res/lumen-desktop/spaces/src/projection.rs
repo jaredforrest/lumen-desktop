@@ -170,7 +170,10 @@ pub fn reconcile<R: Into<CommandOutcome>>(
         let Some(metadata) = parse(node)? else {
             continue;
         };
-        if metadata.enabled || !metadata.supported {
+        // A provider-validated bounded nonmodal family may stage each member's
+        // own direct flag. This exact reason grants no inherited assignment.
+        let direct_family_intent = node["lumen_all_desktops"]["reason"] == "owned-family-pending";
+        if metadata.enabled || (!metadata.supported && !direct_family_intent) {
             continue;
         }
         let Some(record) = identity(node, epoch) else {
@@ -431,6 +434,46 @@ mod tests {
         ] {
             assert!(checked_reply(code, reply).is_err());
         }
+    }
+    #[test]
+    fn only_validated_family_pending_admits_the_members_own_direct_intent() {
+        let (root, mut policy, mut node) = fixture();
+        policy.assign("wayland:editor", "all", None).unwrap();
+        node["lumen_all_desktops"]["supported"] = json!(false);
+        node["lumen_all_desktops"]["reason"] = json!("owned-family-pending");
+        let mut commands = Vec::new();
+        reconcile_membership(&mut policy, &tree(&node), "session", |command| {
+            commands.push(command.to_string());
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(commands.len(), 1);
+        assert!(commands[0].ends_with(" on"));
+        assert_eq!(
+            policy.state["managed_projection"]["42"],
+            identity(&node, "session").unwrap()
+        );
+        for reason in [
+            "relationship-unsupported",
+            "owned-family-bounds",
+            "owned-family-origin-mismatch",
+            "modal-owner-suspended",
+            "unknown",
+        ] {
+            node["lumen_all_desktops"]["reason"] = json!(reason);
+            reconcile_membership(&mut policy, &tree(&node), "session", |_| -> Result<()> {
+                panic!("unsupported family role must not actuate")
+            })
+            .unwrap();
+        }
+        policy.assign("wayland:editor", "none", None).unwrap();
+        node["lumen_all_desktops"]["reason"] = json!("owned-family-pending");
+        reconcile_membership(&mut policy, &tree(&node), "session", |_| -> Result<()> {
+            panic!("an unrelated or unassigned member has no inherited intent")
+        })
+        .unwrap();
+        drop(policy);
+        std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn grouped_admission_requires_valid_native_role_capability() {

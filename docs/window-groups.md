@@ -46,8 +46,10 @@ the latter need explicit owned-role adapters rather than title-based inference.
 Groups have a 256-entry bound; additional eligible roots remain ungrouped and
 visible if that limit is reached. A native desktop destroyed while all its members
 are conventionally hidden loses its group definitions; ordinary hide/restore
-placements remain intact. No cross-session group persistence or all-desktop
-membership is claimed.
+placements remain intact. No cross-session group persistence is claimed.
+All-desktop projection can present an intact supported group on the active
+desktop while its group membership and layout remain at structural origin;
+this does not create cross-desktop group membership or override group masks.
 
 ## Application window presentation
 

@@ -344,11 +344,15 @@ A display assignment chooses its currently visible desktop. Hardware identity
 uses make/model/serial when available and a clearly labelled connector fallback
 otherwise. Disconnected targets retain their assignment and leave new windows
 where the compositor placed them; reconnection resumes matching. Overview shows
-unavailable saved assignments. All desktops on current display uses native sticky
-membership for eligible independent floating windows, without forcing a layout
-change. Unsupported tiled, grouped, owned or saved-placement states remain
-pending with a reason. This scoped policy does not establish all-window parity;
-the eligibility and ownership contract is documented separately.
+unavailable saved assignments. All desktops on current display uses versioned
+native projection where supported: ordinary tiled and grouped views retain their
+structural origin while presenting in their output's active desktop. Independent
+visibility masks remain effective. Known nonmodal owned families require bounded
+membership and explicit direct intent for every member; modal or otherwise
+unsupported states retain usable origin activation with an explicit reason.
+The legacy independent-floating sticky path remains for genuinely older providers.
+See [application desktop assignment](application-desktops.md) for exact role,
+ownership, suspension and compatibility boundaries.
 
 ### Desktop arrangements
 

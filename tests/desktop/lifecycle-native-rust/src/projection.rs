@@ -197,6 +197,12 @@ pub fn run(options: Options) -> Result<()> {
     if f.options.scenario == "projection-protocol" {
         return protocol::run(&mut f, id);
     }
+    if f.options.scenario == "projection-family" {
+        return protocol::family(&mut f, id);
+    }
+    if f.options.scenario == "projection-family-bounds" {
+        return protocol::family_bounds(&mut f);
+    }
     if f.options.scenario == "projection-focus" {
         return focus_journey(&mut f, id, &owned);
     }

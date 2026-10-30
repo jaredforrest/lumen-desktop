@@ -29,6 +29,8 @@ fn main() -> Result<()> {
         | "projection-interaction"
         | "projection-focus"
         | "projection-protocol"
+        | "projection-family"
+        | "projection-family-bounds"
         | "projection-lock" => projection::run(options),
         _ => Err("Unknown scenario".into()),
     }

@@ -7,26 +7,29 @@ index 0540242..187298b 100644
 +sway_cmd cmd_lumen_projection;
  sway_cmd cmd_lumen_window;
 diff --git a/include/sway/tree/container.h b/include/sway/tree/container.h
-index 0a4480a..7151778 100644
+index 0a4480a..0c3cddc 100644
 --- a/include/sway/tree/container.h
 +++ b/include/sway/tree/container.h
-@@ -81,2 +81,4 @@ struct sway_lumen_placement {
+@@ -81,2 +81,5 @@ struct sway_lumen_placement {
  struct sway_container {
 + bool lumen_projection_enabled, lumen_projection_exhausted, lumen_projection_supported;
 + uint64_t lumen_projection_revision, lumen_projection_origin, lumen_projection_output, lumen_projection_effective;
++ uint64_t lumen_projection_family;
   uint64_t lumen_group_id;
 diff --git a/include/sway/tree/lumen_projection.h b/include/sway/tree/lumen_projection.h
 new file mode 100644
-index 0000000..f70eaf7
+index 0000000..f5488db
 --- /dev/null
 +++ b/include/sway/tree/lumen_projection.h
-@@ -0,0 +1,17 @@
+@@ -0,0 +1,19 @@
 +#ifndef SWAY_LUMEN_PROJECTION_H
 +#define SWAY_LUMEN_PROJECTION_H
 +#include <stdbool.h>
 +#include <json.h>
 +struct sway_container;
 +struct sway_workspace;
++struct sway_view;
++struct sway_workspace *lumen_projection_map_workspace(struct sway_view *view, struct sway_workspace *proposed);
 +struct sway_workspace *lumen_projection_workspace(struct sway_container *con);
 +bool lumen_projection_presented(struct sway_container *con);
 +bool lumen_projection_reserved(struct sway_container *con);
@@ -208,10 +211,10 @@ index abc9d80..eb02ad8 100644
  	// Bring container to front by putting it at the end of the floating list.
 diff --git a/sway/tree/lumen_projection.c b/sway/tree/lumen_projection.c
 new file mode 100644
-index 0000000..31c6bff
+index 0000000..e940a82
 --- /dev/null
 +++ b/sway/tree/lumen_projection.c
-@@ -0,0 +1,194 @@
+@@ -0,0 +1,288 @@
 +/* One scene node, structural origin retained. This is floating presentation of
 + * ordinary tiled views, not a second tiled layout or an always-on-top plane. */
 +#include <errno.h>
@@ -243,15 +246,7 @@ index 0000000..31c6bff
 +  if (*p < 32 || *p == 127 || (*p == 0xc2 && p[1] >= 0x80 && p[1] <= 0x9f)) return false;
 + return true;
 +}
-+struct modal_search {struct sway_view *owner; bool blocked;};
-+static void modal_child(struct sway_container *con, void *data) {
-+ struct modal_search *search = data;
-+ if (!con->view || con->node.destroying) return;
-+ struct sway_view *parent = NULL; int modal = -1;
-+ if (!lumen_view_relationship(con->view, &parent, &modal)) return;
-+ if (parent == search->owner && modal == 1) search->blocked = true;
-+}
-+static const char *reason(struct sway_container *con) {
++static const char *static_reason(struct sway_container *con) {
 + if (!con || !con->view || con->node.destroying || con->view->pid <= 0) return "native-view-required";
 + bool managed_role = con->view->type == SWAY_VIEW_XDG_SHELL;
 +#if WLR_HAS_XWAYLAND
@@ -263,10 +258,6 @@ index 0000000..31c6bff
 + struct sway_output *output = con->pending.workspace->output;
 + if (output->node.destroying || !output->wlr_output || !output->enabled || !output->wlr_output->enabled) return "output-unavailable";
 + if (con->lumen_projection_exhausted) return "revision-exhausted";
-+ struct sway_view *parent = NULL; int modal = -1;
-+ if (!lumen_view_relationship(con->view, &parent, &modal) || parent || modal == 1) return "relationship-unsupported";
-+ struct modal_search search = {.owner = con->view}; root_for_each_container(modal_child, &search);
-+ if (search.blocked) return "modal-owner-suspended";
 + if (con->lumen_pair || con->lumen_pair_restore || con->lumen_pair_dialog_owner) return "paired-layout-unsupported";
 + if (con->pending.fullscreen_mode != FULLSCREEN_NONE || root->fullscreen_global) return "fullscreen-suspended";
 + struct sway_workspace *active = output_get_active_workspace(output);
@@ -275,6 +266,89 @@ index 0000000..31c6bff
 + if (!name_ok(con->pending.workspace->name) || !name_ok(output->wlr_output->name) ||
 +     (con->lumen_projection_enabled && active && !name_ok(active->name))) return "metadata-bounds";
 + return NULL;
++}
++/* Direct flags only: no assignment is inherited from a parent or application ID.
++ * One bounded known family must converge before any member is projected. */
++static struct sway_view *family_root(struct sway_view *view) {
++ /* The seventeenth node is an overflow witness, never an authorized member. */
++ for (size_t depth = 0; depth <= 16; ++depth) {
++  struct sway_view *parent = NULL; int modal = -1;
++  if (!lumen_view_relationship(view, &parent, &modal)) return NULL;
++  if (!parent) return view;
++  if (parent == view || !parent->container || parent->container->node.destroying) return NULL;
++  view = parent;
++ }
++ return NULL;
++}
++struct family_search {
++ struct sway_view *root; struct sway_workspace *origin;
++ size_t count; bool pending, modal; const char *failure; uint64_t fingerprint;
++ struct sway_container *members[16];
++};
++static void family_member(struct sway_container *con, void *data) {
++ struct family_search *s = data;
++ if (!con->view || con->node.destroying || family_root(con->view) != s->root) return;
++ if (s->count >= 16) {s->count = 17; s->failure = "owned-family-bounds"; return;}
++ s->members[s->count++] = con;
++}
++static int member_order(const void *left, const void *right) {
++ const struct sway_container *a = *(struct sway_container *const *)left;
++ const struct sway_container *b = *(struct sway_container *const *)right;
++ return a->node.id < b->node.id ? -1 : a->node.id > b->node.id;
++}
++static void family_facts(struct sway_container *con, struct family_search *s) {
++ struct sway_view *parent = NULL; int modal = -1;
++ if (!lumen_view_relationship(con->view, &parent, &modal)) {s->failure = "relationship-unsupported"; return;}
++ const char *why = static_reason(con);
++ if (why && !s->failure) s->failure = why;
++ if (con->pending.workspace != s->origin && !s->failure) s->failure = "owned-family-origin-mismatch";
++ s->modal |= modal == 1;
++ s->pending |= !con->lumen_projection_enabled;
++ uint64_t facts[] = {con->node.id, parent && parent->container ? parent->container->node.id : 0,
++  con->lumen_projection_enabled, (uint64_t)(modal + 1),
++  con->pending.workspace ? con->pending.workspace->node.id : 0};
++ for (size_t i = 0; i < sizeof(facts)/sizeof(facts[0]); ++i) {
++  s->fingerprint ^= facts[i]; s->fingerprint *= UINT64_C(1099511628211);
++ }
++}
++static struct family_search family(struct sway_container *con) {
++ struct family_search s = {.root = con && con->view ? family_root(con->view) : NULL,
++  .origin = con ? con->pending.workspace : NULL, .fingerprint = UINT64_C(1469598103934665603)};
++ if (!s.root) {s.failure = "relationship-unsupported"; return s;}
++ root_for_each_container(family_member, &s);
++ if (s.count > 16) {s.fingerprint ^= 17; return s;}
++ qsort(s.members, s.count, sizeof(s.members[0]), member_order);
++ for (size_t i = 0; i < s.count; ++i) family_facts(s.members[i], &s);
++ return s;
++}
++static const char *reason(struct sway_container *con) {
++ const char *why = static_reason(con);
++ if (why) return why;
++ struct family_search s = family(con);
++ if (s.failure) return s.failure;
++ if (s.modal) return "modal-owner-suspended";
++ return s.count > 1 && s.pending ? "owned-family-pending" : NULL;
++}
++struct sway_workspace *lumen_projection_map_workspace(struct sway_view *view, struct sway_workspace *proposed) {
++ struct sway_view *parent = NULL; int modal = -1;
++ if (!view || !lumen_view_relationship(view, &parent, &modal) || !parent || !parent->container) return proposed;
++ struct sway_view *root_view = family_root(parent);
++ if (!root_view || !root_view->container) return proposed;
++ struct family_search s = family(root_view->container);
++ if (!s.count || !s.origin || !s.origin->output ||
++     parent->container->pending.workspace != s.origin ||
++     parent->container->lumen_pair || parent->container->lumen_pair_restore ||
++     parent->container->lumen_pair_dialog_owner) return proposed;
++ bool assigned = false;
++ /* Pending direct intents are represented on existing family members only. */
++ struct sway_view *walk = parent;
++ for (size_t depth = 0; walk && depth < 16; ++depth) {
++  assigned |= walk->container && walk->container->lumen_projection_enabled;
++  struct sway_view *next = NULL; int ignored = -1;
++  if (!lumen_view_relationship(walk, &next, &ignored)) return proposed;
++  walk = next;
++ }
++ return assigned && s.origin ? s.origin : proposed;
 +}
 +struct sway_workspace *lumen_projection_workspace(struct sway_container *con) {
 + struct sway_workspace *origin = con ? con->pending.workspace : NULL;
@@ -335,8 +409,7 @@ index 0000000..31c6bff
 + seat_set_focus(seat, &target->pending.workspace->node);
 + return seat_get_focused_workspace(seat) == target->pending.workspace;
 +}
-+static void reconcile(struct sway_container *con, void *data) {
-+ (void)data;
++static void sync_observation(struct sway_container *con, bool notify) {
 + if (!con->view || con->node.destroying) return;
 + struct sway_workspace *origin = con->pending.workspace;
 + struct sway_workspace *effective = lumen_projection_workspace(con);
@@ -344,13 +417,19 @@ index 0000000..31c6bff
 + uint64_t out = origin && origin->output ? origin->output->node.id : 0;
 + uint64_t effective_id = effective ? effective->node.id : 0;
 + bool supported = reason(con) == NULL;
++ struct family_search family_state = family(con);
 + if (con->lumen_projection_origin != ws || con->lumen_projection_output != out ||
-+     con->lumen_projection_effective != effective_id || con->lumen_projection_supported != supported) {
++     con->lumen_projection_effective != effective_id || con->lumen_projection_supported != supported ||
++     con->lumen_projection_family != family_state.fingerprint) {
 +  con->lumen_projection_origin = ws; con->lumen_projection_output = out;
 +  con->lumen_projection_effective = effective_id; con->lumen_projection_supported = supported;
++  con->lumen_projection_family = family_state.fingerprint;
 +  advance(con);
-+  ipc_event_window(con, "lumen_projection");
++  if (notify) ipc_event_window(con, "lumen_projection");
 + }
++}
++static void reconcile(struct sway_container *con, void *data) {
++ (void)data; sync_observation(con, true);
 +}
 +void lumen_projection_reconcile(void) { root_for_each_container(reconcile, NULL); }
 +void lumen_projection_raise(struct sway_container *con) {
@@ -365,6 +444,9 @@ index 0000000..31c6bff
 + return result;
 +}
 +json_object *lumen_projection_json(struct sway_container *con) {
++ /* Publish live relationship facts and their matching revision together. A
++  * transaction may not yet have sampled a newly mapped/reparented member. */
++ sync_observation(con, false);
 + json_object *result = json_object_new_object();
 + struct sway_workspace *origin = con->pending.workspace, *effective = lumen_projection_workspace(con);
 + struct sway_output *out = origin ? origin->output : NULL, *effective_out = effective ? effective->output : NULL;
@@ -395,13 +477,28 @@ index 0000000..31c6bff
 + if (argc != 7 || !decimal(argv[0], &id) || !decimal(argv[2], &pid) || !decimal(argv[3], &workspace) || !decimal(argv[4], &output) || !decimal(argv[5], &revision) || (strcmp(argv[6], "on") && strcmp(argv[6], "off"))) return cmd_results_new(CMD_INVALID, "Invalid projection witness");
 + if (strlen(argv[1]) != 32 || strspn(argv[1], "0123456789abcdef") != 32) return cmd_results_new(CMD_INVALID, "Invalid projection identity");
 + struct sway_container *con = root_find_container(find_id, &id);
++ if (con && con->view) sync_observation(con, false);
 + if (!con || !con->view || !con->view->ext_foreign_toplevel || (uint64_t)con->view->pid != pid || strcmp(con->view->ext_foreign_toplevel->identifier, argv[1]) || !con->pending.workspace || con->pending.workspace->node.id != workspace || !con->pending.workspace->output || con->pending.workspace->output->node.id != output || con->lumen_projection_revision != revision || con->lumen_projection_exhausted) return cmd_results_new(CMD_INVALID, "Projection witness unavailable");
 + if (server.session_lock.lock) return cmd_results_new(CMD_INVALID, "Projection unavailable while session locked");
 + bool enabled = !strcmp(argv[6], "on");
-+ if (enabled && reason(con)) return cmd_results_new(CMD_INVALID, "Projection unavailable");
++ const char *why = reason(con);
++ if (enabled && why && strcmp(why, "owned-family-pending")) return cmd_results_new(CMD_INVALID, "Projection unavailable");
 + if (con->lumen_projection_enabled != enabled) {
++  struct sway_seat *seat = input_manager_current_seat();
++  struct sway_container *focused = seat_get_focused_container(seat);
++  bool foreground = focused && focused->view && lumen_projection_presented(focused) &&
++   family_root(focused->view) == family_root(con->view);
 +  con->lumen_projection_enabled = enabled; advance(con);
 +  node_set_dirty(&con->node); lumen_projection_reconcile();
++  /* An explicit direct clear may suspend a whole family. Keep its exact
++   * foreground view usable at retained origin, without moving structural slots
++   * or stealing focus for unrelated/background convergence. */
++  if (foreground && !lumen_projection_presented(focused) && focused->pending.workspace &&
++      focused->pending.workspace->output &&
++      output_get_active_workspace(focused->pending.workspace->output) != focused->pending.workspace) {
++   seat_set_focus(seat, &focused->pending.workspace->node);
++   seat_set_focus_container(seat, focused);
++  }
 +  ipc_event_window(con, "lumen_projection"); transaction_commit_dirty();
 + }
 + return cmd_results_new(CMD_SUCCESS, NULL);
@@ -453,7 +550,7 @@ index f16bd22..0c91c2b 100644
 +		seat_set_focus(seat, seat_get_focus_inactive(seat, &focus_workspace->node));
  	}
 diff --git a/sway/tree/view.c b/sway/tree/view.c
-index 8068328..9eb3bcb 100644
+index 8068328..f4cd006 100644
 --- a/sway/tree/view.c
 +++ b/sway/tree/view.c
 @@ -1,2 +1,3 @@
@@ -473,7 +570,11 @@ index 8068328..9eb3bcb 100644
 +       event->output->data != container->pending.workspace->output)) || !lumen_projection_prepare_fullscreen(container))) return;
 +	if (event->fullscreen && !container->lumen_projection_enabled && event->output && event->output->data) {
  		struct sway_output *output = event->output->data;
-@@ -1258,3 +1262,3 @@ bool view_is_visible(struct sway_view *view) {
+@@ -918,2 +922,3 @@ void view_map(struct sway_view *view, struct wlr_surface *wlr_surface,
+ 	ws = lumen_pair_map_workspace(view,ws);
++	ws = lumen_projection_map_workspace(view, ws);
+ 	if (ws && ws->output) {
+@@ -1258,3 +1263,3 @@ bool view_is_visible(struct sway_view *view) {
  
 -	if (!container_is_sticky_or_child(view->container) && workspace &&
 +	if (!lumen_projection_presented(view->container) && !container_is_sticky_or_child(view->container) && workspace &&

@@ -36,7 +36,14 @@ struct State {
     error: Option<String>,
 }
 impl State {
-    fn window(&mut self, qh: &QueueHandle<Self>, id: usize, fixed: bool) -> Result<()> {
+    fn window(
+        &mut self,
+        qh: &QueueHandle<Self>,
+        id: usize,
+        fixed: bool,
+        modal: bool,
+        app: &str,
+    ) -> Result<()> {
         let surface = self
             .compositor
             .as_ref()
@@ -48,20 +55,22 @@ impl State {
             .ok_or("xdg shell")?
             .get_xdg_surface(&surface, qh, id);
         let top = xdg.get_toplevel(qh, id);
-        top.set_app_id("org.example.ProjectionProtocol".into());
+        top.set_app_id(app.into());
         top.set_title(format!("Projection protocol {id}"));
         if fixed {
             top.set_min_size(400, 300);
             top.set_max_size(400, 300);
         }
-        if id == 1 {
-            top.set_parent(Some(&self.rows[0].top));
+        if id > 0 {
+            top.set_parent(Some(&self.rows[id - 1].top));
             let dialog = self
                 .dialogs
                 .as_ref()
                 .ok_or("dialog protocol")?
                 .get_xdg_dialog(&top, qh, ());
-            dialog.set_modal();
+            if modal {
+                dialog.set_modal();
+            }
             self.dialog = Some(dialog);
         }
         surface.commit();
@@ -83,11 +92,45 @@ impl State {
                 self.rows[0].top.set_fullscreen(Some(&output.1));
             }
             "unfullscreen" => self.rows[0].top.unset_fullscreen(),
-            "modal" => {
+            "modal" | "owned" | "owned-utility" => {
                 if self.rows.len() != 1 {
                     return Err("Dialog already exists".into());
                 }
-                self.window(qh, 1, false)?;
+                self.window(
+                    qh,
+                    1,
+                    false,
+                    command == "modal",
+                    if command == "owned-utility" {
+                        "org.example.ProjectionUtility"
+                    } else {
+                        "org.example.ProjectionProtocol"
+                    },
+                )?;
+            }
+            "extend" => {
+                if self.rows.len() >= 16 {
+                    return Err("Ordinary chain extension is bounded at16 views".into());
+                }
+                self.window(
+                    qh,
+                    self.rows.len(),
+                    false,
+                    false,
+                    "org.example.ProjectionProtocol",
+                )?;
+            }
+            "extend17" => {
+                if self.rows.len() != 16 {
+                    return Err("Overflow witness requires exact16 views".into());
+                }
+                self.window(qh, 16, false, false, "org.example.ProjectionProtocol")?;
+            }
+            "unparent" => {
+                if self.rows.len() != 2 {
+                    return Err("Unparent requires one child".into());
+                }
+                self.rows[1].top.set_parent(None);
             }
             "unmodal" => {
                 if self.rows.len() != 2 {
@@ -270,7 +313,7 @@ fn run() -> Result<()> {
     state.buffer =
         Some(pool.create_buffer(0, 640, 480, 640 * 4, wl_shm::Format::Argb8888, &qh, ()));
     pool.destroy();
-    state.window(&qh, 0, fixed)?;
+    state.window(&qh, 0, fixed, false, "org.example.ProjectionProtocol")?;
     queue.roundtrip(&mut state)?;
     queue.roundtrip(&mut state)?;
     println!(

@@ -31,8 +31,23 @@ restoration. Unsupported or suspended metadata remains an inventory member,
 while affected scoped actions refuse unavailable placement. Global activation
 retains normal native restore behavior.
 
-Older providers and X11 windows retain the independent-floating sticky path.
-Their unsupported grouped/tiled, relationship and saved-placement constraints
+Known nonmodal owned families retain one structural origin/output, with at most
+16 members and a bounded parent chain. Each member needs its own direct flag;
+the exact `owned-family-pending` state permits staging that member's explicit
+intent after all native static checks. An application's assignment never grants
+authority over another application's utility child. A modal member suspends the
+whole family at its retained origin, where normal foreground/global activation
+remains usable. Foreground owned-child mapping deliberately activates that
+origin; background mapping preserves the existing focused application and
+desktop. Unknown relationships and over-bound families do not gain projection.
+Clearing a currently presented foreground member keeps its affected family usable
+at origin; unrelated background changes do not steal focus. Membership, parent,
+direct flags and origin facts revise the observation independently of raise order.
+
+Managed X11 projection requires the provider's native role support and a known
+XRes process identity. Genuine older providers and the exact older
+`native-view-required` X11 role discriminator retain the independent-floating sticky path.
+Those legacy paths' unsupported grouped/tiled, relationship and saved-placement constraints
 remain explicit pending states. The public assignment route admits intact
 native groups only when valid native projection metadata is present; missing,
 malformed or unsupported-version metadata does not waive legacy constraints.
