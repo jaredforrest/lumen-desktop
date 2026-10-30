@@ -61,6 +61,7 @@ def main [] {
     build file-surfaces-rust-wip file-surfaces-rust-wip
     build test-owned-font-config owned-font-config
     build test-owned-geometry-legacy-compositor compositor-legacy
+    build test-display-spaces-legacy-compositor compositor-display-legacy
     build test-menu-exporter-fixture menu-exporter-fixture
     build test-menu-native-fixture menu-native-fixture
     build test-lifecycle-native-fixture lifecycle-native-fixture
@@ -80,6 +81,7 @@ def main [] {
     let basic = (artifact 'compositor/bin/sway')
     let effects = (artifact 'compositor-effects/bin/sway')
     let legacy = (artifact 'compositor-legacy/bin/sway')
+    let display_legacy = (artifact 'compositor-display-legacy/bin/sway')
     let pointer = (artifact 'pointer/bin/wlrctl')
     let lock = (artifact 'session-lock/bin/lumen-test-session-lock')
     let client = (artifact 'window-relationships-client/bin/lumen-test-window-relationships')
@@ -281,7 +283,8 @@ def main [] {
     for variant in [modern legacy] {
         let sway = if $variant == 'legacy' { $legacy } else { $basic }
         let suffix = if $variant == 'legacy' { '-legacy' } else { '' }
-        ^nu tests/ci/run-native.nu $'display_recovery_($variant)' -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') $'display-recovery($suffix)' --launcher $shell --sway $sway --output $'artifacts/display-spaces-recovery-($variant)'
+        let display_sway = if $variant == 'legacy' { $display_legacy } else { $basic }
+        ^nu tests/ci/run-native.nu $'display_recovery_($variant)' -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') $'display-recovery($suffix)' --launcher $shell --sway $display_sway --output $'artifacts/display-spaces-recovery-($variant)'
         ^nu tests/ci/run-native.nu $'owned_geometry_($variant)' -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') $'owned-geometry($suffix)' --launcher $shell --sway $sway --pointer-tool $pointer --output $'artifacts/owned-geometry-($variant)'
         ^nu tests/ci/run-native.nu $'owned_components_($variant)' -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') $'owned-components($suffix)' --launcher $shell --sway $sway --output $'artifacts/owned-components-($variant)'
     }
