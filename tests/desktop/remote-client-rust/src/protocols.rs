@@ -711,9 +711,21 @@ fn legacy_clipboard(f: &mut Harness) -> Result<()> {
     let close = wait("legacy warning close button", || {
         Ok(f.semantics()?
             .into_iter()
-            .find(|row| row["role"] == "push button" && row["name"] == "Close"))
+            .find(|row| row["role"] == "button" && row["name"] == "Close"))
     })?;
-    f.focus(&close)?;
+    let dialog_id = dialog["id"].as_u64().ok_or("Captured warning identity")?;
+    f.ipc(&[&format!("[con_id={dialog_id}] focus")])?;
+    let reference = &close["reference"];
+    ensure(
+        f.observer.as_ref().ok_or("Observer")?.focus(
+            &(
+                reference[0].as_str().ok_or("Close owner")?.to_owned(),
+                reference[1].as_str().ok_or("Close path")?.to_owned(),
+            ),
+            Duration::from_millis(500),
+        )?,
+        "Captured warning Close control refused focus",
+    )?;
     f.keyboard
         .as_mut()
         .ok_or("Keyboard")?
