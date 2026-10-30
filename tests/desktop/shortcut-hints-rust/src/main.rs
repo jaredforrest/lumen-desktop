@@ -25,6 +25,8 @@ struct Options {
     sway: PathBuf,
     output: PathBuf,
     effects: bool,
+    fontconfig: Option<PathBuf>,
+    software_driver: Option<PathBuf>,
     inside: bool,
 }
 fn options() -> Result<Options> {
@@ -33,6 +35,8 @@ fn options() -> Result<Options> {
     let mut sway = None;
     let mut output = None;
     let mut effects = false;
+    let mut fontconfig = None;
+    let mut software_driver = None;
     let mut inside = false;
     let mut args = env::args_os().skip(1);
     while let Some(arg) = args.next() {
@@ -46,6 +50,14 @@ fn options() -> Result<Options> {
             Some("--sway") => sway = Some(PathBuf::from(args.next().ok_or("Missing Sway")?)),
             Some("--output") => output = Some(PathBuf::from(args.next().ok_or("Missing output")?)),
             Some("--effects") => effects = true,
+            Some("--font-config") => {
+                fontconfig = Some(PathBuf::from(
+                    args.next().ok_or("Missing font configuration")?,
+                ))
+            }
+            Some("--software-driver") => {
+                software_driver = Some(PathBuf::from(args.next().ok_or("Missing software driver")?))
+            }
             Some("--inside") => inside = true,
             _ => return Err(fail("Unknown shortcut hints option")),
         }
@@ -56,6 +68,8 @@ fn options() -> Result<Options> {
         sway: sway.ok_or("--sway required")?,
         output: output.ok_or("--output required")?,
         effects,
+        fontconfig,
+        software_driver,
         inside,
     })
 }
@@ -114,6 +128,12 @@ fn outer(options: &Options) -> Result<()> {
         .envs(private_environment(private.path()));
     if options.effects {
         command.arg("--effects");
+    }
+    if let Some(path) = &options.fontconfig {
+        command.arg("--font-config").arg(path);
+    }
+    if let Some(path) = &options.software_driver {
+        command.arg("--software-driver").arg(path);
     }
     let status = command.status()?;
     require(
@@ -203,8 +223,6 @@ impl Drop for Children {
             if child.try_wait().ok().flatten().is_none() {
                 unsafe { libc::killpg(child.id() as i32, libc::SIGTERM) };
             }
-        }
-        for child in self.0.iter_mut().rev() {
             let deadline = Instant::now() + Duration::from_secs(5);
             loop {
                 if child.try_wait().ok().flatten().is_some() {
@@ -368,6 +386,37 @@ fn inner(options: &Options) -> Result<()> {
     for key in ["WAYLAND_DISPLAY", "SWAYSOCK", "DISPLAY"] {
         envs.remove(key);
     }
+    if let Some(font) = &options.fontconfig {
+        require(
+            font.is_file() && font.starts_with("/nix/store"),
+            "Immutable font configuration required",
+        )?;
+        envs.insert("FONTCONFIG_FILE".into(), font.display().to_string());
+    }
+    if let Some(driver) = &options.software_driver {
+        let driver = fs::canonicalize(driver)?;
+        require(
+            driver.starts_with("/nix/store")
+                && driver.join("lib/dri").is_dir()
+                && driver
+                    .join("share/glvnd/egl_vendor.d/50_mesa.json")
+                    .is_file(),
+            "Immutable Mesa package directory required",
+        )?;
+        envs.insert(
+            "LIBGL_DRIVERS_PATH".into(),
+            driver.join("lib/dri").display().to_string(),
+        );
+        envs.insert(
+            "__EGL_VENDOR_LIBRARY_FILENAMES".into(),
+            driver
+                .join("share/glvnd/egl_vendor.d/50_mesa.json")
+                .display()
+                .to_string(),
+        );
+        envs.insert("MESA_LOADER_DRIVER_OVERRIDE".into(), "llvmpipe".into());
+        envs.remove("LIBGL_ALWAYS_SOFTWARE");
+    }
     let assets_source = Path::new(
         envs.get("LUMEN_DESKTOP_ASSETS")
             .ok_or("Desktop asset path missing")?,
@@ -414,6 +463,7 @@ fn inner(options: &Options) -> Result<()> {
         options.sway.to_str().ok_or("Invalid Sway path")?,
         &[
             "--unsupported-gpu",
+            "-d",
             "-c",
             config.to_str().ok_or("Invalid config")?,
         ],
@@ -560,6 +610,27 @@ fn inner(options: &Options) -> Result<()> {
         "Invalid registry retargeted a window",
     )?;
     checks.push("Invalid registry cannot retain a stale hint or retarget a native window");
+    if options.effects && options.software_driver.is_some() {
+        let log = fs::read_to_string(options.output.join("sway.log"))?;
+        let observed = log
+            .lines()
+            .filter(|line| {
+                let text = line.to_lowercase();
+                text.contains("renderer")
+                    && (text.contains("llvmpipe") || text.contains("softpipe"))
+            })
+            .collect::<Vec<_>>();
+        require(
+            !observed.is_empty(),
+            "Effects renderer was not observed as software",
+        )?;
+        fs::write(
+            options.output.join("renderer.json"),
+            serde_json::to_vec_pretty(
+                &json!({"software":true,"driver":options.software_driver,"observedRendererLines":observed}),
+            )?,
+        )?;
+    }
     let source_revision = call("git", &["rev-parse", "HEAD"], &envs)?;
     fs::write(
         options.output.join("result.json"),
