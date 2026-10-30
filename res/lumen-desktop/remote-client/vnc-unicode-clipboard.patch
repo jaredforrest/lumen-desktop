@@ -1,0 +1,157 @@
+--- a/plugins/vnc/vnc_plugin.c
++++ b/plugins/vnc/vnc_plugin.c
+@@ -325,6 +325,12 @@
+ 	return event;
+ }
+ 
++static gboolean remmina_plugin_vnc_clipboard_warning(gpointer message)
++{
++	remmina_plugin_service->show_dialog(GTK_MESSAGE_WARNING, GTK_BUTTONS_CLOSE, message);
++	return FALSE;
++}
++
+ static void remmina_plugin_vnc_process_vnc_event(RemminaProtocolWidget *gp)
+ {
+ 	TRACE_CALL(__func__);
+@@ -346,8 +352,24 @@
+ 				break;
+ 			case REMMINA_PLUGIN_VNC_EVENT_CUTTEXT:
+ 				if (event->event_data.text.text) {
+-					rfbClientLog("sending clipboard text '%s'\n", event->event_data.text.text);
+-					SendClientCutText(cl, event->event_data.text.text, strlen(event->event_data.text.text));
++					if (strlen(event->event_data.text.text) > G_MAXINT) {
++						IDLE_ADD(remmina_plugin_vnc_clipboard_warning, _("Clipboard text is too large to send."));
++						break;
++					}
++					if (cl->extendedClipboardServerCapabilities) {
++						if (!SendClientCutTextUTF8(cl, event->event_data.text.text, strlen(event->event_data.text.text)))
++							IDLE_ADD(remmina_plugin_vnc_clipboard_warning, _("Clipboard transfer failed. The text was not sent."));
++					} else {
++						gsize length;
++						gchar *legacy = g_convert(event->event_data.text.text, -1, "ISO-8859-1", "UTF-8", NULL, &length, NULL);
++						if (legacy) {
++							if (!SendClientCutText(cl, legacy, length))
++								IDLE_ADD(remmina_plugin_vnc_clipboard_warning, _("Clipboard transfer failed. The text was not sent."));
++							g_free(legacy);
++						} else {
++							IDLE_ADD(remmina_plugin_vnc_clipboard_warning, _("This VNC server only supports Latin-1 clipboard text. The text was not sent because it contains unsupported characters."));
++						}
++					}
+ 				}
+ 				break;
+ 			case REMMINA_PLUGIN_VNC_EVENT_CHAT_OPEN:
+@@ -376,6 +398,7 @@
+ 	RemminaProtocolWidget * gp;
+ 	gchar *			text;
+ 	gint			textlen;
++	gboolean		utf8;
+ } RemminaPluginVncCuttextParam;
+ 
+ static void remmina_plugin_vnc_update_quality(rfbClient *cl, gint quality)
+@@ -736,9 +759,8 @@
+ 	RemminaPluginVncData *gpdata = GET_PLUGIN_DATA(gp);
+ 	GDateTime *t;
+ 	glong diff;
+-	const char *cur_charset;
+ 	gchar *text;
+-	gsize br, bw;
++	gsize bw;
+ 
+ 	if (GTK_IS_WIDGET(gp) && gpdata->connected) {
+ 		t = g_date_time_new_now_utc();
+@@ -746,10 +768,18 @@
+ 		if (diff >= 10) {
+ 			g_date_time_unref(gpdata->clipboard_timer);
+ 			gpdata->clipboard_timer = t;
+-			/* Convert text from VNC latin-1 to current GTK charset (usually UTF-8) */
+-			g_get_charset(&cur_charset);
+-			text = g_convert_with_fallback(param->text, param->textlen, cur_charset, "ISO-8859-1", "?", &br, &bw, NULL);
+-			gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), text, bw);
++			if (param->utf8) {
++				gint length = param->textlen;
++				if (length && param->text[length - 1] == '\0') length--;
++				text = g_utf8_validate(param->text, length, NULL) ? g_strndup(param->text, length) : NULL;
++				bw = length;
++			} else {
++				text = g_convert(param->text, param->textlen, "UTF-8", "ISO-8859-1", NULL, &bw, NULL);
++			}
++			if (text && g_utf8_validate(text, bw, NULL))
++				gtk_clipboard_set_text(gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), text, bw);
++			else
++				remmina_plugin_vnc_clipboard_warning(_("The server supplied invalid clipboard text. The local clipboard was preserved."));
+ 			g_free(text);
+ 		} else {
+ 			g_date_time_unref(t);
+@@ -760,19 +790,35 @@
+ 	return FALSE;
+ }
+ 
+-static void remmina_plugin_vnc_rfb_cuttext(rfbClient *cl, const char *text, int textlen)
++static void remmina_plugin_vnc_rfb_cuttext_encoded(rfbClient *cl, const char *text, int textlen, gboolean utf8)
+ {
+ 	TRACE_CALL(__func__);
+ 	RemminaPluginVncCuttextParam *param;
++	if (textlen < 0 || textlen == G_MAXINT || (!text && textlen)) {
++		IDLE_ADD(remmina_plugin_vnc_clipboard_warning, _("The server supplied invalid clipboard text. The local clipboard was preserved."));
++		return;
++	}
+ 
+ 	param = g_new(RemminaPluginVncCuttextParam, 1);
+ 	param->gp = (RemminaProtocolWidget *)rfbClientGetClientData(cl, NULL);
+-	param->text = g_malloc(textlen);
+-	memcpy(param->text, text, textlen);
++	param->text = g_malloc(textlen + 1);
++	if (textlen) memcpy(param->text, text, textlen);
++	param->text[textlen] = '\0';
+ 	param->textlen = textlen;
++	param->utf8 = utf8;
+ 	IDLE_ADD((GSourceFunc)remmina_plugin_vnc_queue_cuttext, param);
+ }
+ 
++static void remmina_plugin_vnc_rfb_cuttext(rfbClient *cl, const char *text, int textlen)
++{
++	remmina_plugin_vnc_rfb_cuttext_encoded(cl, text, textlen, FALSE);
++}
++
++static void remmina_plugin_vnc_rfb_cuttext_utf8(rfbClient *cl, const char *text, int textlen)
++{
++	remmina_plugin_vnc_rfb_cuttext_encoded(cl, text, textlen, TRUE);
++}
++
+ static char *
+ remmina_plugin_vnc_rfb_password(rfbClient *cl)
+ {
+@@ -1242,6 +1288,9 @@
+ 		cl->GotXCutText = (
+ 			remmina_plugin_service->file_get_int(remminafile, "disableclipboard", FALSE) ?
+ 			NULL : remmina_plugin_vnc_rfb_cuttext);
++		cl->GotXCutTextUTF8 = (
++			remmina_plugin_service->file_get_int(remminafile, "disableclipboard", FALSE) ?
++			NULL : remmina_plugin_vnc_rfb_cuttext_utf8);
+ 		cl->GotCursorShape = remmina_plugin_vnc_rfb_cursor_shape;
+ 		cl->Bell = remmina_plugin_vnc_rfb_bell;
+ 		cl->HandleTextChat = remmina_plugin_vnc_rfb_chat;
+@@ -1667,9 +1716,6 @@
+ 	RemminaPluginVncData *gpdata = GET_PLUGIN_DATA(gp);
+ 	GDateTime *t;
+ 	glong diff;
+-	gsize br, bw;
+-	gchar *latin1_text;
+-	const char *cur_charset;
+ 
+ 	if (text) {
+ 		/* A timer (1 second) to avoid clipboard "loopback": text cut out from VNC won’t paste back into VNC */
+@@ -1679,12 +1725,7 @@
+ 			return;
+ 		g_date_time_unref(gpdata->clipboard_timer);
+ 		gpdata->clipboard_timer = t;
+-		/* Convert text from current charset to latin-1 before sending to remote server.
+-		 * See RFC6143 7.5.6 */
+-		g_get_charset(&cur_charset);
+-		latin1_text = g_convert_with_fallback(text, -1, "ISO-8859-1", cur_charset, "?", &br, &bw, NULL);
+-		remmina_plugin_vnc_event_push(gp, REMMINA_PLUGIN_VNC_EVENT_CUTTEXT, (gpointer)latin1_text, NULL, NULL);
+-		g_free(latin1_text);
++		remmina_plugin_vnc_event_push(gp, REMMINA_PLUGIN_VNC_EVENT_CUTTEXT, (gpointer)text, NULL, NULL);
+ 	}
+ }
+ 
