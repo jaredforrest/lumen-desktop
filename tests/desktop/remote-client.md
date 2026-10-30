@@ -43,7 +43,37 @@ SSH preferences remain authoritative and no user profile is rewritten.
 
 All provider diagnostics are retained after child teardown. A successful protocol
 assertion does not mean third-party logs are warning-free. The Linux RDP target
-is not a Windows target, and loopback is not a routed network test. Clipboard,
-fullscreen escape, capture of system shortcuts, automatic reconnection, routed
-networks, Windows interoperability and a complete application-workflow acceptance
-remain separate evidence requirements.
+is not a Windows target, and loopback is not a routed network test.
+
+The separate `interactions` workflow proves physical text and function-key input,
+viewer fullscreen entry and exit through an explicitly configured F12+f shortcut,
+and plain-text clipboard transfer in both directions. VNC uses two independent
+compositors, display sockets and seats; RDP uses an independent Xvfb display with
+an actual xrdp TLS frontend, authenticated x11vnc backend and xrdp-chansrv. This
+RDP clipboard case proves TLS, separately from the shadow-server NLA cases.
+Fullscreen can recreate the provider window, so the fixture records actual
+window identities and refocuses its accessible drawing surface.
+
+The `text-clipboard` workflow uses actual GTK text documents and physical
+Copy/Paste, with Latin diacritics, Greek, CJK, RTL scripts, supplementary emoji,
+combining sequences, tabs, blank lines and trailing newlines. Raw source and
+destination strings are retained. VNC requires exact UTF-8 source bytes both
+ways. RDP requires exact source bytes remote-to-local; local-to-remote permits
+only the complete LF-to-CRLF transformation required by
+[CF_UNICODETEXT](https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-dclb/53128a2c-84ad-464e-8a12-75c5da932237).
+It does not trim, normalize Unicode, tolerate mixed line endings or discard
+whitespace; the receipt explicitly reports whether source bytes were exact.
+
+The public VNC client registers the upstream UTF-8 callback, sends extended
+clipboard text through its supported API, and requests deferred selections only
+when the peer advertises Request support. Its legacy path converts representable
+Latin-1 text losslessly and displays an explicit warning instead of replacing
+unsupported characters. The `legacy-clipboard` workflow uses stock x11vnc, which
+registers only the legacy cut-text callback. It proves representable fallback,
+visible unsupported-text rejection, unchanged remote text and process identity,
+and continued physical input. This legacy test uses unencrypted RFB only inside
+the private loopback namespace; it is not an encrypted transport acceptance.
+
+HTML/files clipboard formats, default shortcut policy, capture of system-wide
+host shortcuts, automatic reconnection, routed networks, Windows interoperability
+and complete application-workflow acceptance remain separate requirements.
