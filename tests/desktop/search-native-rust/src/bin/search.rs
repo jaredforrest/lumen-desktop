@@ -660,6 +660,9 @@ fn run_checks(t: &mut Test) -> Result<()> {
     t.query("ext:txt")?;
     t.settled("ext:txt")?;
     t.key(&["-k", "Down"])?;
+    wait("physical search Down selects second result", 12, || {
+        Ok((t.state()?["selected"] == 1).then_some(()))
+    })?;
     let selected = t.selected()?["path"]
         .as_str()
         .ok_or("selected path")?
