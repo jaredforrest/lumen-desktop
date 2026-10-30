@@ -279,6 +279,75 @@ pub fn run(options: Options) -> Result<()> {
         },
     )?;
     focus(&f, &other_id)?;
+    wait_true("initial physical native reply completed", || {
+        Ok(state(&f)?["switcher"]["phase"] == "committed")
+    })?;
+    wait_true("observed native source before overlapping decision", || {
+        Ok(state(&f)?["nativeFocused"]["conId"] == other_id)
+    })?;
+    select(&f)?;
+    let serial = state(&f)?["nativeSerial"]
+        .as_u64()
+        .ok_or("Native request serial missing")?;
+    let overlap: Value =
+        serde_json::from_str(&f.ipc("windowMruAudit", "overlappingCommitBegin", &[])?)?;
+    save(
+        &f.options
+            .output
+            .join("window-mru-overlapping-invocations.json"),
+        &overlap,
+    )?;
+    let before = &overlap["before"];
+    let after = &overlap["after"];
+    let commits = before["commits"].as_u64().ok_or("Overlap commit count")?;
+    require(
+        before["visible"] == true
+            && before["key"] == APP
+            && before["nativeCapture"]["conId"] == second,
+        "Overlap probe did not capture exact target application/window",
+    )?;
+    require(
+        overlap["committed"]["phase"] == "pending"
+            && after["phase"] == "pending"
+            && after["visible"] == false
+            && after["key"] == before["key"]
+            && after["nativeCapture"] == before["nativeCapture"]
+            && after["commits"] == commits
+            && overlap["sourceBefore"] == overlap["sourceAfter"]
+            && overlap["sourceBefore"]["conId"] == other_id,
+        "New begin replaced a pending invocation target or source",
+    )?;
+    wait_true(
+        "single exact native dispatch survives overlapping begin",
+        || {
+            let value = state(&f)?;
+            Ok(focused(&f)?["id"] == second
+                && value["nativeSerial"] == serial + 1
+                && value["switcher"]["phase"] == "committed"
+                && value["switcher"]["commits"] == commits + 1)
+        },
+    )?;
+    picker(&f, "commit")?;
+    let completed = state(&f)?;
+    require(
+        completed["nativeSerial"] == serial + 1 && completed["switcher"]["commits"] == commits + 1,
+        "A closed invocation dispatched a duplicate native commit",
+    )?;
+    let fresh = picker(&f, "begin")?;
+    require(
+        fresh["visible"] == true && fresh["phase"] == "preview",
+        "Completed native decision prevented a fresh preview",
+    )?;
+    physical(&f, "Escape")?;
+    wait_true(
+        "fresh preview after completed native dispatch closes",
+        || Ok(state(&f)?["switcher"]["visible"] == false),
+    )?;
+    require(
+        focused(&f)?["id"] == second,
+        "Fresh preview Escape changed the committed exact target",
+    )?;
+    focus(&f, &other_id)?;
     let decision = select(&f)?;
     let commits = decision["commits"].clone();
     retire(&f, "close second")?;
@@ -358,7 +427,7 @@ pub fn run(options: Options) -> Result<()> {
     }
     save(
         &f.options.output.join("result.json"),
-        &json!({"passed":true,"checks":["duplicate titles have distinct exact native conID/foreignID/ownedPID witnesses","preview and physical Escape preserve backing-window focus","observer restart preserves captured backing-window identity","whole shell restart restores exact second-window MRU","physical Return targets exact duplicate-title native MRU","closed captured target refuses sibling fallback","same-process replacement cannot inherit stale capture"],"scope":"Native duplicate-title backing-window MRU and captured physical switcher decisions; no modal/space/reference parity claim"}),
+        &json!({"passed":true,"checks":["duplicate titles have distinct exact native conID/foreignID/ownedPID witnesses","preview and physical Escape preserve backing-window focus","observer restart preserves captured backing-window identity","whole shell restart restores exact second-window MRU","physical Return targets exact duplicate-title native MRU","closed captured target refuses sibling fallback","same-process replacement cannot inherit stale capture","overlapping begin preserves pending owner and source, dispatches once and permits fresh preview afterward"],"scope":"Native duplicate-title backing-window MRU and captured physical switcher decisions; no modal/space/reference parity claim"}),
     )?;
     Ok(())
 }
