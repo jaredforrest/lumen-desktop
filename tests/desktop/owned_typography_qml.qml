@@ -14,6 +14,7 @@ ShellRoot {
  property string expectedFamily:__FAMILY__
  property int ticks:0
  property var focusTarget:null
+ property string waitingFor:""
  property var palettes:__PALETTES__
  function progress(phase){const entry=audit.cases[audit.index],window=entry?(entry.app==="Files"?files:calendar):null,viewport=entry && entry.app==="Calendar"?audit.walk(calendar.contentItem).find(item=>item.objectName==="calendar-content-viewport"):null;console.log("OWNED_TYPOGRAPHY_PROGRESS "+JSON.stringify({phase:phase,now:Date.now(),index:audit.index,stage:audit.stage,ticks:audit.ticks,painting:audit.painting,case:entry,filesReady:service.ready,filesBusy:service.busy,window:window?{visible:window.visible,width:window.width,height:window.height}:null,viewport:viewport?{width:viewport.width,height:viewport.height,availableWidth:viewport.availableWidth,availableHeight:viewport.availableHeight,contentWidth:viewport.contentWidth,contentHeight:viewport.contentHeight}:null}));}
  QtObject {id:exported;property var state:({appName:"",title:"",windowId:0})}
@@ -42,7 +43,7 @@ ShellRoot {
   if(audit.stage===0){audit.progress("configure");files.visible=entry.app==="Files";calendar.visible=entry.app==="Calendar";D.Theme.colors=audit.palettes[entry.mode];D.Theme.preferences={textScale:entry.scale,reduceMotion:true};if(entry.app==="Files")service.viewMode=entry.view;else calendar.view=entry.view;window.implicitWidth=entry.width;window.implicitHeight=entry.height;audit.stage=1;return;}
   if(audit.stage===1){const native=window.contentItem.Window.window;if(!native)return;native.width=entry.width;native.height=entry.height;audit.stage=2;return;}
   if(window.width!==entry.width || window.height!==entry.height)return;
-  const label=audit.text(window,entry.app==="Files"?"An ordinary document.txt":"Calendar collection");check(label,"Actual production primary label");check(label.fontInfo.family===audit.expectedFamily,"Requested family unresolved: "+label.fontInfo.family+" expected "+audit.expectedFamily);check(label.font.pixelSize===Math.round((entry.app==="Files" && entry.view==="gallery"?11:12)*entry.scale),"Primary label ignored text scale: "+label.font.pixelSize);
+  const label=audit.text(window,entry.app==="Files"?"An ordinary document.txt":"Calendar collection");if(!label){if(audit.waitingFor!=="primary-label"){audit.waitingFor="primary-label";audit.progress("await-primary-label");}return;}if(audit.waitingFor){audit.progress("primary-label-ready");audit.waitingFor="";}check(label,"Actual production primary label");check(label.fontInfo.family===audit.expectedFamily,"Requested family unresolved: "+label.fontInfo.family+" expected "+audit.expectedFamily);check(label.font.pixelSize===Math.round((entry.app==="Files" && entry.view==="gallery"?11:12)*entry.scale),"Primary label ignored text scale: "+label.font.pixelSize);
   const at=label.mapToItem(window.contentItem,0,0);check(label.height>=label.font.pixelSize,"Primary label clipped vertically");
   const focusable=audit.walk(window.contentItem).filter(item=>item.activeFocusOnTab && item.enabled && audit.visible(item,window.contentItem));check(focusable.length>0,"Reachable owned controls");
   if(audit.stage===2){
