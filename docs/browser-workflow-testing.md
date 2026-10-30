@@ -150,3 +150,8 @@ dependency closure and its release-specific customization layer. A small cached
 source-subset review found the upstream implementation/header changes apply to
 154.0.8037.98; build-file and generated-signature context need adaptation. That
 source application check is not compilation or acceptance of the backport.
+The [official build-configuration documentation](https://github.com/brave/brave-browser/wiki/Build-configuration)
+also requires externally supplied configuration for several hosted services.
+Dummy build values do not establish functioning service integrations. Any custom
+provider build must inventory and verify retained features explicitly; successful
+compilation alone cannot justify replacing the official binary for the user.
