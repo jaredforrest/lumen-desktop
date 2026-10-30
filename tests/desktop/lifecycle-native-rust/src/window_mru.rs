@@ -254,6 +254,12 @@ pub fn run(options: Options) -> Result<()> {
     // Seed a deliberately non-creation order. Titles are identical and cannot
     // establish which native surface the later switcher decision owns.
     focus(&f, &first)?;
+    if f.options.scenario != "window-mru-baseline" {
+        // The initial map can already rank the second surface first. Observe
+        // the first edge before requesting the second, so a stale preseed rank
+        // cannot acknowledge the new focus receipt.
+        backing(&f, &first)?;
+    }
     focus(&f, &second)?;
     if f.options.scenario != "window-mru-baseline" {
         backing(&f, &second)?;
@@ -262,6 +268,11 @@ pub fn run(options: Options) -> Result<()> {
     if f.options.scenario == "window-mru-baseline" {
         return baseline(f, desktop, second, other_id);
     }
+    wait_true(
+        "observer acknowledges other source after seeded window order",
+        || Ok(state(&f)?["nativeFocused"]["conId"] == other_id),
+    )?;
+    recovery_evidence(&f, "seeded")?;
     let witness = capture(&f, &second, f.processes[owner].0.id())?;
     let first_witness = capture(&f, &first, f.processes[owner].0.id())?;
     require(
