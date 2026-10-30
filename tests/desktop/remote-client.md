@@ -89,6 +89,18 @@ The incoming clipboard echo guard consumes an exact remote-selection digest once
 instead of dropping arbitrary copies during a timer interval. The corpus checks
 the immediate first remote copy and a later copy after changed local content.
 
+Queued warning ownership also includes the connection generation. Explicit close
+and natural transport loss invalidate that generation once on the GTK main
+thread; natural worker completion is marshalled through a weak owner before the
+closed signal. A late completion cannot close or reset a newer generation.
+The lifecycle extension tests an open warning during actual server loss, and
+ordinary explicit viewer closure after physically acknowledging its modal.
+Both retain the target and assert exactly one invalidation. GTK correctly ignores
+parent-close requests while its modal is active; that diagnostic is not a client
+failure. The actual upstream C ABI check also exercises clipboard length bounds:
+the trailing protocol NUL must not overflow signed `len + 1`. Boundary predicates
+and rejected API calls are tested without allocating oversized clipboard data.
+
 This legacy test uses unencrypted RFB only inside
 the private loopback namespace; it is not an encrypted transport acceptance.
 

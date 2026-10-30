@@ -75,7 +75,7 @@ fn verify() {
 }
 fn main() {
     verify();
-    println!("Actual upstream peer-identity verifier: IPv4/IPv6/DNS/invalid checks passed");
+    println!("Actual upstream peer identity and clipboard length-boundary checks passed");
 }
 #[test]
 fn actual_upstream_verifier() {
