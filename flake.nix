@@ -444,6 +444,20 @@
           args = [ "${./tests/project/source_contracts.nu}" "${self}" ];
         };
         owned-rust-warning-policy = import ./tests/project/rust-warning-policy { inherit pkgs; };
+        native-window-policy = (import ./packages/owned-rust.nix { inherit pkgs; }) {
+          pname = "lumen-native-window-policy-tests";
+          version = "0.1.0";
+          src = ./res/lumen-desktop/window-policy;
+          cargoLock.lockFile = ./res/lumen-desktop/window-policy/Cargo.lock;
+          installPhase = ''mkdir -p "$out"; touch "$out/passed"'';
+        };
+        group-presentation-schema = let
+          evaluate = values: import ./packages/desktop-settings-schema.nix { inherit (pkgs) lib; inherit values; };
+          rejects = value: !(builtins.tryEval (builtins.deepSeq (evaluate { windows.groupWindowMode = value; }) true)).success;
+        in assert (evaluate { }).windows.groupWindowMode == "all_together";
+           assert (evaluate { windows.groupWindowMode = "one_at_a_time"; }).windows.groupWindowMode == "one_at_a_time";
+           assert rejects true && rejects 1 && rejects null && rejects "one" && rejects "ONE_AT_A_TIME";
+           pkgs.writeText "lumen-group-presentation-schema" "passed";
         placement-schema = let
           evaluate = values: import ./packages/desktop-settings-schema.nix { inherit (pkgs) lib; inherit values; };
           defaults = evaluate { };
