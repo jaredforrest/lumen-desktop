@@ -79,7 +79,9 @@
         });
         test-remote-x11vnc = pkgs.symlinkJoin {
           name = "lumen-private-x11vnc";
-          paths = [ pkgs.x11vnc ];
+          paths = [ (pkgs.x11vnc.overrideAttrs (old: {
+            patches = (old.patches or [ ]) ++ [ ./tests/desktop/fixtures/x11vnc-selection-target-type.patch ];
+          })) ];
           nativeBuildInputs = [ pkgs.makeWrapper ];
           postBuild = ''
             wrapProgram $out/bin/x11vnc --unset WAYLAND_DISPLAY --set XDG_SESSION_TYPE x11
