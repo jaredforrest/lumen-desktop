@@ -76,8 +76,10 @@ the same advertised application ID cannot inherit that saved rank. Recovery
 revalidates process credentials, start time, executable and pidfds before using
 order from the same boot and compositor socket epoch.
 
-Schema 2 stores bounded order beside the process observations in the same private
-atomic journal. Schema 1 remains process-only recovery. Unknown, duplicate or
+Schema 3 stores bounded application and native backing-window order beside the
+process observations in the same private atomic journal. Schema 1 remains
+process-only recovery; schema 2 restores application order without window order.
+Unknown, duplicate or
 unassociated witnesses and changed scope refuse the saved record. Order is capped
 at 512 applications and 2,048 witnesses. The 1 MiB journal budget drops oldest
 order entries before sacrificing otherwise valid process recovery.
@@ -91,10 +93,31 @@ translated title, pending switcher selection or command is persisted. Preview
 and Escape do not promote an application. Missing past focus events while an
 observer was unavailable are not reconstructed.
 
-The window-level activation list remains an in-memory list of current foreign-
-toplevel objects. This application-order feature does not establish durable
-per-window MRU, window restoration or document fidelity. A durable backing-window
-choice needs a separate validated native window/process adapter.
+## Native backing-window selection
+
+For supported native surfaces, the observer retains up to 1,024 ordered window
+records containing the compositor container ID, opaque foreign-toplevel surface
+identifier, advertised application ID and exact process-instance witness. The
+same boot/socket scope and 1 MiB journal budget apply. Recovery revalidates all
+four fields against live native surfaces and processes; a reused container ID,
+even in the same process, cannot inherit a different surface's saved rank.
+
+Opening the application switcher captures the selected native backing window
+immutably. Its app icon describes an application group; it does not pretend to
+show an authenticated window thumbnail. Commit uses a native broker that rereads
+the owned compositor socket, checks the source focus and exact captured target,
+then applies the shared modal, hidden, minimized and workspace policy. Closing
+the target or replacing its process/surface cancels the old decision rather than
+selecting a sibling or new window. Only captured process-group members are
+unhidden; a new process advertising the same application ID cannot join that
+old request. Protocol-linked modal descendants are validated as live native
+surfaces before redirection.
+
+The original helper uses the same policy core and retains its existing API.
+Unsupported surfaces, missing foreign identifiers and window-only providers keep
+the existing live-window fallback. Those paths do not gain durable window MRU.
+Window cycling still uses live creation order. Pending selections, QObject
+references, translated titles, commands and document contents are not saved.
 
 The disposable native GTK test exercises two in-memory dirty documents with app-
 owned cancel, save and discard handlers. It also restarts the observer and then
@@ -107,3 +130,8 @@ The separate three-application `mru` scenario checks relative order, an observed
 zero-window application, observer and full-shell restart, new focus precedence,
 physical preview/Escape/commit and stale retained-owner refusal. It uses native
 container and process identities rather than title-based identity inference.
+The separate `window-mru` scenario uses two same-process windows with identical
+captions, observer/full-shell restart, physical preview/commit, closed-target
+refusal and same-process replacement refusal. The distinct diagnostic
+`window-mru-baseline` exercises the previous title-only path; its expected failure
+is not acceptance of the native adapter.

@@ -293,10 +293,18 @@ name = "lumen-application-lifecycle"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "lumen-window-policy",
  "serde_json",
  "sha2",
  "tokio",
  "zbus",
+]
+
+[[package]]
+name = "lumen-window-policy"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
 ]
 
 [[package]]

@@ -13,13 +13,13 @@ fn emit(available:bool,lifecycle:&Lifecycle,session:&SessionEnd,store:&mut Optio
     let mut error=error.to_owned();let mut recovery=false;
     if available{
         if let Some(store)=store{
-            match store.save_state(&lifecycle.records(),&lifecycle.activation_history){
+            match store.save_complete(&lifecycle.records(),&lifecycle.activation_history,&lifecycle.window_history){
                 Ok(())=>recovery=true,
                 Err(_)=>{let _=store.invalidate();error="Application observations could not be saved for shell recovery.".into();}
             }
         }
     }
-    let mut value=json!({"available":available,"applications":if available{lifecycle.rows()}else{Vec::new()},"activationHistory":if available{lifecycle.activation_history.order()}else{Vec::new()},"sessionEpoch":if available{lifecycle.epoch.clone()}else{None},"error":error,"recoveryAvailable":recovery,"session":session.state()});
+    let mut value=json!({"available":available,"applications":if available{lifecycle.rows()}else{Vec::new()},"activationHistory":if available{lifecycle.activation_history.order()}else{Vec::new()},"nativeWindows":if available{lifecycle.window_history.captures(lifecycle)}else{Vec::new()},"nativeFocused":if available{lifecycle.current_native_focus.as_ref().and_then(|row|lifecycle.capture_record(row))}else{None},"sessionEpoch":if available{lifecycle.epoch.clone()}else{None},"error":error,"recoveryAvailable":recovery,"session":session.state()});
     if let Some(result)=result{value["result"]=result;}
     if let Ok(encoded)=serde_json::to_string(&value){
         if last.as_ref()!=Some(&encoded){println!("{encoded}");let _=std::io::stdout().flush();*last=Some(encoded);}
@@ -39,6 +39,29 @@ fn handle(data:&Value,nodes:&mut Vec<Value>,query:&mut UnixStream,path:&PathBuf,
     let action=data["action"].as_str().unwrap_or("");
     if action=="status"{emit(true,lifecycle,session,store,last,"",None);return;}
     if action=="session_cancel"{session.cancel();emit(true,lifecycle,session,store,last,"",None);return;}
+    if action=="focus_native"{
+        let request=data["requestId"].as_str().filter(|id|!id.is_empty()&&id.len()<=128&&!id.chars().any(char::is_control));
+        let outcome=(||->Result<Value>{
+            let request=request.ok_or("Invalid focus request")?;
+            let switch_space=data["switchSpace"].as_bool().ok_or("Invalid workspace preference")?;
+            send(query,4,"")?;let (kind,tree)=receive(query)?;
+            if kind!=4||epoch(path)?!=expected{return Err("Compositor session changed".into());}
+            *nodes=window_nodes(&tree)?;lifecycle.refresh(expected,nodes);
+            let initial=data.get("initialFocus").ok_or("Missing captured source focus")?;
+            if !lifecycle.source_focus_matches(initial){return Err("Native focus changed after preview".into());}
+            let plan=lifecycle.native_focus_plan(&data["capture"],&tree,switch_space)?;
+            if epoch(path)?!=expected{return Err("Compositor session changed".into());}
+            // Repeat the process/surface guard immediately before dispatch.
+            lifecycle.native_focus_plan(&data["capture"],&tree,switch_space)?;
+            if let Some(command)=&plan.command{
+                send(query,0,command)?;let (kind,reply)=receive(query)?;
+                if kind!=0||!reply.as_array().is_some_and(|rows|!rows.is_empty()&&rows.iter().all(|row|row["success"]==true)){return Err("The compositor rejected native activation".into());}
+            }
+            Ok(json!({"requestId":request,"requested":plan.focus_allowed,"conId":plan.target["id"],"foreignId":plan.target["foreign_toplevel_identifier"]}))
+        })();
+        let result=outcome.unwrap_or_else(|_|json!({"requestId":request.unwrap_or(""),"requested":false,"error":"The captured window, process or session changed. Open the switcher again."}));
+        emit(true,lifecycle,session,store,last,"",Some(json!({"nativeFocus":result})));return;
+    }
     let result=(||->Result<Option<Value>>{
         if matches!(action,"session_begin"|"session_authorize"){
             *nodes=refresh(query,path,expected,lifecycle,session,protocol,store,last)?;
@@ -82,7 +105,7 @@ fn watch()->Result<()>{
         let mut query=UnixStream::connect(&path).map_err(|error|error.to_string())?;
         query.set_read_timeout(Some(Duration::from_secs(5))).map_err(|error|error.to_string())?;
         query.set_write_timeout(Some(Duration::from_secs(5))).map_err(|error|error.to_string())?;
-        if let Some(store)=&mut store{let saved=store.load_state();lifecycle.recover(&identity,&saved.processes);lifecycle.activation_history=saved.history;lifecycle.prune();}
+        if let Some(store)=&mut store{let saved=store.load_state();lifecycle.recover(&identity,&saved.processes);lifecycle.activation_history=saved.history;lifecycle.window_history=saved.windows;lifecycle.prune();}
         let mut nodes=refresh(&mut query,&path,&identity,&mut lifecycle,&mut session,&protocol,&mut store,&mut last)?;
         lifecycle.observe_focus(&nodes);emit(true,&lifecycle,&session,&mut store,&mut last,"",None);
         events.set_read_timeout(None).map_err(|error|error.to_string())?;

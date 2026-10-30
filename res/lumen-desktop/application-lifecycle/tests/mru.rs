@@ -149,13 +149,14 @@ fn schema_version_scope_corruption_and_witness_association_fail_closed() {
         .unwrap();
     let path = store.directory.join(format!("{EPOCH}.json"));
     let valid: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-    for field in ["bootId", "epoch", "activationHistory", "version"] {
+    for field in ["bootId", "epoch", "activationHistory", "windowHistory", "version"] {
         let mut bad = valid.clone();
         bad[field] = match field {
             "activationHistory" => {
                 json!([{"appId":"unobserved","instanceIds":valid["activationHistory"][0]["instanceIds"]}])
             }
-            "version" => json!(3),
+            "version" => json!(4),
+            "windowHistory"=>json!([{"conId":1,"foreignId":"surface","appId":"unobserved","instanceId":valid["activationHistory"][0]["instanceIds"][0]}]),
             _ => json!("changed"),
         };
         fs::write(&path, serde_json::to_vec(&bad).unwrap()).unwrap();
@@ -163,9 +164,13 @@ fn schema_version_scope_corruption_and_witness_association_fail_closed() {
         assert!(saved.processes.is_empty());
         assert!(saved.history.order().is_empty());
     }
+    let mut v2=valid.clone();v2["version"]=json!(2);v2.as_object_mut().unwrap().remove("windowHistory");
+    fs::write(&path,serde_json::to_vec(&v2).unwrap()).unwrap();let saved=store.load_state();
+    assert_eq!(saved.processes.len(),3);assert_eq!(saved.history,lifecycle.activation_history);assert_eq!(saved.windows.value(),json!([]));
     let mut legacy = valid.clone();
     legacy["version"] = json!(1);
     legacy.as_object_mut().unwrap().remove("activationHistory");
+    legacy.as_object_mut().unwrap().remove("windowHistory");
     fs::write(&path, serde_json::to_vec(&legacy).unwrap()).unwrap();
     let saved = store.load_state();
     assert_eq!(saved.processes.len(), 3);

@@ -10,6 +10,7 @@ use std::path::{Path,PathBuf};
 pub mod session;
 pub mod cooperative;
 pub mod mru;
+pub mod windows;
 
 pub type Result<T>=std::result::Result<T,String>;
 pub const MAX_PROCESSES:usize=512;
@@ -80,10 +81,10 @@ pub fn valid_identity(value:&Value)->bool{
     value.as_object().is_some_and(|row|row.len()==4&&["pid","start","device","inode"].iter().all(|key|row.get(*key).and_then(Value::as_u64).is_some())&&row["pid"].as_u64().is_some_and(|pid|pid>=2&&pid<=u32::MAX as u64))
 }
 pub struct Process{pub identity:Value,pub handle:OwnedFd,pub apps:BTreeSet<String>}
-pub struct Lifecycle{pub processes:BTreeMap<u32,Process>,pub windows:HashMap<(u32,String),Vec<Value>>,pub epoch:Option<String>,pub activation_history:mru::History,focus_witnesses:HashMap<i64,Option<(u32,Value,String)>>}
-impl Default for Lifecycle{fn default()->Self{Self{processes:BTreeMap::new(),windows:HashMap::new(),epoch:None,activation_history:mru::History::default(),focus_witnesses:HashMap::new()}}}
+pub struct Lifecycle{pub processes:BTreeMap<u32,Process>,pub windows:HashMap<(u32,String),Vec<Value>>,pub epoch:Option<String>,pub activation_history:mru::History,pub window_history:windows::History,pub current_native_focus:Option<Value>,focus_witnesses:HashMap<i64,Option<(u32,Value,String)>>}
+impl Default for Lifecycle{fn default()->Self{Self{processes:BTreeMap::new(),windows:HashMap::new(),epoch:None,activation_history:mru::History::default(),window_history:windows::History::default(),current_native_focus:None,focus_witnesses:HashMap::new()}}}
 impl Lifecycle{
-    pub fn close(&mut self){self.processes.clear();self.windows.clear();self.epoch=None;self.activation_history=mru::History::default();self.focus_witnesses.clear();}
+    pub fn close(&mut self){self.processes.clear();self.windows.clear();self.epoch=None;self.activation_history=mru::History::default();self.window_history=windows::History::default();self.current_native_focus=None;self.focus_witnesses.clear();}
     pub fn observe(&mut self,node:&Value){
         if node["shell"]!="xdg_shell"||!node["window"].is_null(){return;}
         let Some(app)=node["app_id"].as_str().filter(|app|valid_app_id(app))else{return;};
@@ -130,15 +131,18 @@ impl Lifecycle{
             if let Some(previous)=self.focus_witnesses.get_mut(&id){if previous.as_ref()!=Some(&witness){*previous=None;}}
             else if self.focus_witnesses.len()<4096{self.focus_witnesses.insert(id,Some(witness));}
         }
+        let native=nodes.iter().filter_map(|node|self.native_record(node)).collect::<Vec<_>>();self.window_history.reconcile(&native);
+        self.current_native_focus=nodes.iter().find(|node|node["focused"]==true).and_then(|node|self.native_record(node));
         self.rows()
     }
-    pub fn prune(&mut self){self.processes.retain(|pid,process|!exited(&process.handle)&&process_identity(*pid).ok().as_ref()==Some(&process.identity));for witness in self.focus_witnesses.values_mut(){if witness.as_ref().is_some_and(|(pid,identity,app)|!self.processes.get(pid).is_some_and(|p|p.identity==*identity&&p.apps.contains(app))){*witness=None;}}let rows=self.rows();self.activation_history.prune(&rows);}
+    pub fn prune(&mut self){self.processes.retain(|pid,process|!exited(&process.handle)&&process_identity(*pid).ok().as_ref()==Some(&process.identity));for witness in self.focus_witnesses.values_mut(){if witness.as_ref().is_some_and(|(pid,identity,app)|!self.processes.get(pid).is_some_and(|p|p.identity==*identity&&p.apps.contains(app))){*witness=None;}}let rows=self.rows();self.activation_history.prune(&rows);self.window_history.retain_processes(&self.records());}
     pub fn observe_focus(&mut self,nodes:&[Value]){
         let Some(node)=nodes.iter().find(|node|node["focused"]==true&&node["shell"]=="xdg_shell"&&node["window"].is_null())else{return;};
         let Some(app)=node["app_id"].as_str()else{return;};let Some(pid)=node["pid"].as_u64().and_then(|n|u32::try_from(n).ok())else{return;};
         let Some(process)=self.processes.get(&pid)else{return;};
         if exited(&process.handle)||process_identity(pid).ok().as_ref()!=Some(&process.identity)||!process.apps.contains(app){return;}
         let rows=self.rows();self.activation_history.promote(app,&rows);
+        if let Some(record)=self.native_record(node){self.window_history.promote(record);}
     }
     pub fn observe_focus_event(&mut self,event:&Value){
         if event["change"]!="focus"{return;}
@@ -172,7 +176,7 @@ impl Lifecycle{
 }
 
 pub struct ObservationStore{pub directory:PathBuf,pub epoch:String,pub boot_id:String,lock:File,previous:Option<Vec<u8>>,pub warning:String}
-pub struct Recovery{pub processes:Vec<Value>,pub history:mru::History}
+pub struct Recovery{pub processes:Vec<Value>,pub history:mru::History,pub windows:windows::History}
 impl ObservationStore{
     pub fn new(runtime:&Path,epoch:&str,boot_id:&str)->Result<Self>{
         if epoch.len()!=24||!epoch.bytes().all(|byte|byte.is_ascii_digit()||(b'a'..=b'f').contains(&byte))||boot_id.len()!=36||!boot_id.bytes().enumerate().all(|(index,byte)|if matches!(index,8|13|18|23){byte==b'-'}else{byte.is_ascii_digit()||(b'a'..=b'f').contains(&byte)}){return Err("Invalid recovery scope".into());}
@@ -193,7 +197,7 @@ impl ObservationStore{
         self.load_state().processes
     }
     pub fn load_state(&mut self)->Recovery{
-        match self.read(){Ok(value)=>value,Err(error)=>{if error!="missing"{self.warning="Previous application observations were not restored.".into();}Recovery{processes:Vec::new(),history:mru::History::default()}}}
+        match self.read(){Ok(value)=>value,Err(error)=>{if error!="missing"{self.warning="Previous application observations were not restored.".into();}Recovery{processes:Vec::new(),history:mru::History::default(),windows:windows::History::default()}}}
     }
     fn read(&self)->Result<Recovery>{
         let file=OpenOptions::new().read(true).custom_flags(libc::O_NOFOLLOW|libc::O_NONBLOCK).open(self.path()).map_err(|error|if error.kind()==std::io::ErrorKind::NotFound{"missing".into()}else{error.to_string()})?;
@@ -202,8 +206,8 @@ impl ObservationStore{
         let mut bytes=Vec::new();file.take(1024*1024+1).read_to_end(&mut bytes).map_err(|error|error.to_string())?;
         if bytes.len()>1024*1024{return Err("Recovery record exceeds limit".into());}
         let data:Value=serde_json::from_slice(&bytes).map_err(|_|"Invalid recovery record")?;
-        let version=data["version"].as_u64().filter(|v|matches!(v,1|2)).ok_or("Unsupported recovery record")?;
-        let obj=data.as_object().filter(|obj|obj.len()==(if version==1{4}else{5})&&["version","epoch","bootId","processes"].iter().all(|key|obj.contains_key(*key))&&(version==1||obj.contains_key("activationHistory"))).ok_or("Invalid recovery record")?;
+        let version=data["version"].as_u64().filter(|v|matches!(v,1..=3)).ok_or("Unsupported recovery record")?;
+        let obj=data.as_object().filter(|obj|obj.len()==(version as usize+3)&&["version","epoch","bootId","processes"].iter().all(|key|obj.contains_key(*key))&&(version==1||obj.contains_key("activationHistory"))&&(version<3||obj.contains_key("windowHistory"))).ok_or("Invalid recovery record")?;
         if obj["epoch"]!=self.epoch||obj["bootId"]!=self.boot_id{return Err("Recovery scope changed".into());}
         let rows=obj["processes"].as_array().filter(|rows|rows.len()<=MAX_PROCESSES).ok_or("Invalid recovery process list")?;
         let mut pids=HashSet::new();
@@ -214,8 +218,9 @@ impl ObservationStore{
             let mut seen=HashSet::new();
             if !apps.iter().all(|value|value.as_str().is_some_and(|app|valid_app_id(app)&&seen.insert(app))){return Err("Invalid recovered advertisement".into());}
         }
-        let history=if version==2{mru::History::from_saved(&obj["activationHistory"],rows)?}else{mru::History::default()};
-        Ok(Recovery{processes:rows.clone(),history})
+        let history=if version>=2{mru::History::from_saved(&obj["activationHistory"],rows)?}else{mru::History::default()};
+        let windows=if version==3{windows::History::from_saved(&obj["windowHistory"],rows)?}else{windows::History::default()};
+        Ok(Recovery{processes:rows.clone(),history,windows})
     }
     pub fn invalidate(&mut self)->Result<()>{match fs::remove_file(self.path()){Ok(())=>(),Err(error)if error.kind()==std::io::ErrorKind::NotFound=>(),Err(error)=>return Err(error.to_string())};self.previous=None;self.sync_directory()}
     fn sync_directory(&self)->Result<()>{File::open(&self.directory).map_err(|error|error.to_string())?.sync_all().map_err(|error|error.to_string())}
@@ -223,8 +228,12 @@ impl ObservationStore{
         self.save_state(rows,&mru::History::default())
     }
     pub fn save_state(&mut self,rows:&[Value],history:&mru::History)->Result<()>{
+        self.save_complete(rows,history,&windows::History::default())
+    }
+    pub fn save_complete(&mut self,rows:&[Value],history:&mru::History,windows:&windows::History)->Result<()>{
         let history=mru::History::from_saved(&history.value(),rows)?.value();
-        let mut data=json!({"version":2,"epoch":self.epoch,"bootId":self.boot_id,"processes":rows,"activationHistory":[]});
+        let windows=windows::History::from_saved(&windows.value(),rows)?.value();
+        let mut data=json!({"version":3,"epoch":self.epoch,"bootId":self.boot_id,"processes":rows,"activationHistory":[],"windowHistory":[]});
         let base=serde_json::to_vec(&data).map_err(|error|error.to_string())?.len();
         let mut used=base;let mut retained=Vec::new();
         for row in history.as_array().ok_or("Invalid application order")?{
@@ -232,6 +241,12 @@ impl ObservationStore{
             if used+size>1024*1024{break;}used+=size;retained.push(row.clone());
         }
         data["activationHistory"]=Value::Array(retained);
+        let mut retained=Vec::new();
+        for row in windows.as_array().ok_or("Invalid native window order")?{
+            let size=serde_json::to_vec(row).map_err(|error|error.to_string())?.len()+usize::from(!retained.is_empty());
+            if used+size>1024*1024{break;}used+=size;retained.push(row.clone());
+        }
+        data["windowHistory"]=Value::Array(retained);
         let encoded=serde_json::to_vec(&data).map_err(|error|error.to_string())?;
         if self.previous.as_ref()==Some(&encoded){return Ok(());}
         if encoded.len()>1024*1024{return Err("Recovery record exceeds limit".into());}

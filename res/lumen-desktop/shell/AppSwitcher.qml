@@ -33,6 +33,8 @@ PanelWindow {
     property int selected:-1
     property string phase:"closed"
     property int commits:0
+    property string pendingNativeRequest:""
+    property var previewNativeFocus:null
     function identity(window) {
         const entry=shell.entryFor(window);
         return entry?entry.id:window.appId;
@@ -42,13 +44,25 @@ PanelWindow {
         if(action==="cancel"){if(visible){visible=false;phase="cancelled";}return;}
         if(action==="commit"){commit();return;}
         if(!["begin","next","previous"].includes(action))return;
+        if(!visible && phase==="pending")return;
         if(!visible){
+            pendingNativeRequest="";
+            previewNativeFocus=JSON.parse(JSON.stringify(shell.nativeFocusedCapture || null));
             items=SwitcherModel.snapshot(shell.windows,shell.activationHistory,identity).map(item=>{
                 const entry=shell.entryFor(item.window);
+                const native=(shell.nativeWindowCaptures || []).find(capture=>{
+                    const owner=shell.entryFor({appId:capture.appId,title:""});return (owner?owner.id:capture.appId)===item.key;
+                });
                 return {key:item.key,window:item.window,
+                    nativeCapture:native?JSON.parse(JSON.stringify(native)):null,
                     label:entry?shell.appLabel(entry):shell.nameForAppId(item.window.appId,item.window.title),
                     icon:entry?shell.appIcon(entry):Qt.resolvedUrl("icons/application.svg")};
             });
+            for(const native of shell.nativeWindowCaptures || []){
+                const entry=shell.entryFor({appId:native.appId,title:""}),key=entry?entry.id:native.appId;
+                if(items.some(item=>item.key===key))continue;
+                items.push({key:key,window:null,nativeCapture:JSON.parse(JSON.stringify(native)),label:entry?shell.appLabel(entry):shell.nameForAppId(native.appId,""),icon:entry?shell.appIcon(entry):Qt.resolvedUrl("icons/application.svg")});
+            }
             const background=[];
             for(const app of shell.runningApplications || []){
                 if(!app.zeroWindows)continue;
@@ -71,15 +85,21 @@ PanelWindow {
         if(!visible)return;
         const captured=selected>=0 && selected<items.length?items[selected]:null;
         const background=captured && !captured.window && captured.entry && shell.runningFor(captured.entry) && captured.instanceKey===shell.applicationInstanceKey(captured.entry);
-        const item=background?captured:SwitcherModel.validSelection(items,selected,shell.windows,identity);
+        const item=captured && captured.nativeCapture?captured:background?captured:SwitcherModel.validSelection(items,selected,shell.windows,identity);
         visible=false;phase=item?"committed":"cancelled";
         if(!item)return;
         const epoch=shell.focusEpoch;
+        const initialFocus=JSON.parse(JSON.stringify(previewNativeFocus));
         phase="pending";
         // Allow the compositor to release the overlay keyboard grab first.
         Qt.callLater(()=>{
             const live=shell.windows.filter(w=>identity(w)===item.key);
             if(epoch!==shell.focusEpoch){if(!visible)phase="cancelled";return;}
+            if(item.nativeCapture){
+                pendingNativeRequest=shell.focusCapturedNative(item.nativeCapture,initialFocus);
+                if(!pendingNativeRequest)phase="cancelled";
+                return;
+            }
             if(!live.length){
                 if(item.entry && shell.runningFor(item.entry) && item.instanceKey===shell.applicationInstanceKey(item.entry)){++commits;phase="committed";shell.activate(item.entry,false);}
                 else phase="cancelled";
@@ -91,8 +111,11 @@ PanelWindow {
             else shell.focusWindow(live.includes(item.window)?item.window:live[0]);
         });
     }
-    function status(){return JSON.stringify({visible:visible,phase:phase,selected:selected,key:items[selected]?items[selected].key:"",items:items.map(i=>i.key),commits:commits});}
-    Connections {target:shell;function onDismissPopups(owner){if(owner!=="app-switcher" && root.visible){root.visible=false;root.phase="cancelled";}}}
+    function status(){return JSON.stringify({visible:visible,phase:phase,selected:selected,key:items[selected]?items[selected].key:"",items:items.map(i=>i.key),nativeCapture:items[selected]?items[selected].nativeCapture || null:null,commits:commits});}
+    Connections {target:shell
+        function onNativeFocusResult(result){if(root.pendingNativeRequest && (!result.requestId || result.requestId===root.pendingNativeRequest)){root.pendingNativeRequest="";root.phase=result.requested?"committed":"cancelled";if(result.requested)++root.commits;}}
+        function onDismissPopups(owner){if(owner!=="app-switcher" && root.visible){root.visible=false;root.phase="cancelled";}}
+    }
     Item {
         id:keyboard;anchors.fill:parent;focus:root.visible
         Keys.onPressed:event=>{
