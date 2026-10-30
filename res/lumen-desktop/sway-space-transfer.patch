@@ -103,7 +103,7 @@
  static void container_move_to_container(struct sway_container *container,
 --- /dev/null
 +++ b/sway/commands/lumen_space_transfer.c
-@@ -0,0 +1,167 @@
+@@ -0,0 +1,186 @@
 +/* Captured transfer preflight and dispatch share one compositor callback. */
 +#include <inttypes.h>
 +#include <json.h>
@@ -128,6 +128,9 @@
 +#include "sway/tree/arrange.h"
 +#include "sway/tree/lumen_transfer_policy.h"
 +#include "sway/tree/lumen_groups.h"
++#if WLR_HAS_XWAYLAND
++#include <wlr/xwayland.h>
++#endif
 +#define WIRE_LIMIT 2048U
 +#define ID_LIMIT UINT64_C(9007199254740991)
 +extern bool lumen_guard_topology_digest(json_object *tree,unsigned char digest[32]);
@@ -177,9 +180,24 @@
 +static bool con_id(struct sway_container *con,void *id){return con->node.id==*(uint64_t *)id;}
 +static bool output_id(struct sway_output *output,void *id){return output->node.id==*(uint64_t *)id;}
 +static json_object *field(json_object *object,const char *name){json_object *value=NULL;json_object_object_get_ex(object,name,&value);return value;}
++static bool managed_role(struct sway_view *view){
++ if(!view)return false;
++ if(view->type==SWAY_VIEW_XDG_SHELL)return view->wlr_xdg_toplevel!=NULL;
++#if WLR_HAS_XWAYLAND
++ if(view->type==SWAY_VIEW_XWAYLAND)return view->wlr_xwayland_surface && !view->wlr_xwayland_surface->override_redirect;
++#endif
++ return false;
++}
++static struct sway_view *protocol_parent(struct sway_view *view){
++ if(view->type==SWAY_VIEW_XDG_SHELL){struct wlr_xdg_toplevel *top=view->wlr_xdg_toplevel;return top && top->parent?view_from_wlr_xdg_surface(top->parent->base):NULL;}
++#if WLR_HAS_XWAYLAND
++ if(view->type==SWAY_VIEW_XWAYLAND){struct wlr_xwayland_surface *surface=view->wlr_xwayland_surface;return surface && surface->parent?view_from_wlr_xwayland_surface(surface->parent):NULL;}
++#endif
++ return NULL;
++}
 +struct family {struct sway_container *members[16];double x[16],y[16];unsigned depth[16],count;bool invalid;};
 +static bool family_eligible(struct sway_container *con,struct sway_container *source){
-+ if(!con || con->node.destroying || !con->view || !con->view->surface || con->view->type!=SWAY_VIEW_XDG_SHELL || !con->view->wlr_xdg_toplevel ||
++ if(!con || con->node.destroying || !con->view || !con->view->surface || !managed_role(con->view) ||
 +    con->view->pid<2 || con->view->pid>INT32_MAX || !con->view->ext_foreign_toplevel ||
 +    !con->view->ext_foreign_toplevel->identifier || !*con->view->ext_foreign_toplevel->identifier ||
 +    (con!=source && !container_is_floating(con)) || con->pending.workspace!=source->pending.workspace ||
@@ -187,13 +205,14 @@
 +    con->lumen_minimized || con->lumen_app_hidden || con->lumen_hidden || con->lumen_desktop_hidden ||
 +    container_is_fullscreen_or_child(con) || container_is_sticky_or_child(con) ||
 +    con->pending.width<=0 || con->pending.height<=0)return false;
-+ struct wlr_xdg_dialog_v1 *dialog=wlr_xdg_dialog_v1_try_from_wlr_xdg_toplevel(con->view->wlr_xdg_toplevel);
-+ return !dialog || !dialog->modal;
++ struct sway_view *parent=NULL;int modal=-1;
++ return lumen_view_relationship(con->view,&parent,&modal) && modal!=1;
 +}
 +static void collect_family(struct sway_container *other,void *data){
-+ struct family *family=data;if(family->invalid || other->node.destroying || !other->view || other->view->type!=SWAY_VIEW_XDG_SHELL || !other->view->wlr_xdg_toplevel)return;
++ struct family *family=data;if(family->invalid || other->node.destroying || !managed_role(other->view))return;
 + for(unsigned i=0;i<family->count;i++)if(family->members[i]==other)return;
-+ for(unsigned i=0;i<family->count;i++)if(other->view->wlr_xdg_toplevel->parent==family->members[i]->view->wlr_xdg_toplevel){
++ struct sway_view *parent=protocol_parent(other->view);
++ for(unsigned i=0;i<family->count;i++)if(parent==family->members[i]->view){
 +  if(family->count>=16 || family->depth[i]>=15 || !family_eligible(family->members[0],family->members[0]) || !family_eligible(other,family->members[0])){family->invalid=true;return;}
 +  unsigned slot=family->count++;family->members[slot]=other;family->depth[slot]=family->depth[i]+1;return;
 + }
@@ -228,15 +247,15 @@
 + if(r.failed || r.next!=r.end || !valid_text(name,(size_t)name_length) || !valid_text(foreign,(size_t)foreign_length))return reject();
 + char target_name[513];memcpy(target_name,name,name_length);target_name[name_length]=0;
 + struct sway_container *source=root_find_container(con_id,&source_id);
-+ if(!source || source->node.destroying || !source->view || !source->view->surface || source->view->type!=SWAY_VIEW_XDG_SHELL || !source->view->wlr_xdg_toplevel ||
++ if(!source || source->node.destroying || !source->view || !source->view->surface || !managed_role(source->view) ||
 +    (uint64_t)source->view->pid!=pid || !source->view->ext_foreign_toplevel || !source->pending.workspace ||
 +    source->pending.workspace->node.id!=source_workspace || !source->pending.workspace->output || source->pending.workspace->output->node.id!=source_output ||
-+    source->view->wlr_xdg_toplevel->parent || !lumen_groups_visible(source) || source->lumen_pair || source->lumen_pair_restore || source->lumen_pair_dialog_owner || source->lumen_filled ||
++    protocol_parent(source->view) || !lumen_groups_visible(source) || source->lumen_pair || source->lumen_pair_restore || source->lumen_pair_dialog_owner || source->lumen_filled ||
 +    source->lumen_minimized || source->lumen_app_hidden || source->lumen_hidden || source->lumen_desktop_hidden ||
 +    container_is_fullscreen_or_child(source) || container_is_sticky_or_child(source))return changed("source identity or placement");
 + const char *identifier=source->view->ext_foreign_toplevel->identifier;
-+ struct wlr_xdg_dialog_v1 *dialog=wlr_xdg_dialog_v1_try_from_wlr_xdg_toplevel(source->view->wlr_xdg_toplevel);
-+ if(dialog && dialog->modal)return reject();
++ struct sway_view *parent=NULL;int modal=-1;
++ if(!lumen_view_relationship(source->view,&parent,&modal) || parent || modal==1)return reject();
 + if(!identifier || strlen(identifier)!=foreign_length || memcmp(identifier,foreign,foreign_length))return reject();
 + struct sway_output *output=root_find_output(output_id,&target_output);
 + if(!output || output->node.destroying || !output->enabled)return reject();

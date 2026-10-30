@@ -158,6 +158,11 @@ fn topology(tree: &Value) -> Result<Vec<u8>> {
 pub fn source(tree: &Value, wanted: &Value) -> Result<Value> {
     source_family(tree, wanted).map(|(capture, _)| capture)
 }
+fn managed_role(node: &Value) -> bool {
+    node["shell"] == "xdg_shell"
+        || (node["shell"] == "xwayland"
+            && node["window"].as_u64().is_some_and(|id| id > 0 && id <= u32::MAX.into()))
+}
 pub fn source_family(tree: &Value, wanted: &Value) -> Result<(Value, Vec<Value>)> {
     topology(tree)?;
     let mut all = Vec::new();
@@ -172,7 +177,7 @@ pub fn source_family(tree: &Value, wanted: &Value) -> Result<(Value, Vec<Value>)
     let relation = &node["lumen_relationships"];
     let state = &node["lumen_state"];
     let group_hidden = state["group_hidden"] != false;
-    if node["shell"] != "xdg_shell"
+    if !managed_role(node)
         || node["sticky"] != false
         || node["fullscreen_mode"] != 0
         || fullscreen_in_path(tree, wanted, false) != Some(false)
@@ -216,7 +221,7 @@ pub fn source_family(tree: &Value, wanted: &Value) -> Result<(Value, Vec<Value>)
             if !matches!(child["floating"].as_str(), Some("user_on" | "auto_on"))
                 || child_workspace.is_none_or(|owner| owner["id"] != workspace["id"])
                 || child_output.is_none_or(|owner| owner["id"] != output["id"])
-                || child["shell"] != "xdg_shell"
+                || !managed_role(child)
                 || child["sticky"] != false
                 || child["fullscreen_mode"] != 0
                 || fullscreen_in_path(tree, &child["id"], false) != Some(false)
