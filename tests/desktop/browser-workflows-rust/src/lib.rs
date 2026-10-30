@@ -10,6 +10,7 @@ pub mod portal;
 pub mod presentation;
 pub mod profile;
 pub mod protocol;
+mod provider_source;
 pub mod server;
 pub mod vault_artifacts;
 pub mod vault_https;
