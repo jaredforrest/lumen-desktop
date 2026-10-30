@@ -16,8 +16,9 @@ fn args(values: &[String]) -> Vec<OsString> {
     values.iter().map(OsString::from).collect()
 }
 const REMOTE_TEXT: &str =
-    "remote café — Ελληνικά 漢字 العربية 🌍\ncombining e\u{301}\n\nfinal line\n";
-const LOCAL_TEXT: &str = "local naïve € → 日本語 עברית 🧭\ncombining a\u{308}\n\nlast local line\n";
+    "remote café — Ελληνικά 漢字 العربية 🌍\ncombining\te\u{301}\n\nfinal line\n";
+const LOCAL_TEXT: &str =
+    "local naïve € → 日本語 עברית 🧭\ncombining\ta\u{308}\n\nlast local line\n";
 pub fn target(f: &mut Harness) -> Result<()> {
     let local_display = f
         .env
@@ -721,7 +722,7 @@ fn text_clipboard(f: &mut Harness) -> Result<()> {
     )?;
     save(
         &f.out.join("text-clipboard-acceptance.json"),
-        &json!({"protocol":f.o.protocol,"scenario":f.o.scenario,"remoteToLocal":remote_to_local,"localToRemote":local_to_remote,"remoteText":REMOTE_TEXT,"localText":LOCAL_TEXT,"localReceipt":received_local,"remoteReceipt":received_remote,"remoteTargetIdentityRetained":true,"independentDisplays":true,"corpus":["Latin diacritics","Greek","CJK","RTL scripts","supplementary-plane emoji","combining marks","multiline","blank lines","trailing newline"],"notClaimed":["HTML","files","Windows"]}),
+        &json!({"protocol":f.o.protocol,"scenario":f.o.scenario,"remoteToLocal":remote_to_local,"localToRemote":local_to_remote,"remoteText":REMOTE_TEXT,"localText":LOCAL_TEXT,"localReceipt":received_local,"remoteReceipt":received_remote,"remoteTargetIdentityRetained":true,"sourceBytesExactRemoteToLocal":received_local["text"]==REMOTE_TEXT,"sourceBytesExactLocalToRemote":received_remote["text"]==LOCAL_TEXT,"allowedLineEndingConversion":if f.o.protocol=="rdp" {"local-to-remote LF to CRLF only"} else {"none"},"independentDisplays":true,"corpus":["Latin diacritics","Greek","CJK","RTL scripts","supplementary-plane emoji","combining marks","multiline","tabs","blank lines","trailing newline"],"notClaimed":["HTML","files","Windows"]}),
     )?;
     ensure(
         remote_to_local && local_to_remote,
@@ -762,6 +763,12 @@ fn fullscreen_key(f: &mut Harness) -> Result<()> {
     keyboard.send("k", 88, 0)?;
     Ok(())
 }
+fn clipboard_text_matches(actual: &str, expected: &str, rdp_newlines: bool) -> bool {
+    // CF_UNICODETEXT uses CR/LF. Permit only this whole-string transformation;
+    // raw receipts, combining sequences, whitespace and all codepoints stay intact.
+    actual == expected
+        || (rdp_newlines && !expected.contains('\r') && actual == expected.replace('\n', "\r\n"))
+}
 fn paste_until(f: &mut Harness, local: bool, expected: &str) -> Result<bool> {
     let deadline = Instant::now() + Duration::from_secs(15);
     while Instant::now() < deadline {
@@ -773,11 +780,38 @@ fn paste_until(f: &mut Harness, local: bool, expected: &str) -> Result<bool> {
         } else {
             f.safe_target()?
         };
-        if state["text"] == expected {
+        if clipboard_text_matches(
+            state["text"].as_str().ok_or("Document text")?,
+            expected,
+            !local && f.o.protocol == "rdp" && f.o.scenario == "text-clipboard",
+        ) {
             return Ok(true);
         }
     }
     Ok(false)
+}
+
+#[cfg(test)]
+mod text_contract_tests {
+    use super::clipboard_text_matches;
+    #[test]
+    fn only_explicit_rdp_whole_string_crlf_conversion_is_permitted() {
+        let expected = "café\te\u{301} 漢 🌍\n\nend\n";
+        let wire = expected.replace('\n', "\r\n");
+        assert!(clipboard_text_matches(expected, expected, false));
+        assert!(clipboard_text_matches(&wire, expected, true));
+        assert!(!clipboard_text_matches(&wire, expected, false));
+        for damaged in [
+            expected.trim_end().to_owned(),
+            expected.replace('\t', " "),
+            expected.replace("e\u{301}", "é"),
+            expected.replacen('\n', "\r\n", 1),
+            expected.replace("\n\n", "\n"),
+            expected.replace('🌍', "?"),
+        ] {
+            assert!(!clipboard_text_matches(&damaged, expected, true));
+        }
+    }
 }
 fn interactions(f: &mut Harness) -> Result<()> {
     let original_target = f.safe_target()?;
