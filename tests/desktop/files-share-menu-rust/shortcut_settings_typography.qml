@@ -17,9 +17,9 @@ ShellRoot {
  QtObject {id:notifications;property bool available:false;property bool dnd:false;property var applications:[];property var history:[];property var policies:({});property string error:""}
  QtObject {id:searchState;property bool available:false;property bool scanning:false;property int indexed:0}
  QtObject {id:inventory;property bool available:true;property string error:"";property var bindings:[{enabled:true,action:"overview",chord:"Mod4+Tab",scope:"global",appId:""}]}
- QtObject {id:shell;property var audioState:audio;property var notifications:notifications;property var search:searchState;property var shortcuts:inventory;property var screenSaverPreferences:null;property string volume:""}
+ QtObject {id:shellStub;property var audioState:audio;property var notifications:notifications;property var search:searchState;property var shortcuts:inventory;property var screenSaverPreferences:null;property string volume:""}
  QtObject {id:editorService;property bool available:true;property bool editable:true;property bool configuredEditable:true;property bool runtimeConfirmed:true;property string runtimeDetail:"";property bool busy:false;property var request:({action:"status"});property string generation:"synthetic-typography";property var bindings:[{id:"window.fullscreen.toggle",action:"window.fullscreen.toggle",defaultChord:"Mod4+Control+f",chord:"Mod4+Control+f",enabled:true,editable:true}];property string boundary:"Owned default-mode symbol bindings only. Raw compositor configuration, runtime changes, keycodes and undeclared application shortcuts are not covered.";property string error:"This disposable presentation cannot apply configuration. Correct the shortcut and review the current generation before trying again.";property string message:"";property int writes:0;function change(){++writes;throw Error("Typography acceptance must never mutate settings");}}
- D.SettingsWindow {id:editor;shell:shell;service:preferences}
+ D.SettingsWindow {id:editor;shell:shellStub;service:preferences}
  TestCase {
   id:keys;parent:editor.contentItem;when:false
   function check(value,message){if(!value)throw Error(message);}
