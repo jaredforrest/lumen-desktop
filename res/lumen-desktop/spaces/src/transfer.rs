@@ -178,6 +178,8 @@ pub fn source_family(tree: &Value, wanted: &Value) -> Result<(Value, Vec<Value>)
     let state = &node["lumen_state"];
     let group_hidden = state["group_hidden"] != false;
     if !managed_role(node)
+        || state["transfer_family_supported"] != true
+        || lumen_window_policy::projection::parse(node)?.is_some_and(|p| p.enabled)
         || node["sticky"] != false
         || node["fullscreen_mode"] != 0
         || fullscreen_in_path(tree, wanted, false) != Some(false)
@@ -222,6 +224,7 @@ pub fn source_family(tree: &Value, wanted: &Value) -> Result<(Value, Vec<Value>)
                 || child_workspace.is_none_or(|owner| owner["id"] != workspace["id"])
                 || child_output.is_none_or(|owner| owner["id"] != output["id"])
                 || !managed_role(child)
+                || lumen_window_policy::projection::parse(child)?.is_some_and(|p| p.enabled)
                 || child["sticky"] != false
                 || child["fullscreen_mode"] != 0
                 || fullscreen_in_path(tree, &child["id"], false) != Some(false)
@@ -431,7 +434,7 @@ mod tests {
         assert_ne!(snapshot(&a).unwrap(), snapshot(&b).unwrap());
     }
     fn tree() -> Value {
-        json!({"type":"root","id":1,"space_transfer_guard":3,"display_spaces":{"available":true,"session":"ab".repeat(16),"generation":"3"},"window_groups":{"locked":false,"enabled":false,"groups":[]},"nodes":[{"type":"output","id":2,"name":"HEADLESS-1","nodes":[{"type":"workspace","id":4,"name":"one","nodes":[{"type":"con","id":8,"pid":19,"shell":"xdg_shell","app_id":"org.example.Editor","foreign_toplevel_identifier":"surface-a","sticky":false,"fullscreen_mode":0,"rect":{"x":3,"y":4,"width":320,"height":240},"lumen_relationships":{"version":1,"parent_supported":true,"parent":null,"modal":null},"lumen_pair":{"id":null,"survivor":false},"lumen_state":{"group_member":false,"group_hidden":false,"pair_owned":false,"hidden":false,"minimised":false,"filled":false,"desktop_hidden":false,"restore_workspace":null}}]}]}]})
+        json!({"type":"root","id":1,"space_transfer_guard":3,"display_spaces":{"available":true,"session":"ab".repeat(16),"generation":"3"},"window_groups":{"locked":false,"enabled":false,"groups":[]},"nodes":[{"type":"output","id":2,"name":"HEADLESS-1","nodes":[{"type":"workspace","id":4,"name":"one","nodes":[{"type":"con","id":8,"pid":19,"shell":"xdg_shell","app_id":"org.example.Editor","foreign_toplevel_identifier":"surface-a","sticky":false,"fullscreen_mode":0,"rect":{"x":3,"y":4,"width":320,"height":240},"lumen_relationships":{"version":1,"parent_supported":true,"parent":null,"modal":null},"lumen_pair":{"id":null,"survivor":false},"lumen_state":{"group_member":false,"group_hidden":false,"transfer_family_supported":true,"pair_owned":false,"hidden":false,"minimised":false,"filled":false,"desktop_hidden":false,"restore_workspace":null}}]}]}]})
     }
     #[test]
     fn native_frame_projection_golden_accepts_zero_and_overwrites_reserved_field() {
