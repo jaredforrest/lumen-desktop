@@ -838,7 +838,11 @@ mod tests {
                     .spawn()?,
             );
             child_id = child.id();
-            Err(fail("synthetic post-spawn failure"))
+            fs::write(
+                path.join("missing-parent/dispatcher-process.json"),
+                "diagnostic",
+            )?;
+            Ok(())
         })();
         assert!(result.is_err());
         assert!(child_id > 0);
