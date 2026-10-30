@@ -39,6 +39,14 @@ fn reject(runtime: &Path, root: &Path, source: &Path, builder: &Path, value: &st
     require(!output.status.success(),"Invalid owned geometry value was accepted")?;
     require(fs::read(source)? == before,"Rejected value changed authoritative source")
 }
+fn reject_shortcut(runtime:&Path,root:&Path,source:&Path,builder:&Path,expected:&Value,value:&Value)->Result<()> {
+    let before=fs::read(source)?;
+    let output=Command::new(runtime).args(["compare-set","shortcuts",&expected.to_string(),&value.to_string()])
+        .env("XDG_RUNTIME_DIR",root.join("runtime")).env("LUMEN_NIX_SETTINGS_SOURCE",source).env("LUMEN_NIX_SETTINGS_BUILDER",builder)
+        .env_remove("LUMEN_NIX_SETTINGS_ACTIVE").env_remove("LUMEN_NIX_SETTINGS_DEPLOY").env_remove("LUMEN_NIX_SETTINGS_BUILD_SOURCE").output()?;
+    require(!output.status.success(),"Invalid or stale shortcut edit accepted")?;
+    require(fs::read(source)?==before,"Rejected shortcut edit changed authoritative source")
+}
 
 fn main() -> Result<()> {
     let mut args = env::args().skip(1);
@@ -70,12 +78,26 @@ fn run(runtime: &Path, schema: &Path, nixpkgs: &Path, root: &Path) -> Result<()>
         reject(runtime,root,&source,&builder,&invalid.to_string())?;
     }
     let current = root.join("runtime/lumen-nix-settings/current");
+    let empty=json!({"rebindings":{}});
+    let mapped=json!({"rebindings":{"window.fullscreen.toggle":"Mod4+Control+x"}});
+    let changed=invoke(runtime,root,&source,&builder,&["compare-set","shortcuts",&empty.to_string(),&mapped.to_string()])?;
+    require(changed["shortcuts"]==mapped,"Typed shortcut transaction failed")?;
+    reject_shortcut(runtime,root,&source,&builder,&empty,&json!({"rebindings":{"window.fullscreen.toggle":null}}))?;
+    for invalid in [json!({"rebindings":{"window.fullscreen.toggle":true}}),json!({"rebindings":{"window.fullscreen.toggle":"--release Super_L"}}),json!({"rebindings":{"window.fullscreen.toggle":"Control+x exec invalid"}})] {
+        reject_shortcut(runtime,root,&source,&builder,&mapped,&invalid)?;
+    }
     require(current.is_symlink(),"Runtime bundle symlink missing")?;
     fs::remove_file(&current)?;
     let restored = invoke(runtime,root,&source,&builder,&["sync"])?;
     require(restored["windows"]["rememberOwnedGeometry"] == true && restored["windows"]["tileGap"] == 12,
         "Authoritative settings did not survive runtime bundle loss")?;
     require(current.is_symlink(),"Runtime bundle was not restored")?;
+    require(restored["shortcuts"]==mapped,"Shortcut preference did not survive runtime bundle loss")?;
+    let disabled=json!({"rebindings":{"window.fullscreen.toggle":null}});
+    let value=invoke(runtime,root,&source,&builder,&["compare-set","shortcuts",&mapped.to_string(),&disabled.to_string()])?;
+    require(value["shortcuts"]==disabled,"Explicit shortcut disable was not durable")?;
+    let value=invoke(runtime,root,&source,&builder,&["compare-set","shortcuts",&disabled.to_string(),&empty.to_string()])?;
+    require(value["shortcuts"]==empty && value["windows"]["tileGap"]==12,"Restore lost unrelated settings")?;
     println!("Rust settings transaction retained owned geometry opt-in through unrelated edit and runtime loss");
     Ok(())
 }
