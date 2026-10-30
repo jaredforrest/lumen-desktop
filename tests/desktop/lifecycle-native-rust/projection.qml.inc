@@ -9,8 +9,10 @@
    for(let i=0;i<count&&value.key!==appId;i++){applicationSwitcher.command("next");value=JSON.parse(applicationSwitcher.status());}
    if(value.key!==appId){applicationSwitcher.command("cancel");return JSON.stringify({missing:true,before:value});}
    const before=value;
+   const selected=applicationSwitcher.items[applicationSwitcher.selected];
+   const foreignId=selected&&selected.window?selected.window.foreignToplevelIdentifier:"";
    applicationSwitcher.command("commit");
    const after=JSON.parse(applicationSwitcher.status());
-   return JSON.stringify({before:before,after:after});
+   return JSON.stringify({before:before,after:after,foreignId:foreignId});
   }
  }

@@ -6,12 +6,12 @@ use std::{
     process::Command,
     sync::atomic::{AtomicUsize, Ordering},
 };
+#[path = "projection_drag.rs"]
+mod drag;
 #[path = "projection_lock.rs"]
 mod lock;
 #[path = "projection_protocol.rs"]
 mod protocol;
-#[path = "projection_drag.rs"]
-mod drag;
 const APP: &str = "org.example.MruA";
 static ACTION: AtomicUsize = AtomicUsize::new(0);
 fn nodes(f: &Fixture) -> Result<Vec<Value>> {
@@ -217,15 +217,100 @@ pub fn run(options: Options) -> Result<()> {
     if interaction {
         interaction_journey(&mut f, id, &owned, &folder)?;
     }
-    let clear = request(&f, &operation(&view(&f, id)?, false)?, None)?;
-    wait_true("projection clear hides inactive origin", || {
-        Ok(view(&f, id)?["visible"] == false)
-    })?;
+    let clear = clear_journey(&mut f, id, &folder)?;
     save(
         &f.options.output.join("result.json"),
-        &json!({"passed":true,"checks":5,"invalidHandler":invalid,"enable":enable,"projected":projected,"workspaces":workspaces,"structuralBefore":before,"structuralAfter":structural(&after_origin),"stale":stale,"clear":clear,"scope":"Native structural tiled projection probe; broader physical input/group/restore/output acceptance pending"}),
+        &json!({"passed":true,"checks":7,"invalidHandler":invalid,"enable":enable,"projected":projected,"workspaces":workspaces,"structuralBefore":before,"structuralAfter":structural(&after_origin),"stale":stale,"clear":clear,"scope":"Native structural projection, exact witnesses, foreground clear origin continuity with real GTK input and independent background clear without focus theft"}),
     )?;
     Ok(())
+}
+
+fn clear_journey(f: &mut Fixture, id: u64, folder: &std::path::Path) -> Result<Value> {
+    require(
+        focused(f)? == id && view(f, id)?["lumen_all_desktops"]["enabled"] == true,
+        "Foreground clear requires focused assigned native identity",
+    )?;
+    let before = f.tree()?;
+    let clear = request(f, &operation(&view(f, id)?, false)?, None)?;
+    wait_true(
+        "foreground clear keeps exact native view usable at origin",
+        || {
+            let node = view(f, id)?;
+            save(
+                &f.options.output.join("foreground-clear.json"),
+                &json!({"before":before,"after":f.tree()?,"workspace":current_workspace(f)?}),
+            )?;
+            Ok(node["lumen_all_desktops"]["enabled"] == false
+                && node["visible"] == true
+                && focused(f)? == id
+                && current_workspace(f)?["name"] == "1")
+        },
+    )?;
+    require(
+        view(f, id)?["name"] == "Lifecycle document 1",
+        "Instrumented exact clear recipient",
+    )?;
+    let count = clicks(folder)?;
+    let driver = lock::pinned(f, "wlrctl")?;
+    let log = f.options.output.join("clear-pointer.log");
+    let pointer =
+        f.launch_input_args(&driver, &["pointer", "move", "0", "0"], "clear-pointer.log")?;
+    lock::pointer(f, pointer, &log, 1, "m 0 0\n")?;
+    request(f, "seat seat0 cursor set 0 0", None)?;
+    let node = view(f, id)?;
+    let x = node["rect"]["x"].as_i64().ok_or("Clear x")?
+        + node["window_rect"]["width"].as_i64().ok_or("Clear width")? / 2;
+    let y = node["rect"]["y"].as_i64().ok_or("Clear y")?
+        + node["window_rect"]["height"]
+            .as_i64()
+            .ok_or("Clear height")?
+            / 2;
+    lock::pointer(f, pointer, &log, 2, &format!("m {x} {y}\np\nr\n"))?;
+    wait_true(
+        "foreground cleared view receives actual GTK pointer input",
+        || Ok(clicks(folder)? == count + 1 && focused(f)? == id),
+    )?;
+
+    request(f, &operation(&view(f, id)?, true)?, None)?;
+    let source_folder = f.options.output.join("clear-source");
+    fs::create_dir(&source_folder)?;
+    request(f, "workspace 2", None)?;
+    let program = f.sibling("lifecycle-client")?;
+    let process = f.launch(
+        &program,
+        &[
+            source_folder.to_str().ok_or("Clear source path")?,
+            "org.example.ClearSource",
+        ],
+        "clear-source.log",
+    )?;
+    let pid = f.processes[process].0.id();
+    let source = wait("independent clear source", || {
+        Ok(nodes(f)?
+            .iter()
+            .find(|n| n["pid"] == pid)
+            .and_then(|n| n["id"].as_u64()))
+    })?;
+    request(f, &format!("[con_id={source}] focus"), None)?;
+    let before = f.tree()?;
+    let source_before = view(f, source)?;
+    request(f, &operation(&view(f, id)?, false)?, None)?;
+    let after = f.tree()?;
+    save(
+        &f.options.output.join("background-clear.json"),
+        &json!({"before":before,"after":after,"sourceBefore":source_before,"sourceAfter":view(f,source)?,"workspace":current_workspace(f)?}),
+    )?;
+    require(
+        view(f, id)?["lumen_all_desktops"]["enabled"] == false
+            && view(f, id)?["visible"] == false
+            && focused(f)? == source
+            && current_workspace(f)?["name"] == "2"
+            && structural(&view(f, source)?) == structural(&source_before)
+            && view(f, source)?["foreign_toplevel_identifier"]
+                == source_before["foreign_toplevel_identifier"],
+        "Background clear changed independent source focus, layout or desktop",
+    )?;
+    Ok(clear)
 }
 
 fn current_workspace(f: &Fixture) -> Result<Value> {
@@ -530,14 +615,18 @@ fn click(
     })
 }
 fn switch_restore(f: &Fixture, id: u64, label: &str) -> Result<Value> {
+    switch_to(f, id, APP, label, true)
+}
+fn switch_to(f: &Fixture, id: u64, app: &str, label: &str, native: bool) -> Result<Value> {
     let before = audit(f)?;
-    let choice: Value = serde_json::from_str(&f.ipc("projectionAudit", "switchTo", &[APP])?)?;
+    let choice: Value = serde_json::from_str(&f.ipc("projectionAudit", "switchTo", &[app])?)?;
     save(
         &f.options.output.join(format!("{label}-begin.json")),
         &json!({"before":before,"choice":choice,"tree":f.tree()?}),
     )?;
     require(
-        choice["before"]["nativeCapture"]["conId"] == id,
+        choice["foreignId"] == view(f, id)?["foreign_toplevel_identifier"]
+            && (!native || choice["before"]["nativeCapture"]["conId"] == id),
         "Global switcher did not freeze exact native projected window",
     )?;
     wait(label, || {
@@ -856,12 +945,95 @@ fn interaction_journey(
         view(f, id)?["fullscreen_mode"] == 1 && current_workspace(f)?["name"] == "1",
         "Global hidden restore silently dropped saved fullscreen",
     )?;
+    switch_to(
+        f,
+        ordinary,
+        "org.example.MruC",
+        "global-away-from-focused-fullscreen",
+        true,
+    )?;
+    require(
+        view(f, id)?["fullscreen_mode"] == 1 && current_workspace(f)?["name"] == "2",
+        "Switching away changed fullscreen or failed to reach ordinary source",
+    )?;
+    switch_restore(f, id, "global-back-to-focused-fullscreen")?;
+    require(
+        view(f, id)?["fullscreen_mode"] == 1 && current_workspace(f)?["name"] == "1",
+        "Direct switch back lost fullscreen identity or origin",
+    )?;
     request(f, &format!("[con_id={id}] lumen_window fullscreen"), None)?;
+    let paired_source_folder = f.options.output.join("paired-source");
+    fs::create_dir(&paired_source_folder)?;
+    request(f, "workspace 2", None)?;
+    let paired_process = f.launch(
+        &program,
+        &[
+            paired_source_folder.to_str().ok_or("Paired source path")?,
+            "org.example.MruB",
+        ],
+        "paired-source.log",
+    )?;
+    let paired_pid = f.processes[paired_process].0.id();
+    let paired_views = wait("independent paired source documents", || {
+        let views = nodes(f)?
+            .into_iter()
+            .filter(|n| n["pid"] == paired_pid)
+            .collect::<Vec<_>>();
+        Ok((views.len() == 2).then_some(views))
+    })?;
+    let paired_source = paired_views
+        .iter()
+        .find(|n| n["name"] == "Lifecycle document 1")
+        .and_then(|n| n["id"].as_u64())
+        .ok_or("Exact paired source document")?;
+    let extra = paired_views
+        .iter()
+        .find(|n| n["id"] != paired_source)
+        .and_then(|n| n["id"].as_u64())
+        .ok_or("Extra paired source document")?;
+    request(f, &format!("[con_id={extra}] kill"), None)?;
+    wait_true("paired source exact QObject identity ready", || {
+        let foreign = view(f, paired_source)?["foreign_toplevel_identifier"].clone();
+        Ok(!nodes(f)?.iter().any(|n| n["id"] == extra)
+            && audit(f)?["windows"]
+                .as_array()
+                .is_some_and(|windows| windows.iter().any(|w| w["foreignId"] == foreign)))
+    })?;
+    request(f, &format!("lumen_pair create {id} {ordinary}"), None)?;
+    let paired_before = view(f, id)?;
+    let partner_before = view(f, ordinary)?;
+    require(
+        paired_before["lumen_all_desktops"]["enabled"] == true
+            && paired_before["lumen_all_desktops"]["supported"] == false
+            && paired_before["lumen_all_desktops"]["reason"] == "paired-layout-unsupported",
+        "Assigned pair did not retain explicit intent with suspended projection",
+    )?;
+    switch_to(
+        f,
+        paired_source,
+        "org.example.MruB",
+        "global-away-from-assigned-pair",
+        false,
+    )?;
+    switch_to(f, id, APP, "global-back-to-assigned-pair", false)?;
+    save(
+        &f.options.output.join("paired-global-activation.json"),
+        &json!({"before":paired_before,"partnerBefore":partner_before,"after":view(f,id)?,"partnerAfter":view(f,ordinary)?,"tree":f.tree()?}),
+    )?;
+    require(
+        view(f, id)?["lumen_pair"] == paired_before["lumen_pair"]
+            && view(f, ordinary)?["lumen_pair"] == partner_before["lumen_pair"]
+            && view(f, id)?["lumen_all_desktops"]["enabled"] == true
+            && current_workspace(f)?["name"]
+                == paired_before["lumen_all_desktops"]["origin_workspace"]["name"],
+        "Global activation mutated assigned pair or failed origin focus",
+    )?;
+    request(f, &format!("lumen_pair leave {id}"), None)?;
     request(f, "workspace 2", None)?;
     request(f, &format!("[con_id={id}] focus"), None)?;
     save(
         &f.options.output.join("interaction-result.json"),
-        &json!({"passed":true,"checks":10,"pointer":pointer,"scope":"Real GTK pointer recipients and shared floating stacking; actual production switcher exact native captures; projected minimize current Space, saved fullscreen minimize/hide/global restore and focus-false restoration"}),
+        &json!({"passed":true,"checks":12,"pointer":pointer,"scope":"Real GTK pointer recipients, shared stacking, exact production switcher identities, direct fullscreen away/back, assigned paired suspension global activation and saved fullscreen restoration"}),
     )?;
     Ok(())
 }
