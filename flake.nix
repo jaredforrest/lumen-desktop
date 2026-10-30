@@ -271,6 +271,9 @@
           args = [ "${./tests/project/offscreen_qml.nu}" "${self}" ];
           PATH = pkgs.lib.makeBinPath [ pkgs.rustc pkgs.stdenv.cc pkgs.quickshell pkgs.coreutils privateBus pkgs.dbus (pkgs.callPackage ./packages/appearance-rust.nix {}) (pkgs.callPackage ./packages/shortcuts.nix {}) (pkgs.callPackage ./packages/desktop-layout.nix {}) ];
           LUMEN_TEST_TRUE = "${pkgs.coreutils}/bin/true";
+          LUMEN_TEST_FONTCONFIG = (import ./packages/font-configuration.nix { inherit pkgs; }) {
+            fontDirectories = [ "${pkgs.dejavu_fonts}/share/fonts" ];
+          };
           QML_IMPORT_PATH = "${pkgs.qt6.qtmultimedia}/lib/qt-6/qml";
           QT_PLUGIN_PATH = "${pkgs.qt6.qtmultimedia}/lib/qt-6/plugins";
           LUMEN_FILES_BIN = "${pkgs.callPackage ./packages/file-surfaces-rust-wip.nix {}}/bin/lumen-files-rust-wip";

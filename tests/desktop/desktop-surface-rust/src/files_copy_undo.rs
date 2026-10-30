@@ -94,7 +94,10 @@ pub fn run(f: &mut Fixture, qml: &Path, peer: &Path, folder: &Path, incoming: &P
         "Ctrl+Z started anything other than one Undo",
     )?;
     require(
-        after["canUndo"] == false && !output.exists() && fs::read(&original)? == payload,
+        after["error"] == ""
+            && after["canUndo"] == false
+            && !output.exists()
+            && fs::read(&original)? == payload,
         "Undo changed source, retained destination or advertised consumed record",
     )?;
     let undo = job(&after, "undo").ok_or("Completed Undo receipt")?;
