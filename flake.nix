@@ -27,6 +27,7 @@
       };
       packages.${system} = {
         stage-artifacts = pkgs.callPackage ./packages/artifact-staging.nix { };
+        shortcut-layout = pkgs.callPackage ./packages/shortcut-layout.nix { };
         shortcut-settings = pkgs.callPackage ./packages/shortcut-settings.nix { };
         test-shortcut-editor-data = import ./tests/project/shortcut-editor.nix { inherit pkgs nixpkgs system; };
         default = session.shellLauncher;

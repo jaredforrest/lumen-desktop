@@ -1,5 +1,6 @@
 //! Real keyboard switcher acceptance against isolated and installed shells.
 mod installed;
+mod layout;
 mod held_keyboard;
 mod model;
 
@@ -189,7 +190,7 @@ fn options() -> Result<Options> {
     let mut args = env::args_os().skip(1);
     while let Some(arg) = args.next() {
         match arg.to_str() {
-            Some("model" | "installed") => scenario = Some(arg.to_string_lossy().into_owned()),
+            Some("model" | "installed" | "layout") => scenario = Some(arg.to_string_lossy().into_owned()),
             Some("--launcher") => {
                 launcher = Some(PathBuf::from(args.next().ok_or("Missing launcher")?))
             }
@@ -214,7 +215,7 @@ fn options() -> Result<Options> {
         env::current_dir()?.join(output)
     };
     Ok(Options {
-        scenario: scenario.ok_or("Select model or installed")?,
+        scenario: scenario.ok_or("Select model, installed or layout")?,
         launcher,
         action,
         sway: sway.ok_or("Compositor required")?,
@@ -320,7 +321,7 @@ fn setup(opt: Options) -> Result<Context> {
         "DBUS_SYSTEM_BUS_ADDRESS".into(),
         format!("unix:path={}", root.0.join("no-system-bus").display()),
     );
-    if opt.scenario == "installed" {
+    if opt.scenario != "model" {
         let launcher = opt.launcher.as_ref().ok_or("Installed launcher required")?;
         for (k, v) in launcher_env(launcher, &vars)? {
             vars.insert(k, v);

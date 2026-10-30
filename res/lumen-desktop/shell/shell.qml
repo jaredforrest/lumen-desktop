@@ -19,6 +19,15 @@ ShellRoot {
     MenuVisibilityState {id:menuVisibilityState}
     property alias menuVisibility:menuVisibilityState
     ShortcutState {id:shortcutState}
+    property string previousShortcutLayoutGeneration:""
+    Connections {
+        target:shortcutState
+        function onLayoutGenerationChanged(){
+            const next=shortcutState.layoutGeneration;
+            if(next!==root.previousShortcutLayoutGeneration && applicationSwitcher.visible)root.appSwitcherCommand("cancel");
+            root.previousShortcutLayoutGeneration=next;
+        }
+    }
     DisplaySpacesState {id:displaySpaceState}
     property alias displaySpaces:displaySpaceState
     property alias shortcuts:shortcutState

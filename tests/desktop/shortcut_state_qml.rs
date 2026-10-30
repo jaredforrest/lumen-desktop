@@ -72,6 +72,7 @@ fn shortcut_state_reloads_and_fails_closed() {
         let _=child.wait();
         if let Err(failure)=checked {std::panic::resume_unwind(failure);}
         let output=fs::read_to_string(&log)?;
+        assert!(output.contains("SHORTCUT_LAYOUT_MODEL passed"),"{output}");
         for marker in ["ReferenceError:","TypeError:","Binding loop","Cannot assign","Failed to load configuration"] {
             assert!(!output.contains(marker),"{output}");
         }

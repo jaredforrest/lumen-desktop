@@ -8,6 +8,21 @@ use std::{
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
+#[link(name = "xkbcommon")]
+unsafe extern "C" {
+    fn xkb_keysym_from_name(name: *const std::ffi::c_char, flags: u32) -> u32;
+}
+fn native_bindings(registry: &Value) -> Result<Vec<Value>> {
+    registry["bindings"].as_array().ok_or("Native fixture registry missing")?.iter().filter(|row|row["enabled"]==true).map(|row|{
+        let physical=&row["physical"];
+        let key=std::ffi::CString::new(physical["key"].as_str().ok_or("Native key")?)?;
+        let mut modifiers=0;
+        for item in physical["modifiers"].as_array().ok_or("Native modifiers")?{
+            modifiers|=match item.as_str(){Some("Shift")=>1,Some("Lock")=>2,Some("Control")=>4,Some("Mod1")=>8,Some("Mod2")=>16,Some("Mod3")=>32,Some("Mod4")=>64,Some("Mod5")=>128,_=>return Err("Unknown native modifier".into())};
+        }
+        Ok(json!({"kind":"symbol","keys":[unsafe{xkb_keysym_from_name(key.as_ptr(),1)}],"mode":row["mode"],"device":physical["device"],"modifiers":modifiers,"group":null,"release":physical["trigger"]=="release","locked":physical["locked"],"inhibited":physical["inhibited"],"noRepeat":false}))
+    }).collect()
+}
 fn load(path: impl AsRef<Path>) -> Result<Value> {
     Ok(serde_json::from_slice(&fs::read(path)?)?)
 }
@@ -61,10 +76,19 @@ fn compositor(root: &Path) -> Result<PathBuf> {
                 "invalid-config" => value["lumen_config_valid"] = json!(false),
                 _ => {}
             }
+            let reply_type = if u32::from_le_bytes(header[10..].try_into().unwrap()) == 101 {
+                let manifest = load(root.join("manifest.json")).unwrap();
+                let registry = load(generation.trim()).unwrap();
+                let keymap = fs::read_to_string(manifest["keymap"].as_str().unwrap()).unwrap();
+                value = json!([{"name":"seat0","lumen_shortcut_layout":{"version":1,"available":true,"name":"English (US)","layout":0,"modifierIndexes":[0,1,2,3,4,5,6,7],"keymap":keymap,"bindings":{"version":1,"bounded":true,"activeMode":"default","records":native_bindings(&registry).unwrap()}}}]);
+                101u32
+            } else {
+                9u32
+            };
             let bytes = value.to_string().into_bytes();
             header[..6].copy_from_slice(b"i3-ipc");
             header[6..10].copy_from_slice(&(bytes.len() as u32).to_le_bytes());
-            header[10..].copy_from_slice(&9u32.to_le_bytes());
+            header[10..].copy_from_slice(&reply_type.to_le_bytes());
             let _ = stream.write_all(&header);
             let _ = stream.write_all(&bytes);
         }
@@ -201,6 +225,11 @@ fn run(options: &Options) -> Result<()> {
     let socket = compositor(root)?;
     symlink(env::current_exe()?, root.join("bin/lumen-nix-settings"))?;
     symlink(validator, root.join("bin/lumen-shortcuts"))?;
+    let layout = manifest["layout"]
+        .as_str()
+        .ok_or("Layout observer missing")?;
+    immutable(Path::new(layout))?;
+    symlink(layout, root.join("bin/lumen-shortcut-layout"))?;
     let mut values = private_environment()?;
     let installed = launcher_environment(&options.launcher)?;
     for key in ["QML_IMPORT_PATH", "QT_PLUGIN_PATH", "LUMEN_DESKTOP_ASSETS"] {
@@ -296,6 +325,34 @@ fn run(options: &Options) -> Result<()> {
         "Security reservation was silently overridden",
     )?;
     evidence.push(json!({"case":"security reservation","response":security}));
+    let physical = invoke(
+        helper,
+        &request(
+            "set",
+            json!("Mod4+Control+f"),
+            invoke(helper, &json!({"action":"status"}), &values)?["generation"].clone(),
+        ),
+        &values,
+    )?;
+    require(
+        physical["exitSuccess"] == false
+            && physical["error"]
+                .as_str()
+                .is_some_and(|e| e.contains("physically overlaps"))
+            && !root.join("calls.jsonl").exists(),
+        "Unverified existing native command was excluded from physical preflight",
+    )?;
+    require(
+        fs::read_dir(root.join("runtime/lumen-shortcut-settings"))?.all(|entry| {
+            entry.is_ok_and(|e| {
+                !e.file_name()
+                    .to_string_lossy()
+                    .starts_with("physical-candidate-")
+            })
+        }),
+        "Preflight refusal retained an owned candidate file",
+    )?;
+    evidence.push(json!({"case":"actual native physical overlap refuses before mutation and cleans candidate","response":physical}));
     for (action, chord, index) in [
         ("set", json!("Mod4+Control+x"), 1),
         ("disable", Value::Null, 2),

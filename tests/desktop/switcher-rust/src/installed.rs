@@ -24,7 +24,7 @@ fn focused(ctx: &Context, identities: &BTreeMap<String, Value>) -> Result<Option
     }
     Ok(Some(title.into()))
 }
-fn focus(ctx: &Context, shell: u32, title: &str) -> Result<()> {
+pub(super) fn focus(ctx: &Context, shell: u32, title: &str) -> Result<()> {
     ctx.focus(title)?;
     wait(&format!("shell focus {title}"), || {
         Ok((status(ctx, shell)?["active"] == title).then_some(()))
@@ -35,7 +35,7 @@ fn focus(ctx: &Context, shell: u32, title: &str) -> Result<()> {
         Ok((state["nativeObservation"]["source"]["kind"]=="native" && state["nativeObservation"]["source"]["conId"]==target).then_some(()))
     })
 }
-fn native_selection(state:&Value,identities:&BTreeMap<String,Value>,title:&str)->Result<()>{
+pub(super) fn native_selection(state:&Value,identities:&BTreeMap<String,Value>,title:&str)->Result<()>{
     ensure(state["picker"]["nativeCapture"]["conId"]==identities[title][0],format!("Preview did not capture exact native {title}: {state}"))
 }
 fn app(
@@ -68,14 +68,14 @@ fn app(
     identities.insert(title.into(), json!([node["id"], node["pid"]]));
     Ok(())
 }
-fn held(ctx: &mut Context, shell: u32, reverse: bool, repeat: usize) -> Result<(held_keyboard::Held, i64, u64)> {
+pub(super) fn held(ctx: &mut Context, shell: u32, reverse: bool, repeat: usize) -> Result<(held_keyboard::Held, i64, u64)> {
     let commits = status(ctx, shell)?["picker"]["commits"]
         .as_i64()
         .ok_or("Commit count missing")?;
     let events = fs::metadata(ctx.opt.output.join("native-events.jsonl"))?.len();
     Ok((held_keyboard::Held::start(ctx,reverse,repeat)?, commits, events))
 }
-fn preview(
+pub(super) fn preview(
     ctx: &Context,
     shell: u32,
     identities: &BTreeMap<String, Value>,
@@ -176,6 +176,10 @@ pub fn run(ctx: &mut Context) -> Result<()> {
     );
     let end = modified.rfind('}').ok_or("Shell root missing")?;
     modified.insert_str(end,"\n property bool switchAuditSuppressActivation:false\n IpcHandler {target:\"switchAudit\"\n function suppressActivation(value:bool):void{root.switchAuditSuppressActivation=value;}\n function focusCaptured(title:string):void{const target=root.windows.find(w=>w.title===title);if(target)root.focusWindow(target);}\n function status():string{return JSON.stringify({picker:JSON.parse(applicationSwitcher.status()),active:root.active?root.active.title:\"\",nativeObservation:root.nativeWindowObservation,error:root.applicationCommandError,windows:root.windows.map(w=>({title:w.title,app:w.appId,minimized:w.minimized})),creation:root.windowCreationOrder.map(w=>w.title)});}\n }\n");
+    if ctx.opt.scenario=="layout" {
+        let end=modified.rfind('}').ok_or("Shell root missing")?;
+        modified.insert_str(end,include_str!("../layout-audit.qml"));
+    }
     fs::write(&qml, modified)?;
     let pidfile = out.join("service.pid");
     let locator = out.join("systemctl-private");
@@ -240,14 +244,17 @@ pub fn run(ctx: &mut Context) -> Result<()> {
             action.display()
         ));
     }
+    if ctx.opt.scenario=="layout" {
+        config.push_str(&format!("input * xkb_layout us\nbindsym Control+plus exec touch {}\nbindsym Control+Shift+equal exec touch {}\n",out.join("unexpected-shortcut-action").display(),out.join("unexpected-shortcut-action").display()));
+        super::layout::registry(ctx,false)?;
+    }
     let swayconf = out.join("sway.conf");
     fs::write(&swayconf, config)?;
     let sway = ctx.opt.sway.clone();
-    ctx.launch(
-        &sway,
-        &["--unsupported-gpu", "-c", &path(&swayconf)],
-        "sway.log",
-    )?;
+    let config_path=path(&swayconf);
+    let mut arguments=vec!["--unsupported-gpu","-c",config_path.as_str()];
+    if ctx.opt.scenario=="layout" && ctx.opt.effects{arguments.insert(1,"-d");}
+    ctx.launch(&sway,&arguments,"sway.log")?;
     let runtime = ctx.root.0.clone();
     ctx.vars.insert(
         "SWAYSOCK".into(),
@@ -301,6 +308,7 @@ pub fn run(ctx: &mut Context) -> Result<()> {
         let observation=&s["nativeObservation"];
         Ok((observation["source"]["conId"]==identities["A1"][0] && observation["captures"].as_array().is_some_and(|r|r.len()==5)).then_some(()))
     })?;
+    if ctx.opt.scenario=="layout" {return super::layout::run(ctx,shell,&identities,&swayconf,&action);}
     let (proc, commits, offset) = held(ctx, shell, false, 1)?;
     let previewed = preview(ctx, shell, &identities, commits, offset)?;
     native_selection(&previewed,&identities,"B")?;

@@ -1,0 +1,187 @@
+diff --git a/sway/ipc-server.c b/sway/ipc-server.c
+index b934bb5..144b5c2 100644
+--- a/sway/ipc-server.c
++++ b/sway/ipc-server.c
+@@ -20,2 +20,3 @@
+ #include "sway/ipc-json.h"
++#include "lumen_shortcut_layout.h"
+ #include "sway/ipc-server.h"
+@@ -802,6 +803,12 @@ void ipc_client_handle_command(struct ipc_client *client, uint32_t payload_lengt
+ 		json_object *seats = json_object_new_array();
++		struct lumen_shortcut_observation observation;
++		lumen_shortcut_observation_init(&observation);
+ 		struct sway_seat *seat = NULL;
+ 		wl_list_for_each(seat, &server.input->seats, link) {
+-			json_object_array_add(seats, ipc_json_describe_seat(seat));
++			json_object *item = ipc_json_describe_seat(seat);
++			json_object_object_add(item, "lumen_shortcut_layout",
++				lumen_shortcut_layout(seat, &observation));
++			json_object_array_add(seats, item);
+ 		}
++		lumen_shortcut_observation_finish(&observation);
+ 		const char *json_string = json_object_to_json_string(seats);
+diff --git a/sway/lumen_shortcut_layout.c b/sway/lumen_shortcut_layout.c
+new file mode 100644
+index 0000000..0cca1c9
+--- /dev/null
++++ b/sway/lumen_shortcut_layout.c
+@@ -0,0 +1,130 @@
++#include <stdbool.h>
++#include <stdint.h>
++#include <string.h>
++#include <wlr/types/wlr_keyboard.h>
++#include <wlr/types/wlr_seat.h>
++#include <xkbcommon/xkbcommon.h>
++#include "sway/config.h"
++#include "sway/input/seat.h"
++#include "lumen_shortcut_layout.h"
++
++// Read-only metadata. Never export depressed keys, commands or content.
++// Bound strings, records and key arrays before allocating their JSON copies.
++static json_object *binding_scopes(void) {
++	json_object *result = json_object_new_object();
++	json_object *names = json_object_new_array();
++	json_object *records = json_object_new_array();
++	size_t count = 0, bytes = 0;
++	bool bounded = config->modes && config->modes->length <= 128;
++	if (bounded) {
++		for (int i = 0; i < config->modes->length && bounded; ++i) {
++			struct sway_mode *mode = config->modes->items[i];
++			size_t mode_size = mode->name ? strnlen(mode->name, 129) : 129;
++			if (mode_size > 128 || !mode->keysym_bindings || !mode->keycode_bindings) {
++				bounded = false;
++				break;
++			}
++			json_object_array_add(names, json_object_new_string(mode->name));
++			list_t *lists[] = {mode->keysym_bindings, mode->keycode_bindings};
++			for (size_t kind = 0; kind < 2 && bounded; ++kind) {
++				for (int j = 0; j < lists[kind]->length; ++j) {
++					struct sway_binding *binding = lists[kind]->items[j];
++					const char *input = binding->input ? binding->input : "*";
++					size_t input_size = strnlen(input, 257);
++					if (count >= 2048 || input_size > 256 || !binding->keys ||
++							binding->keys->length < 1 || binding->keys->length > 8 ||
++							bytes + mode_size + input_size + 256 > 256 * 1024) {
++						bounded = false;
++						break;
++					}
++					++count;
++					bytes += mode_size + input_size + 256;
++					json_object *record = json_object_new_object();
++					json_object *keys = json_object_new_array();
++					for (int key = 0; key < binding->keys->length; ++key) {
++						json_object_array_add(keys, json_object_new_int64(
++							*(uint32_t *)binding->keys->items[key]));
++					}
++					json_object_object_add(record, "keys", keys);
++					json_object_object_add(record, "kind", json_object_new_string(kind ? "code" : "symbol"));
++					json_object_object_add(record, "mode", json_object_new_string(mode->name));
++					json_object_object_add(record, "device", json_object_new_string(input));
++					json_object_object_add(record, "modifiers", json_object_new_int64(binding->modifiers));
++					json_object_object_add(record, "group", binding->group == XKB_LAYOUT_INVALID ? NULL :
++						json_object_new_int64(binding->group));
++					json_object_object_add(record, "release", json_object_new_boolean(binding->flags & BINDING_RELEASE));
++					json_object_object_add(record, "locked", json_object_new_boolean(binding->flags & BINDING_LOCKED));
++					json_object_object_add(record, "inhibited", json_object_new_boolean(binding->flags & BINDING_INHIBITED));
++					json_object_object_add(record, "noRepeat", json_object_new_boolean(binding->flags & BINDING_NOREPEAT));
++					json_object_array_add(records, record);
++				}
++			}
++		}
++	}
++	json_object_object_add(result, "version", json_object_new_int(1));
++	json_object_object_add(result, "bounded", json_object_new_boolean(bounded));
++	json_object_object_add(result, "modes", names);
++	json_object_object_add(result, "records", records);
++	const char *mode = config->current_mode ? config->current_mode->name : NULL;
++	json_object_object_add(result, "activeMode", mode && strnlen(mode, 129) <= 128 ?
++		json_object_new_string(mode) : NULL);
++	return result;
++}
++void lumen_shortcut_observation_init(struct lumen_shortcut_observation *observation) {
++	*observation = (struct lumen_shortcut_observation){
++		.remaining = 512 * 1024,
++		.bindings = binding_scopes(),
++	};
++}
++void lumen_shortcut_observation_finish(struct lumen_shortcut_observation *observation) {
++	json_object_put(observation->bindings);
++}
++static json_object *unavailable(json_object *result, const char *reason) {
++	json_object_object_add(result, "available", json_object_new_boolean(false));
++	json_object_object_add(result, "reason", json_object_new_string(reason));
++	return result;
++}
++json_object *lumen_shortcut_layout(struct sway_seat *seat,
++		struct lumen_shortcut_observation *observation) {
++	json_object *result = json_object_new_object();
++	json_object_object_add(result, "version", json_object_new_int(1));
++	if (++observation->seats > 16) {
++		return unavailable(result, "Keyboard seat limit exceeded");
++	}
++	if (observation->seats == 1) {
++		json_object_object_add(result, "bindings", json_object_get(observation->bindings));
++	}
++	struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat->wlr_seat);
++	if (!keyboard || !keyboard->keymap || !keyboard->xkb_state ||
++			!keyboard->keymap_string || keyboard->keymap_size < 2) {
++		return unavailable(result, "No current keyboard keymap");
++	}
++	size_t size = keyboard->keymap_size - 1;
++	if (size > 128 * 1024 || size > observation->remaining ||
++			strnlen(keyboard->keymap_string, keyboard->keymap_size) != size ||
++			xkb_keymap_max_keycode(keyboard->keymap) > 1023 ||
++			xkb_keymap_num_layouts(keyboard->keymap) > 8) {
++		return unavailable(result, "Keyboard keymap exceeds observation limits");
++	}
++	observation->remaining -= size;
++	xkb_layout_index_t layout = xkb_state_serialize_layout(keyboard->xkb_state,
++		XKB_STATE_LAYOUT_EFFECTIVE);
++	if (layout >= xkb_keymap_num_layouts(keyboard->keymap)) {
++		return unavailable(result, "Current keyboard layout is unavailable");
++	}
++	const char *name = xkb_keymap_layout_get_name(keyboard->keymap, layout);
++	if (!name || strnlen(name, 257) > 256) {
++		return unavailable(result, "Current keyboard layout name is unavailable");
++	}
++	json_object_object_add(result, "available", json_object_new_boolean(true));
++	json_object_object_add(result, "layout", json_object_new_int64(layout));
++	json_object_object_add(result, "name", json_object_new_string(name));
++	json_object_object_add(result, "keymap", json_object_new_string_len(
++		keyboard->keymap_string, (int)size));
++	json_object *indexes = json_object_new_array();
++	for (size_t i = 0; i < WLR_MODIFIER_COUNT; ++i) {
++		json_object_array_add(indexes, json_object_new_int64(keyboard->mod_indexes[i]));
++	}
++	json_object_object_add(result, "modifierIndexes", indexes);
++	return result;
++}
+diff --git a/sway/lumen_shortcut_layout.h b/sway/lumen_shortcut_layout.h
+new file mode 100644
+index 0000000..b40ee28
+--- /dev/null
++++ b/sway/lumen_shortcut_layout.h
+@@ -0,0 +1,15 @@
++#ifndef SWAY_LUMEN_SHORTCUT_LAYOUT_H
++#define SWAY_LUMEN_SHORTCUT_LAYOUT_H
++#include <json.h>
++#include <stddef.h>
++struct sway_seat;
++struct lumen_shortcut_observation {
++	size_t remaining;
++	size_t seats;
++	json_object *bindings;
++};
++void lumen_shortcut_observation_init(struct lumen_shortcut_observation *observation);
++void lumen_shortcut_observation_finish(struct lumen_shortcut_observation *observation);
++json_object *lumen_shortcut_layout(struct sway_seat *seat,
++	struct lumen_shortcut_observation *observation);
++#endif
+diff --git a/sway/meson.build b/sway/meson.build
+index cb03a4d..8ba24e4 100644
+--- a/sway/meson.build
++++ b/sway/meson.build
+@@ -1,2 +1,3 @@
+ sway_sources = files(
++	'lumen_shortcut_layout.c',
+ 	'commands.c',

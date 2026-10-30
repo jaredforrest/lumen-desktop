@@ -1,4 +1,5 @@
 //! Declarative owned shortcut edits; dispatch remains compositor-owned.
+mod candidate;
 use lumen_shortcut_settings::{process, runtime};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -157,26 +158,22 @@ fn validate(s: &Snapshot, row: &Value, chord: Option<&str>) -> Result<()> {
         bindings.push(json!({"id":row["id"],"action":row["action"],"chord":chord,"scope":"global","owner":"desktop"}));
     }
     let path = directory()?.join(format!("candidate-{}.json", std::process::id()));
-    let mut file = fs::OpenOptions::new()
-        .create_new(true)
-        .write(true)
-        .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
-        .open(&path)
+    let mut candidate = candidate::Candidate::create(path)?;
+    candidate
+        .file
+        .write_all(
+            json!({"version":1,"bindings":bindings})
+                .to_string()
+                .as_bytes(),
+        )
         .map_err(|e| e.to_string())?;
-    file.write_all(
-        json!({"version":1,"bindings":bindings})
-            .to_string()
-            .as_bytes(),
-    )
-    .map_err(|e| e.to_string())?;
     let result = process::run(
         "lumen-shortcuts",
-        &[path.to_str().ok_or("Invalid validation path")?],
+        &[candidate.path().to_str().ok_or("Invalid validation path")?],
         Duration::from_secs(5),
         &directory()?.join("validator-diagnostic.log"),
     );
-    let _ = fs::remove_file(path);
+    drop(candidate);
     let result = result?;
     if !result.success {
         let value: Value = serde_json::from_slice(&result.stdout).unwrap_or(Value::Null);
@@ -188,6 +185,42 @@ fn validate(s: &Snapshot, row: &Value, chord: Option<&str>) -> Result<()> {
                 .take(2000)
                 .collect::<String>()
         ));
+    }
+    if chord.is_some() {
+        let candidate: Value = serde_json::from_slice(&result.stdout)
+            .map_err(|_| "Validated shortcut candidate unavailable")?;
+        let candidate_path =
+            directory()?.join(format!("physical-candidate-{}.json", std::process::id()));
+        let mut owned = candidate::Candidate::create(candidate_path)?;
+        owned
+            .file
+            .write_all(candidate.to_string().as_bytes())
+            .map_err(|_| "Could not write physical candidate")?;
+        let result = process::run(
+            "lumen-shortcut-layout",
+            &[
+                "preflight",
+                owned
+                    .path()
+                    .to_str()
+                    .ok_or("Invalid physical candidate path")?,
+                row["id"].as_str().ok_or("Invalid candidate identity")?,
+            ],
+            Duration::from_secs(5),
+            &directory()?.join("physical-validator-diagnostic.log"),
+        );
+        drop(owned);
+        let result = result?;
+        let value: Value = serde_json::from_slice(&result.stdout)
+            .map_err(|_| "Physical shortcut analysis unavailable; previous map retained")?;
+        if !result.success || value["valid"] != true {
+            return Err(format!(
+                "Physical shortcut rejected; previous map retained. {}",
+                value["error"]
+                    .as_str()
+                    .unwrap_or("Native layout analysis unavailable")
+            ));
+        }
     }
     Ok(())
 }

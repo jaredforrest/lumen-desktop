@@ -24,6 +24,11 @@ Column {
     StatusMessage {width:parent.width;text:root.service.message;severity:"success"}
     PanelLabel {width:parent.width;visible:root.service.busy;wrapMode:Text.Wrap;text:root.service.request.action==="status"?"Reading effective shortcuts…":"Building and applying the requested shortcut. The previous map remains active until activation completes."}
     DesktopComboBox {id:selector;objectName:"shortcut-editor-action";width:parent.width;Accessible.name:"Shortcut action";model:root.service.bindings.map(item=>ShortcutHints.actionName(item.action)+" · "+ShortcutHints.readableChord(item.defaultChord)+(item.enabled?"":" · disabled"));currentIndex:-1;enabled:!root.service.busy && count>0;onActivated:index=>{root.selected=root.service.bindings[index].id;root.dirty=false;root.synchronize();}}
+    PanelLabel {objectName:"shortcut-layout-summary";width:parent.width;wrapMode:Text.Wrap;color:Theme.colors.muted;text:ShortcutLayoutState.summary}
+    PanelLabel {objectName:"shortcut-layout-observed-bindings";width:parent.width;wrapMode:Text.Wrap;visible:ShortcutLayoutState.available;text:ShortcutLayoutState.bindingSummary}
+    PanelLabel {objectName:"shortcut-layout-keycaps";width:parent.width;wrapMode:Text.Wrap;visible:root.row!==null;text:root.row?"Current keycaps: "+(ShortcutLayoutState.keycaps(root.row.id) || "unavailable")+ (ShortcutLayoutState.collision(root.row.id)?" · Physical shortcut collision detected":""):""}
+    PanelLabel {objectName:"shortcut-layout-native-bindings";width:parent.width;wrapMode:Text.Wrap;visible:ShortcutLayoutState.available && text.length>0;text:"Native shortcut diagnostics (up to 16 per seat):\n"+ShortcutLayoutState.nativeSummary}
+    PanelLabel {objectName:"shortcut-layout-boundary";width:parent.width;wrapMode:Text.Wrap;color:Theme.colors.muted;visible:ShortcutLayoutState.available;text:ShortcutLayoutState.diagnostics.join(". ")}
     DesktopTextField {
         id:chord;objectName:"shortcut-editor-chord";width:parent.width;Accessible.name:"Shortcut symbol chord"
         placeholderText:"For example Super+Control+F12";color:Theme.colors.text;font.family:Theme.font;font.pixelSize:Theme.textSize(12);selectByMouse:true
