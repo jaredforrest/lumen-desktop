@@ -290,4 +290,5 @@ def main [] {
     ^nu tests/ci/toplevel-identity.nu $shell $basic $effects
     ^nu tests/ci/native-focus-guard.nu
     ^nu tests/ci/files-native-drop.nu
+    ^nu tests/ci/files-copy-undo.nu
 }

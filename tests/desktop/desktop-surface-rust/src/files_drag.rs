@@ -2,7 +2,7 @@ use crate::harness::{Fixture, Options, Result, pause, require, save, wait_true};
 use serde_json::{Value, json};
 use std::{fs, os::unix::ffi::OsStrExt, path::Path};
 
-fn file_uri(path: &Path) -> String {
+pub(super) fn file_uri(path: &Path) -> String {
     let mut uri = String::from("file://");
     for byte in path.as_os_str().as_bytes() {
         if byte.is_ascii_alphanumeric() || b"/-._~".contains(byte) {
@@ -14,7 +14,7 @@ fn file_uri(path: &Path) -> String {
     uri
 }
 
-fn state(f: &Fixture, qml: &Path) -> Result<Value> {
+pub(super) fn state(f: &Fixture, qml: &Path) -> Result<Value> {
     f.state(qml, "filesDragTest")
 }
 fn peer(f: &Fixture, qml: &Path) -> Result<Value> {
@@ -55,7 +55,7 @@ fn peer_command(f: &Fixture, path: &Path, method: &str, args: &[&str]) -> Result
         Ok(peer(f, path)?["configGeneration"] == generation)
     })
 }
-fn offer(
+pub(super) fn offer(
     f: &mut Fixture,
     qml: &Path,
     peer_path: &Path,
@@ -281,6 +281,9 @@ pub fn run(options: Options) -> Result<()> {
     })?;
     position(&f, "Files — Files", "0", "760")?;
     position(&f, "FilesDropPeer", "850", "650")?;
+    if f.options.scenario == "files-drag-copy-undo" {
+        return crate::files_copy_undo::run(&mut f,&qml,&peer_qml,&folder,&incoming);
+    }
     let expected = vec![file_uri(&source), file_uri(&second)];
     let mut results = Vec::new();
     for mode in ["list", "grid", "columns", "gallery"] {
