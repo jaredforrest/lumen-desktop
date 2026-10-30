@@ -1,6 +1,7 @@
 //! Shared real compositor, D-Bus, keyboard and pointer harness for group fixtures.
 mod desktop_card;
 mod desktop_fullscreen;
+mod desktop_layer;
 mod desktop_transfer;
 mod membership;
 mod presentation;
@@ -175,7 +176,8 @@ fn options() -> Result<Options> {
                 | "window-groups"
                 | "presentation"
                 | "desktop-transfer"
-                | "desktop-transfer-unsupported",
+                | "desktop-transfer-unsupported"
+                | "desktop-transfer-layer",
             ) => scenario = Some(arg.to_string_lossy().into_owned()),
             Some("--effects") => effects = true,
             Some("--launcher") => {
@@ -550,7 +552,10 @@ fn setup(opt: Options) -> Result<Context> {
     let mut compositor_args = vec!["--unsupported-gpu", "-c", &config_path];
     if matches!(
         ctx.opt.scenario.as_str(),
-        "presentation" | "desktop-transfer" | "desktop-transfer-unsupported"
+        "presentation"
+            | "desktop-transfer"
+            | "desktop-transfer-unsupported"
+            | "desktop-transfer-layer"
     ) {
         compositor_args.push("-d");
     }
@@ -601,7 +606,10 @@ fn setup(opt: Options) -> Result<Context> {
     )?;
     let assets = if matches!(
         ctx.opt.scenario.as_str(),
-        "presentation" | "desktop-transfer" | "desktop-transfer-unsupported"
+        "presentation"
+            | "desktop-transfer"
+            | "desktop-transfer-unsupported"
+            | "desktop-transfer-layer"
     ) {
         PathBuf::from(
             ctx.vars
@@ -644,7 +652,9 @@ fn main() -> Result<()> {
     } else {
         setup(opt)?
     };
-    if scenario == "desktop-transfer-unsupported" {
+    if scenario == "desktop-transfer-layer" {
+        desktop_layer::run(&mut ctx)
+    } else if scenario == "desktop-transfer-unsupported" {
         desktop_transfer::unsupported(&mut ctx)
     } else if scenario == "desktop-transfer" {
         desktop_transfer::run(&mut ctx)
