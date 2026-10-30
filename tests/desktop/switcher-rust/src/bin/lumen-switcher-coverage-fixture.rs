@@ -137,7 +137,7 @@ fn run() -> Result<()> {
         })
         .ok_or("Missing actual QML result")?;
     let cases: serde_json::Value = serde_json::from_str(value)?;
-    if cases.as_array().is_none_or(|rows| rows.len() != 5) {
+    if cases.as_array().is_none_or(|rows| rows.len() != 11) {
         return Err("Incomplete actual QML coverage cases".into());
     }
     fs::write(

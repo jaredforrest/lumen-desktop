@@ -9,6 +9,24 @@ function snapshot(windows, history, identity) {
         seen[key]=true;return true;
     }).map(w=>({key:identity(w),window:w}));
 }
+// App keys partition presentation groups; only the optional exact compositor
+// identifier may join a QObject to a captured native activation witness.
+function nativeGroupPairs(windows, captures, identity, key) {
+    if(!Array.isArray(windows) || !Array.isArray(captures) || captures.some(capture=>!capture || typeof capture.foreignId!=="string"))return null;
+    const members=windows.filter(window=>identity(window)===key);
+    const records=captures.filter(capture=>identity({appId:capture.appId,title:""})===key);
+    if(!members.length || members.length!==records.length)return null;
+    const pairs=[];
+    for(const capture of records){
+        const id=capture.foreignId;
+        if(typeof id!=="string" || !id || captures.filter(other=>other.foreignId===id).length!==1)return null;
+        const matches=windows.filter(window=>typeof window.foreignToplevelIdentifier==="string" && window.foreignToplevelIdentifier===id);
+        if(matches.length!==1 || !members.includes(matches[0]))return null;
+        pairs.push({window:matches[0],capture:capture});
+    }
+    if(members.some(window=>pairs.filter(pair=>pair.window===window).length!==1))return null;
+    return pairs;
+}
 function step(index, count, delta) {
     return count ? (index+delta+count)%count : -1;
 }
