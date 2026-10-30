@@ -105,6 +105,14 @@ Previously unobserved live windows receive a provider fallback position until
 actual focus is observed; past focus during an observer outage is not invented.
 
 Opening the application switcher captures the selected native backing window
+only when the observer has exact live identity coverage for every external
+surface. A mixed or unknown set (including an unsupported external client)
+preserves the original live QObject selection; app identity alone cannot join
+an unsupported window to an older native sibling. Validated owned shell panels
+do not count as external applications. The broker checks complete coverage again
+against its dispatch snapshot and rejects a changed set rather than substituting
+another target. This conservative global fallback does not claim durable
+backing-window ordering while an unsupported external surface is present.
 immutably. Its app icon describes an application group; it does not pretend to
 show an authenticated window thumbnail. Commit uses a native broker that rereads
 the owned compositor socket, checks the source focus and exact captured target,
