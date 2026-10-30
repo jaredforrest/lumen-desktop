@@ -95,12 +95,11 @@
 + container_end_mouse_operation(con);
 + if(parent)container_reap_empty(parent);
 + arrange_workspace(old);arrange_workspace(target);
-+ workspace_consider_destroy(old);
 +}
  static void container_move_to_container(struct sway_container *container,
 --- /dev/null
 +++ b/sway/commands/lumen_space_transfer.c
-@@ -0,0 +1,193 @@
+@@ -0,0 +1,209 @@
 +/* Captured transfer preflight and dispatch share one compositor callback. */
 +#include <inttypes.h>
 +#include <json.h>
@@ -117,6 +116,8 @@
 +#include "sway/server.h"
 +#include "sway/ipc-json.h"
 +#include "sway/desktop/transaction.h"
++#include "sway/input/input-manager.h"
++#include "sway/input/seat.h"
 +#include "sway/tree/root.h"
 +#include "sway/tree/container.h"
 +#include "sway/tree/view.h"
@@ -285,12 +286,26 @@
 + /* All refusal paths end above. A missing captured slot is allocated once;
 +  * the native move primitive has no recoverable failure after allocation. */
 + if(!target){target=workspace_create(output,target_name);if(!target)return cmd_results_new(CMD_FAILURE,"LST_REJECTED: destination allocation failed before move");}
++ struct sway_workspace *origin=source->pending.workspace;
 + lumen_space_transfer_move(source,target);
 + double dx=source->pending.x-family.x[0],dy=source->pending.y-family.y[0];
 + for(unsigned i=1;i<family.count;i++){
 +  struct sway_container *child=family.members[i];lumen_space_transfer_move(child,target);
 +  container_floating_translate(child,family.x[i]+dx-child->pending.x,family.y[i]+dy-child->pending.y);
 + }
++ /* A moved focused member must not keep keyboard focus on a hidden target.
++  * Other seats and layer-surface focus remain untouched. Restore only after
++  * the complete family has left, so no sibling can become an interim target. */
++ struct sway_seat *seat;
++ wl_list_for_each(seat,&server.input->seats,link){
++  struct sway_node *focus=seat_get_focus(seat);
++  for(unsigned i=0;focus && i<family.count;i++){
++   if(focus==&family.members[i]->node){
++    seat_set_focus(seat,seat_get_focus_inactive(seat,&origin->node));break;
++   }
++  }
++ }
++ workspace_consider_destroy(origin);
 + arrange_workspace(target);transaction_commit_dirty();
 + return cmd_results_new(CMD_SUCCESS,NULL);
 +}
