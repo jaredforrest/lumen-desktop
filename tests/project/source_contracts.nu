@@ -136,6 +136,9 @@ def main [root: path] {
     for workflow in (glob ($root | path join .github workflows '*.yml')) {
         let lines = (open --raw $workflow | lines)
         mut retained = ($lines | where { |line| $line | str starts-with '            artifacts/' } | each { |line| $line | str trim })
+        if ($retained | length) != ($retained | uniq | length) {
+            $errors = ($errors | append $'Duplicate raw artifact retention in ($workflow)')
+        }
         for line in ($lines | where {|line| $line | str contains 'lumen-stage-artifacts '}) {
             for match in ($line | parse -r 'lumen-stage-artifacts\s+\.\s+(?<policy>tests/ci/[\w.-]+\.txt)\s+(?<output>artifacts-upload/[\w.-]+)') {
                 if not ($lines | any {|value| ($value | str trim) == $'path: ($match.output)'}) {
@@ -143,12 +146,13 @@ def main [root: path] {
                 }
                 let policy = ($root | path join $match.policy)
                 if not ($policy | path exists) { $errors = ($errors | append $'Missing artifact staging policy: ($match.policy)') } else {
-                    $retained = ($retained | append (open --raw $policy | lines | str trim | where {|value| $value != ''}))
+                    let entries = (open --raw $policy | lines | str trim | where {|value| $value != ''})
+                    if ($entries | length) != ($entries | uniq | length) {
+                        $errors = ($errors | append $'Duplicate artifact retention in ($match.policy)')
+                    }
+                    $retained = ($retained | append $entries)
                 }
             }
-        }
-        if ($retained | length) != ($retained | uniq | length) {
-            $errors = ($errors | append $'Duplicate artifact retention in ($workflow)')
         }
         mut declared = []
         for line in ($lines | where { |line| $line | str contains '--output ' }) {
