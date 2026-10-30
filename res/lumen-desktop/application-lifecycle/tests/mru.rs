@@ -71,6 +71,13 @@ fn queued_native_focus_receipts_preserve_brief_focus_with_later_tree_snapshots()
     let not_focused=json!({"change":"focus","container":latest[0]});
     lifecycle.observe_focus_event(&not_focused);
     assert_eq!(lifecycle.activation_history.order(),["app2","app1","app0"]);
+    let mut reused=latest.clone();
+    reused[0]["pid"]=json!(clients.0[2].id());
+    lifecycle.refresh(EPOCH,&reused);
+    lifecycle.observe_focus_event(&json!({"change":"focus","container":nodes(&clients,0)[0]}));
+    let mut replacement_receipt=reused[0].clone();replacement_receipt["focused"]=json!(true);
+    lifecycle.observe_focus_event(&json!({"change":"focus","container":replacement_receipt}));
+    assert_eq!(lifecycle.activation_history.order(),["app2","app1","app0"]);
     lifecycle.refresh("fedcba9876543210fedcba98",&remaining);
     lifecycle.observe_focus_event(&json!({"change":"focus","container":nodes(&clients,1)[1]}));
     assert!(lifecycle.activation_history.order().is_empty());

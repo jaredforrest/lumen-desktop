@@ -80,7 +80,7 @@ pub fn valid_identity(value:&Value)->bool{
     value.as_object().is_some_and(|row|row.len()==4&&["pid","start","device","inode"].iter().all(|key|row.get(*key).and_then(Value::as_u64).is_some())&&row["pid"].as_u64().is_some_and(|pid|pid>=2&&pid<=u32::MAX as u64))
 }
 pub struct Process{pub identity:Value,pub handle:OwnedFd,pub apps:BTreeSet<String>}
-pub struct Lifecycle{pub processes:BTreeMap<u32,Process>,pub windows:HashMap<(u32,String),Vec<Value>>,pub epoch:Option<String>,pub activation_history:mru::History,focus_witnesses:HashMap<i64,(u32,Value,String)>}
+pub struct Lifecycle{pub processes:BTreeMap<u32,Process>,pub windows:HashMap<(u32,String),Vec<Value>>,pub epoch:Option<String>,pub activation_history:mru::History,focus_witnesses:HashMap<i64,Option<(u32,Value,String)>>}
 impl Default for Lifecycle{fn default()->Self{Self{processes:BTreeMap::new(),windows:HashMap::new(),epoch:None,activation_history:mru::History::default(),focus_witnesses:HashMap::new()}}}
 impl Lifecycle{
     pub fn close(&mut self){self.processes.clear();self.windows.clear();self.epoch=None;self.activation_history=mru::History::default();self.focus_witnesses.clear();}
@@ -126,11 +126,13 @@ impl Lifecycle{
             if node["shell"]!="xdg_shell"||!node["window"].is_null(){continue;}
             let (Some(id),Some(pid),Some(app))=(node["id"].as_i64().filter(|id|*id>0),node["pid"].as_u64().and_then(|pid|u32::try_from(pid).ok()),node["app_id"].as_str())else{continue;};
             let Some(process)=self.processes.get(&pid).filter(|p|p.apps.contains(app))else{continue;};
-            if self.focus_witnesses.contains_key(&id)||self.focus_witnesses.len()<4096{self.focus_witnesses.insert(id,(pid,process.identity.clone(),app.to_owned()));}
+            let witness=(pid,process.identity.clone(),app.to_owned());
+            if let Some(previous)=self.focus_witnesses.get_mut(&id){if previous.as_ref()!=Some(&witness){*previous=None;}}
+            else if self.focus_witnesses.len()<4096{self.focus_witnesses.insert(id,Some(witness));}
         }
         self.rows()
     }
-    pub fn prune(&mut self){self.processes.retain(|pid,process|!exited(&process.handle)&&process_identity(*pid).ok().as_ref()==Some(&process.identity));self.focus_witnesses.retain(|_,(pid,identity,app)|self.processes.get(pid).is_some_and(|p|p.identity==*identity&&p.apps.contains(app)));let rows=self.rows();self.activation_history.prune(&rows);}
+    pub fn prune(&mut self){self.processes.retain(|pid,process|!exited(&process.handle)&&process_identity(*pid).ok().as_ref()==Some(&process.identity));for witness in self.focus_witnesses.values_mut(){if witness.as_ref().is_some_and(|(pid,identity,app)|!self.processes.get(pid).is_some_and(|p|p.identity==*identity&&p.apps.contains(app))){*witness=None;}}let rows=self.rows();self.activation_history.prune(&rows);}
     pub fn observe_focus(&mut self,nodes:&[Value]){
         let Some(node)=nodes.iter().find(|node|node["focused"]==true&&node["shell"]=="xdg_shell"&&node["window"].is_null())else{return;};
         let Some(app)=node["app_id"].as_str()else{return;};let Some(pid)=node["pid"].as_u64().and_then(|n|u32::try_from(n).ok())else{return;};
@@ -145,7 +147,7 @@ impl Lifecycle{
         // receipt arrives. Retain only bounded in-memory process witnesses;
         // neither unknown surfaces nor new processes inherit that receipt.
         let Some(id)=focused["id"].as_i64()else{return;};
-        let Some((pid,identity,app))=self.focus_witnesses.get(&id)else{return;};
+        let Some(Some((pid,identity,app)))=self.focus_witnesses.get(&id)else{return;};
         if focused["pid"].as_u64()!=Some(*pid as u64)||focused["app_id"].as_str()!=Some(app)||!self.processes.get(pid).is_some_and(|p|p.identity==*identity){return;}
         self.observe_focus(std::slice::from_ref(focused));
     }

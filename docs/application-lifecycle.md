@@ -66,6 +66,10 @@ surface witnesses bind those receipts to an exact previously observed process;
 a closed surface may supply a queued receipt while that same process survives.
 Unknown surfaces and retired process witnesses fail closed. These surface
 associations are cleared with the observer or compositor epoch and never saved.
+Retired or reassigned surface IDs become inert tombstones within that same
+4,096-entry budget, so reusing an ID cannot authenticate a new owner. At the
+limit, previously unknown surface receipts remain unsupported until observer
+restart; current live shell focus remains available.
 Each rank carries exact observed process-instance witnesses. Closing the last
 window retains its rank while a witnessed process survives; a new process with
 the same advertised application ID cannot inherit that saved rank. Recovery
