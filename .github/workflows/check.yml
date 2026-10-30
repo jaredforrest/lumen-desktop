@@ -64,6 +64,7 @@ jobs:
           name: backend-logs
           if-no-files-found: error
           path: |
+            artifacts/shortcut-editor
             artifacts/native-command-logs
             artifacts/native-namespace-policy
             artifacts/calendar-toggle-contrast

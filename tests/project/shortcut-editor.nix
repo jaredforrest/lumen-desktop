@@ -1,6 +1,6 @@
 { pkgs, nixpkgs, system }:
 let
-  fixture = values: import ./shortcuts.nix { inherit nixpkgs system; bundle = true; editable = true; settingsValues.shortcuts.rebindings = values; };
+  fixture = values: import ./shortcuts.nix { inherit nixpkgs system; bundle = true; editable = true; settingsValues.shortcuts.rebindings = values; reservedBindings = [{ id = "consumer.lock"; action = "session.lock"; chord = "Mod4+Control+F12"; }]; };
   defaults = fixture {};
   rebound = fixture { "window.fullscreen.toggle" = "Mod4+Control+x"; };
   disabled = fixture { "window.fullscreen.toggle" = null; };

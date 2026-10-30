@@ -11,7 +11,7 @@ ApplicationWindow {
   id:test;name:"ActualShortcutEditor";when:false
   function find(item,name){if(item.objectName===name)return item;for(const child of item.children || []){const value=find(child,name);if(value)return value;}return null;}
   function waitUntil(f){for(let elapsed=0;elapsed<6000;elapsed+=20){if(f())return;wait(20);}check(false,"Shortcut state deadline");}
-  function typeChord(value){const field=find(pane,"shortcut-editor-chord");mouseClick(field,field.width/2,field.height/2);keyClick(Qt.Key_A,Qt.ControlModifier);for(let c of value){const shifted=c>="A"&&c<="Z";keyClick(c.toUpperCase().charCodeAt(0),shifted?Qt.ShiftModifier:Qt.NoModifier);}equal(field.text,value);check(pane.dirty);}
+  function typeChord(value){const field=find(pane,"shortcut-editor-chord");mouseClick(field,field.width/2,field.height/2);keyClick(Qt.Key_A,Qt.ControlModifier);for(let c of value)keyClick(c);equal(field.text,value);check(pane.dirty);}
   function click(name){const item=find(pane,name);check(item.enabled,name+" disabled");mouseClick(item,item.width/2,item.height/2);}
   function test_actual(){
    waitUntil(()=>pane.service.available && !pane.service.busy);equal(pane.service.editable,EDITABLE);

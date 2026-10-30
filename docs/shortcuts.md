@@ -78,8 +78,61 @@ the new hint. Actual Qt file reload tests cover malformed and deleted exports.
 
 ## Current boundary
 
-This is a build-time default-mode collision registry and diagnostic export, not a
-shortcut editor or an input broker. Raw `extraConfig` bindings, separately declared
+This remains a declarative default-mode collision registry and diagnostic export.
+The opt-in editor below changes authoritative configuration; it does not broker
+input. Raw `extraConfig` bindings, separately declared
 Sway modes, physical keycodes and runtime changes are not yet imported. Application
-conflicts are known only when an adapter declares them. Layout-dependent symbol discovery, remote key-delivery diagnostics and user rebind
-UI are not implemented by this registry. Those acceptance clauses remain open.
+conflicts are known only when an adapter declares them. Layout-dependent symbol
+discovery and remote key-delivery diagnostics remain outside this registry.
+
+## Owned shortcut editor
+
+Settings → Accessibility contains an owned shortcut editor and the complete
+effective inventory. Editing defaults to unavailable. Consumers enable it only
+after connecting the authoritative settings section to the module, for example:
+
+```nix
+let
+  desktopSettings = import "${lumenSource}/packages/desktop-settings-schema.nix" {
+    inherit lib;
+    values = import ./settings/desktop.nix;
+  };
+in {
+  services.lumen-desktop.shortcuts = {
+    editable = true;
+    rebindings = desktopSettings.shortcuts.rebindings;
+  };
+}
+```
+
+The existing consumer `settingsPackage` must update that exact source and rebuild
+and activate the configuration containing this module. The standalone settings
+bundle alone cannot change compositor bindings. An unwired editor cannot report
+success: the helper waits for the requested action and chord in the published
+effective map, then restores its previous settings if the map does not confirm.
+
+The settings shape is `shortcuts.rebindings`, indexed by stable identities from
+the owned catalog. A chord changes an ordinary owned press binding; `null`
+disables it; removing the entry restores its configured default. Original command
+and action identity remain module-owned. Neither the UI nor this file contains
+arbitrary dispatch commands. Paired switcher/release bindings, security policy and
+unrelated consumer bindings are not editable here. Requested and fully merged
+maps both pass collision validation, including consumer reservations and selected
+application declarations, before publication.
+
+Apply, Disable and Restore use an exact captured map generation. The settings
+transaction compares the previous section under its existing lock, so a stale
+editor cannot replace newer settings. Build/deployment failures retain the prior
+effective map. Failure to confirm an effective update triggers compare-and-set
+rollback only while the helper still owns that section and map; concurrent
+changes or failed rollback are reported as uncertain rather than overwritten.
+The previous map remains active while the configuration builds. Reopening the
+session rebuilds the same bindings from the durable Nix source.
+
+The isolated acceptance uses actual immutable module outputs, the real validator
+and edit helper, synthetic Qt typing/pointer input, and disposable deployment
+success/refusal/no-confirmation/rollback-failure transports. Actual native
+shortcut acceptance installs the module-generated rebinding, verifies dispatch
+and menu hints, and keeps application text input separate. This does not certify
+layout switching, arbitrary compositor modes, raw keycode configuration or keys
+that a remote client never transmitted.

@@ -190,6 +190,9 @@ fn run(options: &Options) -> Result<()> {
         )?;
         evidence.push(json!({"case":name,"response":response}));
     }
+    let security=invoke(helper,&request("set",json!("Super+Ctrl+F12"),invoke(helper,&json!({"action":"status"}),&values)?["generation"].clone()),&values)?;
+    require(security["exitSuccess"]==false && !root.join("calls.jsonl").exists(),"Security reservation was silently overridden")?;
+    evidence.push(json!({"case":"security reservation","response":security}));
     for (action, chord, index) in [
         ("set", json!("Mod4+Control+x"), 1),
         ("disable", Value::Null, 2),
@@ -281,6 +284,7 @@ fn run(options: &Options) -> Result<()> {
     )?;
     evidence.push(json!({"case":"malformed map","response":malformed}));
     publish(&initial["bundle"], &config)?;
+    store(root.join("process-result.json"),&json!({"passed":true,"cases":evidence,"groups":evidence.len(),"scope":"Real edit helper, actual validator and immutable module configurations; disposable deployment provider"}))?;
     fs::write(root.join("mode"), "publish")?;
     let assets = root.join("assets");
     copy_tree(Path::new("/source/res/lumen-desktop"), &assets)?;

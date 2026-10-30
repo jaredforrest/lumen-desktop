@@ -248,7 +248,7 @@
         shortcut-registry = import ./tests/project/shortcuts.nix { inherit nixpkgs system; };
         shortcut-hints = let
           defaults = import ./tests/project/shortcuts.nix { inherit nixpkgs system; bundle = true; };
-          rebound = import ./tests/project/shortcuts.nix { inherit nixpkgs system; bundle = true; rebind = { from = "Mod4+Control+f"; to = "Mod4+Control+x"; }; };
+          rebound = import ./tests/project/shortcuts.nix { inherit nixpkgs system; bundle = true; editable = true; settingsValues.shortcuts.rebindings."window.fullscreen.toggle" = "Mod4+Control+x"; };
           removed = import ./tests/project/shortcuts.nix { inherit nixpkgs system; extraBindings."Mod4+Control+f" = null; };
           replaced = import ./tests/project/shortcuts.nix { inherit nixpkgs system; extraBindings."Mod4+Control+f" = "exec printf consumer"; };
         in builtins.derivation {
