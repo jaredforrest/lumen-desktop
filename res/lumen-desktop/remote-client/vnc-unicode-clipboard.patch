@@ -111,7 +111,7 @@
 +	RemminaProtocolWidget *gp = g_weak_ref_get(&closure->connection);
 +	if (gp) {
 +		RemminaPluginVncData *gpdata = GET_PLUGIN_DATA(gp);
-+		if (!gtk_widget_in_destruction(GTK_WIDGET(gp)) &&
++		if (!gtk_widget_in_destruction(GTK_WIDGET(gp)) && gpdata->clipboard_generation_active &&
 +		    g_atomic_int_get(&gpdata->clipboard_generation) == closure->generation) {
 +			remmina_plugin_vnc_invalidate_clipboard(gp);
 +			remmina_plugin_service->protocol_plugin_signal_connection_closed(gp);
