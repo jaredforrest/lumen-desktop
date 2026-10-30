@@ -65,7 +65,7 @@ impl Options {
         let mut args = env::args_os().skip(1);
         while let Some(arg) = args.next() {
             match arg.to_str() {
-                Some("lifecycle" | "session" | "recovery") => {
+                Some("lifecycle" | "session" | "recovery" | "mru") => {
                     scenario = Some(arg.to_string_lossy().into_owned())
                 }
                 Some("--output") => {
@@ -300,7 +300,7 @@ impl Fixture {
             vars.get("LUMEN_DESKTOP_ASSETS")
                 .ok_or("Packaged assets missing")?,
         );
-        let qml = if options.scenario == "lifecycle" || options.scenario == "recovery" {
+        let qml = if options.scenario != "session" {
             options.output.join("assets/shell")
         } else {
             options.output.join("fixture.qml")
@@ -313,7 +313,7 @@ impl Fixture {
             qml,
             processes: Vec::new(),
         };
-        if fixture.options.scenario == "lifecycle" || fixture.options.scenario == "recovery" {
+        if fixture.options.scenario != "session" {
             fixture.prepare_lifecycle()?;
         } else {
             fixture.prepare_session()?;
@@ -393,7 +393,7 @@ impl Fixture {
     }
     fn setup_compositor(&mut self) -> Result<()> {
         let config = self.options.output.join("sway.conf");
-        let size = if self.options.scenario == "lifecycle" || self.options.scenario == "recovery" {
+        let size = if self.options.scenario != "session" {
             "1440x1000"
         } else {
             "1280x800"
@@ -443,7 +443,16 @@ impl Fixture {
             .and_then(|_| source.rfind('}'))
             .ok_or("Shell root missing brace")?;
         let mut transformed = source;
-        transformed.insert_str(split, if self.options.scenario == "recovery" { include_str!("../recovery.qml.inc") } else { include_str!("../lifecycle.qml.inc") });
+        transformed.insert_str(
+            split,
+            if self.options.scenario == "recovery" {
+                include_str!("../recovery.qml.inc")
+            } else if self.options.scenario == "mru" {
+                include_str!("../mru.qml.inc")
+            } else {
+                include_str!("../lifecycle.qml.inc")
+            },
+        );
         fs::write(qml, transformed)?;
         let palette = read(&copied.join("appearance/palette.json"))?;
         let appearance = self.options.output.join("appearance.json");
@@ -455,7 +464,15 @@ impl Fixture {
             "LUMEN_APPEARANCE_STATE".into(),
             appearance.display().to_string(),
         );
-        self.vars.insert("GLOBAL_MENU_ENABLED".into(), if self.options.scenario == "recovery" { "1" } else { "0" }.into());
+        self.vars.insert(
+            "GLOBAL_MENU_ENABLED".into(),
+            if self.options.scenario == "recovery" {
+                "1"
+            } else {
+                "0"
+            }
+            .into(),
+        );
         self.vars.insert("LUMEN_FILE_SERVICE".into(), "0".into());
         let helper = self.options.output.join("helpers");
         fs::create_dir(&helper)?;
@@ -479,6 +496,18 @@ impl Fixture {
                 gapplication.display()
             ),
         )?;
+        if self.options.scenario == "mru" {
+            for suffix in ["A", "B", "C"] {
+                let id = format!("org.example.Mru{suffix}");
+                fs::write(
+                    applications.join(format!("{id}.desktop")),
+                    format!(
+                        "[Desktop Entry]\nType=Application\nName=MRU Fixture {suffix}\nExec={} launch {id}\nIcon=application-x-executable\nStartupWMClass={id}\n",
+                        gapplication.display()
+                    ),
+                )?;
+            }
+        }
         Ok(())
     }
     fn prepare_session(&mut self) -> Result<()> {

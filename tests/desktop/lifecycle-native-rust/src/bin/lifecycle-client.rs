@@ -31,8 +31,12 @@ impl State {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let root = PathBuf::from(env::args().nth(1).ok_or("Missing fixture directory")?);
-    glib::set_prgname(Some(APP_ID));
-    let app = gtk::Application::new(Some(APP_ID), gio::ApplicationFlags::FLAGS_NONE);
+    let identity = env::args().nth(2).unwrap_or_else(|| APP_ID.into());
+    if !gio::Application::id_is_valid(&identity) {
+        return Err("Invalid fixture application ID".into());
+    }
+    glib::set_prgname(Some(&identity));
+    let app = gtk::Application::new(Some(&identity), gio::ApplicationFlags::FLAGS_NONE);
     let state = Rc::new(RefCell::new(State {
         root,
         windows: Vec::new(),
