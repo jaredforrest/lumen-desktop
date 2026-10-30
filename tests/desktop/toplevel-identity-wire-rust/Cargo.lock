@@ -64,6 +64,7 @@ version = "0.1.0"
 dependencies = [
  "libc",
  "serde_json",
+ "wayland-backend",
  "wayland-client",
  "wayland-protocols-wlr",
  "wayland-scanner",

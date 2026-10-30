@@ -4,20 +4,18 @@ use std::{
     env,
     error::Error,
     fs,
-    os::fd::AsRawFd,
+    os::fd::{AsFd, AsRawFd},
     path::PathBuf,
     time::{Duration, Instant},
 };
-use wayland_client::{Connection, Dispatch, Proxy, QueueHandle, WEnum, protocol::wl_registry};
+use wayland_client::{Connection, Dispatch, QueueHandle, WEnum, protocol::wl_registry};
 use wayland_protocols_wlr::foreign_toplevel::v1::client::{
     zwlr_foreign_toplevel_handle_v1 as handle, zwlr_foreign_toplevel_manager_v1 as foreign,
 };
 mod identity {
     use wayland_client;
-    use wayland_client::protocol::*;
     use wayland_protocols_wlr::foreign_toplevel::v1::client::*;
     pub mod __interfaces {
-        use wayland_client::protocol::__interfaces::*;
         use wayland_protocols_wlr::foreign_toplevel::v1::client::__interfaces::*;
         wayland_scanner::generate_interfaces!("protocol.xml");
     }
@@ -166,28 +164,25 @@ impl Dispatch<reply::LumenToplevelIdentityReplyV1, Request> for State {
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if let reply::Event::Result { status, identifier } = event {
-            if request.inert {
-                state.inert_result = Some(
-                    matches!(status, WEnum::Value(reply::Status::Unavailable))
-                        && identifier.is_empty(),
-                );
-            } else if matches!(status, WEnum::Value(reply::Status::Available))
-                && !identifier.is_empty()
+        let reply::Event::Result { status, identifier } = event;
+        if request.inert {
+            state.inert_result = Some(
+                matches!(status, WEnum::Value(reply::Status::Unavailable)) && identifier.is_empty(),
+            );
+        } else if matches!(status, WEnum::Value(reply::Status::Available)) && !identifier.is_empty()
+        {
+            if let Some(row) = state
+                .rows
+                .iter_mut()
+                .find(|row| row.handle == request.handle)
             {
-                if let Some(row) = state
-                    .rows
-                    .iter_mut()
-                    .find(|row| row.handle == request.handle)
-                {
-                    row.identifier = Some(identifier.clone());
-                }
-                if identifier == state.target {
-                    state.ready = true;
-                }
-            } else {
-                state.error = Some("Live resource did not resolve to a valid identifier".into());
+                row.identifier = Some(identifier.clone());
             }
+            if identifier == state.target {
+                state.ready = true;
+            }
+        } else {
+            state.error = Some("Live resource did not resolve to a valid identifier".into());
         }
     }
 }
