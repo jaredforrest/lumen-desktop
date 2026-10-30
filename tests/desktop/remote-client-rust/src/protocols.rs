@@ -648,11 +648,24 @@ fn legacy_clipboard(f: &mut Harness) -> Result<()> {
         "legacy-unsupported-local.log",
     )?;
     focus_app(f, "org.lumen.LocalTarget")?;
+    wait("unsupported local source ready", || {
+        Ok((f.target_named("org.lumen.LocalTarget")?["text"] == LOCAL_TEXT).then_some(()))
+    })?;
     chord(f, "a")?;
     pause(1500);
     chord(f, "c")?;
     let warning = wait("explicit unsupported legacy text warning", || {
-        Ok(f.semantics()?.into_iter().find(|row| {
+        save(
+            &f.out.join("legacy-unsupported-local-receipt.json"),
+            &f.target_named("org.lumen.LocalTarget")?,
+        )?;
+        save(&f.out.join("legacy-warning-tree.json"), &f.tree()?)?;
+        let semantics = f.semantics()?;
+        save(
+            &f.out.join("legacy-warning-semantics.json"),
+            &json!(semantics),
+        )?;
+        Ok(semantics.into_iter().find(|row| {
             row["name"]
                 .as_str()
                 .unwrap_or("")
@@ -664,6 +677,7 @@ fn legacy_clipboard(f: &mut Harness) -> Result<()> {
             .into_iter()
             .find(|node| node["name"] == "Clipboard transfer"))
     })?;
+    save(&f.out.join("legacy-warning-tree.json"), &f.tree()?)?;
     ensure(
         dialog["pid"] == viewer["pid"]
             && dialog["lumen_relationships"]["parent"] == viewer["id"]
