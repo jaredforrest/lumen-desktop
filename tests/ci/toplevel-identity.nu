@@ -1,6 +1,7 @@
 # Actual optional identity bridge acceptance in disposable boundaries.
 def main [launcher: string, basic: string, effects: string] {
     let root = $env.PWD
+    let pinned_launcher = ($launcher | path expand)
     ^nix build .#test-toplevel-identity-wire --out-link artifacts/toplevel-identity-wire --option abort-on-warn true
     ^nix build .#test-toplevel-identity-environment --out-link artifacts/toplevel-identity-environment --option abort-on-warn true
     ^nix build .#test-toplevel-identity-legacy-compositor --out-link artifacts/toplevel-identity-legacy-compositor --option abort-on-warn true
@@ -19,17 +20,17 @@ def main [launcher: string, basic: string, effects: string] {
         'GALLIUM_DRIVER=llvmpipe'
     ]
     for case in [
-        {name: basic, provider: $basic, scenario: identity, flags: []}
-        {name: effects, provider: $effects, scenario: identity, flags: [--effects]}
+        {name: basic, provider: ($basic | path expand), scenario: identity, flags: []}
+        {name: effects, provider: ($effects | path expand), scenario: identity, flags: [--effects]}
         {name: absent, provider: $legacy, scenario: identity-absent, flags: []}
     ] {
         let output = ($root | path join artifacts $'native-identity-($case.name)')
         mkdir $output
-        ^nu tests/ci/run-native.nu $'toplevel_identity_($case.name)' -- $boundary run --source $root --output $output --software-graphics -- $environment ...$assignments $fixture $case.scenario --launcher $launcher --sway $case.provider ...$case.flags --output /artifacts/result
+        ^nu tests/ci/run-native.nu $'toplevel_identity_($case.name)' -- $boundary run --source $root --output $output --software-graphics -- $environment ...$assignments $fixture $case.scenario --launcher $pinned_launcher --sway $case.provider ...$case.flags --output /artifacts/result
         let result = (open ($output | path join result result.json))
         {
             sourceRevision: (^git rev-parse HEAD | str trim)
-            launcher: $launcher
+            launcher: $pinned_launcher
             provider: $case.provider
             providerSha256: (open --raw $case.provider | hash sha256)
             quickshell: $result.quickshell
