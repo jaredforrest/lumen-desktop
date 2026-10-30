@@ -214,6 +214,7 @@ let
         });
         default = {};
       };
+      shortcuts = mkOption { type = import ./shortcut-preferences-type.nix { inherit lib; }; default = {}; };
       notifications = mkOption {
         type = types.submodule { options = {
           preview = mkOption { type = types.enum [ "always" "when_unlocked" "never" ]; default = "when_unlocked"; };

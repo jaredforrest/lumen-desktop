@@ -11,7 +11,7 @@ use std::process::{Command, Output};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 type SettingsResult<T> = Result<T, String>;
-const SECTIONS: [&str; 15] = [
+const SECTIONS: [&str; 16] = [
     "applicationPreferences",
     "appearance",
     "displays",
@@ -27,6 +27,7 @@ const SECTIONS: [&str; 15] = [
     "wallpaper",
     "screenSaver",
     "spaces",
+    "shortcuts",
 ];
 
 fn required_env(name: &str) -> SettingsResult<String> {

@@ -17,6 +17,8 @@ in {
     displayName = lib.mkOption { type = lib.types.str; default = cfg.user; description = "Name shown by the greeter and lock screen."; };
     settingsPackage = lib.mkOption { type = lib.types.package; description = "Host settings command implementing the settings JSON contract."; };
     shortcuts = {
+      editable = lib.mkOption { type = lib.types.bool; default = false; description = "Enable the owned shortcut editor only when the consumer wires its authoritative settings.shortcuts.rebindings into this module's rebindings option and its settings adapter rebuilds this configuration."; };
+      rebindings = lib.mkOption { type = ((import ../packages/shortcut-preferences-type.nix { inherit lib; }).getSubOptions []).rebindings.type; default = {}; description = "Authoritative owned shortcut overrides, keyed by stable default registry identity. Null disables; omission restores."; };
       readerBindings = lib.mkOption {
         default = {};
         type = lib.types.attrsOf (lib.types.enum [ "where-am-i" "read-all" "stop" ]);
@@ -166,9 +168,10 @@ in {
       "XF86AudioNext" = "exec ${mediaKey}/bin/lumen-media-key next";
       "XF86AudioPrev" = "exec ${mediaKey}/bin/lumen-media-key previous";
     } // builtins.listToAttrs (map (n: { name = "Mod4+Mod1+F${toString n}"; value = "exec ${menuCommand}/bin/lumen-menu-command slot ${toString n}"; }) (lib.range 1 12));
-    desktopKeybindings = baseDesktopKeybindings // readerBindings;
     shortcutValidator = pkgs.callPackage ../packages/shortcuts.nix { };
     shortcutDefaults = (builtins.fromJSON (builtins.readFile ../res/lumen-desktop/runtime/shortcut-defaults.json)).bindings;
+    rebound = import ../packages/shortcut-rebindings.nix { inherit lib; base = baseDesktopKeybindings; defaults = shortcutDefaults; rebindings = cfg.shortcuts.rebindings; };
+    desktopKeybindings = rebound.bindings // readerBindings;
     effectiveShortcutBindings = lib.mapAttrsToList (key: command:
       let known = lib.findFirst (item: builtins.hasAttr item.chord baseDesktopKeybindings && command == baseDesktopKeybindings.${item.chord}) null shortcutDefaults;
           readerKey = lib.findFirst (name: command == readerBindings.${name}) null (builtins.attrNames readerBindings);
@@ -183,11 +186,21 @@ in {
       bindings = effectiveShortcutBindings ++ map (item: item // { scope = "application"; owner = "application-adapter"; }) cfg.shortcuts.applicationBindings
         ++ map (item: item // { scope = "global"; owner = "reserved"; }) cfg.shortcuts.reservedBindings;
     });
+    shortcutRequests = pkgs.writeText "lumen-shortcut-requests.json" (builtins.toJSON { version = 1; bindings = rebound.requested; });
+    shortcutEditor = pkgs.writeText "lumen-shortcut-editor.json" (builtins.toJSON {
+      version = 1; editable = cfg.shortcuts.editable;
+      bindings = map (row: {
+        inherit (row) id action defaultChord enabled;
+        chord = row.chord;
+        editable = cfg.shortcuts.editable && (if row.enabled then (config.wayland.windowManager.sway.config.keybindings.${row.chord} or null) == row.command
+          else (config.wayland.windowManager.sway.config.keybindings.${row.defaultChord} or null) == null);
+      }) rebound.rows;
+    });
     shortcutRegistry = builtins.derivation {
       name = "lumen-effective-shortcuts.json";
       system = pkgs.stdenv.hostPlatform.system;
       builder = "${pkgs.nushell}/bin/nu";
-      args = [ "${../packages/effective-shortcuts.nu}" "${shortcutValidator}/bin/lumen-shortcuts" "${../res/lumen-desktop/runtime/shortcut-defaults.json}" "${shortcutRegistryInput}" ];
+      args = [ "${../packages/effective-shortcuts.nu}" "${shortcutValidator}/bin/lumen-shortcuts" "${../res/lumen-desktop/runtime/shortcut-defaults.json}" "${shortcutRegistryInput}" "${shortcutRequests}" ];
     };
   in {
     assertions = [{
@@ -283,6 +296,7 @@ in {
       "Mod4+n" = lib.mkForce desktopKeybindings."Mod4+n";
     });
     xdg.configFile."lumen-desktop/shortcuts.json".source = shortcutRegistry;
+    xdg.configFile."lumen-desktop/shortcut-editor.json".source = shortcutEditor;
 
     # Use HM's Qt plugin discovery, but let the patched adapter choose its style
     # dynamically. HM's gnome preset requires a static QT_STYLE_OVERRIDE.

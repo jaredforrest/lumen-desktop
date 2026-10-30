@@ -1,5 +1,5 @@
 # Exercise the actual merged-binding export without starting a desktop session.
-{ nixpkgs, system, extraBindings ? {}, applicationBindings ? [], reservedBindings ? [], rebind ? null, bundle ? false }:
+{ nixpkgs, system, extraBindings ? {}, applicationBindings ? [], reservedBindings ? [], rebind ? null, bundle ? false, settingsValues ? {}, editable ? false }:
 let
   lib = nixpkgs.lib;
   evaluated = lib.nixosSystem {
@@ -11,7 +11,7 @@ let
         time.timeZone = "UTC";
         services.lumen-desktop = {
           enable = true; user = "test-user"; settingsPackage = pkgs.hello;
-          shortcuts = { inherit applicationBindings reservedBindings; };
+          shortcuts = { inherit applicationBindings reservedBindings editable; rebindings = (import ../../packages/desktop-settings-schema.nix { inherit lib; values = settingsValues; }).shortcuts.rebindings; };
         };
       };
     }) ];
@@ -31,4 +31,4 @@ let
     };
   };
   registry = home.xdg.configFile."lumen-desktop/shortcuts.json".source;
-in if !bundle then registry else pkgs.writeText "lumen-shortcut-fixture.json" (builtins.toJSON { inherit registry; dispatch = lib.filterAttrs (_: command: command != null) effective; })
+in if !bundle then registry else pkgs.writeText "lumen-shortcut-fixture.json" (builtins.toJSON { inherit registry; editor = home.xdg.configFile."lumen-desktop/shortcut-editor.json".source; dispatch = lib.filterAttrs (_: command: command != null) effective; })

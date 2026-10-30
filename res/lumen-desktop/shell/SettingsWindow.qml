@@ -369,9 +369,10 @@ FloatingWindow {
                     SettingsToggle {objectName:"settings-increase-contrast";width:parent.width;text:"Increase contrast";detail:"Stronger text and boundaries with opaque desktop materials";checked:!!root.service.preferences.increaseContrast;enabled:root.service.available && !root.service.busy;onClicked:root.service.setPreference("increaseContrast",checked)}
                     SettingsToggle {objectName:"settings-control-reduce-transparency";width:parent.width;text:"Reduce transparency";detail:"Use opaque desktop sidebars and popovers";checked:!!root.service.preferences.reduceTransparency;enabled:root.service.available && !root.service.busy;onClicked:root.service.setPreference("reduceTransparency",checked)}
                     SettingsToggle {objectName:"settings-reduce-motion";width:parent.width;text:"Reduce motion";detail:"Reduce desktop interface animations";checked:!!root.service.preferences.reduceMotion;enabled:root.service.available && !root.service.busy;onClicked:root.service.setPreference("reduceMotion",checked)}
+                    ShortcutEditorPane {width:parent.width;active:root.visible && root.page==="Accessibility"}
                     Column {
-                        objectName:"settings-configured-shortcuts";activeFocusOnTab:true;Accessible.role:Accessible.Grouping;Accessible.name:"Configured Shortcuts";width:parent.width;spacing:6
-                        PanelLabel {text:"Configured Shortcuts";font.weight:Font.DemiBold}
+                        objectName:"settings-effective-shortcuts";activeFocusOnTab:true;Accessible.role:Accessible.Grouping;Accessible.name:"Effective Shortcuts";width:parent.width;spacing:6
+                        PanelLabel {text:"Effective Shortcuts";font.weight:Font.DemiBold}
                         PanelLabel {width:parent.width;wrapMode:Text.Wrap;color:Theme.colors.muted;text:root.shell.shortcuts && root.shell.shortcuts.available?"Effective bindings supplied by system configuration. Rebuild the configuration to change them.":root.shell.shortcuts && root.shell.shortcuts.error?root.shell.shortcuts.error:"Configured shortcut information is unavailable."}
                         Repeater {
                             model:root.shell.shortcuts && root.shell.shortcuts.available?root.shell.shortcuts.bindings.filter(row=>row.enabled):[]

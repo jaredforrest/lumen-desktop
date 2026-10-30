@@ -169,3 +169,5 @@ TooltipState 1.0 TooltipState.qml
 TooltipSurface 1.0 TooltipSurface.qml
 OwnedToolTip 1.0 OwnedToolTip.qml
 singleton TooltipCoordinator 1.0 TooltipCoordinator.qml
+ShortcutEditorState 1.0 ShortcutEditorState.qml
+ShortcutEditorPane 1.0 ShortcutEditorPane.qml

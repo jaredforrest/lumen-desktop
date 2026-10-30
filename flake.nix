@@ -26,6 +26,8 @@
         settingsSchema = import ./packages/desktop-settings-schema.nix;
       };
       packages.${system} = {
+        shortcut-settings = pkgs.callPackage ./packages/shortcut-settings.nix { };
+        test-shortcut-editor-data = import ./tests/project/shortcut-editor.nix { inherit pkgs nixpkgs system; };
         default = session.shellLauncher;
         shell = session.shellLauncher;
         desktop-state = session.desktopState;
