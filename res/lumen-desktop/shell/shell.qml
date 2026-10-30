@@ -139,7 +139,7 @@ ShellRoot {
     }
     function filesAction(action){const target=filesWindow;claimPopup("");filesActionTimer.targetWindow=target;filesActionTimer.action=action;filesActionTimer.epoch=focusEpoch;filesActionTimer.restart();}
     Timer {id:filesActionTimer;property var targetWindow:null;property string action;property int epoch;interval:100;onTriggered:if(epoch===root.focusEpoch && targetWindow && targetWindow.visible)targetWindow.dispatch(action)}
-    ApplicationLifecycleState {id:applicationLifecycle;onResultReady:result=>{root.applicationCommandError=result.error || "";}onNativeFocusResult:result=>root.nativeFocusResult(result)}
+    ApplicationLifecycleState {id:applicationLifecycle;onResultReady:result=>{root.applicationCommandError=result.error || "";}onNativeFocusResult:result=>{if(result.error)root.reportApplicationError(result.error);root.nativeFocusResult(result);}}
     signal nativeFocusResult(var result)
     readonly property var nativeWindowCaptures:applicationLifecycle.nativeWindows
     readonly property var nativeFocusedCapture:applicationLifecycle.nativeFocused
