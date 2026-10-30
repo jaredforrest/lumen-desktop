@@ -1,0 +1,9 @@
+artifacts/provider-save-namespace
+artifacts/provider-save-integrity
+artifacts/document-capabilities
+artifacts/word-durable-history
+artifacts/word-history-*
+artifacts/provider-history-*
+artifacts/provider-copy-*
+artifacts/provider-software-effects-kernel
+artifacts/native-command-logs

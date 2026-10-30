@@ -3,6 +3,9 @@
 The integration upload uses `tests/ci/backend-artifact-paths.txt` as its single
 include policy. The source contract checks that declared fixture outputs remain
 covered, and the staging package validates the actual policy during its build.
+The vault and document-provider jobs use the same staging executable with
+`tests/ci/vault-artifact-paths.txt` and `tests/ci/provider-artifact-paths.txt`.
+Each job retains its own command logs and selected evidence before upload.
 
 `lumen-stage-artifacts` copies selected regular files into a new upload tree,
 preserving repository-relative paths, file bytes and permissions. It leaves the

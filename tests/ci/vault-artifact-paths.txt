@@ -1,0 +1,4 @@
+artifacts/vault-compatibility
+artifacts/vault-transport
+artifacts/vault-namespace
+artifacts/native-command-logs

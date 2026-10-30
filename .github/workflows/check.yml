@@ -89,14 +89,13 @@ jobs:
       - if: always()
         run: nix develop --command nu tests/ci/run-native.nu vault_namespace_cleanup -- lumen-native-namespace-policy cleanup --output artifacts/vault-namespace
       - if: always()
+        run: nix develop --command lumen-stage-artifacts . tests/ci/vault-artifact-paths.txt artifacts-upload/vault-compatibility
+      - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: vault-compatibility
-          path: |
-            artifacts/vault-compatibility
-            artifacts/vault-transport
-            artifacts/vault-namespace
-            artifacts/native-command-logs/vault*
+          if-no-files-found: error
+          path: artifacts-upload/vault-compatibility
 
   provider-save-integrity:
     runs-on: ubuntu-24.04
@@ -148,17 +147,10 @@ jobs:
       - if: always()
         run: nix develop --command nu tests/ci/run-native.nu provider_save_namespace_cleanup -- lumen-native-namespace-policy cleanup --output artifacts/provider-save-namespace
       - if: always()
+        run: nix develop --command lumen-stage-artifacts . tests/ci/provider-artifact-paths.txt artifacts-upload/provider-save-integrity
+      - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: provider-save-integrity
-          path: |
-            artifacts/provider-save-namespace
-            artifacts/provider-save-integrity
-            artifacts/document-capabilities
-            artifacts/word-durable-history
-            artifacts/word-history-*
-            artifacts/provider-history-*
-            artifacts/native-command-logs/word*
-            artifacts/provider-copy-*
-            artifacts/provider-software-effects-kernel
-            artifacts/native-command-logs/provider*
+          if-no-files-found: error
+          path: artifacts-upload/provider-save-integrity
