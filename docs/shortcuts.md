@@ -108,8 +108,16 @@ in {
 The existing consumer `settingsPackage` must update that exact source and rebuild
 and activate the configuration containing this module. The standalone settings
 bundle alone cannot change compositor bindings. An unwired editor cannot report
-success: the helper waits for the requested action and chord in the published
-effective map, then restores its previous settings if the map does not confirm.
+success: the helper requires a coherent immutable catalog/registry pair and a
+matching load witness from the connected compositor. Exporting files alone does
+not confirm activation. The witness checks the live configuration's validity and
+generation marker, socket ownership and inode, peer process start time and boot
+identity. Its private session record is informational, not an authentication
+boundary against another process running as the same user. Older compositors
+without the read-validity capability remain read-only until a new session starts
+with the updated package. An invalid reload cannot confirm a new generation;
+the helper does not claim that the compositor atomically rolls back invalid
+configuration files.
 
 The settings shape is `shortcuts.rebindings`, indexed by stable identities from
 the owned catalog. A chord changes an ordinary owned press binding; `null`
@@ -122,12 +130,18 @@ application declarations, before publication.
 
 Apply, Disable and Restore use an exact captured map generation. The settings
 transaction compares the previous section under its existing lock, so a stale
-editor cannot replace newer settings. Build/deployment failures retain the prior
-effective map. Failure to confirm an effective update triggers compare-and-set
+editor cannot replace newer settings. Failure to confirm an effective update triggers compare-and-set
 rollback only while the helper still owns that section and map; concurrent
 changes or failed rollback are reported as uncertain rather than overwritten.
 The previous map remains active while the configuration builds. Reopening the
 session rebuilds the same bindings from the durable Nix source.
+
+Provider reads have a 20-second budget; deployment commands have a 4000-second
+budget to allow builds. Standard output is limited to 512 KiB and diagnostic
+output to 64 KiB. Timeout, interruption or excess output terminates and reaps
+the owned process group and stores private diagnostics. A failed or malformed
+mutation response can mean partial activation: it is reported as unconfirmed,
+without blindly launching rollback while the deployment outcome is unknown.
 
 The isolated acceptance uses actual immutable module outputs, the real validator
 and edit helper, synthetic Qt typing/pointer input, and disposable deployment

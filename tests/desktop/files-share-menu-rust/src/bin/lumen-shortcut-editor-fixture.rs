@@ -98,6 +98,10 @@ fn provider() -> Result<()> {
     let manifest = load(env::var("SHORTCUT_FIXTURE_MANIFEST")?)?;
     let args = env::args().skip(1).collect::<Vec<_>>();
     if args == ["read"] {
+        if fs::read_to_string(root.join("mode"))? == "flood-read" {
+            println!("{}", "x".repeat(600 * 1024));
+            return Ok(());
+        }
         println!("{}", load(root.join("settings.json"))?);
         return Ok(());
     }
@@ -131,7 +135,7 @@ fn provider() -> Result<()> {
     }
     let saved = json!({"shortcuts":value});
     store(root.join("settings.json"), &saved)?;
-    if mode == "publish" {
+    if mode == "publish" || mode == "malformed-mutation" {
         let state = manifest["states"]
             .as_array()
             .ok_or("States")?
@@ -140,6 +144,14 @@ fn provider() -> Result<()> {
             .ok_or("No actual module generation for request")?;
         publish(&state["bundle"], &root.join("config/lumen-desktop"))?;
         activate(&state["bundle"], &root, &manifest, &env::vars().collect())?;
+    }
+    if mode == "flood-mutation" {
+        println!("{}", "x".repeat(600 * 1024));
+        return Ok(());
+    }
+    if mode == "malformed-mutation" {
+        println!("partial deployment response");
+        return Ok(());
     }
     println!("{saved}");
     Ok(())
@@ -360,6 +372,52 @@ fn run(options: &Options) -> Result<()> {
         evidence.push(json!({"case":mode,"response":response,"calls":calls}));
         store(root.join("settings.json"), &initial["settings"])?;
     }
+    for mode in ["flood-read", "flood-mutation", "malformed-mutation"] {
+        fs::write(root.join("mode"), mode)?;
+        let _ = fs::remove_file(root.join("calls.jsonl"));
+        let current = invoke(helper, &json!({"action":"status"}), &values)?;
+        let response = invoke(
+            helper,
+            &request(
+                "set",
+                json!("Mod4+Control+x"),
+                current["generation"].clone(),
+            ),
+            &values,
+        )?;
+        require(
+            response["exitSuccess"] == false && response["message"].is_null(),
+            "Uncertain transport claimed successful application",
+        )?;
+        let calls = fs::read_to_string(root.join("calls.jsonl")).unwrap_or_default();
+        require(
+            calls.lines().count() == usize::from(mode != "flood-read"),
+            "Uncertain mutation triggered blind rollback",
+        )?;
+        require(
+            load(root.join("settings.json"))?
+                == if mode == "flood-read" {
+                    initial["settings"].clone()
+                } else {
+                    manifest["states"][1]["settings"].clone()
+                },
+            "Uncertain transport lost authoritative outcome",
+        )?;
+        let expected_bundle = if mode == "malformed-mutation" {
+            &new_bundle
+        } else {
+            &default_bundle
+        };
+        require(
+            fs::read(config.join("shortcuts.json"))?
+                == fs::read(expected_bundle["registry"].as_str().unwrap())?,
+            "Uncertain transport overwrote published generation",
+        )?;
+        evidence.push(json!({"case":mode,"response":response,"calls":calls}));
+        store(root.join("settings.json"), &initial["settings"])?;
+        publish(&initial["bundle"], &config)?;
+        activate(&initial["bundle"], root, &manifest, &values)?;
+    }
     fs::write(config.join("shortcuts.json"), "{broken")?;
     let malformed = invoke(helper, &json!({"action":"status"}), &values)?;
     require(
@@ -429,6 +487,24 @@ fn run(options: &Options) -> Result<()> {
     )?;
     evidence.push(json!({"case":"unsafe witness permissions","response":response}));
     fs::set_permissions(&record, fs::Permissions::from_mode(0o600))?;
+    for linked in [false, true] {
+        let backup = record.with_extension("original");
+        fs::rename(&record, &backup)?;
+        if linked {
+            std::os::unix::fs::symlink(&backup, &record)?;
+        } else {
+            fs::hard_link(&backup, &record)?;
+        }
+        let response = invoke(helper, &json!({"action":"status"}), &values)?;
+        require(
+            response["runtimeConfirmed"] == false && response["editable"] == false,
+            "Linked runtime record accepted",
+        )?;
+        evidence.push(json!({"case":if linked {"symlink witness"} else {"multiply linked witness"},"response":response}));
+        fs::remove_file(&record)?;
+        fs::rename(&backup, &record)?;
+        activate(&initial["bundle"], root, &manifest, &values)?;
+    }
     store(
         root.join("process-result.json"),
         &json!({"passed":true,"cases":evidence,"groups":evidence.len(),"scope":"Real edit helper, actual validator and immutable module configurations; disposable deployment provider"}),
