@@ -15,7 +15,7 @@ use tokio::sync::Mutex;
 use zbus::{Connection, interface, message::Header, zvariant::{OwnedValue, Structure, Value as DbusValue}};
 
 struct ServiceState { core:Core, lock:LockAuthority, signaled_lock:Value, instance:String, revision:u64,
-    preview:String, host_locked:bool, preferences_checked:f64, focus_published:Value }
+    preview:String, host_locked:bool, preferences_checked:f64, preferences_dirty:bool, focus_published:Value }
 impl ServiceState {
     fn new(core:Core, settings:&Value) -> Result<Self> {
         let instance=std::fs::read_to_string("/proc/sys/kernel/random/uuid").map_err(|e|e.to_string())?
@@ -25,7 +25,7 @@ impl ServiceState {
         let lock=LockAuthority::new();
         let signaled_lock=lock.facts().clone();
         Ok(Self {core,lock,signaled_lock,instance,revision:0,preview,
-            host_locked:env::var("LUMEN_LOCK_PREVIEWS").as_deref()==Ok("1"),preferences_checked:0.0,
+            host_locked:env::var("LUMEN_LOCK_PREVIEWS").as_deref()==Ok("1"),preferences_checked:0.0,preferences_dirty:false,
             focus_published})
     }
     fn refresh_preferences(&mut self) -> bool {
@@ -48,6 +48,9 @@ impl ServiceState {
             }
             Err(_) => {if self.preview!="never" {self.preview="never".into();changed=true;}}
         }
+        // Snapshot readers must not consume a change that existing watchers
+        // still need. Retain publication work until the emitting tick owns it.
+        self.preferences_dirty|=changed;
         changed
     }
     fn snapshot(&mut self) -> Value {
@@ -90,6 +93,7 @@ impl ServiceState {
             self.preferences_checked=monotonic();
             changed|=self.refresh_preferences();
         }
+        changed|=std::mem::take(&mut self.preferences_dirty);
         if changed {effects.changed=true;}
         Ok(effects)
     }
@@ -425,6 +429,34 @@ async fn main() {
 }
 #[cfg(test)] mod tests {
     use super::*;
+    #[test] fn snapshot_read_cannot_consume_pending_privacy_publication() {
+        let root=env::temp_dir().join(format!("lumen-notification-publication-{}",std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        let timeout=env::split_paths(&env::var_os("PATH").unwrap()).map(|p|p.join("timeout")).find(|p|p.is_file()).unwrap();
+        let output=Command::new(timeout).arg("5s").arg(env::current_exe().unwrap())
+            .args(["--exact","tests::snapshot_publication_child","--ignored","--nocapture"])
+            .env_clear().env("LUMEN_NOTIFICATION_PUBLICATION_TEST_ROOT",&root)
+            .env("LUMEN_NIX_SETTINGS_BIN",root.join("intentionally-unavailable-settings"))
+            .output().unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+        assert!(output.status.success(),"{} stdout={} stderr={}",output.status,String::from_utf8_lossy(&output.stdout),String::from_utf8_lossy(&output.stderr));
+    }
+    #[test] #[ignore] fn snapshot_publication_child() {
+        // Run in a separate environment with no compositor, account or settings
+        // provider. Provider loss deterministically switches always to never
+        // inside the actual Snapshot read, before the next periodic tick.
+        let root=PathBuf::from(env::var_os("LUMEN_NOTIFICATION_PUBLICATION_TEST_ROOT").unwrap());
+        let core=Core::new(root.join("state"),BTreeMap::new(),false).unwrap();
+        let mut state=ServiceState::new(core,&json!({"notifications":{"preview":"always","policies":{}}})).unwrap();
+        state.preferences_checked=monotonic();
+        assert!(!state.tick().unwrap().changed);
+        let snapshot=state.snapshot();
+        assert_eq!(snapshot["preview"],"never");
+        assert_eq!(snapshot["previewsVisible"],false);
+        assert!(state.tick().unwrap().changed,"Snapshot consumed privacy update without publishing it to existing watchers");
+        state.snapshot();
+        assert!(!state.tick().unwrap().changed,"unchanged preferences must not publish indefinitely");
+    }
     #[test] fn transport_rejects_replay_and_owner_change() {
         let mut owner=None;let mut revision=0;
         let frame=|instance:&str,revision:u64|json!({"instance":instance,"revision":revision}).to_string();
