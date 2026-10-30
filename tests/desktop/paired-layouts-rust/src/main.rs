@@ -1,5 +1,6 @@
 //! Native paired full-output identity, divider, and restore lifecycle acceptance.
 mod documented_negatives;
+mod scratchpad_preflight;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::env;
@@ -56,6 +57,7 @@ struct Options {
     private: Option<PathBuf>,
     effects: bool,
     divider_only: bool,
+    scratchpad_only: bool,
 }
 fn options() -> Result<Options> {
     let mut sway = None;
@@ -67,6 +69,7 @@ fn options() -> Result<Options> {
     let mut private = None;
     let mut effects = false;
     let mut divider_only = false;
+    let mut scratchpad_only = false;
     let mut args = env::args_os().skip(1);
     while let Some(arg) = args.next() {
         match arg.to_str() {
@@ -93,6 +96,7 @@ fn options() -> Result<Options> {
             }
             Some("--effects") => effects = true,
             Some("--divider-only") => divider_only = true,
+            Some("--scratchpad-only") => scratchpad_only = true,
             _ => return Err(fail("Unknown paired-layouts fixture option")),
         }
     }
@@ -106,6 +110,7 @@ fn options() -> Result<Options> {
         private,
         effects,
         divider_only,
+        scratchpad_only,
     })
 }
 fn program(name: &str, values: &BTreeMap<String, String>) -> Result<PathBuf> {
@@ -212,6 +217,7 @@ fn outer(options: &Options) -> Result<()> {
     if options.divider_only {
         command.arg("--divider-only");
     }
+    if options.scratchpad_only {command.arg("--scratchpad-only");}
     let status = command.status()?;
     require(
         status.success(),
@@ -670,6 +676,8 @@ fn run(options: &Options) -> Result<()> {
         original.insert(cid, fixture.box_rect(cid)?);
         original_ws.insert(cid, fixture.workspace(cid)?);
     }
+    scratchpad_preflight::run(&fixture,aa,bb,cc)?;
+    if options.scratchpad_only {return Ok(());}
     fixture.yes(&format!("lumen_pair create {aa} {bb}"))?;
     let parent = fixture.required_parent(aa)?;
     require(

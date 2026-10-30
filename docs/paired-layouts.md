@@ -85,3 +85,14 @@ Divider hit width, double-click interval and visual treatment are implementation
 choices pending reference measurement. These tests establish functional lifecycle
 and identity behavior, not exact reference appearance or timing. The compositor
 binary is selected at login; installing it does not replace a running session.
+
+Raw `move scratchpad` also refuses paired parents, members, survivors and owned
+pair families before workspace wrapping, fullscreen teardown or floating
+coercion. Moving a selected tiled leaf does not inspect unrelated ancestor
+siblings; existing floating-split promotion is resolved before scanning the
+subtree actually moved. An explicit workspace move scans that workspace's
+containers. This avoids continuing a scratchpad move with a paired parent that
+fullscreen teardown has destroyed. The native regression requires exact
+`CMD_INVALID`, unchanged complete native tree/focus/geometry and a responsive
+compositor for parent/member/survivor refusal. Ordinary unpaired raw
+scratchpad/show remains a positive identity and placement check on both providers.

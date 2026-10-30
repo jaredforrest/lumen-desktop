@@ -1,0 +1,31 @@
+--- a/sway/commands/move.c
++++ b/sway/commands/move.c
+@@ -918,10 +918,28 @@
+ 	return cmd_results_new(CMD_SUCCESS, NULL);
+ }
+ 
++static bool paired_scratchpad_source(struct sway_container *con, void *data) {
++ (void)data;
++ return con->lumen_pair || con->lumen_pair_restore || con->lumen_pair_dialog_owner;
++}
++
+ static struct cmd_results *cmd_move_to_scratchpad(void) {
+ 	struct sway_node *node = config->handler_context.node;
+ 	struct sway_container *con = config->handler_context.container;
+ 	struct sway_workspace *ws = config->handler_context.workspace;
++ /* Resolve the existing floating-split promotion without mutating it. Scan
++  * only the subtree actually moved, not unrelated siblings of tiled leaves. */
++ struct sway_container *source = con;
++ if (source && container_is_floating_or_child(source))
++  while (source->pending.parent) source = source->pending.parent;
++ bool paired = node->type == N_WORKSPACE ?
++  workspace_find_container(ws, paired_scratchpad_source, NULL) != NULL :
++  source && (paired_scratchpad_source(source, NULL) ||
++   container_find_child(source, paired_scratchpad_source, NULL) != NULL);
++ for (struct sway_container *parent = source; parent && !paired; parent = parent->pending.parent)
++  paired = paired_scratchpad_source(parent, NULL);
++ if (paired) return cmd_results_new(CMD_INVALID,
++  "Paired layout cannot move to scratchpad");
+ 	if (node->type == N_WORKSPACE && ws->tiling->length == 0) {
+ 		return cmd_results_new(CMD_INVALID,
+ 				"Can't move an empty workspace to the scratchpad");
