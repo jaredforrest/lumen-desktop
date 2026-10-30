@@ -1,5 +1,6 @@
 //! Native lifecycle and session end acceptance with disposable GTK clients.
 mod harness;
+mod identity;
 mod lifecycle;
 mod mru;
 mod recovery;
@@ -19,6 +20,7 @@ fn main() -> Result<()> {
         "recovery" => recovery::run(options),
         "mru" => mru::run(options),
         "window-mru" | "window-mru-baseline" => window_mru::run(options),
+        "identity" => identity::run(options),
         _ => Err("Unknown scenario".into()),
     }
 }

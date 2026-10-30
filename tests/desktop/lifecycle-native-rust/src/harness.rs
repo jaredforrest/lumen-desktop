@@ -71,6 +71,7 @@ impl Options {
                     | "recovery"
                     | "mru"
                     | "window-mru"
+                    | "identity"
                     | "window-mru-baseline",
                 ) => scenario = Some(arg.to_string_lossy().into_owned()),
                 Some("--output") => {
