@@ -14,13 +14,14 @@ ShellRoot {
  Window {
   id:view;visible:true;width:320;height:240;color:D.Theme.colors.background
   D.BatteryMenuButton {id:battery;x:12;y:12;power:({available:true,present:true,percentage:70,state:"discharging",secondsRemaining:3600})}
+  D.BrightnessControl {id:brightness;x:12;y:70;width:240}
   AbstractButton {id:button;x:260;y:200;width:48;height:30;hoverEnabled:true;activeFocusOnTab:true;Accessible.name:"Named control";Accessible.description:"Essential explanation stays available";background:Rectangle {color:D.Theme.colors.surface} contentItem:Text {text:"Help";color:D.Theme.colors.text}}
   D.OwnedToolTip {id:tip;target:button;text:"A deliberately long supplementary explanation that wraps at enlarged text size and remains inside the owning window near its lower right edge."}
   Popup {id:replacement;x:30;y:30;width:180;height:100;focus:true;modal:true;closePolicy:Popup.CloseOnEscape;contentItem:Text {text:"Replacement overlay"}}
   Component {id:disposable;AbstractButton {id:disposableButton;x:20;y:160;width:60;height:28;hoverEnabled:true;D.OwnedToolTip {Component.onDestruction:test.ownerTipDestroyed=true;objectName:"disposable-tip";target:disposableButton;text:"Disposable owner"}}}
   TestCase {id:input;name:"Tooltip synthetic window input";when:false}
   Timer {interval:150;running:true;repeat:false;onTriggered:{try{
-   input.mouseMove(view.contentItem,5,5);input.wait(80);test.check(!tip.visible,"No tip without a target route");
+   brightness.visible=false;input.mouseMove(view.contentItem,5,5);input.wait(80);test.check(!tip.visible,"No tip without a target route");
    input.mouseMove(button,20,10);input.wait(120);test.check(!tip.visible,"Hover must wait for bounded delay");
    input.wait(700);test.check(tip.opened,"Real hover opens supplementary help");
    const point=tip.contentItem.mapToItem(view.contentItem,0,0);test.check(point.x>=0 && point.y>=0 && point.x+tip.contentItem.width<=view.width && point.y+tip.contentItem.height<=view.height,"Edge placement bounded inside owner");
