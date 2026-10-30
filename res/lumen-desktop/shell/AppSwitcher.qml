@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Window
 import Quickshell
 import Quickshell.Wayland
 import "AppSwitcherModel.js" as SwitcherModel
@@ -33,6 +34,7 @@ PanelWindow {
     property int selected:-1
     property string phase:"closed"
     property int commits:0
+    readonly property bool keyboardReady:visible && keyboard.activeFocus && keyboard.Window.active
     property string pendingNativeRequest:""
     property var previewNativeFocus:null
     function identity(window) {
@@ -111,7 +113,7 @@ PanelWindow {
             else shell.focusWindow(live.includes(item.window)?item.window:live[0]);
         });
     }
-    function status(){return JSON.stringify({visible:visible,phase:phase,selected:selected,key:items[selected]?items[selected].key:"",items:items.map(i=>i.key),nativeCapture:items[selected]?items[selected].nativeCapture || null:null,commits:commits});}
+    function status(){return JSON.stringify({visible:visible,keyboardReady:keyboardReady,phase:phase,selected:selected,key:items[selected]?items[selected].key:"",items:items.map(i=>i.key),nativeCapture:items[selected]?items[selected].nativeCapture || null:null,commits:commits});}
     Connections {target:shell
         function onNativeFocusResult(result){if(root.pendingNativeRequest && result.requestId===root.pendingNativeRequest){root.pendingNativeRequest="";root.phase=result.requested?"committed":"cancelled";if(result.requested)++root.commits;}}
         function onDismissPopups(owner){if(owner!=="app-switcher" && root.visible){root.visible=false;root.phase="cancelled";}}
