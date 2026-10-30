@@ -34,6 +34,7 @@ pkgs.sway.override {
     '' + pkgs.lib.optionalString allDesktopProjection ''
       ${pkgs.patch}/bin/patch --batch --fuzz=0 -p1 < ${../res/lumen-desktop/sway-all-desktop-projection.patch}
       ${pkgs.patch}/bin/patch --batch --fuzz=0 -p1 < ${if effects then ../res/lumen-desktop/swayfx-all-desktop-projection-scene.patch else ../res/lumen-desktop/sway-all-desktop-projection-scene.patch}
+      ${pkgs.patch}/bin/patch --batch --fuzz=0 -p1 < ${../res/lumen-desktop/sway-projection-pointer-policy.patch}
     '' + pkgs.lib.optionalString (nativeFocusGuard && displaySpaces) ''
       ${pkgs.patch}/bin/patch --batch --fuzz=0 -p1 < ${../res/lumen-desktop/sway-space-transfer.patch}
       ${pkgs.stdenv.cc}/bin/cc -std=c11 -Wall -Wextra -Werror -pedantic -Iinclude -I${pkgs.json_c.dev}/include/json-c test/lumen_transfer_policy_test.c -L${pkgs.json_c}/lib -Wl,-rpath,${pkgs.json_c}/lib -ljson-c -o .lumen-transfer-boundary-test

@@ -31,6 +31,7 @@ fn main() -> Result<()> {
         | "projection-protocol"
         | "projection-family"
         | "projection-family-bounds"
+        | "projection-drag"
         | "projection-lock" => projection::run(options),
         _ => Err("Unknown scenario".into()),
     }

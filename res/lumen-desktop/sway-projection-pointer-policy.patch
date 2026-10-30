@@ -1,0 +1,79 @@
+diff --git a/sway/input/seatop_move_floating.c b/sway/input/seatop_move_floating.c
+index 09e8eb0..58d31c5 100644
+--- a/sway/input/seatop_move_floating.c
++++ b/sway/input/seatop_move_floating.c
+@@ -16,2 +16,3 @@
+ #include "sway/tree/workspace.h"
++#include "sway/tree/lumen_projection.h"
+ 
+@@ -67,2 +68,3 @@ static struct sway_workspace *drag_target(struct seatop_move_floating_event *e,
+  *target = 0;
++ if (lumen_projection_off_origin(e->con)) return NULL;
+  struct sway_cursor *cursor = e->seat->cursor;
+@@ -147,2 +149,12 @@ static void update_target(struct seatop_move_floating_event *e) {
+ 
++static void pointer_move_to(struct sway_container *con, double lx, double ly) {
++ if (!con->lumen_projection_enabled || !con->pending.workspace) {
++  container_floating_move_to(con, lx, ly); return;
++ }
++ /* Pointer geometry changes do not imply a same-output desktop reassignment.
++  * Crossing outputs remains an explicit owning-output move. */
++ container_floating_translate(con, lx - con->pending.x, ly - con->pending.y);
++ if (container_floating_find_output(con) != con->pending.workspace->output)
++  container_floating_move_to(con, con->pending.x, con->pending.y);
++}
+ static void finalize_move(struct sway_seat *seat) {
+@@ -162,3 +174,3 @@ static void finalize_move(struct sway_seat *seat) {
+   drag_event(e,"commit");
+- } else container_floating_move_to(e->con,e->con->pending.x,e->con->pending.y);
++ } else pointer_move_to(e->con,e->con->pending.x,e->con->pending.y);
+  transaction_commit_dirty();
+@@ -183,3 +195,3 @@ static void handle_pointer_motion(struct sway_seat *seat,uint32_t time_msec) {
+  struct wlr_cursor *cursor=seat->cursor->cursor;
+- container_floating_move_to(e->con,cursor->x-e->dx,cursor->y-e->dy);
++ pointer_move_to(e->con,cursor->x-e->dx,cursor->y-e->dy);
+  update_target(e);transaction_commit_dirty();
+@@ -215,2 +227,3 @@ bool seatop_lumen_cancel_drag(struct sway_seat *seat) {
+ void seatop_begin_move_floating(struct sway_seat *seat,struct sway_container *con) {
++ if (lumen_projection_off_origin(con) && (!con->view || !con->lumen_projection_enabled)) return;
+  seatop_end(seat);
+diff --git a/sway/input/seatop_move_tiling.c b/sway/input/seatop_move_tiling.c
+index 0251978..a2850c6 100644
+--- a/sway/input/seatop_move_tiling.c
++++ b/sway/input/seatop_move_tiling.c
+@@ -12,2 +12,3 @@
+ #include "sway/tree/workspace.h"
++#include "sway/tree/lumen_projection.h"
+ 
+@@ -446,2 +447,3 @@ void seatop_begin_move_tiling_threshold(struct sway_seat *seat,
+ 		struct sway_container *con) {
++	if (lumen_projection_off_origin(con)) return;
+ 	seatop_end(seat);
+@@ -481,2 +483,3 @@ void seatop_begin_move_tiling(struct sway_seat *seat,
+ 		struct sway_container *con) {
++	if (lumen_projection_off_origin(con)) return;
+ 	seatop_begin_move_tiling_threshold(seat, con);
+diff --git a/sway/input/seatop_resize_floating.c b/sway/input/seatop_resize_floating.c
+index bcab80e..20f4532 100644
+--- a/sway/input/seatop_resize_floating.c
++++ b/sway/input/seatop_resize_floating.c
+@@ -11,2 +11,3 @@
+ #include "sway/tree/container.h"
++#include "sway/tree/lumen_projection.h"
+ 
+@@ -174,2 +175,3 @@ void seatop_begin_resize_floating(struct sway_seat *seat,
+ 		struct sway_container *con, enum wlr_edges edge) {
++	if (lumen_projection_off_origin(con) && (!con->view || !con->lumen_projection_enabled)) return;
+ 	seatop_end(seat);
+diff --git a/sway/input/seatop_resize_tiling.c b/sway/input/seatop_resize_tiling.c
+index be7b3c1..456b096 100644
+--- a/sway/input/seatop_resize_tiling.c
++++ b/sway/input/seatop_resize_tiling.c
+@@ -9,2 +9,3 @@
+ #include "sway/tree/view.h"
++#include "sway/tree/lumen_projection.h"
+ 
+@@ -120,2 +121,3 @@ void seatop_begin_resize_tiling(struct sway_seat *seat,
+ 		struct sway_container *con, enum wlr_edges edge) {
++	if (lumen_projection_off_origin(con)) return;
+ 	seatop_end(seat);

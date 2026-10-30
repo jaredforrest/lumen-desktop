@@ -10,6 +10,8 @@ use std::{
 mod lock;
 #[path = "projection_protocol.rs"]
 mod protocol;
+#[path = "projection_drag.rs"]
+mod drag;
 const APP: &str = "org.example.MruA";
 static ACTION: AtomicUsize = AtomicUsize::new(0);
 fn nodes(f: &Fixture) -> Result<Vec<Value>> {
@@ -202,6 +204,9 @@ pub fn run(options: Options) -> Result<()> {
     }
     if f.options.scenario == "projection-family-bounds" {
         return protocol::family_bounds(&mut f);
+    }
+    if f.options.scenario == "projection-drag" {
+        return drag::run(&mut f, id);
     }
     if f.options.scenario == "projection-focus" {
         return focus_journey(&mut f, id, &owned);

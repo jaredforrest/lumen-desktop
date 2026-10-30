@@ -2,7 +2,7 @@
 use super::*;
 use std::io::Write;
 use std::path::{Path, PathBuf};
-fn pinned(f: &Fixture, name: &str) -> Result<PathBuf> {
+pub(super) fn pinned(f: &Fixture, name: &str) -> Result<PathBuf> {
     let path = std::env::split_paths(std::ffi::OsStr::new(f.vars.get("PATH").ok_or("PATH")?))
         .map(|p| p.join(name))
         .find(|p| p.is_file())
@@ -14,7 +14,13 @@ fn pinned(f: &Fixture, name: &str) -> Result<PathBuf> {
     )?;
     Ok(path)
 }
-fn pointer(f: &mut Fixture, process: usize, log: &Path, serial: u32, command: &str) -> Result<()> {
+pub(super) fn pointer(
+    f: &mut Fixture,
+    process: usize,
+    log: &Path,
+    serial: u32,
+    command: &str,
+) -> Result<()> {
     let transcript = format!("{command}a {serial}\n");
     save(
         &f.options

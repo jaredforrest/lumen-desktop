@@ -85,6 +85,7 @@ impl Options {
                     | "projection-protocol"
                     | "projection-family"
                     | "projection-family-bounds"
+                    | "projection-drag"
                     | "projection-lock"
                     | "focus-guard-unsupported",
                 ) => scenario = Some(arg.to_string_lossy().into_owned()),

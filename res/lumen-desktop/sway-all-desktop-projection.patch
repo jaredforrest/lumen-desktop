@@ -18,10 +18,10 @@ index 0a4480a..0c3cddc 100644
   uint64_t lumen_group_id;
 diff --git a/include/sway/tree/lumen_projection.h b/include/sway/tree/lumen_projection.h
 new file mode 100644
-index 0000000..f5488db
+index 0000000..a866c12
 --- /dev/null
 +++ b/include/sway/tree/lumen_projection.h
-@@ -0,0 +1,19 @@
+@@ -0,0 +1,20 @@
 +#ifndef SWAY_LUMEN_PROJECTION_H
 +#define SWAY_LUMEN_PROJECTION_H
 +#include <stdbool.h>
@@ -33,6 +33,7 @@ index 0000000..f5488db
 +struct sway_workspace *lumen_projection_workspace(struct sway_container *con);
 +bool lumen_projection_presented(struct sway_container *con);
 +bool lumen_projection_reserved(struct sway_container *con);
++bool lumen_projection_off_origin(struct sway_container *con);
 +void lumen_projection_reconcile(void);
 +void lumen_projection_origin_changed(struct sway_container *con);
 +void lumen_projection_workspace_changed(struct sway_workspace *old_ws, struct sway_workspace *new_ws);
@@ -211,10 +212,10 @@ index abc9d80..eb02ad8 100644
  	// Bring container to front by putting it at the end of the floating list.
 diff --git a/sway/tree/lumen_projection.c b/sway/tree/lumen_projection.c
 new file mode 100644
-index 0000000..e940a82
+index 0000000..a33c790
 --- /dev/null
 +++ b/sway/tree/lumen_projection.c
-@@ -0,0 +1,288 @@
+@@ -0,0 +1,291 @@
 +/* One scene node, structural origin retained. This is floating presentation of
 + * ordinary tiled views, not a second tiled layout or an always-on-top plane. */
 +#include <errno.h>
@@ -394,6 +395,9 @@ index 0000000..e940a82
 + (void)data;
 + return con->lumen_projection_enabled && con->pending.workspace && con->pending.workspace->output &&
 +  output_get_active_workspace(con->pending.workspace->output) != con->pending.workspace;
++}
++bool lumen_projection_off_origin(struct sway_container *con) {
++ return con && (projected_child(con, NULL) || container_find_child(con, projected_child, NULL));
 +}
 +bool lumen_projection_prepare_fullscreen(struct sway_container *con) {
 + if (!con) return false;
@@ -579,3 +583,26 @@ index 8068328..f4cd006 100644
 -	if (!container_is_sticky_or_child(view->container) && workspace &&
 +	if (!lumen_projection_presented(view->container) && !container_is_sticky_or_child(view->container) && workspace &&
  			!workspace_is_visible(workspace)) {
+diff --git a/sway/tree/workspace.c b/sway/tree/workspace.c
+index 499abfe..5a9c8a3 100644
+--- a/sway/tree/workspace.c
++++ b/sway/tree/workspace.c
+@@ -23,2 +23,3 @@
+ #include "sway/tree/lumen_display_spaces.h"
++#include "sway/tree/lumen_projection.h"
+ #include "list.h"
+@@ -718,3 +719,3 @@ struct sway_workspace *workspace_auto_back_and_forth(
+ 	} else if (focus && focus->type == N_CONTAINER) {
+-		active_ws = focus->sway_container->pending.workspace;
++		active_ws = lumen_projection_workspace(focus->sway_container);
+ 	}
+@@ -741,2 +742,9 @@ bool workspace_switch(struct sway_workspace *workspace) {
+ 	}
++	/* An explicit desktop request must activate that desktop even when its
++	 * remembered view is already focused through another desktop's projection.
++	 * Generic application focus continues to use effective presentation. */
++	if (next->type == N_CONTAINER && lumen_projection_off_origin(next->sway_container) &&
++			output_get_active_workspace(workspace->output) != workspace) {
++		seat_set_focus(seat, &workspace->node);
++	}
+ 	seat_set_focus(seat, next);

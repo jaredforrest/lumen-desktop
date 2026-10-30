@@ -14,6 +14,14 @@ promise reference geometry or animation. It shares ordinary floating stacking,
 raising and hit testing rather than using a permanent topmost overlay. No scene
 or native window is cloned, floated structurally or automatically ungrouped.
 
+Off-origin tiled pointer move/resize and ambiguous nonview floating-ancestor
+gestures are declined before starting a native seat operation. Direct floating
+view gestures can move and resize the presentation: same-output movement retains
+structural origin, while an explicit cross-output drag updates owning output and
+revision. Off-origin edge-layout preview/commit is suppressed; the ordinary
+origin-desktop edge gesture remains available. These pointer rules do not change
+the separate direct native geometry command interface.
+
 Group selection and one-at-a-time presentation, application hide, minimize,
 Show Desktop and native session-lock shielding remain independent. Projection
 overrides only workspace visibility. A foreground fullscreen request deliberately
@@ -72,6 +80,15 @@ writers. Closing/restarting the compositor drops old ownership without sending
 commands to replacement windows.
 
 ## Verification
+
+`tests/ci/all-desktops-projection.nu` runs the real production shell and native
+providers sequentially inside the existing application-isolation boundary. It
+covers group/guard/fullscreen transitions, physical stacking and global restore,
+effective-desktop close/hide behavior, real protocol requests and output changes,
+native lock input, bounded owned families, and physical pointer policy. Every
+case retains its exact immutable pins and full native receipts beneath
+`artifacts/native-projection-*`. `--only projection-drag` selects the finite
+pointer corpus; `--run-id` chooses a fresh output suffix and never reuses results.
 
 ```sh
 nix-shell -p cargo rustc --run 'CARGO_TARGET_DIR=/tmp/lumen-spaces-target cargo test --offline --manifest-path res/lumen-desktop/spaces/Cargo.toml'
