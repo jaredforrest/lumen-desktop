@@ -18,9 +18,9 @@ extern "C" fn interrupted(_: i32) {
 }
 pub fn install_interrupts() {
     unsafe {
-        libc::signal(libc::SIGINT, interrupted as libc::sighandler_t);
-        libc::signal(libc::SIGTERM, interrupted as libc::sighandler_t);
-        libc::signal(libc::SIGHUP, interrupted as libc::sighandler_t);
+        libc::signal(libc::SIGINT, interrupted as *const () as libc::sighandler_t);
+        libc::signal(libc::SIGTERM, interrupted as *const () as libc::sighandler_t);
+        libc::signal(libc::SIGHUP, interrupted as *const () as libc::sighandler_t);
     }
 }
 pub struct Reply {
