@@ -1,6 +1,6 @@
 --- a/plugins/vnc/vnc_plugin.c
 +++ b/plugins/vnc/vnc_plugin.c
-@@ -325,6 +325,43 @@
+@@ -325,6 +325,63 @@
  	return event;
  }
  
@@ -8,6 +8,24 @@
 +	GWeakRef connection;
 +	const gchar *message;
 +} RemminaVncClipboardWarning;
++
++static void remmina_plugin_vnc_clipboard_warning_destroy(GtkWidget *dialog, gpointer data)
++{
++	RemminaVncClipboardWarning *warning = data;
++	GObject *connection = g_weak_ref_get(&warning->connection);
++	if (connection) {
++		RemminaPluginVncData *gpdata = GET_PLUGIN_DATA(connection);
++		g_atomic_int_set(&gpdata->clipboard_warning_pending, 0);
++		g_object_unref(connection);
++	}
++	g_weak_ref_clear(&warning->connection);
++	g_free(warning);
++}
++
++static void remmina_plugin_vnc_clipboard_warning_response(GtkDialog *dialog, gint response, gpointer data)
++{
++	gtk_widget_destroy(GTK_WIDGET(dialog));
++}
 +
 +static gboolean remmina_plugin_vnc_clipboard_warning(gpointer data)
 +{
@@ -19,21 +37,23 @@
 +		REMMINA_PLUGIN_DEBUG("VNC clipboard warning originating toplevel live: %d", GTK_IS_WINDOW(parent) && gtk_widget_get_realized(parent) && !gtk_widget_in_destruction(parent));
 +		if (GTK_IS_WINDOW(parent) && gtk_widget_get_realized(parent) && !gtk_widget_in_destruction(parent)) {
 +			GtkWidget *dialog = gtk_message_dialog_new(GTK_WINDOW(parent), GTK_DIALOG_MODAL | GTK_DIALOG_DESTROY_WITH_PARENT, GTK_MESSAGE_WARNING, GTK_BUTTONS_CLOSE, "%s", warning->message);
-+			g_object_ref_sink(dialog);
 +			gtk_window_set_title(GTK_WINDOW(dialog), _("Clipboard transfer"));
-+			gtk_dialog_run(GTK_DIALOG(dialog));
-+			gtk_widget_destroy(dialog);
-+			g_object_unref(dialog);
++			g_signal_connect(dialog, "response", G_CALLBACK(remmina_plugin_vnc_clipboard_warning_response), NULL);
++			g_signal_connect(dialog, "destroy", G_CALLBACK(remmina_plugin_vnc_clipboard_warning_destroy), warning);
++			gtk_widget_show(dialog);
++			g_object_unref(connection);
++			return FALSE;
 +		}
 +	}
 +	if (connection) g_object_unref(connection);
-+	g_weak_ref_clear(&warning->connection);
-+	g_free(warning);
++	remmina_plugin_vnc_clipboard_warning_destroy(NULL, warning);
 +	return FALSE;
 +}
 +
 +static void remmina_plugin_vnc_queue_clipboard_warning(RemminaProtocolWidget *gp, const gchar *message)
 +{
++	RemminaPluginVncData *gpdata = GET_PLUGIN_DATA(gp);
++	if (!g_atomic_int_compare_and_exchange(&gpdata->clipboard_warning_pending, 0, 1)) return;
 +	REMMINA_PLUGIN_DEBUG("VNC clipboard warning queued for originating connection");
 +	RemminaVncClipboardWarning *warning = g_new(RemminaVncClipboardWarning, 1);
 +	g_weak_ref_init(&warning->connection, G_OBJECT(gp));
@@ -44,7 +64,7 @@
  static void remmina_plugin_vnc_process_vnc_event(RemminaProtocolWidget *gp)
  {
  	TRACE_CALL(__func__);
-@@ -346,8 +383,24 @@
+@@ -346,8 +403,24 @@
  				break;
  			case REMMINA_PLUGIN_VNC_EVENT_CUTTEXT:
  				if (event->event_data.text.text) {
@@ -71,7 +91,7 @@
  				}
  				break;
  			case REMMINA_PLUGIN_VNC_EVENT_CHAT_OPEN:
-@@ -376,6 +429,7 @@
+@@ -376,6 +449,7 @@
  	RemminaProtocolWidget * gp;
  	gchar *			text;
  	gint			textlen;
@@ -79,7 +99,7 @@
  } RemminaPluginVncCuttextParam;
  
  static void remmina_plugin_vnc_update_quality(rfbClient *cl, gint quality)
-@@ -734,25 +788,26 @@
+@@ -734,25 +808,26 @@
  	TRACE_CALL(__func__);
  	RemminaProtocolWidget *gp = param->gp;
  	RemminaPluginVncData *gpdata = GET_PLUGIN_DATA(gp);
@@ -121,7 +141,7 @@
  		}
  	}
  	g_free(param->text);
-@@ -760,19 +815,36 @@
+@@ -760,19 +835,36 @@
  	return FALSE;
  }
  
@@ -161,7 +181,7 @@
  static char *
  remmina_plugin_vnc_rfb_password(rfbClient *cl)
  {
-@@ -1242,6 +1314,9 @@
+@@ -1242,6 +1334,9 @@
  		cl->GotXCutText = (
  			remmina_plugin_service->file_get_int(remminafile, "disableclipboard", FALSE) ?
  			NULL : remmina_plugin_vnc_rfb_cuttext);
@@ -171,7 +191,7 @@
  		cl->GotCursorShape = remmina_plugin_vnc_rfb_cursor_shape;
  		cl->Bell = remmina_plugin_vnc_rfb_bell;
  		cl->HandleTextChat = remmina_plugin_vnc_rfb_chat;
-@@ -1665,26 +1740,16 @@
+@@ -1665,26 +1760,16 @@
  {
  	TRACE_CALL(__func__);
  	RemminaPluginVncData *gpdata = GET_PLUGIN_DATA(gp);
@@ -205,7 +225,7 @@
  	}
  }
  
-@@ -1833,7 +1898,7 @@
+@@ -1833,7 +1918,7 @@
  		gpdata->vnc_buffer = NULL;
  	}
  	g_ptr_array_free(gpdata->pressed_keys, TRUE);
@@ -214,7 +234,7 @@
  	remmina_plugin_vnc_event_free_all(gp);
  	g_queue_free(gpdata->vnc_event_queue);
  	pthread_mutex_destroy(&gpdata->vnc_event_queue_mutex);
-@@ -2053,7 +2118,7 @@
+@@ -2053,7 +2138,7 @@
  	g_signal_connect(G_OBJECT(gpdata->drawing_area), "size-allocate", G_CALLBACK(remmina_plugin_vnc_on_size_allocate), gp);
  #endif
  	gpdata->auth_first = TRUE;
@@ -225,12 +245,13 @@
  	gpdata->vnc_event_queue = g_queue_new();
 --- a/plugins/vnc/vnc_plugin.h
 +++ b/plugins/vnc/vnc_plugin.h
-@@ -95,7 +95,7 @@
+@@ -95,7 +95,8 @@
  	guint			queuedraw_handler;
  
  	gulong			clipboard_handler;
 -	GDateTime		*clipboard_timer;
 +	gchar			*clipboard_remote_hash;
++	gint			clipboard_warning_pending;
  
  	cairo_surface_t *	queuecursor_surface;
  	gint			queuecursor_x, queuecursor_y;

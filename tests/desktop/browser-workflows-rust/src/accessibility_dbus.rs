@@ -314,6 +314,7 @@ impl Provider for BusProvider {
             ("enabled", 8),
             ("focusable", 11),
             ("focused", 12),
+            ("modal", 16),
             ("sensitive", 24),
             ("showing", 25),
             ("visible", 30),

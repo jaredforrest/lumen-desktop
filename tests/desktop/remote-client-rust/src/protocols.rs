@@ -683,8 +683,24 @@ fn legacy_clipboard(f: &mut Harness) -> Result<()> {
     ensure(
         dialog["pid"] == viewer["pid"]
             && dialog["lumen_relationships"]["parent"] == viewer["id"]
-            && dialog["lumen_relationships"]["modal"] == true,
+            && (dialog["lumen_relationships"]["modal"].is_null()
+                || dialog["lumen_relationships"]["modal"] == true),
         "Clipboard warning is not modal to the originating connection",
+    )?;
+    let modal_semantics = f.semantics()?;
+    ensure(
+        modal_semantics
+            .iter()
+            .any(|row| row["states"]["modal"] == true && row["pid"] == viewer["pid"]),
+        "Actual GTK warning does not advertise modal accessibility state",
+    )?;
+    ensure(
+        nodes(&f.tree()?)
+            .iter()
+            .filter(|node| node["name"] == "Clipboard transfer")
+            .count()
+            == 1,
+        "Clipboard rejection created duplicate warning windows",
     )?;
     save(&f.out.join("legacy-warning-tree.json"), &f.tree()?)?;
     let unchanged = f.safe_target()?;
