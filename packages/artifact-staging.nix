@@ -10,5 +10,6 @@
     "$out/bin/lumen-stage-artifacts" "$TMPDIR" "${../tests/ci/backend-artifact-paths.txt}" "$TMPDIR/staged-backend"
     "$out/bin/lumen-stage-artifacts" "$TMPDIR" "${../tests/ci/vault-artifact-paths.txt}" "$TMPDIR/staged-vault"
     "$out/bin/lumen-stage-artifacts" "$TMPDIR" "${../tests/ci/provider-artifact-paths.txt}" "$TMPDIR/staged-provider"
+    "$out/bin/lumen-stage-artifacts" "$TMPDIR" "${../tests/ci/material-artifact-paths.txt}" "$TMPDIR/staged-material"
   '';
 }

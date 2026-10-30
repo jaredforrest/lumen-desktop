@@ -1,0 +1,4 @@
+artifacts/material-hierarchy-*
+artifacts/material-namespace-policy
+artifacts/material-software-effects
+artifacts/native-command-logs

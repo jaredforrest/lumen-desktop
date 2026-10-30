@@ -18,12 +18,11 @@ jobs:
       - run: nix develop --command nu tests/ci/material-hierarchy.nu
       - if: always()
         run: nix develop --command nu tests/ci/run-native.nu material_namespace_cleanup -- lumen-native-namespace-policy cleanup --output artifacts/material-namespace-policy
+      - if: always()
+        run: nix develop --command lumen-stage-artifacts . tests/ci/material-artifact-paths.txt artifacts-upload/material-hierarchy
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: material-hierarchy
-          path: |
-            artifacts/material-hierarchy-*
-            artifacts/material-namespace-policy
-            artifacts/material-software-effects
-            artifacts/native-command-logs
+          if-no-files-found: error
+          path: artifacts-upload/material-hierarchy
