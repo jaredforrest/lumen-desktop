@@ -24,7 +24,9 @@ The Qt case separately exercises an offer without Copy for that source intent.
 These fixtures do not establish compatibility with arbitrary applications,
 other operating systems, arbitrary MIME data or native Move/Link operations.
 
-The baseline file-job provider exposes Undo for reversible moves, not these
-native Copy jobs. The fixture records that boundary rather than invoking an
-unsupported Undo action. A change to the provider's Copy Undo contract requires
-its own acceptance and an updated native Copy-to-Undo expectation.
+Eligible native Copy jobs retain recoverable Undo history. Undo moves an
+unchanged created output into standard Trash; Put Back restores it. The drag
+matrix checks that this history is available; the separate Copy Undo tests
+exercise its identity checks, recovery outcomes and restore route. Historical
+drag receipts made before Copy Undo was introduced retain their original
+provider scope and do not establish the newer Undo behavior.

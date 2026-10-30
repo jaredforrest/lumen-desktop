@@ -561,8 +561,8 @@ pub fn run(options: Options) -> Result<()> {
     })?;
     let final_state = state(&f, &qml)?;
     require(
-        final_state["canUndo"] == false,
-        "Native Copy unexpectedly advertises reversible Move Undo",
+        final_state["canUndo"] == true,
+        "Eligible native Copy did not retain recoverable Undo history",
     )?;
     require(
         !folder.join("move-only.txt").exists()
