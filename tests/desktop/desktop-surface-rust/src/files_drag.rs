@@ -185,7 +185,7 @@ fn position(f: &Fixture, title: &str, x: &str, width: &str) -> Result<()> {
     ])?;
     Ok(())
 }
-fn origin(f: &Fixture, title: &str) -> Result<(i64, i64)> {
+pub(super) fn origin(f: &Fixture, title: &str) -> Result<(i64, i64)> {
     fn find<'a>(value: &'a Value, title: &str) -> Option<&'a Value> {
         if value["name"] == title && value["pid"].is_number() {
             return Some(value);

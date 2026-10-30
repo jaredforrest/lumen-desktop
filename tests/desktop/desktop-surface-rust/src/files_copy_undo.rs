@@ -1,7 +1,7 @@
 //! Actual native URI Copy, physical Files Ctrl+Z, then the existing Put Back service route.
 use crate::{
-    files_drag::{file_uri, offer, state},
-    harness::{Fixture, Result, require, save, wait_true},
+    files_drag::{file_uri, offer, origin, state},
+    harness::{Fixture, Result, pause, require, save, wait_true},
 };
 use serde_json::{Value, json};
 use std::{
@@ -91,15 +91,42 @@ pub fn run(f: &mut Fixture, qml: &Path, peer: &Path, folder: &Path, incoming: &P
     save(&f.options.output.join("copy-complete.json"), &before)?;
     f.screenshot("copy-complete.png", false)?;
 
-    // This only establishes focus. Undo itself must arrive through the real
-    // compositor virtual keyboard and FilesWindow Keys.onPressed handler.
-    f.ipc(qml, "filesDragTest", "focusContents", &[])?;
-    wait_true("actual Files native and content focus", || {
+    // Establish actual pointer focus on the copied row. The deliberately small
+    // shell stub cannot supply the full shell's window-activation fallback.
+    let at = before["points"]
+        .as_array()
+        .ok_or("Owned row points")?
+        .iter()
+        .find(|row| row["path"] == output.display().to_string())
+        .ok_or("Exact copied row")?["at"]
+        .clone();
+    let title = before["title"].as_str().ok_or("Owned Files title")?;
+    let (x, y) = origin(f, title)?;
+    save(
+        &f.options.output.join("focus-before-click.json"),
+        &json!({"files":state(f,qml)?,"tree":serde_json::from_str::<Value>(&f.sway(&["-t","get_tree","-r"])?)?,"target":at,"surfaceOrigin":[x,y]}),
+    )?;
+    f.cursor(
+        x + at["x"].as_f64().ok_or("Copied row x")?.round() as i64,
+        y + at["y"].as_f64().ok_or("Copied row y")?.round() as i64,
+    )?;
+    f.pointer("m 1 1\np\n")?;
+    pause(60);
+    f.pointer("r\n")?;
+    wait_true("actual native Files focus after physical row click", || {
         let current = state(f, qml)?;
         let title = current["title"].as_str().ok_or("Files title")?;
         let tree: Value = serde_json::from_str(&f.sway(&["-t", "get_tree", "-r"])?)?;
-        Ok(current["contentFocus"] == true && focused(&tree, title))
+        save(
+            &f.options.output.join("focus-readiness.json"),
+            &json!({"files":current,"tree":tree}),
+        )?;
+        Ok(focused(&tree, title))
     })?;
+    wait_true(
+        "actual Files content focus after physical row click",
+        || Ok(state(f, qml)?["contentFocus"] == true),
+    )?;
     save(
         &f.options.output.join("before-keyboard.json"),
         &json!({"files":state(f,qml)?,"tree":serde_json::from_str::<Value>(&f.sway(&["-t","get_tree","-r"])?)?,"physicalCommand":["wtype","-M","ctrl","-k","z","-m","ctrl"]}),

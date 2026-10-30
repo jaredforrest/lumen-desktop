@@ -26,7 +26,6 @@ ShellRoot {
   function refresh():void{service.refresh();}
   function mode(value:string):void{service.viewMode=value;}
   function selectAll():void{files.selectedPaths=service.rows.map(row=>row.path);files.selected=0;}
-  function focusContents():void{files.focusContents();}
   function navigate(path:string):void{files.navigate(path);}
   function selectPath(path:string):void{const index=service.rows.findIndex(row=>row.path===path);if(index<0)throw new Error("Exact requested row is absent");files.selected=index;files.selectedPaths=[path];}
   function putBackSelected():void{if(service.path!=="trash:" || files.selectedPaths.length!==1 || !service.rows.some(row=>row.path===files.selectedPaths[0]))throw new Error("Exact selected Trash row required");service.startJob("restore",files.selectedPaths);}
