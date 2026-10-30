@@ -1,8 +1,8 @@
 import QtQuick
 import Quickshell
 import "AppSwitcherModel.js" as SwitcherModel
-Item {
- id:root;visible:false
+ShellRoot {
+ id:root;property bool visible:false
  property string pendingNativeRequest:""
  property var previewNativeFocus:null
  property var items:[]

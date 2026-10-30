@@ -126,6 +126,14 @@ fn run() -> Result<()> {
         || !log.contains("SWITCHER_COVERAGE_PASS ")
         || log.contains("SWITCHER_COVERAGE_FAILED")
         || log.contains("SWITCHER_COVERAGE_TIMEOUT")
+        || log
+            .lines()
+            .filter(|line| !line.contains("SWITCHER_COVERAGE_PASS "))
+            .any(|line| {
+                ["WARN", "TypeError", "ReferenceError", "Binding loop"]
+                    .iter()
+                    .any(|marker| line.contains(marker))
+            })
     {
         return Err("Actual QML coverage fixture failed; inspect quickshell.log".into());
     }
