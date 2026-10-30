@@ -28,9 +28,13 @@ containers (including non-view splits), hidden or minimized windows, saved resto
 placement, paired layouts or pair-owned dialogs, sticky placement, nonfloating
 children, cross-origin families and oversized or cyclic families are refused.
 Every family member must have no saved desktop/display assignment. Malformed
-assignment records fail closed. Managed X11 transfer is not supplied by this
-implementation. These are explicit eligibility limits, not claims about external
-reference measurements.
+assignment records fail closed. Managed X11 transfer uses the same captured path
+with validated native relationships and XRes ownership; unknown ownership is
+unavailable. An unsupported raw transient edge can refuse a misleading family
+offer, but cannot authorize membership or movement. Enabled all-desktop
+presentation on any family member must be explicitly cleared before transfer,
+including native requests without a saved desktop assignment. These are explicit
+eligibility limits, not claims about external reference measurements.
 
 ## Captured authority
 
@@ -57,6 +61,11 @@ inference establishes authority. Process witnesses are sampled; this does not
 claim an atomic kernel process-lifetime guarantee. The UI also holds its existing
 session/revision/lock policy and invalidates stale offers.
 
+After a complete family moves, a seat focused on one of its members receives the
+remaining source-desktop focus target. Unaffected focus, including Overview, stays
+in place; a moved child cannot retain keyboard focus offscreen. Empty source
+splits and workspaces retire after this repair, not midway through the family.
+
 ## Acceptance and limits
 
 The native CI wrapper runs both compositor backends and two capability-disabled
@@ -67,6 +76,12 @@ modal/hidden/lock/output-loss and absent-slot changes, malformed packets and ful
 state preservation on refusal. A causal old-provider run accepted a move into a
 non-view fullscreen destination; the repaired providers reject that same boundary.
 
-This feature does not implement spatial packing, live thumbnails or animation.
-Its native acceptance is separate from later combined projection/X11 integration
+The managed X11 protocol corpus additionally covers exact family identities,
+floating/tiled roles, visible and keyboard-focus workspaces, physical bystander
+key delivery, safe retirement of an inactive last-leaf split, unknown XRes
+ownership and fresh projection/cross-process family refusals. It shares the
+production capture and packet implementation; physical card dragging remains a
+separate UI acceptance scope.
+
+This feature does not implement spatial packing, live thumbnails or animation,
 and does not assert behavior for unsupported providers or application protocols.
