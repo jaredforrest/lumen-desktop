@@ -2,7 +2,7 @@ diff --git a/include/sway/tree/container.h b/include/sway/tree/container.h
 index 6cd1610..73c8d7e 100644
 --- a/include/sway/tree/container.h
 +++ b/include/sway/tree/container.h
-@@ -79,6 +79,7 @@ struct sway_lumen_placement {
+@@ -79,6 +79,8 @@ struct sway_lumen_placement {
  };
  
  struct sway_container {
@@ -95,7 +95,7 @@ index ceb4190..a97eabd 100644
  #include "sway/tree/lumen_pair.h"
  #include <ctype.h>
  #include <float.h>
-@@ -228,6 +229,7 @@ static const char *ipc_json_content_type_description(enum wp_content_type_v1_typ
+@@ -228,6 +229,8 @@ static const char *ipc_json_content_type_description(enum wp_content_type_v1_typ
  json_object *ipc_json_get_version(void) {
  	int major = 0, minor = 0, patch = 0;
  	json_object *version = json_object_new_object();
@@ -104,7 +104,7 @@ index ceb4190..a97eabd 100644
  	json_object_object_add(version, "desktop_rehome", json_object_new_boolean(true));
  	json_object_object_add(version, "native_window_relationships", json_object_new_boolean(true));
  
-@@ -773,6 +775,7 @@ static void ipc_json_describe_container(struct sway_container *c, json_object *o
+@@ -773,6 +776,7 @@ static void ipc_json_describe_container(struct sway_container *c, json_object *o
  			json_object_new_string(!c->scratchpad ? "none" : "fresh"));
  	json_object_object_add(object,"lumen_pair",lumen_pair_json(c));
  	json_object *lumen_state = json_object_new_object();
@@ -112,7 +112,7 @@ index ceb4190..a97eabd 100644
  	json_object_object_add(lumen_state, "minimised",
  		json_object_new_boolean(c->lumen_minimized != NULL));
  	json_object_object_add(lumen_state, "filled",
-@@ -886,6 +889,7 @@ json_object *ipc_json_describe_node(struct sway_node *node) {
+@@ -886,6 +890,7 @@ json_object *ipc_json_describe_node(struct sway_node *node) {
  
  	switch (node->type) {
  	case N_ROOT:
@@ -137,7 +137,7 @@ new file mode 100644
 index 0000000..60bf41d
 --- /dev/null
 +++ b/sway/tree/lumen_groups.c
-@@ -0,0 +1,242 @@
+@@ -0,0 +1,282 @@
 +/* Independent scene visibility; never changes document placement or hide reasons. */
 +#include <errno.h>
 +#include <inttypes.h>
