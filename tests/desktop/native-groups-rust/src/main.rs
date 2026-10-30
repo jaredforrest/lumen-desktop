@@ -1,5 +1,6 @@
 //! Shared real compositor, D-Bus, keyboard and pointer harness for group fixtures.
 mod membership;
+mod presentation;
 mod selector;
 mod window_groups;
 
@@ -165,7 +166,7 @@ fn options() -> Result<Options> {
     let mut args = env::args_os().skip(1);
     while let Some(arg) = args.next() {
         match arg.to_str() {
-            Some("selector" | "membership" | "window-groups") => {
+            Some("selector" | "membership" | "window-groups" | "presentation") => {
                 scenario = Some(arg.to_string_lossy().into_owned())
             }
             Some("--effects") => effects = true,
@@ -579,9 +580,20 @@ fn setup(opt: Options) -> Result<Context> {
         &appearance.join("appearance.json"),
         &json!({"font":"sans-serif","palette":{"background":"#242426","surface":"#303033","field":"#363639","text":"#eeeeef","muted":"#aaaab0","border":"#505054","hover":"#414145","accent":"#007aff","selectedText":"#ffffff"},"preferences":{"mode":"dark","reduceMotion":true}}),
     )?;
-    copy_tree(&repo.join("res/lumen-desktop"), &ctx.root.0.join("assets"))?;
+    let assets = if ctx.opt.scenario == "presentation" {
+        PathBuf::from(
+            ctx.vars
+                .get("LUMEN_DESKTOP_ASSETS")
+                .ok_or("Installed desktop assets required")?,
+        )
+    } else {
+        repo.join("res/lumen-desktop")
+    };
+    copy_tree(&assets, &ctx.root.0.join("assets"))?;
     let qml = if ctx.opt.scenario == "selector" {
         include_str!("../selector.qml")
+    } else if ctx.opt.scenario == "presentation" {
+        include_str!("../presentation.qml")
     } else {
         include_str!("../membership.qml")
     };
@@ -610,6 +622,8 @@ fn main() -> Result<()> {
     };
     if scenario == "selector" {
         selector::run(&mut ctx)
+    } else if scenario == "presentation" {
+        presentation::run(&mut ctx)
     } else if scenario == "window-groups" {
         window_groups::run(&mut ctx)
     } else {

@@ -137,7 +137,7 @@ new file mode 100644
 index 0000000..60bf41d
 --- /dev/null
 +++ b/sway/tree/lumen_groups.c
-@@ -0,0 +1,282 @@
+@@ -0,0 +1,286 @@
 +/* Independent scene visibility; never changes document placement or hide reasons. */
 +#include <errno.h>
 +#include <inttypes.h>
@@ -327,6 +327,10 @@ index 0000000..60bf41d
 +struct focus_candidate {struct group *group; struct sway_container *con;};
 +static void candidate(struct sway_container *con, void *data) {
 + struct focus_candidate *f = data;
++ if (!one_at_a_time) {
++  if (!f->con && con->lumen_group_id == f->group->id && eligible(con) && !con->lumen_app_hidden && !con->lumen_minimized) f->con = con;
++  return;
++ }
 + if (con->lumen_group_id != f->group->id || !eligible(con) || parent(con) ||
 +     con->lumen_app_hidden || con->lumen_minimized || !lumen_groups_visible(con)) return;
 + if (!f->con || con->lumen_group_focus > f->con->lumen_group_focus ||

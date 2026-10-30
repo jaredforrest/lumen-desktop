@@ -39,7 +39,8 @@ QtObject {
         onStarted:{received=false;timedOut=false;write(JSON.stringify(root.modeRequest)+"\n");modeDeadline.restart();}
         stdout:StdioCollector {onStreamFinished:{
             if(modeWorker.timedOut)return;
-            try{const result=JSON.parse(text);modeWorker.received=true;root.presentationError=result.ok===true?"":result.error || "Unable to apply group presentation";}
+            modeWorker.received=true;
+            try{const result=JSON.parse(text);root.presentationError=result.ok===true?"":result.error || "Unable to apply group presentation";}
             catch(error){root.presentationError="Invalid group presentation confirmation";}
         }}
         onExited:{modeDeadline.stop();modeKill.stop();if(!received && !timedOut)root.presentationError="Group presentation service did not confirm the change";modeApply.restart();}
