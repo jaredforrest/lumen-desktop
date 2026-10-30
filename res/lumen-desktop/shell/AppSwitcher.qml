@@ -57,7 +57,7 @@ PanelWindow {
                 const entry=shell.entryFor(window);
                 return {key:item.key,window:window,
                     nativeCapture:native?JSON.parse(JSON.stringify(native.capture)):null,
-                    label:entry?shell.appLabel(entry):shell.nameForAppId(item.window.appId,item.window.title),
+                    label:entry?shell.appLabel(entry):shell.nameForAppId(window.appId,window.title),
                     icon:entry?shell.appIcon(entry):Qt.resolvedUrl("icons/application.svg")};
             });
             const background=[];

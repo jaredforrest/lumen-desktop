@@ -12,6 +12,7 @@ ShellRoot {
  property var screen:null
  property var observations:[]
  property int caseIndex:0
+ property bool unknownEntry:false
  property QtObject keyboard:QtObject {function forceActiveFocus(){}}
  property QtObject view:QtObject {function positionViewAtIndex(a,b){}}
  property QtObject recentWindow:QtObject {property string appId:"shared.legacy";property string title:"Duplicate";property string foreignToplevelIdentifier:"recent-id"}
@@ -28,10 +29,10 @@ ShellRoot {
   property int focusEpoch:0
   property var lastNative:null
   property var lastFallback:null
-  function entryFor(window){return {id:"shared.desktop",name:"Shared application"};}
+  function entryFor(window){return root.unknownEntry?null:{id:"shared.desktop",name:"Shared application"};}
   function appLabel(entry){return entry.name;}
   function appIcon(entry){return "";}
-  function nameForAppId(id,title){return id;}
+  function nameForAppId(id,title){return title || id;}
   function preferredOutput(){return "";}
   function claimPopup(owner){}
   function focusCapturedNative(capture,source){lastNative=capture;return "synthetic-request";}
@@ -43,11 +44,12 @@ ShellRoot {
  __PRODUCTION_COMMIT__
  function check(value,message){if(!value)throw Error(message);}
  function nextCase(){
-  const cases=[{name:"mixed alias",coverage:false,sameId:false,native:false},{name:"unknown coverage",coverage:undefined,sameId:false,native:false},{name:"mixed same app ID",coverage:false,sameId:true,native:false},{name:"nonboolean coverage",coverage:"true",sameId:true,native:false},{name:"complete exact native",coverage:true,sameId:true,native:true},{name:"missing bridge",coverage:true,sameId:true,native:false,fault:"missing"},{name:"wrong exact ID",coverage:true,sameId:true,native:false,fault:"wrong"},{name:"duplicate QObject ID",coverage:true,sameId:true,native:false,fault:"duplicate-window"},{name:"duplicate captured ID",coverage:true,sameId:true,native:false,fault:"duplicate-capture"},{name:"broker-only record",coverage:true,sameId:true,native:false,fault:"extra"},{name:"unsupported group member",coverage:true,sameId:true,native:false,fault:"incomplete"}];
+  const cases=[{name:"mixed alias",coverage:false,sameId:false,native:false},{name:"unknown coverage",coverage:undefined,sameId:false,native:false},{name:"mixed same app ID",coverage:false,sameId:true,native:false},{name:"nonboolean coverage",coverage:"true",sameId:true,native:false},{name:"complete exact native",coverage:true,sameId:true,native:true},{name:"missing bridge",coverage:true,sameId:true,native:false,fault:"missing"},{name:"wrong exact ID",coverage:true,sameId:true,native:false,fault:"wrong"},{name:"duplicate QObject ID",coverage:true,sameId:true,native:false,fault:"duplicate-window"},{name:"duplicate captured ID",coverage:true,sameId:true,native:false,fault:"duplicate-capture"},{name:"broker-only record",coverage:true,sameId:true,native:false,fault:"extra"},{name:"unsupported group member",coverage:true,sameId:true,native:false,fault:"incomplete"},{name:"unknown app exact target label",coverage:true,sameId:true,native:true,unknown:true}];
   if(caseIndex===cases.length){console.log("SWITCHER_COVERAGE_PASS "+JSON.stringify(observations));Qt.quit();return;}
   const test=cases[caseIndex++];
   root.visible=false;root.phase="closed";shell.lastNative=null;shell.lastFallback=null;
   recentWindow.appId=test.sameId?"shared.native":"shared.legacy";
+  root.unknownEntry=!!test.unknown;recentWindow.title=test.unknown?"Recent fallback title":"Duplicate";olderWindow.title=test.unknown?"Older exact target title":"Duplicate";
   recentWindow.foreignToplevelIdentifier=test.fault==="missing"?"":test.fault==="wrong"?"wrong-id":test.fault==="duplicate-window"?"captured-native":"recent-id";
   shell.nativeWindowCaptures=[{appId:"shared.native",foreignId:"captured-native",conId:41,instanceId:"original-process",epoch:"original-epoch"},{appId:"shared.native",foreignId:test.fault==="duplicate-capture"?"captured-native":"recent-id",conId:42,instanceId:"recent-process",epoch:"original-epoch"}];
   if(test.fault==="incomplete")shell.nativeWindowCaptures=shell.nativeWindowCaptures.slice(0,1);
@@ -56,12 +58,13 @@ ShellRoot {
   root.command("begin");
   check(root.items.length===1,"Unexpected application membership: "+test.name);
   check(root.items[0].window===(test.native?olderWindow:recentWindow),"Exact paired/fallback QObject membership changed: "+test.name);
+  if(test.unknown)check(root.items[0].label===olderWindow.title,"Label describes another QObject: "+root.items[0].label);
   check(!!root.items[0].nativeCapture===test.native,"Coverage retargeted unsupported membership: "+test.name);
   root.commit();
   Qt.callLater(()=>{try{
    if(test.native){check(shell.lastNative && shell.lastNative.foreignId==="captured-native" && shell.lastNative.instanceId==="original-process" && shell.lastNative.epoch==="original-epoch","Exact capture witness changed");check(shell.lastFallback===null,"Native and fallback both requested");}
    else {check(shell.lastNative===null,"Unsupported/unknown row redirected to native");check(shell.lastFallback===recentWindow,"Recent QObject fallback was lost");}
-   observations.push({name:test.name,nativeRequested:!!shell.lastNative,recentFallback:shell.lastFallback===recentWindow});
+   observations.push({name:test.name,nativeRequested:!!shell.lastNative,recentFallback:shell.lastFallback===recentWindow,label:root.items[0].label});
    nextCase();
   }catch(error){console.error("SWITCHER_COVERAGE_FAILED "+error);Qt.exit(1);}});
  }
