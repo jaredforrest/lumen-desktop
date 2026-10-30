@@ -109,6 +109,69 @@ pub fn run(ctx: &mut Context) -> Result<()> {
     checks.push("Default all mode preserves all members; live one mode selects one root per native application, not per PID, and owner dialogs follow that root without geometry mutation");
     focus(ctx, 0)?;
     expected(ctx, &[false, true, false, false])?;
+    let client_pid = ctx.captured[0]["pid"]
+        .as_u64()
+        .ok_or("Native client PID missing")?;
+    let client = ctx
+        .procs
+        .iter()
+        .position(|p| u64::from(p.0.id()) == client_pid)
+        .ok_or("Owned client process missing")?;
+    ctx.write(client, "modal\n")?;
+    wait("actual modal owner child", || {
+        Ok((window(ctx, 2)?["lumen_relationships"]["modal"] == true).then_some(()))
+    })?;
+    focus(ctx, 1)?;
+    focus(ctx, 0)?;
+    wait("native modal focus redirection", || {
+        Ok((window(ctx, 2)?["focused"] == true).then_some(()))
+    })?;
+    expected(ctx, &[false, true, false, false])?;
+    ctx.write(client, "unmodal\n")?;
+    wait("actual modal ended", || {
+        Ok((window(ctx, 2)?["lumen_relationships"]["modal"] == false).then_some(()))
+    })?;
+    focus(ctx, 0)?;
+    ctx.sway(
+        &format!("[con_id={}] fullscreen enable", ctx.captured[0]["id"]),
+        true,
+    )?;
+    wait("fullscreen suspends masking", || {
+        Ok(truth(&ctx.group(0)?["suspended"]).then_some(()))
+    })?;
+    expected(ctx, &[false, false, false, false])?;
+    mode(ctx, "all_together")?;
+    mode(ctx, "one_at_a_time")?;
+    ensure(
+        window(ctx, 0)?["fullscreen_mode"] == 1,
+        "Mode change cleared fullscreen",
+    )?;
+    ctx.sway(
+        &format!("[con_id={}] fullscreen disable", ctx.captured[0]["id"]),
+        true,
+    )?;
+    expected(ctx, &[false, true, false, false])?;
+    ctx.sway(
+        &format!("[con_id={}] lumen_window minimize", ctx.captured[1]["id"]),
+        true,
+    )?;
+    ensure(
+        window(ctx, 1)?["lumen_state"]["minimised"] == true,
+        "Minimize reason absent",
+    )?;
+    mode(ctx, "all_together")?;
+    mode(ctx, "one_at_a_time")?;
+    ensure(
+        window(ctx, 1)?["lumen_state"]["minimised"] == true,
+        "Presentation cleared independent minimize reason",
+    )?;
+    ctx.sway(
+        &format!("[con_id={}] lumen_window restore", ctx.captured[1]["id"]),
+        true,
+    )?;
+    focus(ctx, 1)?;
+    expected(ctx, &[true, false, true, false])?;
+    checks.push("Actual modal child receives redirected focus; fullscreen suspends masking and mode changes preserve fullscreen and independent minimized restoration");
     mode(ctx, "all_together")?;
     focus(ctx, 1)?;
     mode(ctx, "one_at_a_time")?;
