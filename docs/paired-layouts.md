@@ -73,6 +73,14 @@ explicit parent removal, and output loss with reachable restoration. Both compos
 variants are tested. The Rust `paired-picker-rust` fixture loads the real menu, chooser and
 adapter, including a selected partner disappearing before confirmation.
 
+The native negative corpus checks nonfinite and out-of-open-interval ratios,
+unavailable paired and survivor minimization with unchanged native state, and an
+unrelated window covered by an actual no-focus rule. A real protocol dialog is
+reparented from its captured paired owner to another owner and follows that new
+owner's subsequent movement. A parentless modal window is refused as a primary
+pane; the same native window pairs successfully after its modal hint is removed.
+Ordinary unpaired minimization and restoration remain a separate positive check.
+
 Divider hit width, double-click interval and visual treatment are implementation
 choices pending reference measurement. These tests establish functional lifecycle
 and identity behavior, not exact reference appearance or timing. The compositor
