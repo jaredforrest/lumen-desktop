@@ -22,6 +22,8 @@ def main [launcher: string, basic: string, effects: string, --scope: string = 'a
     for case in [
         {name: basic, provider: ($basic | path expand), flags: [], scenario: desktop-transfer}
         {name: effects, provider: ($effects | path expand), flags: [--effects], scenario: desktop-transfer}
+        {name: layer-basic, provider: ($basic | path expand), flags: [], scenario: desktop-transfer-layer}
+        {name: layer-effects, provider: ($effects | path expand), flags: [--effects], scenario: desktop-transfer-layer}
         {name: legacy-projection, provider: ('artifacts/space-transfer-legacy-projection-provider/bin/sway' | path expand), flags: [], scenario: desktop-transfer}
         {name: legacy-focus, provider: ('artifacts/space-transfer-legacy-focus-provider/bin/sway' | path expand), flags: [], scenario: desktop-transfer-unsupported}
         {name: legacy-display, provider: ('artifacts/space-transfer-legacy-display-provider/bin/sway' | path expand), flags: [], scenario: desktop-transfer-unsupported}

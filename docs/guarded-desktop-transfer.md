@@ -65,6 +65,10 @@ After a complete family moves, a seat focused on one of its members receives the
 remaining source-desktop focus target. Unaffected focus, including Overview, stays
 in place; a moved child cannot retain keyboard focus offscreen. Empty source
 splits and workspaces retire after this repair, not midway through the family.
+While a layer surface owns keyboard input, affected native return history is
+repaired without taking input from the layer. Closing the layer returns to the
+remaining origin view instead of reactivating the transferred family. Unaffected
+native focus histories retain their existing order.
 
 ## Acceptance and limits
 
@@ -82,6 +86,11 @@ key delivery, safe retirement of an inactive last-leaf split, unknown XRes
 ownership and fresh projection/cross-process family refusals. It shares the
 production capture and packet implementation; physical card dragging remains a
 separate UI acceptance scope.
+
+The exclusive-layer corpus uses a real keyboard-exclusive layer and physical
+keys before and after family movement. It checks exact family frames and native
+states while input stays with the layer, then verifies the remaining origin view
+receives the next key after layer closure and the destination remains inactive.
 
 This feature does not implement spatial packing, live thumbnails or animation,
 and does not assert behavior for unsupported providers or application protocols.
