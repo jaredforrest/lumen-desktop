@@ -25,6 +25,6 @@ pkgs.sway.override {
       ++ pkgs.lib.optional displaySpaces ../res/lumen-desktop/sway-display-spaces.patch
       ++ [ ../res/lumen-desktop/sway-disabled-action-dispatch.patch ]
       ++ pkgs.lib.optional ownedGeometryEvents ../res/lumen-desktop/sway-owned-geometry-events.patch
-      ++ [ ../res/lumen-desktop/sway-interactive-resize-sync.patch ];
+      ++ [ ../res/lumen-desktop/sway-interactive-resize-sync.patch ../res/lumen-desktop/sway-shortcut-load-state.patch ];
   });
 }

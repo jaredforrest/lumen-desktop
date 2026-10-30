@@ -1,0 +1,45 @@
+diff --git a/include/sway/config.h b/include/sway/config.h
+index 16b822f..434bcfd 100644
+--- a/include/sway/config.h
++++ b/include/sway/config.h
+@@ -540,6 +540,7 @@ struct sway_config {
+ 	enum focus_wrapping_mode focus_wrapping;
+ 	bool active;
+ 	bool failed;
++	bool lumen_config_read_failed;
+ 	bool reloading;
+ 	bool reading;
+ 	bool validating;
+diff --git a/sway/config.c b/sway/config.c
+index d579022..91c4d54 100644
+--- a/sway/config.c
++++ b/sway/config.c
+@@ -276,6 +276,7 @@ static void config_defaults(struct sway_config *config) {
+ 	config->reloading = false;
+ 	config->active = false;
+ 	config->failed = false;
++	config->lumen_config_read_failed = false;
+ 	config->auto_back_and_forth = false;
+ 	config->reading = false;
+ 	config->show_marks = true;
+@@ -437,6 +438,7 @@ static bool load_config(const char *path, struct sway_config *config,
+ 	fclose(f);
+ 
+ 	if (!config_load_success) {
++		config->lumen_config_read_failed = true;
+ 		sway_log(SWAY_ERROR, "Error(s) loading config!");
+ 	}
+ 
+diff --git a/sway/ipc-server.c b/sway/ipc-server.c
+index b934bb5..589ca6a 100644
+--- a/sway/ipc-server.c
++++ b/sway/ipc-server.c
+@@ -908,6 +908,8 @@ void ipc_client_handle_command(struct ipc_client *client, uint32_t payload_lengt
+ 	{
+ 		json_object *json = json_object_new_object();
+ 		json_object_object_add(json, "config", json_object_new_string(config->current_config));
++		json_object_object_add(json, "lumen_config_valid",
++			json_object_new_boolean(!config->lumen_config_read_failed));
+ 		const char *json_string = json_object_to_json_string(json);
+ 		ipc_send_reply(client, payload_type, json_string,
+ 			(uint32_t)strlen(json_string));
