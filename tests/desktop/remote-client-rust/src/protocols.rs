@@ -601,6 +601,7 @@ fn legacy_clipboard(f: &mut Harness) -> Result<()> {
             .contains("created selwin:")
             .then_some(()))
     })?;
+    let viewer = focus_app(f, "org.remmina.Remmina")?;
     let original = f.safe_target()?;
     let target = env::current_exe()?
         .parent()
@@ -658,6 +659,18 @@ fn legacy_clipboard(f: &mut Harness) -> Result<()> {
                 .contains("only supports Latin-1")
         }))
     })?;
+    let dialog = wait("owned modal clipboard warning window", || {
+        Ok(nodes(&f.tree()?)
+            .into_iter()
+            .find(|node| node["name"] == "Clipboard transfer"))
+    })?;
+    ensure(
+        dialog["pid"] == viewer["pid"]
+            && dialog["lumen_relationships"]["parent"] == viewer["id"]
+            && dialog["lumen_relationships"]["modal"] == true,
+        "Clipboard warning is not modal to the originating connection",
+    )?;
+    save(&f.out.join("legacy-warning-tree.json"), &f.tree()?)?;
     let unchanged = f.safe_target()?;
     ensure(
         unchanged["text"] == before_reject["text"] && unchanged["pid"] == original["pid"],
@@ -695,6 +708,7 @@ fn legacy_clipboard(f: &mut Harness) -> Result<()> {
         "actualServerReceivedLatin1Hex":"6c656761637920636166e920a30a636f6d70617469626c6509746578740a",
         "actualServerReceivedLatin1Bytes":wire_received,
         "unrepresentableSource":LOCAL_TEXT, "rejection":warning, "unchangedReceipt":unchanged,
+        "originatingViewer":viewer, "ownedModalDialog":dialog,
         "connectionInputReceipt":f.safe_target()?, "remoteTargetIdentityRetained":true,
         "rejectedPastePreservedPriorClipboard":rejected_paste_preserved,
         "notClaimed":["encrypted legacy connection", "HTML", "files", "Windows"]}),
