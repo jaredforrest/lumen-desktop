@@ -27,6 +27,8 @@ testers then compile the same crate with a genuine unused-variable warning and
 require Cargo's failure plus the exact compiler diagnostic, including with
 encoded flags. Expected failures are preserved as test artifacts; another build
 failure cannot masquerade as the intended negative result.
+An additional actual compiler negative puts the warning in an owned local path
+dependency, proving that this source boundary also receives fatal diagnostics.
 
 `abort-on-warn` remains useful for Nix evaluation diagnostics, but it does not
 replace the Rust policy. Runtime diagnostics, external provider builds and direct
