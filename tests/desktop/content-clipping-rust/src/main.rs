@@ -1089,12 +1089,33 @@ impl Fixture {
             serde_json::to_vec_pretty(&json!({"state":ambiguous_state,"before":before_ambiguous,"after":after_ambiguous,"original":identity,"duplicate":duplicate_id}))?,
         )?;
         require(
-            ambiguous_state["fit"]["error"]
-                .as_str()
-                .is_some_and(|e| !e.is_empty())
+            ambiguous_state["fit"]["error"] == ""
+                && ambiguous_state["fit"]["result"]["container"] == identity
                 && after_ambiguous == before_ambiguous,
-            "Ambiguous duplicate was not rejected",
+            "Pinned geometry observer lost its exact window when a duplicate mapped",
         )?;
+        proof["capturedDuplicateFit"] = ambiguous_state["fit"].clone();
+        let completed = integer(&self.state()?["auxiliary"]["completed"])?;
+        self.shell("fitAuxiliary", &[])?;
+        wait("unbound ambiguous fit rejection", || {
+            let state = self.state()?;
+            Ok((integer(&state["auxiliary"]["completed"])? > completed
+                && state["auxiliary"]["busy"] == false).then_some(()))
+        })?;
+        let lookup_state = self.state()?["auxiliary"].clone();
+        let after_lookup = self.matching(title)?.iter()
+            .map(|row| (integer(&row["id"]).unwrap_or_default(), row["rect"].clone()))
+            .collect::<BTreeMap<_, _>>();
+        fs::write(
+            self.options.output.join("unbound-ambiguous-fit-decision.json"),
+            serde_json::to_vec_pretty(&json!({"state":lookup_state,"before":after_ambiguous,"after":after_lookup}))?,
+        )?;
+        require(
+            lookup_state["error"].as_str().is_some_and(|error| error.contains("ambiguous"))
+                && after_lookup == after_ambiguous,
+            "Unbound duplicate lookup did not reject ambiguity without changing either window",
+        )?;
+        proof["ambiguousLookup"] = lookup_state;
         self.shell("hideAuxiliary", &[])?;
         wait("hide duplicate", || {
             Ok((self.matching(title)?.len() == 1).then_some(()))
