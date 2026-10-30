@@ -169,6 +169,15 @@ fn invoke(
         .stderr(Stdio::piped())
         .spawn()?;
     writeln!(child.stdin.take().ok_or("Input")?, "{request}")?;
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(8);
+    while child.try_wait()?.is_none() {
+        if std::time::Instant::now() >= deadline {
+            child.kill()?;
+            child.wait()?;
+            return Err("Edit helper exceeded finite acceptance budget; killed and reaped".into());
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
     let out = child.wait_with_output()?;
     let mut value: Value = serde_json::from_slice(&out.stdout)
         .map_err(|e| format!("Helper JSON: {e}; {}", String::from_utf8_lossy(&out.stderr)))?;
@@ -504,6 +513,97 @@ fn run(options: &Options) -> Result<()> {
         fs::remove_file(&record)?;
         fs::rename(&backup, &record)?;
         activate(&initial["bundle"], root, &manifest, &values)?;
+    }
+    // Descriptor-level broken-file cases must return without waiting for a FIFO
+    // peer or allocating the complete oversized declaration.
+    for name in ["shortcut-editor.json", "shortcuts.json"] {
+        for fifo in [true, false] {
+            let path = config.join(name);
+            fs::remove_file(&path)?;
+            if fifo {
+                use std::os::unix::ffi::OsStrExt;
+                let c = std::ffi::CString::new(path.as_os_str().as_bytes())?;
+                require(
+                    unsafe { libc::mkfifo(c.as_ptr(), 0o600) } == 0,
+                    "FIFO setup",
+                )?;
+            } else {
+                fs::write(&path, vec![b' '; 700 * 1024])?;
+            }
+            let response = invoke(helper, &json!({"action":"status"}), &values)?;
+            require(
+                response["available"] == false && response["editable"] == false,
+                "Broken declaration accepted",
+            )?;
+            evidence.push(json!({"case":format!("{name} {}", if fifo {"FIFO"} else {"oversize"}),"response":response}));
+            publish(&initial["bundle"], &config)?;
+        }
+    }
+    let backup = record.with_extension("safe");
+    fs::rename(&record, &backup)?;
+    use std::os::unix::ffi::OsStrExt;
+    let c = std::ffi::CString::new(record.as_os_str().as_bytes())?;
+    require(
+        unsafe { libc::mkfifo(c.as_ptr(), 0o600) } == 0,
+        "Witness FIFO setup",
+    )?;
+    let response = invoke(helper, &json!({"action":"status"}), &values)?;
+    require(
+        response["runtimeConfirmed"] == false && response["editable"] == false,
+        "FIFO witness accepted",
+    )?;
+    evidence.push(json!({"case":"FIFO witness","response":response}));
+    fs::remove_file(&record)?;
+    fs::rename(backup, &record)?;
+    let transaction = root.join("runtime/lumen-shortcut-settings");
+    let lock = transaction.join("transaction.lock");
+    use std::os::fd::AsRawFd;
+    let held = fs::OpenOptions::new().read(true).write(true).open(&lock)?;
+    require(
+        unsafe { libc::flock(held.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0,
+        "Fixture lock contention setup",
+    )?;
+    let response = invoke(helper, &json!({"action":"status"}), &values)?;
+    require(
+        response["exitSuccess"] == false
+            && response["editable"] == false
+            && response["error"]
+                .as_str()
+                .is_some_and(|s| s.contains("in progress")),
+        "Contended status did not fail promptly",
+    )?;
+    evidence.push(json!({"case":"nonblocking transaction contention","response":response}));
+    drop(held);
+    for directory in [false, true] {
+        let path = if directory { &transaction } else { &lock };
+        fs::set_permissions(
+            path,
+            fs::Permissions::from_mode(if directory { 0o777 } else { 0o666 }),
+        )?;
+        let response = invoke(helper, &json!({"action":"status"}), &values)?;
+        require(
+            response["exitSuccess"] == false && response["editable"] == false,
+            "Unsafe transaction metadata accepted",
+        )?;
+        evidence.push(json!({"case":if directory {"unsafe transaction directory"} else {"unsafe transaction lock"},"response":response}));
+        fs::set_permissions(
+            path,
+            fs::Permissions::from_mode(if directory { 0o700 } else { 0o600 }),
+        )?;
+    }
+    for directory in [false, true] {
+        let path = if directory { &transaction } else { &lock };
+        let original = path.with_extension("original");
+        fs::rename(path, &original)?;
+        symlink(&original, path)?;
+        let response = invoke(helper, &json!({"action":"status"}), &values)?;
+        require(
+            response["exitSuccess"] == false && response["editable"] == false,
+            "Linked transaction path accepted",
+        )?;
+        evidence.push(json!({"case":if directory {"linked transaction directory"} else {"linked transaction lock"},"response":response}));
+        fs::remove_file(path)?;
+        fs::rename(original, path)?;
     }
     store(
         root.join("process-result.json"),

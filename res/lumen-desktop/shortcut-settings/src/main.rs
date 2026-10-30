@@ -7,7 +7,7 @@ use std::{
     io::{BufRead, Read, Write},
     os::{
         fd::AsRawFd,
-        unix::fs::{DirBuilderExt, OpenOptionsExt},
+        unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt},
     },
     path::PathBuf,
     thread,
@@ -15,7 +15,20 @@ use std::{
 };
 type Result<T> = std::result::Result<T, String>;
 fn read(path: &PathBuf) -> Result<(Vec<u8>, Value)> {
-    let bytes = fs::read(path).map_err(|e| e.to_string())?;
+    // Declarative configuration may legitimately be a symlink into the store.
+    // Validate the opened target before reading; never wait for a FIFO writer.
+    let file = fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NONBLOCK)
+        .open(path)
+        .map_err(|e| e.to_string())?;
+    if !file.metadata().map_err(|e| e.to_string())?.is_file() {
+        return Err("Shortcut declarations must be regular files".into());
+    }
+    let mut bytes = Vec::new();
+    file.take(512 * 1024 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|e| e.to_string())?;
     if bytes.len() > 512 * 1024 {
         return Err("Shortcut declarations exceed their size limit".into());
     }
@@ -31,6 +44,13 @@ fn directory() -> Result<PathBuf> {
         .mode(0o700)
         .create(&base)
         .map_err(|e| e.to_string())?;
+    let metadata = fs::symlink_metadata(&base).map_err(|e| e.to_string())?;
+    if !metadata.is_dir()
+        || metadata.uid() != unsafe { libc::geteuid() }
+        || metadata.mode() & 0o077 != 0
+    {
+        return Err("Unsafe shortcut transaction directory".into());
+    }
     Ok(base)
 }
 fn configuration() -> Result<PathBuf> {
@@ -141,6 +161,7 @@ fn validate(s: &Snapshot, row: &Value, chord: Option<&str>) -> Result<()> {
         .create_new(true)
         .write(true)
         .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(&path)
         .map_err(|e| e.to_string())?;
     file.write_all(
@@ -327,10 +348,19 @@ fn run() -> Result<Value> {
         .create(true)
         .append(true)
         .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(directory()?.join("transaction.lock"))
         .map_err(|e| e.to_string())?;
-    if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } != 0 {
-        return Err("Could not lock shortcut settings".into());
+    let metadata = file.metadata().map_err(|e| e.to_string())?;
+    if !metadata.is_file()
+        || metadata.uid() != unsafe { libc::geteuid() }
+        || metadata.nlink() != 1
+        || metadata.mode() & 0o7777 != 0o600
+    {
+        return Err("Unsafe shortcut transaction lock".into());
+    }
+    if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+        return Err("Another shortcut transaction is in progress; retry after it finishes".into());
     }
     let snapshot = snapshot()?;
     if request["action"] == "status" {
@@ -349,6 +379,7 @@ fn main() {
                 .map(|s| status(&s))
                 .unwrap_or(json!({"available":false,"editable":false,"bindings":[]}));
             value["error"] = json!(error);
+            value["editable"] = json!(false);
             println!("{value}");
             std::process::exit(1);
         }

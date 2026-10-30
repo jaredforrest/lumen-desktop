@@ -135,7 +135,7 @@ pub fn observe(source: &Path) -> Result<Value> {
 fn safe_record(path: &Path) -> Result<fs::File> {
     let file = fs::OpenOptions::new()
         .read(true)
-        .custom_flags(libc::O_NOFOLLOW)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
         .open(path)
         .map_err(|e| e.to_string())?;
     let metadata = file.metadata().map_err(|e| e.to_string())?;
