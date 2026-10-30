@@ -1061,10 +1061,20 @@ fn constraint_suite(fixture: &mut Fixture<'_>) -> Result<Vec<String>> {
             }
             let command = format!("[con_id={}] lumen_window left", fixture.cid);
             if kind == "fixed" {
+                let before = fixture.required()?;
                 let refusal = fixture.unavailable(&command)?;
+                let after = fixture.required()?;
+                require(
+                    before["lumen_state"].is_object()
+                        && before["lumen_state"] == after["lumen_state"]
+                        && frame_rect(&before)? == frame_rect(&after)?,
+                    "Fixed unavailable placement changed complete window state or geometry",
+                )?;
                 fs::write(
                     fixture.options.output.join("constraint-fixed-command.json"),
-                    serde_json::to_vec_pretty(&refusal)?,
+                    serde_json::to_vec_pretty(&json!({"refusal":refusal,
+                        "beforeState":before["lumen_state"],"afterState":after["lumen_state"],
+                        "beforeGeometry":frame_rect(&before)?,"afterGeometry":frame_rect(&after)?}))?,
                 )?;
             } else {
                 fixture.ipc(&command)?;
