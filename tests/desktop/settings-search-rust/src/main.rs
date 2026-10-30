@@ -341,10 +341,7 @@ fn outer(opt: &Options) -> Result<()> {
             .clone()
             .or_else(|| env::var_os("__EGL_VENDOR_LIBRARY_FILENAMES").map(PathBuf::from))
             .ok_or("Mesa vendor missing")?;
-        ensure(
-            path.canonicalize()?.starts_with("/nix/store/"),
-            "Unpinned Mesa vendor",
-        )?;
+        let path = immutable_path(&path, "Mesa vendor")?;
         command.args(["--effects", "--egl-vendor", &path_string(&path)]);
     }
     let status = command.status()?;
