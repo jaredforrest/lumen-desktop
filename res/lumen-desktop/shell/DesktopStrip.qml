@@ -11,6 +11,7 @@ Item {
     FontMetrics {id:labelMetrics;font.family:Theme.font;font.pixelSize:Theme.textRole("body")}
     implicitHeight:Math.max(30,labelMetrics.height+12)+4
     property bool busy:false
+    property var dropController:null
     property string outputId:""
     property string selectedId:""
     property var gesture:null
@@ -45,7 +46,12 @@ Item {
             Accessible.name:"Workspace "+modelData.name+" on "+modelData.output
             Accessible.description:"Drag to reorder. Control plus Left or Right to preview order; Return to save; Escape to cancel."
             Accessible.selected:root.selectedId===modelData.logicalId
-            onClicked:{if(!root.editing)root.activateDesktop(modelData);}
+            onClicked:{if(root.dropController && root.dropController.active){root.dropController.commit(modelData.transfer);return;}if(!root.editing)root.activateDesktop(modelData);}
+            DropArea {anchors.fill:parent
+                onEntered:drag=>{if(root.dropController && root.dropController.accepts(drag) && root.dropController.canTarget(button.modelData.transfer))drag.accept(Qt.MoveAction);else drag.accepted=false;}
+                onDropped:drop=>{if(root.dropController && root.dropController.accepts(drop) && root.dropController.canTarget(button.modelData.transfer)){root.dropController.commit(button.modelData.transfer);drop.accept(Qt.MoveAction);}else drop.accepted=false;}
+                Rectangle {anchors.fill:parent;radius:7;visible:parent.containsDrag;color:"transparent";border.width:2;border.color:Theme.colors.accent}
+            }
             Keys.onPressed:event=>{
                 if((event.modifiers&Qt.ControlModifier) && [Qt.Key_Left,Qt.Key_Right].includes(event.key)){
                     if(!root.gesture)root.begin(modelData.logicalId);root.step(event.key===Qt.Key_Left?-1:1);event.accepted=true;
@@ -56,7 +62,7 @@ Item {
         }
         ScrollBar.horizontal:DesktopScrollBar {}
     }
-    MouseArea {id:gesturePointer;objectName:"desktop-order-pointer";anchors.fill:parent;enabled:!root.busy;preventStealing:root.editing
+    MouseArea {id:gesturePointer;objectName:"desktop-order-pointer";anchors.fill:parent;enabled:!root.busy && !(root.dropController && root.dropController.active);preventStealing:root.editing
         onPressed:mouse=>{const index=list.indexAt(mouse.x+list.contentX,12);if(index<0)return;const item=list.itemAtIndex(index);if(item)item.forceActiveFocus();root.pointerMoved=false;root.pressX=mouse.x;root.begin(root.shown[index].logicalId);}
         onPositionChanged:mouse=>{if(!pressed || root.cancelled || !root.gesture)return;if(Math.abs(mouse.x-root.pressX)>8)root.pointerMoved=true;if(root.pointerMoved)root.pointerAt(mouse.x);}
         onReleased:mouse=>{if(root.cancelled || !root.gesture)return;if(mouse.x<0 || mouse.y<0 || mouse.x>width || mouse.y>height){root.cancel();return;}const desktop=root.desktops.find(item=>item.logicalId===root.gesture.id);if(root.pointerMoved)root.commit();else {root.gesture=null;if(desktop)root.activateDesktop(desktop);}}

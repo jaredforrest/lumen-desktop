@@ -1,6 +1,6 @@
 --- /dev/null
 +++ b/sway/commands/lumen_focus_guard.c
-@@ -0,0 +1,191 @@
+@@ -0,0 +1,199 @@
 +/* Bounded typed activation guard. All preflight runs in one IPC callback. */
 +#include <inttypes.h>
 +#include <json.h>
@@ -136,6 +136,14 @@
 + canonical(empty, &golden, 0, true); json_object_put(empty);
 + unsigned char digest[32]; unsigned int digest_size = 0;
 + bool ready = !golden.failed && EVP_Digest(golden.data, golden.len, digest, &digest_size, EVP_sha256(), NULL) && digest_size == 32 && !memcmp(digest, expected, 32);
++ /* Preserve exact native JSON floating-point bits across both encoders. */
++ json_object *fraction = json_tokener_parse("{\"percent\":0.45454545454545453}");
++ golden.len=0;golden.failed=false;golden.nodes=0;golden.windows=0;
++ if(fraction){canonical(fraction,&golden,0,true);json_object_put(fraction);}else golden.failed=true;
++ char fraction_hex[65];
++ bool fraction_ready=!golden.failed && EVP_Digest(golden.data,golden.len,digest,&digest_size,EVP_sha256(),NULL) && digest_size==32;
++ if(fraction_ready){for(unsigned i=0;i<32;i++)snprintf(fraction_hex+i*2,3,"%02x",digest[i]);}
++ ready=ready && fraction_ready && !strcmp(fraction_hex,"60ffe22922859c42204319180bea585e68227bb31dee3c816a16e8302f0f329a");
 + free(golden.data); return ready;
 +}
 +struct cmd_results *cmd_lumen_focus_guard(int argc, char **argv) {

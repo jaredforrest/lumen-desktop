@@ -5,6 +5,7 @@ AbstractButton {
     required property var controller
     required property var sourceFactory
     property string sourceLabel:"window"
+    property string intentMimeType:"application/x-lumen-group-intent"
     property var captured:null
     property bool dragging:false
     property bool nativeDragging:false
@@ -23,7 +24,7 @@ AbstractButton {
         Drag.dragType:Drag.Automatic
         Drag.source:proxy
         Drag.supportedActions:Qt.MoveAction
-        Drag.mimeData:({"application/x-lumen-group-intent":root.controller?root.controller.token:""})
+        Drag.mimeData:({[root.intentMimeType]:root.controller?root.controller.token:""})
         Drag.onDragFinished:{if(root.controller && root.controller.active)root.controller.cancel();Qt.callLater(()=>{root.nativeDragging=false;root.dragging=false;root.captured=null;});}
     }
     MouseArea {anchors.fill:parent;enabled:root.enabled;preventStealing:true

@@ -125,9 +125,18 @@ name = "lumen-spaces"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "lumen-window-policy",
  "serde_json",
  "sha2",
  "uuid",
+]
+
+[[package]]
+name = "lumen-window-policy"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "sha2",
 ]
 
 [[package]]

@@ -23,6 +23,15 @@ FloatingWindow {
     property bool removalSupported:false
     property int revision:0
     property string sessionEpoch:""
+    property var transferSnapshot:null
+    DesktopWindowDrag {id:desktopWindowDrag;owner:root;onCommitsChanged:if(root.visible)root.send({action:"status"});onErrorChanged:if(error)root.error=error;onBegan:{if(root.shell.groupMembershipDrag)root.shell.groupMembershipDrag.cancel();}}
+    function captureDesktopWindow(window){
+        if(!transferSnapshot || !window || !window.transfer || busy || desktopStrip.editing)return null;
+        const destinations=workspaces.filter(d=>d.available && d.transfer && (d.transfer.workspace===null || d.transfer.workspace!==window.transfer.workspace)).map(d=>d.transfer);
+        return {source:window.transfer,snapshot:transferSnapshot,revision:revision,sessionEpoch:sessionEpoch,destinations:destinations};
+    }
+    onRevisionChanged:if(desktopWindowDrag.active && !desktopWindowDrag.valid())desktopWindowDrag.cancel()
+    onSessionEpochChanged:if(desktopWindowDrag.active && !desktopWindowDrag.valid())desktopWindowDrag.cancel()
     property string managedDesktopId:""
     onManagedDesktopIdChanged:desktopStrip.selectedId=managedDesktopId
     property var removalCapture:null
@@ -48,12 +57,12 @@ FloatingWindow {
         return choices;
     }
     readonly property bool overviewActive:content.Window.window?content.Window.window.active:false
-    onOverviewActiveChanged:if(!overviewActive)desktopStrip.cancel()
+    onOverviewActiveChanged:if(!overviewActive){desktopStrip.cancel();desktopWindowDrag.cancel();}
     property string appFilter:""
     property string error:""
     property int selected:0
     property double draggedId:0
-    onVisibleChanged:{if(visible)fit();else {draggedId=0;activation.stop();desktopStrip.cancel();removeDialog.close();groupsDialog.close();}}
+    onVisibleChanged:{if(visible)fit();else {draggedId=0;activation.stop();desktopStrip.cancel();desktopWindowDrag.cancel();removeDialog.close();groupsDialog.close();}}
     function syncAssignment(){const saved=current?assignments[current.application]:null;assignment.currentIndex=saved?Math.max(0,assignmentChoices.findIndex(item=>item.kind===saved.kind && item.target===saved.target_id)):0;}
     onCurrentChanged:syncAssignment()
     onAssignmentsChanged:syncAssignment()
@@ -70,12 +79,12 @@ FloatingWindow {
         send({action:"status"});
         Qt.callLater(()=>{if(content.Window.window)content.Window.window.requestActivate();});
     }
-    function send(data){if(worker.running)return;request=data;error="";worker.running=true;}
+    function send(data){if(desktopWindowDrag.active){desktopWindowDrag.cancel();if(data.action!=="status")return;}if(worker.running)return;request=data;error="";worker.running=true;}
     function activate(){if(!busy && current){visible=false;activation.data={action:"focus",id:current.id,pid:current.pid};activation.restart();}}
     function step(delta){draggedId=0;selected=Math.max(0,Math.min(matches.length-1,selected+delta));grid.positionViewAtIndex(selected,GridView.Contain);}
     Timer {id:activation;property var data;interval:100;onTriggered:{if(root.busy)restart();else root.send(data);}}
     Rectangle {id:content;anchors.fill:parent;radius:Theme.nativeWindowFrame?0:12;color:Theme.colors.background;border.color:Theme.outline;focus:true
-        Keys.onEscapePressed:event=>{if(InputOwnership.textOwns(event,content.Window.window)){event.accepted=false;return;}if(root.shell.groupMembershipDrag && root.shell.groupMembershipDrag.active)root.shell.groupMembershipDrag.cancel();else if(desktopStrip.editing)desktopStrip.cancel();else root.visible=false;}
+        Keys.onEscapePressed:event=>{if(InputOwnership.textOwns(event,content.Window.window)){event.accepted=false;return;}if(desktopWindowDrag.active)desktopWindowDrag.cancel();else if(root.shell.groupMembershipDrag && root.shell.groupMembershipDrag.active)root.shell.groupMembershipDrag.cancel();else if(desktopStrip.editing)desktopStrip.cancel();else root.visible=false;}
         Keys.onPressed:event=>{
             if(InputOwnership.textOwns(event,content.Window.window)){event.accepted=false;return;}
             if(event.key===Qt.Key_Down){root.step(Math.max(1,Math.floor(grid.width/grid.cellWidth)));event.accepted=true;}
@@ -91,7 +100,7 @@ FloatingWindow {
             ScrollBar.vertical:DesktopScrollBar {}
             Item {id:body;width:bodyViewport.width;height:Math.max(bodyViewport.height,grid.y+root.cardHeight+footer.implicitHeight+29)
         DesktopTextField {id:search;x:20;y:10;width:parent.width-40;height:Math.max(32,contentItem.implicitHeight+12);placeholderText:"Find a window";placeholderTextColor:Theme.colors.muted;color:Theme.colors.text;font.family:Theme.font;font.pixelSize:Theme.textRole("label");selectByMouse:true;Accessible.name:"Find a window";onTextChanged:{root.draggedId=0;root.selected=0;}onAccepted:root.activate();background:Rectangle {radius:8;color:Theme.colors.field;border.color:search.activeFocus?Theme.colors.accent:Theme.hairline}}
-        DesktopStrip {id:desktopStrip;x:20;y:search.y+search.height+12;width:parent.width-40;height:implicitHeight;desktops:root.workspaces;revision:root.revision;sessionEpoch:root.sessionEpoch;busy:root.busy;outputId:root.outputs[desktopOutput.currentIndex]?root.outputs[desktopOutput.currentIndex].logicalId:"";selectedId:root.managedDesktopId
+        DesktopStrip {id:desktopStrip;x:20;y:search.y+search.height+12;width:parent.width-40;height:implicitHeight;desktops:root.workspaces;revision:root.revision;sessionEpoch:root.sessionEpoch;busy:root.busy;dropController:desktopWindowDrag;outputId:root.outputs[desktopOutput.currentIndex]?root.outputs[desktopOutput.currentIndex].logicalId:"";selectedId:root.managedDesktopId
             onSelectedIdChanged:root.managedDesktopId=selectedId
             onActivateDesktop:desktop=>{root.managedDesktopId=desktop.logicalId;root.visible=false;activation.data={action:"workspace",logicalId:desktop.logicalId,sessionEpoch:root.sessionEpoch};activation.restart();}
             onReorderRequested:request=>root.send(request)
@@ -122,9 +131,18 @@ FloatingWindow {
                 onClicked:{root.draggedId=0;root.selected=index;root.activate();}
                 background:Rectangle {radius:12;color:Theme.colors.surface;border.width:parent.index===root.selected?2:1;border.color:parent.index===root.selected?Theme.colors.accent:Theme.hairline}
                 contentItem:Item {
+                    DesktopWindowCardDrag {
+                        objectName:"desktop-window-card-drag-"+windowCard.modelData.id
+                        width:parent.width;height:Math.max(0,Math.min(groupDragHandle.y,desktopDragHandle.y)-4)
+                        controller:desktopWindowDrag
+                        sourceFactory:()=>root.captureDesktopWindow(windowCard.modelData)
+                        onPressCaptured:{root.draggedId=0;root.selected=windowCard.index;windowCard.forceActiveFocus(Qt.MouseFocusReason);}
+                        onClicked:windowCard.clicked()
+                    }
                     SystemGlyph {x:12;y:15;width:24;height:24;name:"screen";ink:Theme.colors.accent}
                     PanelLabel {id:cardTitle;objectName:"overview-card-title";x:46;y:13;width:parent.width-58;height:Math.max(38,Math.ceil(titleMetrics.height*2)+8);text:modelData.title;textFormat:Text.PlainText;wrapMode:Text.Wrap;maximumLineCount:2;font.weight:Font.DemiBold;font.pixelSize:Theme.textRole("label")}
-                    GroupDragHandle {sourceLabel:windowCard.modelData.title;objectName:"group-drag-"+windowCard.modelData.id;x:parent.width-88;y:parent.height-height-2;controller:root.shell.groupMembershipDrag;sourceFactory:()=>root.captureGroupWindow(windowCard.modelData);enabled:!!root.captureGroupWindow(windowCard.modelData)}
+                    GroupDragHandle {id:groupDragHandle;sourceLabel:windowCard.modelData.title;objectName:"group-drag-"+windowCard.modelData.id;x:parent.width-88;y:parent.height-height-2;controller:root.shell.groupMembershipDrag;sourceFactory:()=>root.captureGroupWindow(windowCard.modelData);enabled:!!root.captureGroupWindow(windowCard.modelData)}
+                    GroupDragHandle {id:desktopDragHandle;text:"Desktop…";Accessible.name:"Move "+sourceLabel+" to desktop";Accessible.description:windowCard.modelData.transferUnavailable || "Drag to a desktop in the strip, or activate then select the destination desktop";intentMimeType:"application/x-lumen-desktop-window-intent";sourceLabel:windowCard.modelData.title;objectName:"desktop-window-drag-"+windowCard.modelData.id;x:parent.width-184;y:parent.height-height-2;controller:desktopWindowDrag;sourceFactory:()=>root.captureDesktopWindow(windowCard.modelData);enabled:!!root.captureDesktopWindow(windowCard.modelData) && !desktopWindowDrag.busy}
                     PanelLabel {id:cardDesktop;objectName:"overview-card-desktop";x:12;y:cardTitle.y+cardTitle.height+10;width:parent.width-24;text:modelData.workspace==="__i3_scratch"?"Minimised":modelData.workspaceLabel || "Desktop "+modelData.workspace;textFormat:Text.PlainText;color:Theme.colors.muted;font.pixelSize:Theme.textRole("metadata")}
                 }
             }
@@ -142,7 +160,7 @@ FloatingWindow {
             DialogButton {id:assignCommand;width:160;text:"Assign Application";enabled:!!root.current && !!root.current.application && !root.busy;onClicked:{const choice=root.assignmentChoices[assignment.currentIndex];root.send({action:"assign",id:root.current.id,pid:root.current.pid,kind:choice.kind,target:choice.target,sessionEpoch:root.sessionEpoch});}}
         }
         Flow {width:parent.width;spacing:20
-        PanelLabel {width:Math.max(200,parent.width-recentOrdering.width-20);topPadding:4;font.pixelSize:Theme.textRole("metadata");color:Theme.colors.muted;text:root.error || (root.current && root.current.allDesktopMembership && root.current.allDesktopMembership.reason ? root.current.allDesktopMembership.reason : "") || (root.draggedId>0?"Choose a desktop, then Move Window · Escape to cancel":"Arrow keys to select · Return to open · Escape to close");wrapMode:Text.WordWrap}
+        PanelLabel {width:Math.max(200,parent.width-recentOrdering.width-20);topPadding:4;font.pixelSize:Theme.textRole("metadata");color:Theme.colors.muted;text:root.error || (root.current && root.current.transferUnavailable || "") || (root.current && root.current.allDesktopMembership && root.current.allDesktopMembership.reason ? root.current.allDesktopMembership.reason : "") || (root.draggedId>0?"Choose a desktop, then Move Window · Escape to cancel":"Arrow keys to select · Return to open · Escape to close");wrapMode:Text.WordWrap}
         SettingsToggle {id:recentOrdering;width:Math.min(parent.width,250*Theme.textScale);height:Math.max(36,implicitHeight);text:"Recent desktop order";enabled:!root.busy;Accessible.name:"Order desktops by recent use";checked:root.autoReorder;onToggled:root.send({action:"ordering",enabled:checked})}
 
         }
@@ -178,11 +196,11 @@ FloatingWindow {
             }
         }
     }
-    Timer {interval:2000;running:root.visible && !desktopStrip.editing && !removeDialog.opened && !groupsDialog.opened && !(root.shell.groupMembershipDrag && root.shell.groupMembershipDrag.active);repeat:true;onTriggered:root.send({action:"status"})}
+    Timer {interval:2000;running:root.visible && !desktopWindowDrag.active && !desktopStrip.editing && !removeDialog.opened && !groupsDialog.opened && !(root.shell.groupMembershipDrag && root.shell.groupMembershipDrag.active);repeat:true;onTriggered:root.send({action:"status"})}
     Process {id:worker;stdinEnabled:true
         command:["lumen-window-overview"]
         onStarted:write(JSON.stringify(root.request)+"\n")
-        stdout:StdioCollector {onStreamFinished:{try{const data=JSON.parse(text);root.error=data.error || "";if(data.created)root.managedDesktopId=data.created.logicalId;if(data.windows){const selectedId=root.draggedId || (root.current?root.current.id:0);root.windows=data.windows;root.windowGroups=data.windowGroups || null;const index=root.matches.findIndex(w=>w.id===selectedId);root.selected=root.draggedId?index:Math.max(0,index);if(root.draggedId && index<0)root.error="The dragged window is no longer available";root.workspaces=data.workspaces;root.outputs=data.outputs;root.removalSupported=!!(data.capabilities || {}).desktop_removal;root.revision=data.revision;root.sessionEpoch=data.sessionEpoch;
+        stdout:StdioCollector {onStreamFinished:{try{const data=JSON.parse(text);root.error=data.error || "";if(data.created)root.managedDesktopId=data.created.logicalId;if(data.windows){const selectedId=root.draggedId || (root.current?root.current.id:0);root.windows=data.windows;root.windowGroups=data.windowGroups || null;root.transferSnapshot=data.transferSnapshot || null;const index=root.matches.findIndex(w=>w.id===selectedId);root.selected=root.draggedId?index:Math.max(0,index);if(root.draggedId && index<0)root.error="The dragged window is no longer available";root.workspaces=data.workspaces;root.outputs=data.outputs;root.removalSupported=!!(data.capabilities || {}).desktop_removal;root.revision=data.revision;root.sessionEpoch=data.sessionEpoch;
                     if(!root.workspaces.some(item=>item.logicalId===root.managedDesktopId)){const chosen=root.workspaces.find(item=>item.focused) || root.workspaces[0];root.managedDesktopId=chosen?chosen.logicalId:"";}
                     manageDesktop.currentIndex=Math.max(0,manageDesktop.model.findIndex(item=>item.logicalId===root.managedDesktopId));root.autoReorder=data.autoReorder;root.assignments=data.assignments;root.selected=Math.min(root.selected,Math.max(0,root.matches.length-1));}}catch(e){root.error="Unable to read desktop windows";}}}
         onExited:if(root.request.action!=="status" && root.visible)Qt.callLater(()=>root.send({action:"status"}))

@@ -279,6 +279,16 @@ mod tests {
     use super::*;
     use serde_json::json;
     #[test]
+    fn native_double_spelling_keeps_exact_canonical_bits() {
+        // Exact C/json-c native output fraction, independently hashed by the
+        // unchanged upstream C canonical encoder and SHA256 implementation.
+        let tree: Value = serde_json::from_str(r#"{"percent":0.45454545454545453}"#).unwrap();
+        assert_eq!(
+            format!("{:x}", Sha256::digest(canonical_topology(&tree).unwrap())),
+            "60ffe22922859c42204319180bea585e68227bb31dee3c816a16e8302f0f329a"
+        );
+    }
+    #[test]
     fn canonical_golden_and_projection_bounds() {
         assert_eq!(
             format!(

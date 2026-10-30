@@ -1,4 +1,4 @@
-use lumen_spaces::{Policy,Result,windows as membership_windows,membership,reconcile_membership,groups};
+use lumen_spaces::{Policy,Result,windows as membership_windows,membership,reconcile_membership,groups,transfer};
 use serde_json::{Value,json};
 use sha2::{Digest,Sha256};
 use std::env;
@@ -10,7 +10,10 @@ use std::process::Command;
 
 fn run(args:&[&str])->Result<Value>{
     let output=Command::new("timeout").arg("4s").arg("swaymsg").arg("-r").args(args).output().map_err(|e|e.to_string())?;
-    if !output.status.success(){return Err("The window manager did not return a valid response".into());}
+    if !output.status.success(){
+        if let Ok(reply)=serde_json::from_slice::<Value>(&output.stdout){if let Some(message)=reply.as_array().filter(|v|v.len()==1).and_then(|v|v[0]["error"].as_str()).filter(|s|s.starts_with("LST_REJECTED:")&&s.len()<=256&&!s.chars().any(char::is_control)){return Err(format!("{}. Refresh before trying again.",message.trim_start_matches("LST_REJECTED:").trim()));}}
+        return Err("The window manager did not return a valid response".into());
+    }
     serde_json::from_slice(&output.stdout).map_err(|e|e.to_string())
 }
 fn checked(command:&str)->Result<()> {
@@ -146,6 +149,35 @@ fn handle(data:&Value)->Result<Value>{
     state["autoReorder"]=model.state["auto_reorder"].clone();state["auto_reorder"]=model.state["auto_reorder"].clone();
     state["assignments"]=model.state["assignments"].clone();state["revision"]=model.state["revision"].clone();state["sessionEpoch"]=json!(epoch);
     state["capabilities"]=json!({"desktop_lifecycle":true,"desktop_removal":run(&["-t","get_version"])?["desktop_rehome"]==true,"all_desktops":{"supported":true,"scope":"current-display","window_kind":"independent-floating"}});
+    if action=="transfer"{
+        if data.as_object().is_none_or(|v|v.len()!=6 || ["action","sessionEpoch","revision","snapshot","source","destination"].iter().any(|k|!v.contains_key(*k))){return Err("Invalid captured desktop transfer request".into());}
+        check_epoch(data,&epoch)?;
+        model.require_revision(data["revision"].as_i64().ok_or("Invalid desktop revision")?)?;
+        let captured=&data["destination"];
+        let desktop=model.desktop(captured["logicalId"].as_str().ok_or("Invalid destination identity")?,true)?;
+        let tree=run(&["-t","get_tree"])?;
+        if transfer::destination(&tree,&desktop)?!=*captured{return Err("The captured destination changed".into());}
+        let current=transfer::source(&tree,&data["source"]["id"])?;
+        if current!=data["source"]{return Err("The captured window changed".into());}
+        // A saved assignment must not silently move the result back afterward.
+        let window=state["windows"].as_array().and_then(|w|w.iter().find(|w|w["id"]==current["id"])).ok_or("Captured source retired")?;
+        if model.state["assignments"][window["application"].as_str().unwrap_or("")]["kind"].as_str().is_some_and(|kind|kind!="none"){return Err("Remove the window's desktop assignment before moving it".into());}
+        let command=transfer::command(&data["snapshot"],&data["source"],captured)?;
+        check_epoch(data,&epoch)?;checked(&command)?;check_epoch(data,&epoch)?;
+        return Ok(json!({"ok":true}));
+    }
+    if action=="status"{
+        let tree=run(&["-t","get_tree"])?;
+        state["transferSnapshot"]=transfer::snapshot(&tree).ok().unwrap_or(Value::Null);
+        if !state["transferSnapshot"].is_null(){
+            if let Some(rows)=state["windows"].as_array_mut(){for row in rows{
+                let assigned=model.state["assignments"][row["application"].as_str().unwrap_or("")]["kind"].as_str().is_some_and(|kind|kind!="none");
+                let capture=if assigned{Err("Remove the window's desktop assignment before moving it".into())}else{transfer::source(&tree,&row["id"])};
+                match capture{Ok(value)=>{row["transfer"]=value;row["transferUnavailable"]=Value::Null;},Err(error)=>{row["transfer"]=Value::Null;row["transferUnavailable"]=json!(error);}}
+            }}
+            if let Some(desktops)=state["workspaces"].as_array_mut(){for desktop in desktops{desktop["transfer"]=transfer::destination(&tree,desktop).ok().unwrap_or(Value::Null);}}
+        }
+    }
     if action=="status"{return Ok(state);}
     if matches!(action,"desktop-create"|"desktop-reorder"|"desktop-remove"){
         let revision=data["revision"].as_i64().ok_or("Invalid desktop revision")?;model.require_revision(revision)?;check_epoch(data,&epoch)?;

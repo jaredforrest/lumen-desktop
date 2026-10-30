@@ -1,4 +1,6 @@
 //! Shared real compositor, D-Bus, keyboard and pointer harness for group fixtures.
+mod desktop_card;
+mod desktop_transfer;
 mod membership;
 mod presentation;
 mod selector;
@@ -166,9 +168,14 @@ fn options() -> Result<Options> {
     let mut args = env::args_os().skip(1);
     while let Some(arg) = args.next() {
         match arg.to_str() {
-            Some("selector" | "membership" | "window-groups" | "presentation") => {
-                scenario = Some(arg.to_string_lossy().into_owned())
-            }
+            Some(
+                "selector"
+                | "membership"
+                | "window-groups"
+                | "presentation"
+                | "desktop-transfer"
+                | "desktop-transfer-unsupported",
+            ) => scenario = Some(arg.to_string_lossy().into_owned()),
             Some("--effects") => effects = true,
             Some("--launcher") => {
                 launcher = Some(PathBuf::from(args.next().ok_or("Missing launcher")?))
@@ -540,7 +547,10 @@ fn setup(opt: Options) -> Result<Context> {
     let sway = ctx.opt.sway.clone();
     let config_path = text(&config);
     let mut compositor_args = vec!["--unsupported-gpu", "-c", &config_path];
-    if ctx.opt.scenario == "presentation" {
+    if matches!(
+        ctx.opt.scenario.as_str(),
+        "presentation" | "desktop-transfer" | "desktop-transfer-unsupported"
+    ) {
         compositor_args.push("-d");
     }
     ctx.launch(&sway, &compositor_args, "sway.log", false)?;
@@ -588,7 +598,10 @@ fn setup(opt: Options) -> Result<Context> {
         &appearance.join("appearance.json"),
         &json!({"font":"sans-serif","palette":{"background":"#242426","surface":"#303033","field":"#363639","text":"#eeeeef","muted":"#aaaab0","border":"#505054","hover":"#414145","accent":"#007aff","selectedText":"#ffffff"},"preferences":{"mode":"dark","reduceMotion":true}}),
     )?;
-    let assets = if ctx.opt.scenario == "presentation" {
+    let assets = if matches!(
+        ctx.opt.scenario.as_str(),
+        "presentation" | "desktop-transfer" | "desktop-transfer-unsupported"
+    ) {
         PathBuf::from(
             ctx.vars
                 .get("LUMEN_DESKTOP_ASSETS")
@@ -600,6 +613,8 @@ fn setup(opt: Options) -> Result<Context> {
     copy_tree(&assets, &ctx.root.0.join("assets"))?;
     let qml = if ctx.opt.scenario == "selector" {
         include_str!("../selector.qml")
+    } else if ctx.opt.scenario.starts_with("desktop-transfer") {
+        include_str!("../desktop-transfer.qml")
     } else if ctx.opt.scenario == "presentation" {
         include_str!("../presentation.qml")
     } else {
@@ -628,7 +643,11 @@ fn main() -> Result<()> {
     } else {
         setup(opt)?
     };
-    if scenario == "selector" {
+    if scenario == "desktop-transfer-unsupported" {
+        desktop_transfer::unsupported(&mut ctx)
+    } else if scenario == "desktop-transfer" {
+        desktop_transfer::run(&mut ctx)
+    } else if scenario == "selector" {
         selector::run(&mut ctx)
     } else if scenario == "presentation" {
         presentation::run(&mut ctx)
