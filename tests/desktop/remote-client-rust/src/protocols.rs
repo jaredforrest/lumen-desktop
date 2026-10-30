@@ -657,6 +657,11 @@ fn legacy_clipboard(f: &mut Harness) -> Result<()> {
         .ok_or("Keyboard")?
         .key(&["-k", "Return"])?;
     focus_viewer(f)?;
+    let rejected_paste_preserved = paste_until(f, false, LEGACY)?;
+    ensure(
+        rejected_paste_preserved,
+        "Rejected Unicode text replaced the legacy server clipboard",
+    )?;
     chord(f, "a")?;
     f.keyboard
         .as_mut()
@@ -672,6 +677,7 @@ fn legacy_clipboard(f: &mut Harness) -> Result<()> {
         "independentDisplays":true, "representableLatin1Source":LEGACY, "representableReceipt":before_reject,
         "unrepresentableSource":LOCAL_TEXT, "rejection":warning, "unchangedReceipt":unchanged,
         "connectionInputReceipt":f.safe_target()?, "remoteTargetIdentityRetained":true,
+        "rejectedPastePreservedPriorClipboard":rejected_paste_preserved,
         "notClaimed":["encrypted legacy connection", "HTML", "files", "Windows"]}),
     )
 }
