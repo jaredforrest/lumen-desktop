@@ -53,6 +53,8 @@ def main [] {
     build test-settings-search-fixture settings-search-fixture
     build test-native-groups-fixture native-groups-fixture
     build test-switcher-fixture switcher-fixture
+    build shell-runtime switcher-runtime
+    build test-offscreen-font-config switcher-font-config
     build test-spaces-placement-fixture spaces-placement-fixture
     build test-notification-native-fixture notification-native-fixture
     build test-desktop-policy-fixture desktop-policy-fixture
@@ -73,6 +75,7 @@ def main [] {
     build network-connectivity network-connectivity-client
     build test-network-connectivity-provider-fixture network-connectivity-provider-fixture
     let shell = (artifact 'shell-package/bin/lumen-desktop-shell')
+    ^(artifact 'switcher-fixture/bin/lumen-switcher-coverage-fixture') --quickshell (artifact 'switcher-runtime/bin/quickshell') --source ($env.PWD | path join res lumen-desktop shell) --fontconfig (artifact 'switcher-font-config') --output (artifact 'switcher-coverage')
     ^nu tests/ci/run-native.nu nix_settings_transaction -- (artifact 'nix-settings-fixture/bin/lumen-nix-settings-fixture') (artifact 'settings-runtime/bin/lumen-nix-settings') ($env.PWD | path join packages desktop-settings-schema.nix) (nix eval --raw --expr '(builtins.getFlake (toString ./.)).inputs.nixpkgs.outPath' --impure)
     let basic = (artifact 'compositor/bin/sway')
     let effects = (artifact 'compositor-effects/bin/sway')
