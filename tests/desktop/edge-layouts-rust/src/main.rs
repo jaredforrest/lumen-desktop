@@ -1,5 +1,5 @@
 //! Private native edge-tiling previews, commits, and pointer-constraint acceptance.
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::env;
 use std::error::Error;
@@ -18,11 +18,7 @@ fn fail(message: impl Into<String>) -> Box<dyn Error> {
     message.into().into()
 }
 fn require(ok: bool, message: impl Into<String>) -> Result<()> {
-    if ok {
-        Ok(())
-    } else {
-        Err(fail(message))
-    }
+    if ok { Ok(()) } else { Err(fail(message)) }
 }
 fn i(value: &Value, key: &str) -> Result<i64> {
     value[key]
@@ -181,7 +177,13 @@ fn outer(options: &Options) -> Result<()> {
         fs::create_dir(private.path().join(key))?;
     }
     let config = private.path().join("bus.conf");
-    fs::write(&config, format!("<busconfig><type>session</type><listen>unix:tmpdir={}</listen><policy context=\"default\"><allow own=\"*\"/><allow send_destination=\"*\"/><allow receive_sender=\"*\"/></policy></busconfig>", private.path().display()))?;
+    fs::write(
+        &config,
+        format!(
+            "<busconfig><type>session</type><listen>unix:tmpdir={}</listen><policy context=\"default\"><allow own=\"*\"/><allow send_destination=\"*\"/><allow receive_sender=\"*\"/></policy></busconfig>",
+            private.path().display()
+        ),
+    )?;
     let values = environment(private.path(), options.effects);
     let keyboard = if options.keyboard == Path::new("wtype") {
         program("wtype", &values)?
@@ -342,9 +344,11 @@ fn call(program: &Path, args: &[&str], values: &BTreeMap<String, String>) -> Res
     require(
         output.status.success(),
         format!(
-            "{} {:?} failed: {}",
+            "{} {:?} failed ({}): stdout={} stderr={}",
             program.display(),
             args,
+            output.status,
+            String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr)
         ),
     )?;
@@ -402,7 +406,7 @@ impl Subscriber {
                         std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
                     ) =>
                 {
-                    break
+                    break;
                 }
                 Err(error) => return Err(error.into()),
             }
@@ -482,7 +486,10 @@ impl<'a> Fixture<'a> {
         let grim = program("grim", &values)?;
         let mut children = Children(Vec::new());
         let config = options.output.join("sway.conf");
-        fs::write(&config, "output HEADLESS-1 resolution 1280x720 position 0 0\noutput HEADLESS-2 resolution 1000x800 position 1280 0\nseat seat0 fallback true\nfloating_modifier Mod4 normal\ndefault_border normal 2\n")?;
+        fs::write(
+            &config,
+            "output HEADLESS-1 resolution 1280x720 position 0 0\noutput HEADLESS-2 resolution 1000x800 position 1280 0\nseat seat0 fallback true\nfloating_modifier Mod4 normal\ndefault_border normal 2\n",
+        )?;
         children.launch(
             &options.sway,
             &[
@@ -580,6 +587,36 @@ impl<'a> Fixture<'a> {
             format!("Sway command {command} failed: {reply}"),
         )?;
         Ok(reply)
+    }
+    fn unavailable(&self, command: &str) -> Result<Value> {
+        let output = Command::new("timeout")
+            .arg("5s")
+            .arg(&self.swaymsg)
+            .args(["-r", command])
+            .env_clear()
+            .envs(&self.values)
+            .output()?;
+        let reply: Value = serde_json::from_slice(&output.stdout).map_err(|error| {
+            fail(format!(
+                "Expected unavailable command receipt: {error}; status={} stdout={} stderr={}",
+                output.status,
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            ))
+        })?;
+        require(
+            output.status.code() == Some(2)
+                && reply.as_array().is_some_and(|rows| {
+                    rows.len() == 1
+                        && rows[0]["success"] == false
+                        && rows[0]["error"] == "Window action is unavailable"
+                }),
+            format!(
+                "Expected exact unavailable refusal for {command}: {} {reply}",
+                output.status
+            ),
+        )?;
+        Ok(json!({"command":command,"exitCode":output.status.code(),"reply":reply}))
     }
     fn tree(&self) -> Result<Value> {
         self.sway(&["-t", "get_tree"])
@@ -1022,7 +1059,16 @@ fn constraint_suite(fixture: &mut Fixture<'_>) -> Result<Vec<String>> {
                     "Fixed client changed on titlebar click",
                 )?;
             }
-            fixture.ipc(&format!("[con_id={}] lumen_window left", fixture.cid))?;
+            let command = format!("[con_id={}] lumen_window left", fixture.cid);
+            if kind == "fixed" {
+                let refusal = fixture.unavailable(&command)?;
+                fs::write(
+                    fixture.options.output.join("constraint-fixed-command.json"),
+                    serde_json::to_vec_pretty(&refusal)?,
+                )?;
+            } else {
+                fixture.ipc(&command)?;
+            }
             thread::sleep(Duration::from_millis(200));
             require(
                 fixture.outer_rect()? == original
@@ -1156,9 +1202,13 @@ fn run(options: &Options) -> Result<()> {
         serde_json::to_vec_pretty(&report)?,
     )?;
     if options.constraints_only {
-        println!("PASS native fixed/bounded sizes, pointer lock/confinement and released-constraint drag");
+        println!(
+            "PASS native fixed/bounded sizes, pointer lock/confinement and released-constraint drag"
+        );
     } else {
-        println!("PASS native drag preview/leave/cancel/commit/restore/modifiers/top arbitration/lock and client constraints");
+        println!(
+            "PASS native drag preview/leave/cancel/commit/restore/modifiers/top arbitration/lock and client constraints"
+        );
     }
     Ok(())
 }
