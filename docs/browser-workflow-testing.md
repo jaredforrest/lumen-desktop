@@ -81,6 +81,10 @@ Save As cancellation, a new exact target, existing-target cancellation and
 explicit Replace through the captured standard chooser. The same parent,
 provider, filesystem hash and completed-download checks remain mandatory. This
 route does not certify the unsafe direct GTK fallback or every chooser shortcut.
+Chooser focus is observed through the private accessibility provider; real Tab
+events traverse to the captured Save control, then Space activates it. The
+observer never invokes accessible focus or action methods. Neither an assumed
+mnemonic nor a logical default-button flag can substitute for that focus proof.
 
 The fixture build also reads hash-pinned upstream chooser sources and the pinned
 GTK header. A narrow parser checks the actual accept-response contract:
@@ -120,3 +124,29 @@ meets the minimum, leaving little margin for retained Nix outputs, source caches
 and parallel builds. Before initialization, reserve persistent workspace and
 temporary/output capacity explicitly. No full source checkout, toolchain
 download or browser compilation is implied by these diagnostic tests.
+
+An upstream repair is available as Chromium commit
+[`35f55adbc49923b7508404d9a9a1fb7bc407a600`](https://github.com/chromium/chromium/commit/35f55adbc49923b7508404d9a9a1fb7bc407a600),
+landed 2026-10-14. It restores stock accept responses, defers showing the chooser
+until Enter/Space activation keys are released, and rejects acceptance during
+the first 500 ms while allowing cancellation immediately. Companion tests
+cover held activation keys, the acceptance cooldown, immediate cancellation,
+destruction and cancellation-mode cleanup. The seven-file change includes
+initial tracking setup, exported declarations, generated GTK signatures and test
+build dependencies; copying only the response constant omits that safety work.
+
+The inspected official release metadata lists release 1.98.62 with Chromium
+156.0.8078.74, the not-yet-promoted release 1.98.63 with 156.0.8078.80, and
+nightly 1.101.7 with 157.0.8103.30. Exact chooser sources for 156.0.8078.80 and
+157.0.8103.30 still contain the incompatible custom response. A higher version
+number alone is therefore not evidence of this repair in the retained browser.
+No alternate browser channel or host update is selected by the test corpus.
+
+The pinned package set already has a Chromium source build: fixed dependency
+snapshots, depot_tools, GN and system-library/toolchain integration can be reused.
+Its source manifest selects 154.0.8037.97, rather than the retained provider's
+154.0.8037.98. A retained-provider derivation still needs an exact regenerated
+dependency closure and its release-specific customization layer. A small cached
+source-subset review found the upstream implementation/header changes apply to
+154.0.8037.98; build-file and generated-signature context need adaptation. That
+source application check is not compilation or acceptance of the backport.
