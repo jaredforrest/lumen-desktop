@@ -80,6 +80,29 @@ fn select(f: &Fixture) -> Result<Value> {
     Err("Captured application absent from switcher".into())
 }
 fn physical(f: &Fixture, key: &str) -> Result<()> {
+    let ready = wait(
+        "actual switcher keyboard activation before physical key",
+        || {
+            let observed = state(f)?;
+            Ok((observed["switcher"]["keyboardReady"] == true).then_some(observed))
+        },
+    )?;
+    let mut ordinal = 1;
+    for entry in fs::read_dir(&f.options.output)? {
+        if entry?
+            .file_name()
+            .to_string_lossy()
+            .starts_with("physical-key-")
+        {
+            ordinal += 1;
+        }
+    }
+    save(
+        &f.options
+            .output
+            .join(format!("physical-key-{ordinal:02}.json")),
+        &json!({"key":key,"argv":["wtype","-k",key],"readiness":ready,"nativeTree":f.tree()?}),
+    )?;
     f.call("wtype", &["-k", key])?;
     Ok(())
 }
