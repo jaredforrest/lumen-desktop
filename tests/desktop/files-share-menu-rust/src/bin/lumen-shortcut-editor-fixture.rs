@@ -284,6 +284,9 @@ fn run(options: &Options) -> Result<()> {
     fs::write(root.join("mode"), "publish")?;
     let assets = root.join("assets");
     copy_tree(Path::new("/source/res/lumen-desktop"), &assets)?;
+    let palette=load(assets.join("appearance/palette.json"))?;
+    let appearance=root.join("appearance.json");store(&appearance,&json!({"font":palette["font"],"palette":palette["dark"],"preferences":{"textScale":1}}))?;
+    values.insert("LUMEN_APPEARANCE_STATE".into(),appearance.display().to_string());
     let state = assets.join("shell/ShortcutEditorState.qml");
     let mut seams = vec![];
     replace_once(
