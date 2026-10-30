@@ -76,7 +76,7 @@ def main [] {
     build test-network-connectivity-provider-fixture network-connectivity-provider-fixture
     let shell = (artifact 'shell-package/bin/lumen-desktop-shell')
     ^(artifact 'switcher-fixture/bin/lumen-switcher-coverage-fixture') --quickshell (artifact 'switcher-runtime/bin/quickshell') --source ($env.PWD | path join res lumen-desktop shell) --fontconfig (artifact 'switcher-font-config') --output (artifact 'switcher-coverage')
-    ^nu tests/ci/run-native.nu nix_settings_transaction -- (artifact 'nix-settings-fixture/bin/lumen-nix-settings-fixture') (artifact 'settings-runtime/bin/lumen-nix-settings') (nix eval --raw .#packages.x86_64-linux.settings-adapter.schema) (nix eval --raw .#lib.source.inputs.nixpkgs.outPath)
+    ^nu tests/ci/run-native.nu nix_settings_transaction -- (artifact 'nix-settings-fixture/bin/lumen-nix-settings-fixture') (artifact 'settings-runtime/bin/lumen-nix-settings') (nix eval --raw --option eval-cache false .#packages.x86_64-linux.settings-adapter.schema) (nix eval --raw --option eval-cache false .#lib.source.inputs.nixpkgs.outPath)
     let basic = (artifact 'compositor/bin/sway')
     let effects = (artifact 'compositor-effects/bin/sway')
     let legacy = (artifact 'compositor-legacy/bin/sway')
