@@ -837,7 +837,10 @@ impl Native {
     fn start(&mut self) -> Result<()> {
         self.start_bus()?;
         self.setup_environment()?;
-        if matches!(self.opt.workflow, Workflow::Permissions | Workflow::Library) {
+        if matches!(
+            self.opt.workflow,
+            Workflow::Permissions | Workflow::Library | Workflow::KeyboardSave
+        ) {
             let prefix = self.opt.at_spi_prefix.clone();
             let mut updated = self.env.clone();
             self.a11y = Some(accessibility_dbus::start(&prefix, &mut updated, self)?);
@@ -1291,9 +1294,64 @@ impl Native {
             || Ok((mapped.elapsed() >= Duration::from_millis(500)).then_some(())),
         )?;
         self.capture("keyboard-save-before-accept.png")?;
-        // The captured standard chooser supplies a default Save action; its
-        // browser-provided label does not promise an Alt+S mnemonic.
-        self.key(&["-k", "Return"])
+        // Observe focus through read-only accessibility, then traverse using
+        // actual Tab events. Never call accessible focus/action methods.
+        let backend = self.portal_facts.as_ref().ok_or("Portal facts")?["backendPid"].clone();
+        let deadline = Instant::now() + Duration::from_secs(15);
+        let mut captured = None;
+        for step in 0..20 {
+            ensure(
+                Instant::now() < deadline,
+                "Keyboard Save traversal exceeded observation budget",
+            )?;
+            ensure(
+                self.windows()?
+                    .iter()
+                    .any(|row| row["id"] == chooser["id"] && row["focused"] == true),
+                "Keyboard traversal lost captured chooser",
+            )?;
+            let rows = self
+                .a11y
+                .as_mut()
+                .ok_or("Private accessibility observer")?
+                .snapshot()?;
+            save(
+                &self.out.join(format!("keyboard-save-focus-{step}.json")),
+                &json!(rows),
+            )?;
+            let targets = rows
+                .iter()
+                .filter(|row| {
+                    row["pid"] == backend
+                        && row["name"] == "Save"
+                        && matches!(row["role"].as_str(), Some("button" | "push button"))
+                        && row["states"]["showing"] == true
+                        && row["states"]["sensitive"] == true
+                })
+                .collect::<Vec<_>>();
+            ensure(
+                targets.len() == 1,
+                "Expected one captured standard-provider Save button",
+            )?;
+            let target = targets[0];
+            if let Some(reference) = &captured {
+                ensure(
+                    reference == &target["reference"],
+                    "Keyboard traversal retargeted Save identity",
+                )?;
+            } else {
+                captured = Some(target["reference"].clone());
+            }
+            if target["states"]["focused"] == true {
+                self.capture("keyboard-save-focused-accept.png")?;
+                return self.key(&["-k", "space"]);
+            }
+            self.key(&["-k", "Tab"])?;
+            thread::sleep(Duration::from_millis(30));
+        }
+        Err(fail(
+            "Save button not reached by bounded keyboard traversal",
+        ))
     }
     fn ui_downloads(&mut self) -> Result<Vec<Value>> {
         Ok(self.evaluate("document.querySelector('downloads-manager')?.items_?.map(row=>({id:row.id,filePath:row.filePath,fileName:row.fileName,state:row.state,percent:row.percent,total:String(row.total)}))")?.as_array().cloned().unwrap_or_default())
