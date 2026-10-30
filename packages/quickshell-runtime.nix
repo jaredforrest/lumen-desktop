@@ -18,5 +18,5 @@ in pkgs.quickshell.overrideAttrs (old: {
     "-DI3=OFF"
     "-DSCREENCOPY_HYPRLAND_TOPLEVEL=OFF"
   ];
-  patches = (old.patches or [ ]) ++ [ ./quickshell-accessibility-lifecycle.patch ./quickshell-compiler-corrections.patch ./quickshell-cmake-registry-policy.patch ];
+  patches = (old.patches or [ ]) ++ [ ./quickshell-accessibility-lifecycle.patch ./quickshell-compiler-corrections.patch ./quickshell-cmake-registry-policy.patch ./quickshell-toplevel-identity.patch ];
 })

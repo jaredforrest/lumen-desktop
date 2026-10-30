@@ -1,0 +1,300 @@
+diff --git a/src/wayland/toplevel/CMakeLists.txt b/src/wayland/toplevel/CMakeLists.txt
+index 0c1d555..41f3d73 100644
+--- a/src/wayland/toplevel/CMakeLists.txt
++++ b/src/wayland/toplevel/CMakeLists.txt
+@@ -16,10 +16,12 @@ qs_add_module_deps_light(quickshell-wayland-toplevel-management
+ install_qml_module(quickshell-wayland-toplevel-management)
+ 
+ wl_proto(wlp-foreign-toplevel wlr-foreign-toplevel-management-unstable-v1 "${CMAKE_CURRENT_SOURCE_DIR}")
++wl_proto(wlp-toplevel-identity lumen-toplevel-identity-v1 "${CMAKE_CURRENT_SOURCE_DIR}")
+ 
+ target_link_libraries(quickshell-wayland-toplevel-management PRIVATE
+ 	Qt::Quick Qt::WaylandClient Qt::WaylandClientPrivate wayland-client
+ 	wlp-foreign-toplevel
++	wlp-toplevel-identity
+ )
+ 
+ qs_module_pch(quickshell-wayland-toplevel-management SET large)
+diff --git a/src/wayland/toplevel/lumen-toplevel-identity-v1.xml b/src/wayland/toplevel/lumen-toplevel-identity-v1.xml
+new file mode 100644
+index 0000000..37b66a2
+--- /dev/null
++++ b/src/wayland/toplevel/lumen-toplevel-identity-v1.xml
+@@ -0,0 +1,45 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<protocol name="lumen_toplevel_identity_v1">
++  <copyright>Copyright 2026 Lumen Desktop contributors.
++    Permission to use, copy, modify, distribute, and sell this software and its
++    documentation for any purpose is hereby granted without fee, provided that
++    this copyright notice appear in all copies. THE SOFTWARE IS PROVIDED AS IS,
++    WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
++  </copyright>
++  <interface name="lumen_toplevel_identity_manager_v1" version="1">
++    <description summary="optional identity bridge for an existing foreign handle">
++      This project-owned protocol links a live wlr foreign toplevel handle to
++      its compositor's existing ext-foreign-toplevel-list identifier. It grants
++      no actuation authority. An unavailable bridge must preserve existing
++      foreign-toplevel behavior. All objects belong to one Wayland connection.
++    </description>
++    <request name="destroy" type="destructor"/>
++    <request name="resolve">
++      <description summary="resolve an exact live resource without heuristic joins">
++        handle must be a non-null zwlr_foreign_toplevel_handle_v1 resource on
++        this connection. A valid but inert, closed, or unsupported resource
++        returns unavailable. A malformed wire object ID or null argument may
++        cause a core protocol error before this request is dispatched.
++        The reply is one-shot and independent of the manager lifetime.
++      </description>
++      <arg name="id" type="new_id" interface="lumen_toplevel_identity_reply_v1"/>
++      <arg name="handle" type="object"/>
++    </request>
++  </interface>
++  <interface name="lumen_toplevel_identity_reply_v1" version="1">
++    <description summary="one terminal identity result">
++      The server immediately snapshots the requested live resource membership
++      and sends exactly one result, destroying this server resource. A client
++      may locally destroy its proxy before the result to abandon observation;
++      there is no cancellation request racing the terminal result.
++    </description>
++    <enum name="status">
++      <entry name="unavailable" value="0"/>
++      <entry name="available" value="1"/>
++    </enum>
++    <event name="result" type="destructor">
++      <arg name="status" type="uint" enum="status"/>
++      <arg name="identifier" type="string" summary="existing ext identifier, or empty when unavailable"/>
++    </event>
++  </interface>
++</protocol>
+diff --git a/src/wayland/toplevel/qml.cpp b/src/wayland/toplevel/qml.cpp
+index 3da9f7b..a29a09d 100644
+--- a/src/wayland/toplevel/qml.cpp
++++ b/src/wayland/toplevel/qml.cpp
+@@ -18,6 +18,7 @@ Toplevel::Toplevel(wlr::ToplevelHandle* handle, QObject* parent): QObject(parent
+ 	// clang-format off
+ 	QObject::connect(handle, &wlr::ToplevelHandle::closed, this, &Toplevel::onClosed);
+ 	QObject::connect(handle, &wlr::ToplevelHandle::appIdChanged, this, &Toplevel::appIdChanged);
++	QObject::connect(handle, &wlr::ToplevelHandle::foreignToplevelIdentifierChanged, this, &Toplevel::foreignToplevelIdentifierChanged);
+ 	QObject::connect(handle, &wlr::ToplevelHandle::titleChanged, this, &Toplevel::titleChanged);
+ 	QObject::connect(handle, &wlr::ToplevelHandle::parentChanged, this, &Toplevel::parentChanged);
+ 	QObject::connect(handle, &wlr::ToplevelHandle::activatedChanged, this, &Toplevel::activatedChanged);
+@@ -38,6 +39,7 @@ void Toplevel::activate() { this->handle->activate(); }
+ void Toplevel::close() { this->handle->close(); }
+ 
+ QString Toplevel::appId() const { return this->handle->appId(); }
++QString Toplevel::foreignToplevelIdentifier() const { return this->handle->foreignToplevelIdentifier(); }
+ QString Toplevel::title() const { return this->handle->title(); }
+ 
+ Toplevel* Toplevel::parent() const {
+diff --git a/src/wayland/toplevel/qml.hpp b/src/wayland/toplevel/qml.hpp
+index 72ceb1a..d0f4e94 100644
+--- a/src/wayland/toplevel/qml.hpp
++++ b/src/wayland/toplevel/qml.hpp
+@@ -24,6 +24,8 @@ class ToplevelHandle;
+ class Toplevel: public QObject {
+ 	Q_OBJECT;
+ 	Q_PROPERTY(QString appId READ appId NOTIFY appIdChanged);
++	/// Optional project-owned exact identity bridge. Empty means unavailable.
++	Q_PROPERTY(QString foreignToplevelIdentifier READ foreignToplevelIdentifier NOTIFY foreignToplevelIdentifierChanged);
+ 	Q_PROPERTY(QString title READ title NOTIFY titleChanged);
+ 	/// Parent toplevel if this toplevel is a modal/dialog, otherwise null.
+ 	Q_PROPERTY(qs::wayland::toplevel::Toplevel* parent READ parent NOTIFY parentChanged);
+@@ -77,6 +79,7 @@ public:
+ 	Q_INVOKABLE void unsetRectangle();
+ 
+ 	[[nodiscard]] QString appId() const;
++	[[nodiscard]] QString foreignToplevelIdentifier() const;
+ 	[[nodiscard]] QString title() const;
+ 	[[nodiscard]] Toplevel* parent() const;
+ 	[[nodiscard]] bool activated() const;
+@@ -96,6 +99,7 @@ public:
+ signals:
+ 	void closed();
+ 	void appIdChanged();
++	void foreignToplevelIdentifierChanged();
+ 	void titleChanged();
+ 	void parentChanged();
+ 	void activatedChanged();
+diff --git a/src/wayland/toplevel/wlr_toplevel.cpp b/src/wayland/toplevel/wlr_toplevel.cpp
+index 6055e22..3155c35 100644
+--- a/src/wayland/toplevel/wlr_toplevel.cpp
++++ b/src/wayland/toplevel/wlr_toplevel.cpp
+@@ -1,4 +1,5 @@
+ #include "wlr_toplevel.hpp"
++#include <algorithm>
+ #include <cstddef>
+ 
+ #include <private/qwaylanddisplay_p.h>
+@@ -15,6 +16,8 @@
+ #include <qtmetamacros.h>
+ #include <qwaylandclientextension.h>
+ #include <wayland-util.h>
++#include <wayland-client-core.h>
++#include <utility>
+ 
+ #include "../../core/logcat.hpp"
+ #include "qwayland-wlr-foreign-toplevel-management-unstable-v1.h"
+@@ -24,6 +27,79 @@ namespace qs::wayland::toplevel::wlr {
+ 
+ QS_LOGGING_CATEGORY(logToplevelManagement, "quickshell.wayland.toplevelManagement", QtWarningMsg);
+ 
++IdentityManager::IdentityManager(): QWaylandClientExtensionTemplate(1) { this->initialize(); }
++IdentityManager* IdentityManager::instance() {
++	static auto* instance = new IdentityManager(); // NOLINT
++	return instance;
++}
++
++// QtWayland's generated wrapper does not retire proxies for incoming destructor
++// events. Own the raw proxy explicitly, retiring it before any observable signal.
++class IdentityReply: public QObject, public QtWayland::lumen_toplevel_identity_reply_v1 {
++public:
++	IdentityReply(ToplevelHandle* owner, quint64 generation,
++	    ::lumen_toplevel_identity_reply_v1* proxy)
++	    : QObject(owner), owner(owner), generation(generation), proxy(proxy) { this->init(proxy); }
++	~IdentityReply() override { this->retire(); }
++private:
++	void retire() {
++		if (auto* proxy = std::exchange(this->proxy, nullptr)) {
++			wl_proxy_destroy(reinterpret_cast<wl_proxy*>(proxy));
++		}
++	}
++	void lumen_toplevel_identity_reply_v1_result(uint32_t status, const QString& identifier) override {
++		QPointer<IdentityReply> self(this);
++		auto owner = std::exchange(this->owner, nullptr);
++		const auto generation = this->generation;
++		this->retire();
++		if (owner) {
++			QObject::disconnect(owner, nullptr, this, nullptr);
++			// The compositor supplies the existing ext identifier: never accept a
++			// malformed identifier or invent one from a title, app key or proxy ID.
++			const bool valid = status == 1 && !identifier.isEmpty() && identifier.size() <= 32
++			    && std::all_of(identifier.cbegin(), identifier.cend(), [](QChar c) {
++				    return c.unicode() >= 0x21 && c.unicode() <= 0x7e;
++			    });
++			owner->completeIdentity(this, generation, valid ? identifier : QString());
++		}
++		// completeIdentity can synchronously destroy the owner and this child.
++		if (self) self->deleteLater();
++	}
++	QPointer<ToplevelHandle> owner;
++	quint64 generation;
++	::lumen_toplevel_identity_reply_v1* proxy;
++};
++
++ToplevelHandle::ToplevelHandle() {
++	QObject::connect(IdentityManager::instance(), &QWaylandClientExtension::activeChanged,
++	    this, &ToplevelHandle::resolveIdentity);
++}
++
++QString ToplevelHandle::foreignToplevelIdentifier() const { return this->mForeignToplevelIdentifier; }
++
++void ToplevelHandle::resolveIdentity() {
++	const auto generation = ++this->identityGeneration;
++	delete this->identityReply.data();
++	this->identityReply = nullptr;
++	const bool changed = !this->mForeignToplevelIdentifier.isEmpty();
++	this->mForeignToplevelIdentifier.clear();
++	QPointer<ToplevelHandle> self(this);
++	if (changed) emit this->foreignToplevelIdentifierChanged();
++	if (!self || generation != this->identityGeneration || !this->isInitialized()
++	    || !this->isReady || !IdentityManager::instance()->isActive()) return;
++	auto* proxy = IdentityManager::instance()->resolve(reinterpret_cast<wl_object*>(this->object()));
++	this->identityReply = new IdentityReply(this, this->identityGeneration, proxy);
++}
++
++void ToplevelHandle::completeIdentity(IdentityReply* reply, quint64 generation, const QString& identifier) {
++	if (this->identityReply != reply || generation != this->identityGeneration
++	    || !IdentityManager::instance()->isActive()) return;
++	this->identityReply = nullptr;
++	if (this->mForeignToplevelIdentifier == identifier) return;
++	this->mForeignToplevelIdentifier = identifier;
++	emit this->foreignToplevelIdentifierChanged();
++}
++
+ ToplevelManager::ToplevelManager(): QWaylandClientExtensionTemplate(3) { this->initialize(); }
+ 
+ bool ToplevelManager::available() const { return this->isActive(); }
+@@ -168,12 +244,19 @@ void ToplevelHandle::zwlr_foreign_toplevel_handle_v1_done() {
+ 	this->isReady = true;
+ 
+ 	if (!wasReady) {
++		QPointer<ToplevelHandle> self(this);
++		this->resolveIdentity();
++		if (!self) return;
+ 		emit this->ready();
+ 	}
+ }
+ 
+ void ToplevelHandle::zwlr_foreign_toplevel_handle_v1_closed() {
+ 	qCDebug(logToplevelManagement) << this << "closed";
++	++this->identityGeneration;
++	delete this->identityReply.data();
++	this->identityReply = nullptr;
++	this->mForeignToplevelIdentifier.clear();
+ 	this->destroy();
+ 	emit this->closed();
+ 	delete this;
+diff --git a/src/wayland/toplevel/wlr_toplevel.hpp b/src/wayland/toplevel/wlr_toplevel.hpp
+index 2c69fcd..1b200bd 100644
+--- a/src/wayland/toplevel/wlr_toplevel.hpp
++++ b/src/wayland/toplevel/wlr_toplevel.hpp
+@@ -2,6 +2,7 @@
+ 
+ #include <qloggingcategory.h>
+ #include <qobject.h>
++#include <qpointer.h>
+ #include <qrect.h>
+ #include <qscreen.h>
+ #include <qstring.h>
+@@ -14,17 +15,30 @@
+ #include "../../core/logcat.hpp"
+ #include "../output_tracking.hpp"
+ #include "wayland-wlr-foreign-toplevel-management-unstable-v1-client-protocol.h"
++#include "qwayland-lumen-toplevel-identity-v1.h"
+ 
+ namespace qs::wayland::toplevel::wlr {
+ 
+ QS_DECLARE_LOGGING_CATEGORY(logToplevelManagement);
+ 
++class IdentityManager: public QWaylandClientExtensionTemplate<IdentityManager>,
++    public QtWayland::lumen_toplevel_identity_manager_v1 {
++	Q_OBJECT;
++public:
++	IdentityManager();
++	static IdentityManager* instance();
++};
++
++class IdentityReply;
++
+ class ToplevelHandle
+     : public QObject
+     , public QtWayland::zwlr_foreign_toplevel_handle_v1 {
+ 	Q_OBJECT;
+ 
+ public:
++	ToplevelHandle();
++	[[nodiscard]] QString foreignToplevelIdentifier() const;
+ 	[[nodiscard]] QString appId() const;
+ 	[[nodiscard]] QString title() const;
+ 	[[nodiscard]] ToplevelHandle* parent() const;
+@@ -49,6 +63,7 @@ signals:
+ 	void closed();
+ 
+ 	void appIdChanged();
++	void foreignToplevelIdentifierChanged();
+ 	void titleChanged();
+ 	void parentChanged();
+ 	void activatedChanged();
+@@ -61,6 +76,12 @@ private slots:
+ 	void onRectWindowDestroyed();
+ 
+ private:
++	friend class IdentityReply;
++	void resolveIdentity();
++	void completeIdentity(IdentityReply* reply, quint64 generation, const QString& identifier);
++	QPointer<QObject> identityReply;
++	quint64 identityGeneration = 0;
++	QString mForeignToplevelIdentifier;
+ 	void zwlr_foreign_toplevel_handle_v1_done() override;
+ 	void zwlr_foreign_toplevel_handle_v1_closed() override;
+ 	void zwlr_foreign_toplevel_handle_v1_app_id(const QString& appId) override;
