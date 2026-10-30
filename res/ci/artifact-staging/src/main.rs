@@ -11,7 +11,7 @@ use std::{
             fs::{FileTypeExt, MetadataExt, OpenOptionsExt},
         },
     },
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -193,16 +193,56 @@ fn walk(
     }
     Ok(())
 }
+fn destination_parent(root: &Path, output: &Path) -> Result<(PathBuf, PathBuf)> {
+    if output
+        .components()
+        .any(|part| part == std::path::Component::ParentDir)
+    {
+        return Err("Artifact output cannot contain parent traversal".into());
+    }
+    let output = if output.is_absolute() {
+        output.to_path_buf()
+    } else {
+        env::current_dir()?.join(output)
+    };
+    let mut ancestor = output.parent().ok_or("Output has no parent")?.to_path_buf();
+    let mut missing = Vec::new();
+    loop {
+        match fs::symlink_metadata(&ancestor) {
+            Ok(_) => break,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {
+                missing.push(
+                    ancestor
+                        .file_name()
+                        .ok_or("Output ancestor has no name")?
+                        .to_owned(),
+                );
+                ancestor = ancestor
+                    .parent()
+                    .ok_or("Output ancestor missing")?
+                    .to_path_buf();
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+    let mut parent = ancestor.canonicalize()?;
+    if !parent.is_dir() {
+        return Err("Output ancestor is not a directory".into());
+    }
+    for part in missing.into_iter().rev() {
+        parent.push(part);
+    }
+    let destination = parent.join(output.file_name().ok_or("Output has no name")?);
+    if destination.starts_with(root.join("artifacts")) {
+        return Err("Output must be outside the original artifacts tree".into());
+    }
+    Ok((parent, destination))
+}
 fn stage(root: &Path, includes: &str, output: &Path, limits: Limits) -> Result<Report> {
     let policy = patterns(includes)?;
     let root = root.canonicalize()?;
-    let parent = output.parent().ok_or("Output has no parent")?;
-    fs::create_dir_all(parent)?;
-    let parent = parent.canonicalize()?;
-    if parent.starts_with(root.join("artifacts")) {
-        return Err("Output must be outside the original artifacts tree".into());
-    }
-    let output = parent.join(output.file_name().ok_or("Output has no name")?);
+    let (parent, output) = destination_parent(&root, output)?;
+    fs::create_dir_all(&parent)?;
     if fs::symlink_metadata(&output).is_ok() {
         return Err("Artifact staging output already exists".into());
     }
@@ -486,6 +526,31 @@ mod tests {
                 .contains("1 special entries")
         );
         assert!(!out.exists());
+        Ok(())
+    }
+    #[test]
+    fn rejected_output_does_not_create_original_artifact_directories() -> Result<()> {
+        let f = Fixture::new();
+        fs::create_dir_all(f.0.join("artifacts/case"))?;
+        fs::write(f.0.join("artifacts/case/file"), "UNCHANGED")?;
+        symlink(f.0.join("artifacts/case"), f.0.join("output-link"))?;
+        for out in [
+            f.0.join("artifacts/case/direct/new"),
+            f.0.join("output-link/indirect/new"),
+        ] {
+            assert!(
+                stage(&f.0, "artifacts/case", &out, Limits::default())
+                    .unwrap_err()
+                    .to_string()
+                    .contains("outside")
+            );
+        }
+        assert!(!f.0.join("artifacts/case/direct").exists());
+        assert!(!f.0.join("artifacts/case/indirect").exists());
+        assert_eq!(
+            fs::read_to_string(f.0.join("artifacts/case/file"))?,
+            "UNCHANGED"
+        );
         Ok(())
     }
     #[test]
