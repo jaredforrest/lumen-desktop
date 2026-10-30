@@ -57,7 +57,10 @@ fn run(options: &Options) -> Result<()> {
     )?;
     let checked_log = log
         .lines()
-        .filter(|line| !line.ends_with("This plugin does not support setting window masks"))
+        .filter(|line| {
+            !line.ends_with("This plugin does not support setting window masks")
+                && !line.contains("SHORTCUT_SETTINGS_TYPOGRAPHY_PASS ")
+        })
         .collect::<Vec<_>>()
         .join("\n");
     require(
@@ -140,7 +143,7 @@ fn run(options: &Options) -> Result<()> {
     fs::write(
         root.join("result.json"),
         serde_json::to_vec_pretty(
-            &json!({"passed":true,"cases":records,"frames":48,"scope":"Actual SettingsWindow, parent Flickable focus reveal and production shortcut controls; synthetic UI-only service rejecting mutations; real Qt Tab/Backtab/type/discard and painted foreground. No native compositor, deployment or reference-exact claim."}),
+            &json!({"passed":true,"cases":records,"frames":48,"offscreenProvider":{"diagnostic":"This plugin does not support setting window masks","count":mask_diagnostics,"reason":"Pinned Quickshell ProxyWindowBase::onPolished unconditionally invokes QWindow::setMask even for default null mask; Qt offscreen does not implement platform input masks. No other diagnostics allowed."},"scope":"Actual SettingsWindow, parent Flickable focus reveal and production shortcut controls; synthetic UI-only service rejecting mutations; real Qt Tab/Backtab/type/discard and painted foreground. No native compositor, deployment or reference-exact claim."}),
         )?,
     )?;
     Ok(())
