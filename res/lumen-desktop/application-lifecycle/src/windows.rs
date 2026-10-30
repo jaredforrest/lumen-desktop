@@ -191,6 +191,26 @@ impl Lifecycle {
             json!({"conId":id,"foreignId":node["foreign_toplevel_identifier"],"appId":app,"instanceId":mru::instance(&process.identity)}),
         )
     }
+    /// Exact native ordering is usable only when every external surface has a
+    /// live witness. Owned shell panels are not external applications.
+    pub fn native_coverage_complete(&self, nodes: &[Value]) -> bool {
+        nodes.iter().all(|node| {
+            if self.native_record(node).is_some() {
+                return true;
+            }
+            let Some(pid) = node["pid"].as_u64().and_then(|pid| u32::try_from(pid).ok()) else {
+                return false;
+            };
+            crate::source_process_identity(pid).is_ok()
+                && std::fs::canonicalize(format!("/proc/{pid}/exe"))
+                    .ok()
+                    .and_then(|path| {
+                        path.file_name()
+                            .map(|name| name.to_string_lossy().contains("quickshell"))
+                    })
+                    == Some(true)
+        })
+    }
     pub fn native_focus_plan(
         &self,
         capture: &Value,

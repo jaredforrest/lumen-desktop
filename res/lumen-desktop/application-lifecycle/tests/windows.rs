@@ -88,6 +88,19 @@ fn exact_duplicate_title_window_order_reopens_and_reused_id_cannot_inherit() {
     reopened.activation_history = saved.history;
     let current = nodes(&owners, 13);
     reopened.refresh(EPOCH, &current);
+    assert_eq!(
+        reopened.window_history.value(),
+        lifecycle.window_history.value()
+    );
+    assert!(reopened.native_coverage_complete);
+    let mut mixed = current.clone();
+    mixed.push(
+        json!({"id":14,"pid":owners.0[0].id(),"window":999,"app_id":null,"shell":"xwayland"}),
+    );
+    assert!(!reopened.native_coverage_complete(&mixed));
+    let mut unregistered = current.clone();
+    unregistered.push(json!({"id":15,"pid":owners.0[0].id(),"app_id":null,"shell":"xdg_shell","window":null,"foreign_toplevel_identifier":"unknown"}));
+    assert!(!reopened.native_coverage_complete(&unregistered));
     assert_eq!(capture(&reopened, 12), chosen);
     assert!(reopened.source_focus_matches(&initial));
     let plan = reopened

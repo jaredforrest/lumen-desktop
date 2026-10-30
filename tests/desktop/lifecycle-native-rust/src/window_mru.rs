@@ -7,6 +7,24 @@ const OTHER: &str = "org.example.MruC";
 fn state(f: &Fixture) -> Result<Value> {
     f.state("windowMruAudit", "last-window-mru.json")
 }
+fn recovery_evidence(f: &Fixture, stage: &str) -> Result<()> {
+    let directory = f.runtime.join("lumen-application-observations");
+    let mut records = Vec::new();
+    if directory.exists() {
+        for entry in fs::read_dir(directory)? {
+            let path = entry?.path();
+            if path.extension().is_some_and(|ext| ext == "json") {
+                records.push(read(&path)?);
+            }
+        }
+    }
+    save(
+        &f.options
+            .output
+            .join(format!("window-mru-recovery-{stage}.json")),
+        &json!({"records":records}),
+    )
+}
 fn nodes(f: &Fixture, id: &str) -> Result<Vec<Value>> {
     let mut all = Vec::new();
     Fixture::nodes(&f.tree()?, &mut all);
@@ -269,7 +287,9 @@ pub fn run(options: Options) -> Result<()> {
         Ok(state(&f)?["available"] == true)
     })?;
     same_capture(&witness, &capture(&f, &second, f.processes[owner].0.id())?)?;
+    recovery_evidence(&f, "observer-reopened")?;
     f.stop(desktop)?;
+    recovery_evidence(&f, "shell-stopped")?;
     require(
         f.processes[owner].alive()? && f.processes[other].alive()?,
         "Shell restart exited native clients",

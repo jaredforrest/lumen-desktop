@@ -52,15 +52,15 @@ PanelWindow {
             previewNativeFocus=JSON.parse(JSON.stringify(shell.nativeFocusedCapture || null));
             items=SwitcherModel.snapshot(shell.windows,shell.activationHistory,identity).map(item=>{
                 const entry=shell.entryFor(item.window);
-                const native=(shell.nativeWindowCaptures || []).find(capture=>{
+                const native=shell.nativeWindowCoverageComplete===true?(shell.nativeWindowCaptures || []).find(capture=>{
                     const owner=shell.entryFor({appId:capture.appId,title:""});return (owner?owner.id:capture.appId)===item.key;
-                });
+                }):null;
                 return {key:item.key,window:item.window,
                     nativeCapture:native?JSON.parse(JSON.stringify(native)):null,
                     label:entry?shell.appLabel(entry):shell.nameForAppId(item.window.appId,item.window.title),
                     icon:entry?shell.appIcon(entry):Qt.resolvedUrl("icons/application.svg")};
             });
-            for(const native of shell.nativeWindowCaptures || []){
+            for(const native of shell.nativeWindowCoverageComplete===true?shell.nativeWindowCaptures || []:[]){
                 const entry=shell.entryFor({appId:native.appId,title:""}),key=entry?entry.id:native.appId;
                 if(items.some(item=>item.key===key))continue;
                 items.push({key:key,window:null,nativeCapture:JSON.parse(JSON.stringify(native)),label:entry?shell.appLabel(entry):shell.nameForAppId(native.appId,""),icon:entry?shell.appIcon(entry):Qt.resolvedUrl("icons/application.svg")});
