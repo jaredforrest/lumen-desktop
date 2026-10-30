@@ -101,10 +101,60 @@ fn shell_proof(dispatcher: &Path) -> Result<Value> {
     Ok(Value::Object(object))
 }
 
+struct RuntimeLease {
+    identity: Value,
+    armed: bool,
+}
+impl RuntimeLease {
+    fn adopt(runtime: tempfile::TempDir) -> Result<Self> {
+        let info = fs::symlink_metadata(runtime.path())?;
+        let identity = json!({"path": runtime.path(), "device": info.dev(), "inode": info.ino(), "uid": info.uid()});
+        let _ = runtime.keep();
+        Ok(Self {
+            identity,
+            armed: true,
+        })
+    }
+    fn release(mut self) {
+        self.armed = false;
+    }
+}
+impl Drop for RuntimeLease {
+    fn drop(&mut self) {
+        if self.armed {
+            if let Err(error) = retire_runtime(&self.identity) {
+                eprintln!("speech runtime retained: {error}");
+            }
+        }
+    }
+}
+
+// A failed diagnostic write or signal must still reap the exact owned child.
+struct OwnedChild(Child);
+impl std::ops::Deref for OwnedChild {
+    type Target = Child;
+    fn deref(&self) -> &Child {
+        &self.0
+    }
+}
+impl std::ops::DerefMut for OwnedChild {
+    fn deref_mut(&mut self) -> &mut Child {
+        &mut self.0
+    }
+}
+impl Drop for OwnedChild {
+    fn drop(&mut self) {
+        if !matches!(self.0.try_wait(), Ok(Some(_))) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+}
+
 fn configure(
     output: &Path,
     dispatcher: &Path,
-) -> Result<(PathBuf, PathBuf, Vec<String>, tempfile::TempDir)> {
+) -> Result<(PathBuf, PathBuf, Vec<String>, RuntimeLease)> {
     let proof = shell_proof(dispatcher)?;
     fs::write(
         output.join("execution-shell-proof.json"),
@@ -128,12 +178,10 @@ fn configure(
         .permissions(fs::Permissions::from_mode(0o700))
         .tempdir_in("/tmp")?;
     let socket = runtime.path().join("speech.sock");
-    let identity = fs::symlink_metadata(runtime.path())?;
+    let runtime = RuntimeLease::adopt(runtime)?;
     fs::write(
         output.join("speech-runtime.json"),
-        serde_json::to_vec_pretty(&json!({
-            "path": runtime.path(), "device": identity.dev(), "inode": identity.ino(), "uid": identity.uid()
-        }))?,
+        serde_json::to_vec_pretty(&runtime.identity)?,
     )?;
     let protocol = output.join("speech-protocol.log");
     let empty_bin = output.join("speech-empty-bin");
@@ -169,40 +217,45 @@ fn configure(
     Ok((socket, protocol, command, runtime))
 }
 
+fn retire_runtime(value: &Value) -> Result<()> {
+    let path = Path::new(
+        value["path"]
+            .as_str()
+            .ok_or("Missing speech runtime path")?,
+    );
+    if path.parent() != Some(Path::new("/tmp"))
+        || !path
+            .file_name()
+            .is_some_and(|name| name.as_encoded_bytes().starts_with(b"lumen-speech-"))
+    {
+        return Err(fail("Invalid speech runtime lease path"));
+    }
+    let info = match fs::symlink_metadata(path) {
+        Ok(info) => info,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+    if !info.is_dir()
+        || info.dev() != value["device"].as_u64().ok_or("Missing runtime device")?
+        || info.ino() != value["inode"].as_u64().ok_or("Missing runtime inode")?
+        || u64::from(info.uid()) != value["uid"].as_u64().ok_or("Missing runtime uid")?
+        || info.uid() != unsafe { libc::geteuid() }
+        || info.mode() & 0o777 != 0o700
+    {
+        return Err(fail("Speech runtime lease identity changed"));
+    }
+    let endpoint = path.join("speech.sock");
+    if fs::symlink_metadata(&endpoint).is_ok_and(|metadata| metadata.file_type().is_socket()) {
+        fs::remove_file(endpoint)?;
+    }
+    fs::remove_dir(path)?;
+    Ok(())
+}
+
 fn retire(root: &Path) -> Result<()> {
     let lease = root.join("speech-runtime.json");
     if lease.exists() {
-        let value: Value = serde_json::from_slice(&fs::read(&lease)?)?;
-        let path = Path::new(
-            value["path"]
-                .as_str()
-                .ok_or("Missing speech runtime path")?,
-        );
-        if path.parent() != Some(Path::new("/tmp"))
-            || !path
-                .file_name()
-                .is_some_and(|name| name.as_encoded_bytes().starts_with(b"lumen-speech-"))
-        {
-            return Err(fail("Invalid speech runtime lease path"));
-        }
-        if let Ok(info) = fs::symlink_metadata(path) {
-            if !info.is_dir()
-                || info.dev() != value["device"].as_u64().ok_or("Missing runtime device")?
-                || info.ino() != value["inode"].as_u64().ok_or("Missing runtime inode")?
-                || u64::from(info.uid()) != value["uid"].as_u64().ok_or("Missing runtime uid")?
-                || info.uid() != unsafe { libc::geteuid() }
-                || info.mode() & 0o777 != 0o700
-            {
-                return Err(fail("Speech runtime lease identity changed"));
-            }
-            let endpoint = path.join("speech.sock");
-            if fs::symlink_metadata(&endpoint)
-                .is_ok_and(|metadata| metadata.file_type().is_socket())
-            {
-                fs::remove_file(endpoint)?;
-            }
-            fs::remove_dir(path)?;
-        }
+        retire_runtime(&serde_json::from_slice(&fs::read(&lease)?)?)?;
     }
     let socket = root.join("speech.sock");
     if fs::symlink_metadata(&socket).is_ok_and(|info| info.file_type().is_socket()) {
@@ -345,7 +398,7 @@ fn utility_command() -> Result<bool> {
                 "{}",
                 json!({"address":format!("unix_socket:{}",socket.display()),"socket":socket,"protocol":protocol,"emptyBin":root.join("speech-empty-bin"),"command":command})
             );
-            let _ = runtime.keep();
+            runtime.release();
         }
         "retire" => retire(&PathBuf::from(
             args.next().ok_or("Missing output directory")?,
@@ -594,13 +647,15 @@ fn main_inner() -> Result<()> {
         environment.insert(key.into(), value.into());
     }
     let log = File::create(output.join("dispatcher.log"))?;
-    let mut child = Command::new(&command[0])
-        .args(&command[1..])
-        .env_clear()
-        .envs(environment)
-        .stdout(Stdio::from(log.try_clone()?))
-        .stderr(Stdio::from(log))
-        .spawn()?;
+    let mut child = OwnedChild(
+        Command::new(&command[0])
+            .args(&command[1..])
+            .env_clear()
+            .envs(environment)
+            .stdout(Stdio::from(log.try_clone()?))
+            .stderr(Stdio::from(log))
+            .spawn()?,
+    );
     let started = Instant::now();
     let result = (|| {
         wait_for_socket(&socket, &mut child)?;
@@ -733,6 +788,63 @@ mod tests {
         assert_eq!(
             fs::read_to_string(root.path().join("retained.log")).unwrap(),
             "diagnostic"
+        );
+    }
+    #[test]
+    fn lease_drop_retains_actual_replacement_directory() {
+        let runtime = tempfile::Builder::new()
+            .prefix("lumen-speech-")
+            .permissions(fs::Permissions::from_mode(0o700))
+            .tempdir_in("/tmp")
+            .unwrap();
+        let path = runtime.path().to_owned();
+        let displaced = path.with_extension("displaced");
+        let lease = RuntimeLease::adopt(runtime).unwrap();
+        fs::rename(&path, &displaced).unwrap();
+        fs::create_dir(&path).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).unwrap();
+        fs::write(path.join("retained"), "replacement survives guard refusal").unwrap();
+        assert!(retire_runtime(&lease.identity).is_err());
+        drop(lease);
+        assert_eq!(
+            fs::read_to_string(path.join("retained")).unwrap(),
+            "replacement survives guard refusal"
+        );
+        assert!(displaced.is_dir());
+        fs::remove_file(path.join("retained")).unwrap();
+        fs::remove_dir(&path).unwrap();
+        fs::remove_dir(&displaced).unwrap();
+    }
+    #[test]
+    fn early_failure_drops_reap_owned_child_then_retire_runtime() {
+        let runtime = tempfile::Builder::new()
+            .prefix("lumen-speech-")
+            .permissions(fs::Permissions::from_mode(0o700))
+            .tempdir_in("/tmp")
+            .unwrap();
+        let path = runtime.path().to_owned();
+        let mut child_id = 0;
+        let result: Result<()> = (|| {
+            let _lease = RuntimeLease::adopt(runtime)?;
+            let child = OwnedChild(
+                Command::new(Path::new(env!("LUMEN_TRUE")).with_file_name("sleep"))
+                    .arg("60")
+                    .spawn()?,
+            );
+            child_id = child.id();
+            Err(fail("synthetic post-spawn failure"))
+        })();
+        assert!(result.is_err());
+        assert!(child_id > 0);
+        assert!(!path.exists());
+        let mut status = 0;
+        assert_eq!(
+            unsafe { libc::waitpid(child_id as i32, &mut status, libc::WNOHANG) },
+            -1
+        );
+        assert_eq!(
+            std::io::Error::last_os_error().raw_os_error(),
+            Some(libc::ECHILD)
         );
     }
 }
