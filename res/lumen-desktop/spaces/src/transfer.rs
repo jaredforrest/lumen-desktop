@@ -462,6 +462,25 @@ mod tests {
             .push(child);
         family
     }
+    #[test]
+    fn managed_x11_transfer_uses_observed_owner_and_bounded_window_identity() {
+        let mut tree = ordinary_family_tree();
+        let members = tree["nodes"][0]["nodes"][0]["nodes"]
+            .as_array_mut().unwrap();
+        for (index, member) in members.iter_mut().enumerate() {
+            member["shell"] = json!("xwayland");
+            member["window"] = json!(100 + index);
+            member["lumen_relationships"]["modal"] = json!(false);
+        }
+        assert_eq!(source_family(&tree, &json!(8)).unwrap().1.len(), 2);
+        for invalid in [Value::Null, json!(0), json!(4294967296_u64)] {
+            let mut rejected = tree.clone();
+            rejected["nodes"][0]["nodes"][0]["nodes"][0]["window"] = invalid;
+            assert!(source(&rejected, &json!(8)).is_err());
+        }
+        tree["nodes"][0]["nodes"][0]["nodes"][1]["lumen_relationships"]["parent_supported"] = json!(false);
+        assert!(source(&tree, &json!(8)).is_err());
+    }
     fn nonview_fullscreen_tree() -> Value {
         let mut tree = tree();
         let leaf = tree["nodes"][0]["nodes"][0]["nodes"][0].clone();
