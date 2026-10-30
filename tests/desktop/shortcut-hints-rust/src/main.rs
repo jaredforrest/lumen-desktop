@@ -27,6 +27,7 @@ struct Options {
     effects: bool,
     fontconfig: Option<PathBuf>,
     software_driver: Option<PathBuf>,
+    source_revision: Option<String>,
     inside: bool,
 }
 fn options() -> Result<Options> {
@@ -37,6 +38,7 @@ fn options() -> Result<Options> {
     let mut effects = false;
     let mut fontconfig = None;
     let mut software_driver = None;
+    let mut source_revision = None;
     let mut inside = false;
     let mut args = env::args_os().skip(1);
     while let Some(arg) = args.next() {
@@ -50,6 +52,15 @@ fn options() -> Result<Options> {
             Some("--sway") => sway = Some(PathBuf::from(args.next().ok_or("Missing Sway")?)),
             Some("--output") => output = Some(PathBuf::from(args.next().ok_or("Missing output")?)),
             Some("--effects") => effects = true,
+            Some("--source-revision") => {
+                let value = args.next().ok_or("Missing source revision")?;
+                let value = value.to_str().ok_or("Source revision must be text")?;
+                require(
+                    value.len() == 40 && value.bytes().all(|b| b.is_ascii_hexdigit()),
+                    "Exact source revision required",
+                )?;
+                source_revision = Some(value.to_owned());
+            }
             Some("--font-config") => {
                 fontconfig = Some(PathBuf::from(
                     args.next().ok_or("Missing font configuration")?,
@@ -70,6 +81,7 @@ fn options() -> Result<Options> {
         effects,
         fontconfig,
         software_driver,
+        source_revision,
         inside,
     })
 }
@@ -134,6 +146,9 @@ fn outer(options: &Options) -> Result<()> {
     }
     if let Some(path) = &options.software_driver {
         command.arg("--software-driver").arg(path);
+    }
+    if let Some(revision) = &options.source_revision {
+        command.arg("--source-revision").arg(revision);
     }
     let status = command.status()?;
     require(
@@ -282,6 +297,13 @@ fn install(name: &str, options: &Options, registry: &Path, config: &Path) -> Res
     let temporary = registry.with_extension("new");
     fs::write(&temporary, fs::read(source)?)?;
     fs::rename(&temporary, registry)?;
+    let editor = registry.with_file_name("shortcut-editor.json");
+    let next = editor.with_extension("new");
+    fs::write(
+        &next,
+        fs::read(bundle["editor"].as_str().ok_or("Editor catalog")?)?,
+    )?;
+    fs::rename(next, editor)?;
     let chord = if name == "default" {
         "Mod4+Control+f"
     } else {
@@ -298,10 +320,34 @@ fn install(name: &str, options: &Options, registry: &Path, config: &Path) -> Res
     fs::write(
         config,
         format!(
-            "output HEADLESS-1 resolution 1280x900\nseat seat0 fallback true\nxwayland disable\nfocus_follows_mouse no\nfor_window [all] floating enable\nbindsym {chord} {dispatch}\n"
+            "output HEADLESS-1 resolution 1280x900\nseat seat0 fallback true\nxwayland disable\nfocus_follows_mouse no\nfor_window [all] floating enable\nbindsym {chord} {dispatch}\nexec_always --no-startup-id {}\n",
+            bundle["runtimeCommand"]
+                .as_str()
+                .ok_or("Module runtime witness command missing")?
         ),
     )?;
     Ok(bundle)
+}
+fn runtime_witness(bundle: &Value, envs: &BTreeMap<String, String>) -> Result<Value> {
+    let command = bundle["runtimeCommand"]
+        .as_str()
+        .ok_or("Runtime command")?
+        .split_whitespace()
+        .next()
+        .ok_or("Runtime command")?;
+    require(
+        command.starts_with("/nix/store/")
+            && command.ends_with("/bin/lumen-shortcut-runtime-witness"),
+        "Unexpected runtime observer",
+    )?;
+    let output = Command::new(command)
+        .args(["--check", bundle["registry"].as_str().ok_or("Registry")?])
+        .env_clear()
+        .envs(envs)
+        .output()?;
+    Ok(
+        json!({"confirmed":output.status.success(),"result":serde_json::from_slice::<Value>(&output.stdout).unwrap_or(Value::Null),"diagnostic":String::from_utf8_lossy(&output.stderr)}),
+    )
 }
 fn tree_nodes<'a>(node: &'a Value, found: &mut Vec<&'a Value>) {
     found.push(node);
@@ -540,8 +586,71 @@ fn inner(options: &Options) -> Result<()> {
             .then_some(()))
     })?;
     checks.push("Actual module default registry hint and physical configured dispatch agree");
+    let default_runtime = wait("Actual default configuration load witness", || {
+        let value = runtime_witness(&before, &envs)?;
+        Ok((value["confirmed"] == true).then_some(value))
+    })?;
+    let old_configuration = fs::read_to_string(&config)?;
     let after = install("rebound", options, &registry, &config)?;
+    let valid_rebound_configuration = fs::read_to_string(&config)?;
+    let exported_only = runtime_witness(&after, &envs)?;
+    require(
+        exported_only["confirmed"] == false,
+        "Published exports without reload claimed active dispatch",
+    )?;
+    fs::write(
+        options.output.join("export-only.json"),
+        serde_json::to_vec_pretty(&exported_only)?,
+    )?;
+    fs::write(
+        &config,
+        format!(
+            "{old_configuration}\ninvalid_shortcut_fixture_command\nexec_always --no-startup-id {}\n",
+            after["runtimeCommand"].as_str().unwrap()
+        ),
+    )?;
     call("swaymsg", &["reload"], &envs)?;
+    let invalid = wait("Actual compositor configuration error guard", || {
+        let value: Value =
+            serde_json::from_str(&call("swaymsg", &["-t", "get_config", "-r"], &envs)?)?;
+        Ok((value["lumen_config_valid"] == false).then_some(value))
+    })?;
+    require(
+        runtime_witness(&after, &envs)?["confirmed"] == false
+            && runtime_witness(&before, &envs)?["confirmed"] == false,
+        "Invalid reload received a runtime acknowledgement",
+    )?;
+    focus(id, shell_pid, &envs)?;
+    key("f", &envs)?;
+    wait("Old dispatch retained in invalid-reload fixture", || {
+        Ok(window(&envs)?
+            .and_then(|w| w["fullscreen_mode"].as_i64())
+            .is_some_and(|mode| mode > 0)
+            .then_some(()))
+    })?;
+    key("f", &envs)?;
+    wait("Old dispatch reset after negative", || {
+        Ok(window(&envs)?
+            .is_some_and(|w| w["fullscreen_mode"] == 0)
+            .then_some(()))
+    })?;
+    fs::write(
+        options.output.join("invalid-reload.json"),
+        serde_json::to_vec_pretty(
+            &json!({"loaded":invalid,"oldRuntime":default_runtime,"oldBindingRetained":true,"scope":"Old binding deliberately retained in invalid input; no atomic reload rollback claim"}),
+        )?,
+    )?;
+    fs::write(&config, valid_rebound_configuration)?;
+    call("swaymsg", &["reload"], &envs)?;
+    let rebound_runtime = wait("Actual rebound configuration load witness", || {
+        let value = runtime_witness(&after, &envs)?;
+        Ok((value["confirmed"] == true).then_some(value))
+    })?;
+    fs::write(
+        options.output.join("runtime-reload.json"),
+        serde_json::to_vec_pretty(&rebound_runtime)?,
+    )?;
+    checks.push("Export-only and parse-error configurations remain unconfirmed; actual valid reload publishes matching runtime generation");
     wait("consumer rebind watched", || {
         Ok((state(shell_pid, &envs)?["hint"] == "Ctrl+Super+X").then_some(()))
     })?;
@@ -610,8 +719,81 @@ fn inner(options: &Options) -> Result<()> {
         "Invalid registry retargeted a window",
     )?;
     checks.push("Invalid registry cannot retain a stale hint or retarget a native window");
+    let restored = install("rebound", options, &registry, &config)?;
+    let prior = wait("Runtime witness before session replacement", || {
+        let value = runtime_witness(&restored, &envs)?;
+        Ok((value["confirmed"] == true).then_some(value))
+    })?;
+    let previous_runtime = PathBuf::from(envs.get("XDG_RUNTIME_DIR").ok_or("Runtime")?);
+    let old_record = fs::read(previous_runtime.join("lumen-desktop/shortcuts-runtime.json"))?;
+    drop(children);
+    let second_runtime = options.output.join("second-session-runtime");
+    fs::create_dir(&second_runtime)?;
+    fs::set_permissions(&second_runtime, fs::Permissions::from_mode(0o700))?;
+    envs.insert(
+        "XDG_RUNTIME_DIR".into(),
+        second_runtime.display().to_string(),
+    );
+    envs.remove("SWAYSOCK");
+    envs.remove("WAYLAND_DISPLAY");
+    let mut second = Children(Vec::new());
+    second.launch(
+        options.sway.to_str().ok_or("Sway")?,
+        &[
+            "--unsupported-gpu",
+            "-d",
+            "-c",
+            config.to_str().ok_or("Config")?,
+        ],
+        &envs,
+        &options.output.join("sway-session2.log"),
+    )?;
+    let second_socket = wait("Second actual compositor socket", || {
+        first_match(&second_runtime, "sway-ipc")
+    })?;
+    envs.insert("SWAYSOCK".into(), second_socket.display().to_string());
+    let current = wait("Second actual compositor load witness", || {
+        let value = runtime_witness(&restored, &envs)?;
+        Ok((value["confirmed"] == true).then_some(value))
+    })?;
+    require(
+        prior["result"]["epoch"]["pid"] != current["result"]["epoch"]["pid"],
+        "Compositor session was not replaced",
+    )?;
+    fs::write(
+        second_runtime.join("lumen-desktop/shortcuts-runtime.json"),
+        old_record,
+    )?;
+    let stale = runtime_witness(&restored, &envs)?;
+    require(
+        stale["confirmed"] == false
+            && stale["diagnostic"]
+                .as_str()
+                .is_some_and(|text| text.contains("another session")),
+        "Old-session runtime record survived new manager epoch",
+    )?;
+    fs::write(
+        options.output.join("session-epoch.json"),
+        serde_json::to_vec_pretty(
+            &json!({"previous":prior,"current":current,"carriedOldRecord":stale}),
+        )?,
+    )?;
+    let publisher = restored["runtimeCommand"]
+        .as_str()
+        .unwrap()
+        .split_whitespace()
+        .next()
+        .unwrap();
+    call(publisher, &[restored["registry"].as_str().unwrap()], &envs)?;
+    require(
+        runtime_witness(&restored, &envs)?["confirmed"] == true,
+        "Current session witness could not recover",
+    )?;
+    drop(second);
+    checks.push("A real second compositor rejects the previous session record by observed socket/process epoch");
     if options.effects && options.software_driver.is_some() {
-        let log = fs::read_to_string(options.output.join("sway.log"))?;
+        let log = fs::read_to_string(options.output.join("sway.log"))?
+            + &fs::read_to_string(options.output.join("sway-session2.log"))?;
         let observed = log
             .lines()
             .filter(|line| {
@@ -631,7 +813,11 @@ fn inner(options: &Options) -> Result<()> {
             )?,
         )?;
     }
-    let source_revision = call("git", &["rev-parse", "HEAD"], &envs)?;
+    let source_revision = if let Some(revision) = &options.source_revision {
+        revision.clone()
+    } else {
+        call("git", &["rev-parse", "HEAD"], &envs)?
+    };
     fs::write(
         options.output.join("result.json"),
         format!(
