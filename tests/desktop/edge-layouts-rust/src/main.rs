@@ -1,4 +1,5 @@
 //! Private native edge-tiling previews, commits, and pointer-constraint acceptance.
+use lumen_application_isolation::provenance::{FrozenSource, generated};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::env;
@@ -47,6 +48,7 @@ fn flag(event: &Value, key: &str) -> bool {
     event[key] == true || event[key].as_i64() == Some(1)
 }
 
+#[derive(Clone)]
 struct Options {
     sway: PathBuf,
     pointer: PathBuf,
@@ -58,6 +60,10 @@ struct Options {
     private: Option<PathBuf>,
     effects: bool,
     constraints_only: bool,
+    inside: bool,
+    fontconfig: PathBuf,
+    software_driver: Option<PathBuf>,
+    parent_namespaces: Option<Value>,
 }
 fn options() -> Result<Options> {
     let mut sway = None;
@@ -70,6 +76,10 @@ fn options() -> Result<Options> {
     let mut private = None;
     let mut effects = false;
     let mut constraints_only = false;
+    let mut inside = false;
+    let mut fontconfig = None;
+    let mut software_driver = None;
+    let mut parent_namespaces = None;
     let mut args = env::args_os().skip(1);
     while let Some(arg) = args.next() {
         match arg.to_str() {
@@ -95,6 +105,23 @@ fn options() -> Result<Options> {
             }
             Some("--effects") => effects = true,
             Some("--constraints-only") => constraints_only = true,
+            Some("--inside") => inside = true,
+            Some("--font-config") => {
+                fontconfig = Some(PathBuf::from(
+                    args.next().ok_or("Missing font configuration")?,
+                ))
+            }
+            Some("--software-driver") => {
+                software_driver = Some(PathBuf::from(args.next().ok_or("Missing software driver")?))
+            }
+            Some("--parent-namespaces") => {
+                parent_namespaces = Some(serde_json::from_str(
+                    args.next()
+                        .ok_or("Missing parent namespaces")?
+                        .to_str()
+                        .ok_or("Invalid namespace text")?,
+                )?)
+            }
             _ => return Err(fail("Unknown edge-layouts fixture option")),
         }
     }
@@ -109,6 +136,10 @@ fn options() -> Result<Options> {
         private,
         effects,
         constraints_only,
+        inside,
+        fontconfig: fontconfig.ok_or("--font-config required")?,
+        software_driver,
+        parent_namespaces,
     })
 }
 fn program(name: &str, values: &BTreeMap<String, String>) -> Result<PathBuf> {
@@ -167,9 +198,211 @@ fn environment(root: &Path, effects: bool) -> BTreeMap<String, String> {
     );
     values
 }
+fn immutable_file(path: &Path) -> Result<PathBuf> {
+    let resolved = fs::canonicalize(path)?;
+    require(
+        resolved.starts_with("/nix/store") && resolved.is_file(),
+        format!("Immutable file required: {}", path.display()),
+    )?;
+    Ok(resolved)
+}
+fn namespaces() -> Result<Value> {
+    let mut identities = serde_json::Map::new();
+    for name in ["user", "pid", "mnt", "net", "ipc", "uts"] {
+        identities.insert(
+            name.into(),
+            json!(fs::read_link(format!("/proc/self/ns/{name}"))?),
+        );
+    }
+    Ok(Value::Object(identities))
+}
 fn outer(options: &Options) -> Result<()> {
     require(!options.output.exists(), "Fresh output directory required")?;
     fs::create_dir_all(&options.output)?;
+    fs::set_permissions(&options.output, fs::Permissions::from_mode(0o700))?;
+    let output = fs::canonicalize(&options.output)?;
+    let source = fs::canonicalize(env::current_dir()?)?;
+    let mut pinned = options.clone();
+    pinned.sway = immutable_file(&options.sway)?;
+    pinned.pointer = immutable_file(&options.pointer)?;
+    pinned.keyboard = immutable_file(&if options.keyboard == Path::new("wtype") {
+        program(
+            "wtype",
+            &BTreeMap::from([("PATH".into(), env!("LUMEN_EDGE_HELPER_PATH").into())]),
+        )?
+    } else {
+        options.keyboard.clone()
+    })?;
+    pinned.lock = immutable_file(&options.lock)?;
+    pinned.quickshell = options
+        .quickshell
+        .as_deref()
+        .map(immutable_file)
+        .transpose()?;
+    pinned.constraint = options
+        .constraint
+        .as_deref()
+        .map(immutable_file)
+        .transpose()?;
+    pinned.fontconfig = immutable_file(&options.fontconfig)?;
+    pinned.software_driver = options
+        .software_driver
+        .as_deref()
+        .map(fs::canonicalize)
+        .transpose()?;
+    if options.effects {
+        let driver = pinned
+            .software_driver
+            .as_ref()
+            .ok_or("Effects require --software-driver")?;
+        require(
+            driver.starts_with("/nix/store") && driver.join("lib/dri").is_dir(),
+            "Immutable software driver required",
+        )?;
+        immutable_file(&driver.join("share/glvnd/egl_vendor.d/50_mesa.json"))?;
+    }
+    let binary = immutable_file(&env::current_exe()?)?;
+    let mut dependencies = vec![
+        binary.clone(),
+        pinned.sway.clone(),
+        pinned.pointer.clone(),
+        pinned.keyboard.clone(),
+        pinned.lock.clone(),
+        pinned.fontconfig.clone(),
+        PathBuf::from(env!("LUMEN_EDGE_ISOLATION")),
+    ];
+    dependencies.extend(
+        pinned
+            .quickshell
+            .iter()
+            .chain(pinned.constraint.iter())
+            .cloned(),
+    );
+    for name in [
+        "timeout",
+        "dbus-run-session",
+        "dbus-daemon",
+        "foot",
+        "grim",
+        "sleep",
+        "git",
+    ] {
+        dependencies.push(immutable_file(&program(
+            name,
+            &BTreeMap::from([("PATH".into(), env!("LUMEN_EDGE_HELPER_PATH").into())]),
+        )?)?);
+    }
+    dependencies.push(immutable_file(
+        &pinned
+            .sway
+            .parent()
+            .ok_or("Compositor directory")?
+            .join("swaymsg"),
+    )?);
+    let frozen = FrozenSource::new(
+        &source,
+        &source.join("tests/desktop/edge-layouts-rust/src/main.rs"),
+        &dependencies,
+    )
+    .map_err(|error| fail(error.to_string()))?;
+    let parent_namespaces = namespaces()?;
+    let mut command = Command::new(env!("LUMEN_EDGE_ISOLATION"));
+    command
+        .arg("run")
+        .arg("--source")
+        .arg(&source)
+        .arg("--output")
+        .arg(&output)
+        .arg("--private-pty");
+    if pinned.effects {
+        command.arg("--software-graphics");
+    }
+    command
+        .arg("--")
+        .arg(binary)
+        .args(["--inside", "--output", "/artifacts"])
+        .arg("--sway")
+        .arg(&pinned.sway)
+        .arg("--pointer")
+        .arg(&pinned.pointer)
+        .arg("--keyboard")
+        .arg(&pinned.keyboard)
+        .arg("--lock")
+        .arg(&pinned.lock)
+        .arg("--font-config")
+        .arg(&pinned.fontconfig)
+        .arg("--parent-namespaces")
+        .arg(serde_json::to_string(&parent_namespaces)?);
+    if let Some(path) = &pinned.quickshell {
+        command.arg("--quickshell").arg(path);
+    }
+    if let Some(path) = &pinned.constraint {
+        command.arg("--constraint-client").arg(path);
+    }
+    if let Some(path) = &pinned.software_driver {
+        command.arg("--software-driver").arg(path);
+    }
+    if pinned.effects {
+        command.arg("--effects");
+    }
+    if pinned.constraints_only {
+        command.arg("--constraints-only");
+    }
+    command.env("PATH", env!("LUMEN_EDGE_HELPER_PATH"));
+    let status = command.status();
+    generated(&output, &output).map_err(|error| fail(error.to_string()))?;
+    frozen
+        .finish(
+            &output,
+            status
+                .as_ref()
+                .ok()
+                .and_then(|value| value.code())
+                .unwrap_or(1),
+        )
+        .map_err(|error| fail(error.to_string()))?;
+    fs::write(
+        output.join("required-tools.json"),
+        serde_json::to_vec_pretty(
+            &json!({"tools":dependencies,"fontconfig":pinned.fontconfig,"softwareDriver":pinned.software_driver}),
+        )?,
+    )?;
+    require(status?.success(), "Isolated edge-layout acceptance failed")
+}
+fn private_session(options: &Options) -> Result<()> {
+    require(
+        std::process::id() == 1
+            && unsafe { libc::getuid() } != 0
+            && env::current_dir()? == Path::new("/source")
+            && env::var("HOME")? == "/home/fixture"
+            && fs::read_to_string("/proc/sys/kernel/hostname")?.trim() == "fixture",
+        "Private namespace boundary required",
+    )?;
+    let actual = namespaces()?;
+    let parent = options
+        .parent_namespaces
+        .as_ref()
+        .ok_or("Parent namespace identities required")?;
+    for name in ["user", "pid", "mnt", "net", "ipc", "uts"] {
+        require(
+            parent[name].is_string() && actual[name] != parent[name],
+            format!("Namespace {name} was not isolated"),
+        )?;
+    }
+    require(
+        !Path::new("/.old-root").exists()
+            && !["dri", "snd", "video0", "tty"]
+                .iter()
+                .any(|name| Path::new("/dev").join(name).exists())
+            && Path::new("/dev/udmabuf").exists() == options.effects,
+        "Unexpected host root or hardware device",
+    )?;
+    fs::write(
+        options.output.join("namespace-boundary.json"),
+        serde_json::to_vec_pretty(
+            &json!({"uid":unsafe{libc::getuid()},"pid":std::process::id(),"parent":parent,"current":actual,"privatePty":true,"mounts":fs::read_to_string("/proc/self/mountinfo")?}),
+        )?,
+    )?;
     let output = fs::canonicalize(&options.output)?;
     let private = tempfile::Builder::new().prefix("lumen-edge-").tempdir()?;
     fs::set_permissions(private.path(), fs::Permissions::from_mode(0o700))?;
@@ -185,6 +418,30 @@ fn outer(options: &Options) -> Result<()> {
         ),
     )?;
     let values = environment(private.path(), options.effects);
+    let mut values = values;
+    values.insert(
+        "FONTCONFIG_FILE".into(),
+        options.fontconfig.display().to_string(),
+    );
+    if options.effects {
+        let driver = options
+            .software_driver
+            .as_ref()
+            .ok_or("Software driver required")?;
+        values.insert(
+            "__EGL_VENDOR_LIBRARY_FILENAMES".into(),
+            driver
+                .join("share/glvnd/egl_vendor.d/50_mesa.json")
+                .display()
+                .to_string(),
+        );
+        values.insert(
+            "LIBGL_DRIVERS_PATH".into(),
+            driver.join("lib/dri").display().to_string(),
+        );
+        values.insert("GALLIUM_DRIVER".into(), "llvmpipe".into());
+        values.remove("LIBGL_ALWAYS_SOFTWARE");
+    }
     let keyboard = if options.keyboard == Path::new("wtype") {
         program("wtype", &values)?
     } else {
@@ -209,6 +466,8 @@ fn outer(options: &Options) -> Result<()> {
         .arg(output)
         .arg("--private")
         .arg(private.path())
+        .arg("--font-config")
+        .arg(&options.fontconfig)
         .env_clear()
         .envs(values);
     if let Some(path) = &options.quickshell {
@@ -221,6 +480,9 @@ fn outer(options: &Options) -> Result<()> {
     }
     if options.effects {
         command.arg("--effects");
+    }
+    if let Some(path) = &options.software_driver {
+        command.arg("--software-driver").arg(path);
     }
     if options.constraints_only {
         command.arg("--constraints-only");
@@ -473,6 +735,15 @@ struct Fixture<'a> {
 }
 impl<'a> Fixture<'a> {
     fn new(options: &'a Options) -> Result<Self> {
+        let boundary: Value =
+            serde_json::from_slice(&fs::read(options.output.join("namespace-boundary.json"))?)?;
+        require(
+            options.output == Path::new("/artifacts")
+                && namespaces()? == boundary["current"]
+                && fs::read_to_string("/proc/sys/kernel/hostname")?.trim() == "fixture"
+                && unsafe { libc::getuid() } != 0,
+            "Native children require the observed private boundary",
+        )?;
         let private = options.private.as_ref().ok_or("Private runtime required")?;
         let mut values = env::vars().collect::<BTreeMap<_, _>>();
         require(
@@ -481,7 +752,13 @@ impl<'a> Fixture<'a> {
                 .is_some_and(|address| address.starts_with("unix:")),
             "Private session bus required",
         )?;
-        let swaymsg = program("swaymsg", &values)?;
+        let swaymsg = immutable_file(
+            &options
+                .sway
+                .parent()
+                .ok_or("Compositor directory missing")?
+                .join("swaymsg"),
+        )?;
         let foot = program("foot", &values)?;
         let grim = program("grim", &values)?;
         let mut children = Children(Vec::new());
@@ -558,6 +835,7 @@ impl<'a> Fixture<'a> {
             &[
                 "-o",
                 "resize-by-cells=no",
+                "--font=DejaVu Sans Mono:size=12",
                 "--app-id=edge-test",
                 "sleep",
                 "180",
@@ -609,6 +887,7 @@ impl<'a> Fixture<'a> {
                 && reply.as_array().is_some_and(|rows| {
                     rows.len() == 1
                         && rows[0]["success"] == false
+                        && rows[0]["parse_error"] == true
                         && rows[0]["error"] == "Window action is unavailable"
                 }),
             format!(
@@ -616,7 +895,9 @@ impl<'a> Fixture<'a> {
                 output.status
             ),
         )?;
-        Ok(json!({"command":command,"exitCode":output.status.code(),"reply":reply}))
+        Ok(
+            json!({"command":command,"exitCode":output.status.code(),"reply":reply,"stdout":String::from_utf8_lossy(&output.stdout),"stderr":String::from_utf8_lossy(&output.stderr)}),
+        )
     }
     fn tree(&self) -> Result<Value> {
         self.sway(&["-t", "get_tree"])
@@ -1064,17 +1345,34 @@ fn constraint_suite(fixture: &mut Fixture<'_>) -> Result<Vec<String>> {
                 let before = fixture.required()?;
                 let refusal = fixture.unavailable(&command)?;
                 let after = fixture.required()?;
+                for field in [
+                    "id",
+                    "pid",
+                    "app_id",
+                    "foreign_toplevel_identifier",
+                    "rect",
+                    "window_rect",
+                    "deco_rect",
+                    "lumen_state",
+                    "fullscreen_mode",
+                    "floating",
+                ] {
+                    require(
+                        before[field] == after[field],
+                        format!("Fixed unavailable placement changed {field}"),
+                    )?;
+                }
                 require(
-                    before["lumen_state"].is_object()
-                        && before["lumen_state"] == after["lumen_state"]
-                        && frame_rect(&before)? == frame_rect(&after)?,
-                    "Fixed unavailable placement changed complete window state or geometry",
+                    before["id"] == fixture.cid
+                        && before["pid"] == fixture.children.0[client].id()
+                        && before["lumen_state"].is_object(),
+                    "Refusal did not preserve the exact owned native client",
                 )?;
                 fs::write(
                     fixture.options.output.join("constraint-fixed-command.json"),
-                    serde_json::to_vec_pretty(&json!({"refusal":refusal,
-                        "beforeState":before["lumen_state"],"afterState":after["lumen_state"],
-                        "beforeGeometry":frame_rect(&before)?,"afterGeometry":frame_rect(&after)?}))?,
+                    serde_json::to_vec_pretty(
+                        &json!({"refusal":refusal,"before":before,"after":after}),
+                    )?,
                 )?;
             } else {
                 fixture.ipc(&command)?;
@@ -1118,6 +1416,46 @@ fn constraint_suite(fixture: &mut Fixture<'_>) -> Result<Vec<String>> {
                 require(
                     fixture.outer_rect()? == original,
                     "Bounded client restore lost original geometry",
+                )?;
+                fixture.ipc(&format!(
+                    "[con_id={}] move container to output HEADLESS-2",
+                    fixture.cid
+                ))?;
+                thread::sleep(Duration::from_millis(200));
+                let before = fixture.required()?;
+                let saved = fixture.outer_rect()?;
+                let response =
+                    fixture.ipc(&format!("[con_id={}] lumen_window left", fixture.cid))?;
+                thread::sleep(Duration::from_millis(200));
+                let after = fixture.required()?;
+                require(
+                    response
+                        .as_array()
+                        .is_some_and(|rows| rows.len() == 1 && rows[0]["success"] == true)
+                        && fixture.outer_rect()? != saved
+                        && i(&fixture.outer_rect()?, "x")? >= 1280
+                        && i(&after["window_rect"], "width")? <= 500
+                        && after["id"] == before["id"]
+                        && after["pid"] == before["pid"],
+                    "Bounded explicit left did not tile exact client on narrower output",
+                )?;
+                fixture.ipc(&format!("[con_id={}] lumen_window restore", fixture.cid))?;
+                thread::sleep(Duration::from_millis(200));
+                let restored = fixture.required()?;
+                require(
+                    fixture.outer_rect()? == saved
+                        && restored["id"] == before["id"]
+                        && restored["pid"] == before["pid"],
+                    "Bounded explicit left restore lost exact placement or owner",
+                )?;
+                fs::write(
+                    fixture
+                        .options
+                        .output
+                        .join("constraint-bounded-left-command.json"),
+                    serde_json::to_vec_pretty(
+                        &json!({"response":response,"before":before,"after":after,"restored":restored}),
+                    )?,
                 )?;
             }
         } else {
@@ -1227,6 +1565,8 @@ fn main() {
         let options = options()?;
         if options.private.is_some() {
             run(&options)
+        } else if options.inside {
+            private_session(&options)
         } else {
             outer(&options)
         }
