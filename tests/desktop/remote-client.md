@@ -73,7 +73,23 @@ registers only the legacy cut-text callback. Its test package corrects the X11
 TARGETS property's type to ATOM; it adds no UTF-8 RFB capability. The stock server
 failure is retained separately. The repaired server proves representable fallback,
 visible unsupported-text rejection, unchanged remote text and process identity,
-and continued physical input. This legacy test uses unencrypted RFB only inside
+continued physical input and a subsequent changed compatible clipboard selection.
+The fixture waits for the actual X11 selection-owner window; its disposable Xvfb
+has no display manager, so it uses the server's supported no-window-avoidance
+setting. That readiness prerequisite is separate from the client repair.
+
+Clipboard rejection uses one nonblocking warning bound weakly to its originating
+connection window. Destroyed owners cannot redirect a warning to another window;
+closing the owner destroys its dialog. An acknowledged unchanged rejected
+selection does not reopen warnings on focus; a changed selection remains eligible.
+The actual fixture checks the compositor parent identity and GTK accessibility
+modal state. GTK3's native compositor modality is reported as unknown (`null`)
+and is retained that way; this is not proof of compositor-enforced modality.
+The incoming clipboard echo guard consumes an exact remote-selection digest once,
+instead of dropping arbitrary copies during a timer interval. The corpus checks
+the immediate first remote copy and a later copy after changed local content.
+
+This legacy test uses unencrypted RFB only inside
 the private loopback namespace; it is not an encrypted transport acceptance.
 
 HTML/files clipboard formats, default shortcut policy, capture of system-wide
