@@ -118,7 +118,7 @@ pub fn private_session() -> Result<()> {
     let root = PathBuf::from(format!("/tmp/lds-{}-{nanos}", std::process::id()));
     fs::create_dir(&root)?;
     fs::set_permissions(&root, fs::Permissions::from_mode(0o700))?;
-    let mut command = Command::new("dbus-run-session");
+    let mut command = Command::new(env!("LUMEN_FIXTURE_DBUS_RUN_SESSION"));
     command.arg("--").arg(env::current_exe()?);
     command
         .args(env::args_os().skip(1))
