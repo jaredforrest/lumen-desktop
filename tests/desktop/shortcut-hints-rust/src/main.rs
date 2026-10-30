@@ -268,6 +268,15 @@ fn wait<T>(description: &str, mut probe: impl FnMut() -> Result<Option<T>>) -> R
         thread::sleep(Duration::from_millis(50));
     }
 }
+fn second_session_runtime(previous: &Path) -> Result<PathBuf> {
+    require(previous.is_absolute(), "Private runtime must be absolute")?;
+    // Artifact directories can be relative or exceed sockaddr_un's limit.
+    // Reuse the already working short private runtime's lifetime instead.
+    let path = previous.join("s2");
+    fs::create_dir(&path)?;
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o700))?;
+    Ok(path)
+}
 fn first_match(folder: &Path, prefix: &str) -> Result<Option<PathBuf>> {
     Ok(fs::read_dir(folder)?
         .filter_map(|entry| entry.ok().map(|entry| entry.path()))
@@ -727,9 +736,7 @@ fn inner(options: &Options) -> Result<()> {
     let previous_runtime = PathBuf::from(envs.get("XDG_RUNTIME_DIR").ok_or("Runtime")?);
     let old_record = fs::read(previous_runtime.join("lumen-desktop/shortcuts-runtime.json"))?;
     drop(children);
-    let second_runtime = options.output.join("second-session-runtime");
-    fs::create_dir(&second_runtime)?;
-    fs::set_permissions(&second_runtime, fs::Permissions::from_mode(0o700))?;
+    let second_runtime = second_session_runtime(&previous_runtime)?;
     envs.insert(
         "XDG_RUNTIME_DIR".into(),
         second_runtime.display().to_string(),
@@ -775,7 +782,8 @@ fn inner(options: &Options) -> Result<()> {
     fs::write(
         options.output.join("session-epoch.json"),
         serde_json::to_vec_pretty(
-            &json!({"previous":prior,"current":current,"carriedOldRecord":stale}),
+            &json!({"previous":prior,"current":current,"carriedOldRecord":stale,
+                "previousRuntime":previous_runtime,"secondRuntime":second_runtime}),
         )?,
     )?;
     let publisher = restored["runtimeCommand"]
@@ -841,5 +849,30 @@ fn main() {
     if let Err(error) = result {
         eprintln!("shortcut hints: {error}");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn replacement_runtime_is_absolute_private_and_accepts_real_unix_sockets() {
+        let root = tempfile::Builder::new()
+            .prefix("lsh-")
+            .permissions(fs::Permissions::from_mode(0o700))
+            .tempdir_in("/tmp")
+            .unwrap();
+        let second = second_session_runtime(root.path()).unwrap();
+        assert!(second.is_absolute());
+        assert_eq!(second.parent(), Some(root.path()));
+        assert_eq!(
+            fs::metadata(&second).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        let _wayland = std::os::unix::net::UnixListener::bind(second.join("wayland-0")).unwrap();
+        let _ipc =
+            std::os::unix::net::UnixListener::bind(second.join("sway-ipc.1000.1234567.sock"))
+                .unwrap();
+        assert!(second_session_runtime(Path::new("relative-artifacts")).is_err());
     }
 }
