@@ -42,7 +42,7 @@ const BOOT: &str = "01234567-89ab-cdef-0123-456789abcdef";
 
 #[test]
 fn queued_native_focus_receipts_preserve_brief_focus_with_later_tree_snapshots() {
-    let clients=clients();
+    let mut clients=clients();
     let latest=nodes(&clients,2);
     let mut lifecycle=Lifecycle::default();
     lifecycle.refresh(EPOCH,&latest);
@@ -78,6 +78,11 @@ fn queued_native_focus_receipts_preserve_brief_focus_with_later_tree_snapshots()
     let mut replacement_receipt=reused[0].clone();replacement_receipt["focused"]=json!(true);
     lifecycle.observe_focus_event(&json!({"change":"focus","container":replacement_receipt}));
     assert_eq!(lifecycle.activation_history.order(),["app2","app1","app0"]);
+    let retired_receipt=json!({"change":"focus","container":nodes(&clients,1)[1]});
+    clients.0[1].kill().unwrap();clients.0[1].wait().unwrap();
+    lifecycle.prune();
+    lifecycle.observe_focus_event(&retired_receipt);
+    assert_eq!(lifecycle.activation_history.order(),["app2","app0"]);
     lifecycle.refresh("fedcba9876543210fedcba98",&remaining);
     lifecycle.observe_focus_event(&json!({"change":"focus","container":nodes(&clients,1)[1]}));
     assert!(lifecycle.activation_history.order().is_empty());
