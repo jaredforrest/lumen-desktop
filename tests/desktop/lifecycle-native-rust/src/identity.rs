@@ -1,7 +1,7 @@
 //! Actual QObject identity over separate observer connections and hidden views.
-use crate::harness::{Fixture, Options, Result, require, save, wait, wait_true};
+use crate::harness::{Fixture, Options, Result, read, require, save, wait, wait_true};
 use serde_json::{Value, json};
-use std::{collections::BTreeSet, fs, path::Path};
+use std::{collections::BTreeSet, env, fs, path::Path};
 
 fn state(f: &Fixture, path: &Path) -> Result<Value> {
     Ok(serde_json::from_str(&f.call(
@@ -71,6 +71,13 @@ fn start_observer(f: &mut Fixture, name: &str, epoch: &str) -> Result<(usize, st
 }
 pub fn run(options: Options) -> Result<()> {
     let mut f = Fixture::new(options)?;
+    let wire = fs::canonicalize(
+        env::var_os("LUMEN_IDENTITY_WIRE").ok_or("Pinned LUMEN_IDENTITY_WIRE client required")?,
+    )?;
+    require(
+        wire.starts_with("/nix/store") && wire.is_file(),
+        "Immutable identity wire client required",
+    )?;
     let directory = f.options.output.join("owned-client");
     fs::create_dir(&directory)?;
     let client = f.sibling("lifecycle-client")?;
@@ -88,6 +95,28 @@ pub fn run(options: Options) -> Result<()> {
         let ids = expected(&f, pid)?;
         Ok((ids.len() == 2).then_some(ids))
     })?;
+    let mut wire_clients = Vec::new();
+    for (target_number, target) in ids.iter().enumerate() {
+        for connection in 0..2 {
+            let output = f
+                .options
+                .output
+                .join(format!("wire-{target_number}-{connection}"));
+            let index = f.launch(
+                &wire,
+                &[target, output.to_str().ok_or("Wire output")?],
+                &format!("wire-{target_number}-{connection}.log"),
+            )?;
+            wait_true("real foreign resource ready", || {
+                Ok(output.join("ready.json").is_file())
+            })?;
+            require(
+                read(&output.join("ready.json"))?["identifier"] == *target,
+                "Wire target identity changed",
+            )?;
+            wire_clients.push((index, target.clone(), output));
+        }
+    }
     let (first, first_path) = start_observer(&mut f, "observer-first", "first")?;
     observe(&f, &first_path, "first", &ids, "first-exact-set")?;
     let (second, second_path) = start_observer(&mut f, "observer-second", "independent")?;
@@ -148,6 +177,17 @@ pub fn run(options: Options) -> Result<()> {
         &remaining,
         "closure-second-exact-set",
     )?;
+    for (_, target, output) in &wire_clients {
+        if !remaining.contains(target) {
+            wait_true("closed actual retained resource rejected", || {
+                Ok(output.join("result.json").is_file())
+            })?;
+            require(
+                read(&output.join("result.json"))?["inertUnavailable"] == true,
+                "Closed actual resource retained identity",
+            )?;
+        }
+    }
     f.stop(owner)?;
     wait_true("owned client fully retired", || {
         Ok(expected(&f, pid)?.is_empty())
@@ -166,6 +206,15 @@ pub fn run(options: Options) -> Result<()> {
         &BTreeSet::new(),
         "retired-second-empty",
     )?;
+    for (index, _, output) in &wire_clients {
+        wait_true("all actual retained resources rejected", || {
+            Ok(output.join("result.json").is_file())
+        })?;
+        let status = wait("bounded protocol helper exit", || {
+            Ok(f.processes[*index].0.try_wait()?)
+        })?;
+        require(status.success(), "Actual protocol helper failed")?;
+    }
     f.stop(restarted)?;
     f.stop(second)?;
     let renderer = fs::read_to_string(f.options.output.join("sway.log"))?;
@@ -177,6 +226,6 @@ pub fn run(options: Options) -> Result<()> {
     }
     save(
         &f.options.output.join("result.json"),
-        &json!({"passed":true,"ownedPid":pid,"originalIdentifiers":ids,"remainingAfterOneClose":remaining,"checks":["actual QObject property exactly matches owned PID tree identifier set","same app and duplicate titles have distinct stable identifiers","independent observer connections map to the same ext identifier set","new observer binds while both views are hidden in scratchpad","ordinary closure retires exact QObject identities on both connections","owned process exit leaves both observers empty"],"scope":"Actual Quickshell optional property and compositor membership; no title/appId join, raw inert resource test or mixed switcher routing claim","effectsSoftware":!f.options.effects || renderer.contains("llvmpipe")}),
+        &json!({"passed":true,"ownedPid":pid,"originalIdentifiers":ids,"remainingAfterOneClose":remaining,"wireClient":wire,"wireConnections":wire_clients.len(),"checks":["actual QObject property exactly matches owned PID tree identifier set","same app and duplicate titles have distinct stable identifiers","independent observer connections map to the same ext identifier set","new observer binds while both views are hidden in scratchpad","ordinary closure retires exact QObject identities on both connections","owned process exit leaves both observers empty","four independent actual wire connections retain resources after Closed and receive unavailable empty identity"],"scope":"Actual Quickshell optional property and compositor live/inert resource membership; no title/appId join or mixed switcher routing claim","effectsSoftware":!f.options.effects || renderer.contains("llvmpipe")}),
     )
 }
