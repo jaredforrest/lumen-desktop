@@ -1293,7 +1293,10 @@ impl Native {
             Duration::from_secs(3),
             || Ok((mapped.elapsed() >= Duration::from_millis(500)).then_some(())),
         )?;
-        self.capture("keyboard-save-before-accept.png")?;
+        self.capture(&format!(
+            "keyboard-save-{}-before-accept.png",
+            chooser["id"]
+        ))?;
         // Observe focus through read-only accessibility, then traverse using
         // actual Tab events. Never call accessible focus/action methods.
         let backend = self.portal_facts.as_ref().ok_or("Portal facts")?["backendPid"].clone();
@@ -1316,7 +1319,9 @@ impl Native {
                 .ok_or("Private accessibility observer")?
                 .snapshot()?;
             save(
-                &self.out.join(format!("keyboard-save-focus-{step}.json")),
+                &self
+                    .out
+                    .join(format!("keyboard-save-{}-focus-{step}.json", chooser["id"])),
                 &json!(rows),
             )?;
             let targets = rows
@@ -1343,7 +1348,10 @@ impl Native {
                 captured = Some(target["reference"].clone());
             }
             if target["states"]["focused"] == true {
-                self.capture("keyboard-save-focused-accept.png")?;
+                self.capture(&format!(
+                    "keyboard-save-{}-focused-accept.png",
+                    chooser["id"]
+                ))?;
                 return self.key(&["-k", "space"]);
             }
             self.key(&["-k", "Tab"])?;
