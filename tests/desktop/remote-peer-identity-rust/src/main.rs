@@ -7,6 +7,8 @@ use std::{
 #[link(name = "vncclient")]
 unsafe extern "C" {
     fn lumen_vnc_set_peer_identity(parameter: *mut c_void, host: *const c_char) -> c_int;
+    fn lumen_vnc_clipboard_text_length_valid(length: c_int) -> c_int;
+    fn SendClientCutTextUTF8(client: *mut c_void, text: *const c_char, length: c_int) -> c_int;
 }
 #[link(name = "crypto")]
 unsafe extern "C" {
@@ -18,6 +20,22 @@ unsafe extern "C" {
 }
 fn verify() {
     unsafe {
+        for (length, expected) in [
+            (-1, 0),
+            (0, 1),
+            (1, 1),
+            (c_int::MAX - 1, 1),
+            (c_int::MAX, 0),
+        ] {
+            assert_eq!(lumen_vnc_clipboard_text_length_valid(length), expected);
+        }
+        // Invalid lengths are rejected before touching connection or text memory.
+        for length in [-1, c_int::MAX] {
+            assert_eq!(
+                SendClientCutTextUTF8(ptr::null_mut(), ptr::null(), length),
+                0
+            );
+        }
         for address in ["127.0.0.1", "192.0.2.19", "::1", "2001:db8::19"] {
             let parameter = X509_VERIFY_PARAM_new();
             assert!(!parameter.is_null());

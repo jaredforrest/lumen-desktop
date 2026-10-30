@@ -1,6 +1,31 @@
 --- a/src/libvncclient/rfbclient.c
 +++ b/src/libvncclient/rfbclient.c
-@@ -1944,13 +1944,23 @@
+@@ -35,6 +35,7 @@
+ #include <pwd.h>
+ #endif
+ #include <errno.h>
++#include <limits.h>
+ #include <rfb/rfbclient.h>
+ #ifdef WIN32
+ #undef socklen_t
+@@ -1907,9 +1908,16 @@
+ 	   WriteToRFBServer(client, str, len));
+ }
+ 
++int lumen_vnc_clipboard_text_length_valid(int len)
++{
++    return len >= 0 && len < INT_MAX;
++}
++
+ rfbBool
+ SendClientCutTextUTF8(rfbClient* client, char *str, int len)
+ {
++    /* The extended payload includes a trailing NUL in signed sentLen. */
++    if (!lumen_vnc_clipboard_text_length_valid(len)) return FALSE;
+ #ifdef LIBVNCSERVER_HAVE_LIBZ
+     return client->extendedClipboardServerCapabilities && sendExtClientCutTextProvide(client, str, len);
+ #else
+@@ -1944,13 +1952,23 @@
      rfbClientLog("rfbClientProcessExtServerCutText. not text type. ignore\n");
      return TRUE;
    }
