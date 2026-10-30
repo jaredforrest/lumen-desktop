@@ -200,6 +200,10 @@
           name = "lumen-group-presentation-environment";
           paths = [ pkgs.coreutils pkgs.dbus pkgs.grim pkgs.wtype pkgs.nushell ];
         };
+        test-space-transfer-environment = pkgs.buildEnv {
+          name = "lumen-space-transfer-environment";
+          paths = [ pkgs.coreutils pkgs.dbus pkgs.grim pkgs.wtype pkgs.nushell pkgs.bashInteractive pkgs.foot ];
+        };
         test-switcher-fixture = import ./tests/desktop/switcher-rust { inherit pkgs; };
         test-spaces-placement-fixture = import ./tests/desktop/spaces-placement-rust { inherit pkgs; };
         test-notification-native-fixture = import ./tests/desktop/notification-rust { inherit pkgs; };

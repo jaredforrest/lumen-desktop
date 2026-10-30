@@ -8,6 +8,29 @@ use std::os::unix::fs::{FileTypeExt,MetadataExt};
 use std::path::PathBuf;
 use std::process::Command;
 
+fn unassigned_members(members:&[Value],assignments:&Value)->Result<()>{
+    let assignments=assignments.as_object().ok_or("Desktop assignment metadata is invalid")?;
+    for member in members{
+        let application=Policy::application(member).ok_or("Window family has an unknown application identity")?;
+        let Some(assignment)=assignments.get(&application)else{continue;};
+        let valid=assignment.as_object().is_some_and(|record|record.len()==2 && record.contains_key("kind") && record.contains_key("target_id"));
+        if !valid{return Err("Desktop assignment metadata is invalid".into());}
+        match assignment["kind"].as_str(){
+            Some("none") if assignment["target_id"].is_null()=>continue,
+            Some("all") if assignment["target_id"].is_null()=>{},
+            Some("desktop"|"display") if assignment["target_id"].as_str().is_some_and(|target|!target.is_empty())=>{},
+            _=>return Err("Desktop assignment metadata is invalid".into()),
+        };
+        return Err("Remove desktop assignments from every window in this family before moving it".into());
+    }
+    Ok(())
+}
+fn transfer_source(tree:&Value,wanted:&Value,assignments:&Value)->Result<Value>{
+    let (capture,members)=transfer::source_family(tree,wanted)?;
+    unassigned_members(&members,assignments)?;
+    Ok(capture)
+}
+
 fn run(args:&[&str])->Result<Value>{
     let output=Command::new("timeout").arg("4s").arg("swaymsg").arg("-r").args(args).output().map_err(|e|e.to_string())?;
     if !output.status.success(){
@@ -157,11 +180,8 @@ fn handle(data:&Value)->Result<Value>{
         let desktop=model.desktop(captured["logicalId"].as_str().ok_or("Invalid destination identity")?,true)?;
         let tree=run(&["-t","get_tree"])?;
         if transfer::destination(&tree,&desktop)?!=*captured{return Err("The captured destination changed".into());}
-        let current=transfer::source(&tree,&data["source"]["id"])?;
+        let current=transfer_source(&tree,&data["source"]["id"],&model.state["assignments"])?;
         if current!=data["source"]{return Err("The captured window changed".into());}
-        // A saved assignment must not silently move the result back afterward.
-        let window=state["windows"].as_array().and_then(|w|w.iter().find(|w|w["id"]==current["id"])).ok_or("Captured source retired")?;
-        if model.state["assignments"][window["application"].as_str().unwrap_or("")]["kind"].as_str().is_some_and(|kind|kind!="none"){return Err("Remove the window's desktop assignment before moving it".into());}
         let command=transfer::command(&data["snapshot"],&data["source"],captured)?;
         check_epoch(data,&epoch)?;checked(&command)?;check_epoch(data,&epoch)?;
         return Ok(json!({"ok":true}));
@@ -171,8 +191,7 @@ fn handle(data:&Value)->Result<Value>{
         state["transferSnapshot"]=transfer::snapshot(&tree).ok().unwrap_or(Value::Null);
         if !state["transferSnapshot"].is_null(){
             if let Some(rows)=state["windows"].as_array_mut(){for row in rows{
-                let assigned=model.state["assignments"][row["application"].as_str().unwrap_or("")]["kind"].as_str().is_some_and(|kind|kind!="none");
-                let capture=if assigned{Err("Remove the window's desktop assignment before moving it".into())}else{transfer::source(&tree,&row["id"])};
+                let capture=transfer_source(&tree,&row["id"],&model.state["assignments"]);
                 match capture{Ok(value)=>{row["transfer"]=value;row["transferUnavailable"]=Value::Null;},Err(error)=>{row["transfer"]=Value::Null;row["transferUnavailable"]=json!(error);}}
             }}
             if let Some(desktops)=state["workspaces"].as_array_mut(){for desktop in desktops{desktop["transfer"]=transfer::destination(&tree,desktop).ok().unwrap_or(Value::Null);}}
@@ -241,4 +260,22 @@ fn main(){
     let stdin=io::stdin();let mut line=String::new();
     let result=(||->Result<Value>{stdin.lock().read_line(&mut line).map_err(|e|e.to_string())?;let input:Value=serde_json::from_str(&line).map_err(|e|e.to_string())?;handle(&input)})();
     println!("{}",result.unwrap_or_else(|error|json!({"error":error})));
+}
+
+#[cfg(test)]
+mod transfer_assignment_tests{
+    use super::*;
+    #[test]
+    fn different_application_child_assignment_blocks_whole_family(){
+        let members=vec![json!({"app_id":"org.example.Editor","shell":"xdg_shell"}),json!({"app_id":"org.example.Utility","shell":"xdg_shell"})];
+        assert!(unassigned_members(&members,&json!({})).is_ok());
+        for (kind,target) in [("all",Value::Null),("desktop",json!("desktop-id")),("display",json!("display-id"))]{
+            assert!(unassigned_members(&members,&json!({"wayland:org.example.Utility":{"kind":kind,"target_id":target}})).is_err());
+        }
+        assert!(unassigned_members(&members,&json!({"wayland:org.example.Utility":{"kind":"none","target_id":null}})).is_ok());
+        for malformed in [Value::Null,json!({}),json!({"kind":123,"target_id":null}),json!({"kind":"none"}),json!({"kind":"none","target_id":"unexpected"}),json!({"kind":"all_desktops","target_id":null}),json!({"kind":"none","target_id":null,"extra":true})]{
+            assert!(unassigned_members(&members,&json!({"wayland:org.example.Utility":malformed})).is_err());
+        }
+        assert!(unassigned_members(&[json!({})],&json!({})).is_err());
+    }
 }

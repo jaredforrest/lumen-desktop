@@ -15,7 +15,7 @@ pub(super) fn owner(ctx: &Context) -> Result<Value> {
         .cloned()
         .ok_or_else(|| fail("Native owned Overview absent"))
 }
-fn location(ctx: &Context, id: &Value) -> Result<Value> {
+pub(super) fn location(ctx: &Context, id: &Value) -> Result<Value> {
     fn walk(node: &Value, id: &Value, workspace: &Value, output: &Value) -> Option<Value> {
         let workspace = if node["type"] == "workspace" {
             node
@@ -56,7 +56,7 @@ pub(super) fn frame(ctx: &Context, id: &Value) -> Result<Value> {
         json!({"id":n["id"],"pid":n["pid"],"foreign":n["foreign_toplevel_identifier"],"rect":n["rect"],"window_rect":n["window_rect"],"state":n["lumen_state"],"floating":n["floating"],"fullscreen":n["fullscreen_mode"],"location":location(ctx,id)?}),
     )
 }
-fn stable(ctx: &Context) -> Result<Value> {
+pub(super) fn stable(ctx: &Context) -> Result<Value> {
     let mut previous = Value::Null;
     wait("settled private native state", || {
         let now = ctx.native("get_tree")?;
@@ -67,7 +67,7 @@ fn stable(ctx: &Context) -> Result<Value> {
         Ok(None)
     })
 }
-fn command(ctx: &Context, wire: &[u8], accepted: bool, label: &str) -> Result<()> {
+pub(super) fn command(ctx: &Context, wire: &[u8], accepted: bool, label: &str) -> Result<()> {
     let before = stable(ctx)?;
     let hex = wire.iter().map(|b| format!("{b:02x}")).collect::<String>();
     let output = Command::new(&ctx.swaymsg)
@@ -104,7 +104,11 @@ fn command(ctx: &Context, wire: &[u8], accepted: bool, label: &str) -> Result<()
     }
     Ok(())
 }
-fn capture(ctx: &Context, id: &Value, name: &str) -> Result<(Value, Value, Value, Vec<u8>)> {
+pub(super) fn capture(
+    ctx: &Context,
+    id: &Value,
+    name: &str,
+) -> Result<(Value, Value, Value, Vec<u8>)> {
     let tree = stable(ctx)?;
     let snapshot = transfer::snapshot(&tree)?;
     let source = transfer::source(&tree, id)?;
@@ -199,7 +203,7 @@ fn drop_on(ctx: &mut Context, desktop: &Value) -> Result<()> {
     ctx.move_pointer(p.0, p.1)?;
     ctx.release()
 }
-fn apply_role_refusal(
+pub(super) fn apply_role_refusal(
     ctx: &Context,
     source: &Value,
     destination: &Value,
@@ -223,7 +227,7 @@ pub fn run(ctx: &mut Context) -> Result<()> {
         )?;
     }
     ensure(
-        ctx.native("get_version")?["space_transfer_guard"] == 2,
+        ctx.native("get_version")?["space_transfer_guard"] == 3,
         "Native captured transfer capability absent",
     )?;
     command(ctx, &[0], false, "capability-dispatch")?;
@@ -320,7 +324,7 @@ pub fn run(ctx: &mut Context) -> Result<()> {
         "Same-output drop changed frame or live source identity",
     )?;
     ctx.picture("desktop-transfer-existing.png")?;
-    checks.push("Physical production Overview handle→desktop tile native drop commits once, preserves exact document/frame, and retains Overview focus without activating destination");
+    checks.push("Physical production Overview card→desktop tile native drop commits once, preserves exact document/frame, and retains Overview focus without activating destination");
     let (_, source, _, wire) = capture(ctx, &id, "1")?;
     for (label, bad) in [
         ("truncated", wire[..wire.len() - 1].to_vec()),
@@ -409,13 +413,153 @@ pub fn run(ctx: &mut Context) -> Result<()> {
         &format!("[con_id={id}] resize set width {old_width} px height {old_height} px"),
         true,
     )?;
-    let (_, source, dest, wire) = capture(ctx, &id, "1")?;
     let client_pid = ctx.captured[1]["pid"].as_u64().ok_or("Owned process PID")?;
     let client = ctx
         .procs
         .iter()
         .position(|p| u64::from(p.0.id()) == client_pid)
         .ok_or("Owned native client absent")?;
+    let child_id = ctx.captured[2]["id"].clone();
+    // A floating position command selects the output's current workspace.
+    // Position first, then establish the explicitly captured family origin.
+    ctx.sway(&format!("[con_id={child_id}] move position 464 px 316 px; [con_id={child_id}] move container to workspace 2"), true)?;
+    ctx.write(client, "reparent\n")?;
+    wait("ordinary family shares captured origin", || {
+        save(
+            &ctx.opt.output.join("family-origin-precondition.json"),
+            &json!({"child":native_window(ctx,2)?,"location":location(ctx,&child_id)?}),
+        )?;
+        Ok(
+            (native_window(ctx, 2)?["lumen_relationships"]["parent"] == id
+                && location(ctx, &child_id)?["name"] == "2")
+                .then_some(()),
+        )
+    })?;
+    let (_, _, _, family_old) = capture(ctx, &id, "1")?;
+    let child_width = native_window(ctx, 2)?["rect"]["width"]
+        .as_i64()
+        .ok_or("Child width")?;
+    ctx.sway(
+        &format!(
+            "[con_id={child_id}] resize set width {} px",
+            child_width + 7
+        ),
+        true,
+    )?;
+    wait("descendant frame changes before dispatch", || {
+        Ok((native_window(ctx, 2)?["rect"]["width"] != child_width).then_some(()))
+    })?;
+    command(ctx, &family_old, false, "descendant-frame-stale")?;
+    ctx.sway(
+        &format!("[con_id={child_id}] resize set width {child_width} px"),
+        true,
+    )?;
+    for tiled in [false, true] {
+        if tiled {
+            ctx.sway(&format!("[con_id={id}] floating disable"), true)?;
+            wait("ordinary root becomes tiled", || {
+                let node = native_window(ctx, 1)?;
+                save(&ctx.opt.output.join("tiled-root-precondition.json"), &node)?;
+                Ok(
+                    matches!(node["floating"].as_str(), Some("auto_off" | "user_off"))
+                        .then_some(()),
+                )
+            })?;
+            let root = native_window(ctx, 1)?;
+            let x = root["rect"]["x"].as_i64().ok_or("Tiled root x")? + 24;
+            let y = root["rect"]["y"].as_i64().ok_or("Tiled root y")? + 36;
+            ctx.sway(&format!("[con_id={child_id}] move position {x} px {y} px; [con_id={child_id}] move container to workspace 2"), true)?;
+        }
+        let phase = if tiled { "tiled" } else { "floating" };
+        for target in ["1", "3", "2"] {
+            let root_before = frame(ctx, &id)?;
+            let child_before = frame(ctx, &child_id)?;
+            let (_, _, _, family_wire) = capture(ctx, &id, target)?;
+            command(
+                ctx,
+                &family_wire,
+                true,
+                &format!("ordinary-{phase}-family-to-{target}"),
+            )?;
+            wait("entire ordinary family reaches one destination", || {
+                Ok((location(ctx, &id)?["name"] == target
+                    && location(ctx, &child_id)?["name"] == target)
+                    .then_some(()))
+            })?;
+            let root_after = frame(ctx, &id)?;
+            let child_after = frame(ctx, &child_id)?;
+            ensure(
+                (if tiled {
+                    matches!(
+                        root_after["floating"].as_str(),
+                        Some("auto_off" | "user_off")
+                    )
+                } else {
+                    matches!(root_after["floating"].as_str(), Some("auto_on" | "user_on"))
+                }) && root_before["floating"] == root_after["floating"]
+                    && child_before["floating"] == child_after["floating"],
+                "Family transfer converted native tiling/floating roles",
+            )?;
+            if tiled && target == "3" {
+                ensure(
+                    root_before["rect"]["width"] != root_after["rect"]["width"],
+                    "Different-width output did not exercise native tiled root layout",
+                )?;
+            }
+            for key in ["width", "height"] {
+                ensure(
+                    (tiled || root_before["rect"][key] == root_after["rect"][key])
+                        && child_before["rect"][key] == child_after["rect"][key],
+                    "Family transfer resized a member",
+                )?;
+            }
+            for key in ["x", "y"] {
+                let offset = |root: &Value, child: &Value| -> Result<i64> {
+                    Ok(child["rect"][key].as_i64().ok_or("Child coordinate")?
+                        - root["rect"][key].as_i64().ok_or("Root coordinate")?)
+                };
+                ensure(
+                    offset(&root_before, &child_before)? == offset(&root_after, &child_after)?,
+                    "Family transfer changed relative offsets",
+                )?;
+            }
+            ensure(
+                root_before["foreign"] == root_after["foreign"]
+                    && child_before["foreign"] == child_after["foreign"]
+                    && root_before["pid"] == root_after["pid"]
+                    && child_before["pid"] == child_after["pid"]
+                    && native_window(ctx, 2)?["lumen_relationships"]["parent"] == id
+                    && owner(ctx)?["focused"] == true,
+                "Family transfer changed ownership, identity or Overview focus",
+            )?;
+            save(
+                &ctx.opt
+                    .output
+                    .join(format!("ordinary-{phase}-family-{target}.json")),
+                &json!({"rootBefore":root_before,"rootAfter":root_after,"childBefore":child_before,"childAfter":child_after}),
+            )?;
+        }
+    }
+    checks.push("Ordinary floating and tiled roots carry nonmodal floating descendants within and across outputs, preserving exact live identities, ownership, child sizes/offsets and Overview focus; floating root sizes remain unchanged and stale descendant geometry refuses before mutation");
+    ctx.write(client, "unparent\n")?;
+    wait(
+        "ordinary family detached before modal boundary case",
+        || {
+            Ok(native_window(ctx, 2)?["lumen_relationships"]["parent"]
+                .is_null()
+                .then_some(()))
+        },
+    )?;
+    ctx.sway(&format!("[con_id={id}] floating enable; [con_id={id}] resize set width {old_width} px height {old_height} px; [con_id={id}] move position {} px {} px; [con_id={id}] move container to workspace 2", source["rect"][0], source["rect"][1]), true)?;
+    wait(
+        "independent floating root restored after tiled family proof",
+        || {
+            Ok((native_window(ctx, 1)?["floating"] == "user_on"
+                && location(ctx, &id)?["name"] == "2")
+                .then_some(()))
+        },
+    )?;
+    let (_, source, dest, wire) = capture(ctx, &id, "1")?;
     ctx.write(client, "reparent\n")?;
     wait("actual child reparent committed", || {
         Ok((native_window(ctx, 2)?["lumen_relationships"]["parent"] == id).then_some(()))
@@ -440,10 +584,72 @@ pub fn run(ctx: &mut Context) -> Result<()> {
             .is_null()
             .then_some(()))
     })?;
+    super::desktop_fullscreen::run(ctx, &id)?;
+    checks.push("Actual non-view fullscreen source ancestors and destination splits refuse fresh current-frame packets with the entire native tree unchanged; ordinary transfer remains available after leaving fullscreen");
     let (_, source, dest, wire) = capture(ctx, &id, "1")?;
     ctx.group_action("on")?;
-    apply_role_refusal(ctx, &source, &dest, "grouped-fresh-digest")?;
+    command(ctx, &wire, false, "group-membership-stale-packet")?;
+    let source_group = ctx.group(1)?["id"].clone();
+    ctx.group_action(&format!(
+        "add {source_group} {} {}",
+        ctx.captured[3]["id"], ctx.captured[3]["pid"]
+    ))?;
+    ctx.group_action(&format!("select {source_group}"))?;
+    ctx.sway(&format!("[con_id={}] focus", owner(ctx)?["id"]), true)?;
+    wait(
+        "selected grouped source visible before captured move",
+        || Ok((native_window(ctx, 1)?["lumen_state"]["group_hidden"] == false).then_some(())),
+    )?;
+    let peer_before = frame(ctx, &ctx.captured[3]["id"])?;
+    let source_before = frame(ctx, &id)?;
+    let (_, _, _, grouped_wire) = capture(ctx, &id, "1")?;
+    command(ctx, &grouped_wire, true, "visible-grouped-root-positive")?;
+    wait("moved root receives destination group", || {
+        Ok(
+            (location(ctx, &id)?["name"] == "1" && ctx.group(1)?["id"] != source_group)
+                .then_some(()),
+        )
+    })?;
+    let source_after = frame(ctx, &id)?;
+    let peer_after = frame(ctx, &ctx.captured[3]["id"])?;
+    ensure(
+        peer_before == peer_after
+            && ctx.group(3)?["id"] == source_group
+            && source_before["rect"] == source_after["rect"]
+            && source_before["foreign"] == source_after["foreign"]
+            && source_before["pid"] == source_after["pid"]
+            && owner(ctx)?["focused"] == true,
+        "Grouped transfer changed partner/frame/identity or Overview focus",
+    )?;
+    save(
+        &ctx.opt.output.join("grouped-root-transfer.json"),
+        &json!({"sourceBefore":source_before,"sourceAfter":source_after,"peerBefore":peer_before,"peerAfter":peer_after,"oldGroup":source_group,"newGroup":ctx.group(1)?}),
+    )?;
+    ensure(
+        native_window(ctx, 1)?["lumen_state"]["group_hidden"] == true,
+        "Destination's existing selected group was replaced by transferred group",
+    )?;
+    let mut hidden_source = source.clone();
+    hidden_source["workspace"] = location(ctx, &id)?["workspace"].clone();
+    let hidden_tree = ctx.native("get_tree")?;
+    ensure(
+        transfer::source(&hidden_tree, &id).is_err(),
+        "Hidden grouped source offered transfer",
+    )?;
+    let mut return_destination = dest.clone();
+    return_destination["name"] = json!("2");
+    return_destination["workspace"] = source["workspace"].clone();
+    apply_role_refusal(
+        ctx,
+        &hidden_source,
+        &return_destination,
+        "group-hidden-fresh-digest",
+    )?;
     ctx.group_action("off")?;
+    ctx.sway(
+        &format!("[con_id={id}] move container to workspace 2"),
+        true,
+    )?;
     ctx.sway(&format!("[con_id={id}] lumen_window minimize"), true)?;
     command(ctx, &wire, false, "minimized-source")?;
     ctx.sway(&format!("[con_id={id}] scratchpad show"), true)?;
@@ -452,7 +658,8 @@ pub fn run(ctx: &mut Context) -> Result<()> {
             && location(ctx, &id)?["name"] == "2")
             .then_some(()))
     })?;
-    checks.push("Actual source resize, newly attached modal, enabled grouping and minimization refuse; fresh-digest role forgeries cannot bypass native family/group preflight");
+    checks.push("Actual source resize, newly attached modal, stale group membership, group-hidden source and minimization refuse; fresh-digest role forgeries cannot bypass native family/group preflight");
+    checks.push("Visible grouped root moves independently through native reconciliation, preserving its old partner's exact state/group, destination selection, source frame/identity and Overview focus");
     let a = ctx.captured[0]["id"].clone();
     ctx.sway(&format!("[con_id={a}] lumen_window minimize"), true)?;
     wait("unrelated native window hidden in scratchpad", || {
@@ -589,10 +796,15 @@ pub fn run(ctx: &mut Context) -> Result<()> {
     // The newly mapped Files surface owns focus; bring the exact observed
     // Overview surface forward before capturing a user gesture on its card.
     ctx.sway(&format!("[con_id={}] focus", owner(ctx)?["id"]), true)?;
-    wait("Overview owns native focus before Files card gesture", || {
-        Ok((owner(ctx)?["focused"] == true && ctx.ui()?["overviewActive"] == true)
-            .then_some(()))
-    })?;
+    wait(
+        "Overview owns native focus before Files card gesture",
+        || {
+            Ok(
+                (owner(ctx)?["focused"] == true && ctx.ui()?["overviewActive"] == true)
+                    .then_some(()),
+            )
+        },
+    )?;
     ready(ctx)?;
     let files_before = frame(ctx, &files["id"])?;
     let commits = ctx.ui()?["drag"]["commits"]
@@ -669,32 +881,62 @@ pub fn run(ctx: &mut Context) -> Result<()> {
 }
 
 pub fn unsupported(ctx: &mut Context) -> Result<()> {
+    wait("actual legacy owned IPC handler ready", || {
+        let ui = ctx.ui()?;
+        Ok((ui["visible"].is_boolean() && ui["busy"].is_boolean()).then_some(()))
+    })?;
+    let version = ctx.native("get_version")?;
+    let tree = ctx.native("get_tree")?;
+    save(
+        &ctx.opt.output.join("unsupported-provider-facts.json"),
+        &json!({"version":version,"tree":tree}),
+    )?;
     ensure(
-        ctx.native("get_version")?["space_transfer_guard"] != 2,
+        version.get("space_transfer_guard").is_none() && tree.get("space_transfer_guard").is_none(),
         "Legacy provider falsely advertised captured transfer",
     )?;
     ensure(
-        transfer::snapshot(&ctx.native("get_tree")?).is_err(),
+        transfer::snapshot(&tree).is_err(),
         "Legacy tree produced supported capture",
     )?;
     ctx.ipc("open", &[&ctx.captured[1]["id"].to_string()])?;
     wait("actual legacy Overview response", || {
         Ok((ctx.ui()?["visible"] == true && ctx.ui()?["busy"] == false).then_some(()))
     })?;
+    let ui = ctx.ui()?;
+    let rows = ui["windows"].as_array().ok_or("Legacy rows")?;
     ensure(
-        ctx.ui()?["snapshot"].is_null()
-            && ctx.ui()?["windows"]
-                .as_array()
-                .ok_or("Legacy rows")?
+        ui["snapshot"].is_null()
+            && rows
                 .iter()
-                .all(|w| w["transfer"].is_null()),
+                .any(|window| window["id"] == ctx.captured[1]["id"])
+            && rows.iter().all(|window| window["transfer"].is_null()),
         "Legacy UI offered unsupported native window transfer",
     )?;
     let before = stable(ctx)?;
-    ctx.sway("lumen_space_transfer 00", false)?;
-    ensure(
-        stable(ctx)? == before,
-        "Unsupported command mutated native state",
+    let output = Command::new(&ctx.swaymsg)
+        .args(["-r", "lumen_space_transfer 00"])
+        .env_clear()
+        .envs(&ctx.vars)
+        .output()?;
+    let reply: Value = serde_json::from_slice(&output.stdout)?;
+    let after = stable(ctx)?;
+    save(
+        &ctx.opt.output.join("unsupported-command-receipt.json"),
+        &json!({"before":before,"after":after,"reply":reply,"exit":output.status.code(),"stderr":String::from_utf8_lossy(&output.stderr)}),
     )?;
+    ensure(
+        output.status.code() == Some(2)
+            && reply.as_array().is_some_and(|rows| {
+                rows.len() == 1
+                    && rows[0]["success"] == false
+                    && rows[0]["error"].as_str().is_some_and(|error| {
+                        error.contains("Unknown/invalid command")
+                            && !error.contains("LST_REJECTED:")
+                    })
+            }),
+        "Unsupported native handler was present or returned an unexpected error",
+    )?;
+    ensure(after == before, "Unsupported command mutated native state")?;
     ctx.result(&["Guard-disabled or display-policy-disabled provider advertises no transfer capability and produces no capture","Actual production Overview disables unsupported transfer and unknown native command changes no state"])
 }

@@ -30,23 +30,24 @@
   json_object_object_add(version, "native_window_group_selector", json_object_new_boolean(true));
   json_object_object_add(version, "native_window_group_membership", json_object_new_boolean(true));
  	json_object_object_add(version, "desktop_rehome", json_object_new_boolean(true));
-+ json_object_object_add(version, "space_transfer_guard", json_object_new_int(lumen_space_transfer_wire_ready() && node_next_id()>0 && node_next_id()<=9007199254740991ULL ? 2 : 0));
++ json_object_object_add(version, "space_transfer_guard", json_object_new_int(lumen_space_transfer_wire_ready() && node_next_id()>0 && node_next_id()<=9007199254740991ULL ? 3 : 0));
  	json_object_object_add(version, "native_focus_guard", json_object_new_int(lumen_focus_guard_wire_ready() ? 2 : 0));
  	json_object_object_add(version, "native_window_relationships", json_object_new_boolean(true));
  
-@@ -775,6 +776,7 @@
+@@ -775,6 +776,8 @@
  	json_object_object_add(lumen_state, "zoomed", json_object_new_boolean(c->lumen_zoomed && c->lumen_filled));
  	json_object_object_add(lumen_state, "preferred_zoom", json_object_new_boolean(container_lumen_zoom_supported(c)));
   json_object_object_add(lumen_state, "group_hidden", json_object_new_boolean(!lumen_groups_visible(c)));
 + json_object_object_add(lumen_state, "group_member", json_object_new_boolean(c->lumen_group_id != 0));
++ json_object_object_add(lumen_state, "pair_owned", json_object_new_boolean(c->lumen_pair_dialog_owner != 0));
  	json_object_object_add(lumen_state, "minimised",
  		json_object_new_boolean(c->lumen_minimized != NULL));
  	json_object_object_add(lumen_state, "filled",
-@@ -890,6 +892,9 @@
+@@ -890,6 +893,9 @@
  	switch (node->type) {
  	case N_ROOT:
    json_object_object_add(object, "window_groups", lumen_groups_json());
-+ json_object_object_add(object, "space_transfer_guard", json_object_new_int(lumen_space_transfer_wire_ready() && node_next_id()>0 && node_next_id()<=9007199254740991ULL ? 2 : 0));
++ json_object_object_add(object, "space_transfer_guard", json_object_new_int(lumen_space_transfer_wire_ready() && node_next_id()>0 && node_next_id()<=9007199254740991ULL ? 3 : 0));
 + char transfer_serial[32];snprintf(transfer_serial,sizeof(transfer_serial),"%zu",node_next_id());
 + json_object_object_add(object, "space_transfer_generation", json_object_new_string(transfer_serial));
    json_object_object_add(object, "display_spaces", lumen_display_spaces_json());
@@ -102,7 +103,7 @@
  static void container_move_to_container(struct sway_container *container,
 --- /dev/null
 +++ b/sway/commands/lumen_space_transfer.c
-@@ -0,0 +1,131 @@
+@@ -0,0 +1,167 @@
 +/* Captured transfer preflight and dispatch share one compositor callback. */
 +#include <inttypes.h>
 +#include <json.h>
@@ -126,6 +127,7 @@
 +#include "sway/output.h"
 +#include "sway/tree/arrange.h"
 +#include "sway/tree/lumen_transfer_policy.h"
++#include "sway/tree/lumen_groups.h"
 +#define WIRE_LIMIT 2048U
 +#define ID_LIMIT UINT64_C(9007199254740991)
 +extern bool lumen_guard_topology_digest(json_object *tree,unsigned char digest[32]);
@@ -140,7 +142,12 @@
 + if(!tree)return false;
 + unsigned char digest[32];bool ready=transfer_digest(tree,digest);json_object_put(tree);
 + char hex[65];if(ready){for(unsigned i=0;i<32;i++)snprintf(hex+i*2,3,"%02x",digest[i]);}
-+ return ready && !strcmp(hex,"861cab3b9443f4463db768e0e01dbe76425534531e1910500191634187f80850");
++ if(!ready || strcmp(hex,"861cab3b9443f4463db768e0e01dbe76425534531e1910500191634187f80850"))return false;
++ tree=json_tokener_parse("{\"id\":1,\"type\":\"con\",\"pid\":19,\"rect\":{\"x\":3,\"y\":4,\"width\":0,\"height\":0},\"lumen_transfer_frame\":\"untrusted\"}");
++ if(!tree)return false;
++ ready=transfer_digest(tree,digest);json_object_put(tree);
++ if(ready){for(unsigned i=0;i<32;i++)snprintf(hex+i*2,3,"%02x",digest[i]);}
++ return ready && !strcmp(hex,"d827ac360164dfb9c15fb63c81809e6448f38e7428b2d120f33e622667f25e1e");
 +}
 +struct input {const unsigned char *next,*end;bool failed;};
 +static const unsigned char *take(struct input *r,size_t length){
@@ -170,11 +177,31 @@
 +static bool con_id(struct sway_container *con,void *id){return con->node.id==*(uint64_t *)id;}
 +static bool output_id(struct sway_output *output,void *id){return output->node.id==*(uint64_t *)id;}
 +static json_object *field(json_object *object,const char *name){json_object *value=NULL;json_object_object_get_ex(object,name,&value);return value;}
++struct family {struct sway_container *members[16];double x[16],y[16];unsigned depth[16],count;bool invalid;};
++static bool family_eligible(struct sway_container *con,struct sway_container *source){
++ if(!con || con->node.destroying || !con->view || !con->view->surface || con->view->type!=SWAY_VIEW_XDG_SHELL || !con->view->wlr_xdg_toplevel ||
++    con->view->pid<2 || con->view->pid>INT32_MAX || !con->view->ext_foreign_toplevel ||
++    !con->view->ext_foreign_toplevel->identifier || !*con->view->ext_foreign_toplevel->identifier ||
++    (con!=source && !container_is_floating(con)) || con->pending.workspace!=source->pending.workspace ||
++    !lumen_groups_visible(con) || con->lumen_pair || con->lumen_pair_restore || con->lumen_pair_dialog_owner || con->lumen_filled ||
++    con->lumen_minimized || con->lumen_app_hidden || con->lumen_hidden || con->lumen_desktop_hidden ||
++    container_is_fullscreen_or_child(con) || container_is_sticky_or_child(con) ||
++    con->pending.width<=0 || con->pending.height<=0)return false;
++ struct wlr_xdg_dialog_v1 *dialog=wlr_xdg_dialog_v1_try_from_wlr_xdg_toplevel(con->view->wlr_xdg_toplevel);
++ return !dialog || !dialog->modal;
++}
++static void collect_family(struct sway_container *other,void *data){
++ struct family *family=data;if(family->invalid || other->node.destroying || !other->view || other->view->type!=SWAY_VIEW_XDG_SHELL || !other->view->wlr_xdg_toplevel)return;
++ for(unsigned i=0;i<family->count;i++)if(family->members[i]==other)return;
++ for(unsigned i=0;i<family->count;i++)if(other->view->wlr_xdg_toplevel->parent==family->members[i]->view->wlr_xdg_toplevel){
++  if(family->count>=16 || family->depth[i]>=15 || !family_eligible(family->members[0],family->members[0]) || !family_eligible(other,family->members[0])){family->invalid=true;return;}
++  unsigned slot=family->count++;family->members[slot]=other;family->depth[slot]=family->depth[i]+1;return;
++ }
++}
 +struct boundaries {struct sway_container *source;struct sway_workspace *destination;bool invalid;};
 +static void boundary(struct sway_container *other,void *data){
 + struct boundaries *b=data;
 + if(!other->view || other->node.destroying)return;
-+ if(other->view->type==SWAY_VIEW_XDG_SHELL && other->view->wlr_xdg_toplevel->parent==b->source->view->wlr_xdg_toplevel)b->invalid=true;
 + if(lumen_transfer_destination_conflicts(b->destination,other->pending.workspace,other->pending.fullscreen_mode!=FULLSCREEN_NONE || other->lumen_pair || other->lumen_pair_restore))b->invalid=true;
 +}
 +static struct cmd_results *reject(void){return cmd_results_new(CMD_FAILURE,"LST_REJECTED: captured transfer changed before mutation");}
@@ -191,7 +218,7 @@
 + struct input r={.next=raw,.end=raw+encoded/2};
 + const unsigned char *magic=take(&r,4),*digest=take(&r,32),*session=take(&r,16);
 + uint64_t generation=number(&r,8),source_id=number(&r,8),pid=number(&r,4),foreign_length=number(&r,4);
-+ if(!magic || memcmp(magic,"LST2",4) || !source_id || source_id>ID_LIMIT || pid<2 || pid>INT32_MAX || !foreign_length || foreign_length>256)return reject();
++ if(!magic || memcmp(magic,"LST3",4) || !source_id || source_id>ID_LIMIT || pid<2 || pid>INT32_MAX || !foreign_length || foreign_length>256)return reject();
 + const unsigned char *foreign=take(&r,(size_t)foreign_length);
 + uint64_t source_workspace=number(&r,8),source_output=number(&r,8);
 + int32_t rectangle[4];for(unsigned i=0;i<4;i++)rectangle[i]=(int32_t)(uint32_t)number(&r,4);
@@ -201,12 +228,12 @@
 + if(r.failed || r.next!=r.end || !valid_text(name,(size_t)name_length) || !valid_text(foreign,(size_t)foreign_length))return reject();
 + char target_name[513];memcpy(target_name,name,name_length);target_name[name_length]=0;
 + struct sway_container *source=root_find_container(con_id,&source_id);
-+ if(!source || source->node.destroying || !source->view || !source->view->surface || source->view->type!=SWAY_VIEW_XDG_SHELL ||
++ if(!source || source->node.destroying || !source->view || !source->view->surface || source->view->type!=SWAY_VIEW_XDG_SHELL || !source->view->wlr_xdg_toplevel ||
 +    (uint64_t)source->view->pid!=pid || !source->view->ext_foreign_toplevel || !source->pending.workspace ||
 +    source->pending.workspace->node.id!=source_workspace || !source->pending.workspace->output || source->pending.workspace->output->node.id!=source_output ||
-+    source->view->wlr_xdg_toplevel->parent || source->lumen_group_id || source->lumen_pair || source->lumen_pair_restore || source->lumen_filled ||
++    source->view->wlr_xdg_toplevel->parent || !lumen_groups_visible(source) || source->lumen_pair || source->lumen_pair_restore || source->lumen_pair_dialog_owner || source->lumen_filled ||
 +    source->lumen_minimized || source->lumen_app_hidden || source->lumen_hidden || source->lumen_desktop_hidden ||
-+    source->pending.fullscreen_mode!=FULLSCREEN_NONE || container_is_sticky_or_child(source))return changed("source identity or placement");
++    container_is_fullscreen_or_child(source) || container_is_sticky_or_child(source))return changed("source identity or placement");
 + const char *identifier=source->view->ext_foreign_toplevel->identifier;
 + struct wlr_xdg_dialog_v1 *dialog=wlr_xdg_dialog_v1_try_from_wlr_xdg_toplevel(source->view->wlr_xdg_toplevel);
 + if(dialog && dialog->modal)return reject();
@@ -216,6 +243,10 @@
 + struct sway_workspace *target=workspace_by_name(target_name);
 + if(target_id ? (!target || target->node.id!=target_id || target->node.destroying || target->output!=output) : target!=NULL)return reject();
 + if(target==source->pending.workspace)return reject();
++ if(target && target->fullscreen)return changed("full-screen destination");
++ struct family family={.members={source},.count=1};
++ for(unsigned pass=0;pass<16;pass++){unsigned count=family.count;root_for_each_container(collect_family,&family);if(family.invalid)return changed("unsupported or excessive window family");if(count==family.count)break;}
++ for(unsigned i=0;i<family.count;i++){family.x[i]=family.members[i]->pending.x;family.y[i]=family.members[i]->pending.y;}
 + struct boundaries bounds={.source=source,.destination=target};root_for_each_container(boundary,&bounds);if(bounds.invalid)return changed("source or destination family");
 + json_object *tree=ipc_json_describe_node_recursive(&root->node);unsigned char actual[32];
 + bool accepted=transfer_digest(tree,actual) && digest && !memcmp(actual,digest,32);
@@ -231,12 +262,18 @@
 + /* All refusal paths end above. A missing captured slot is allocated once;
 +  * the native move primitive has no recoverable failure after allocation. */
 + if(!target){target=workspace_create(output,target_name);if(!target)return cmd_results_new(CMD_FAILURE,"LST_REJECTED: destination allocation failed before move");}
-+ lumen_space_transfer_move(source,target);transaction_commit_dirty();
++ lumen_space_transfer_move(source,target);
++ double dx=source->pending.x-family.x[0],dy=source->pending.y-family.y[0];
++ for(unsigned i=1;i<family.count;i++){
++  struct sway_container *child=family.members[i];lumen_space_transfer_move(child,target);
++  container_floating_translate(child,family.x[i]+dx-child->pending.x,family.y[i]+dy-child->pending.y);
++ }
++ arrange_workspace(target);transaction_commit_dirty();
 + return cmd_results_new(CMD_SUCCESS,NULL);
 +}
 --- /dev/null
 +++ b/include/sway/tree/lumen_transfer_policy.h
-@@ -0,0 +1,43 @@
+@@ -0,0 +1,57 @@
 +#ifndef LUMEN_TRANSFER_POLICY_H
 +#define LUMEN_TRANSFER_POLICY_H
 +#include <stdbool.h>
@@ -263,6 +300,20 @@
 +    !json_object_object_get_ex(node,"id",&identity) || !identity || json_object_get_type(identity)!=json_type_int ||
 +    json_object_get_int64(identity)<=0 || (uint64_t)json_object_get_int64(identity)>UINT64_C(9007199254740991))return false;
 + ids->values[ids->length++]=(uint64_t)json_object_get_int64(identity);
++ json_object_object_del(node,"lumen_transfer_frame");
++ json_object *pid=NULL;
++ if(json_object_object_get_ex(node,"pid",&pid) && pid && json_object_get_type(pid)==json_type_int && json_object_get_int64(pid)>0){
++  json_object *rect=NULL;const char *names[]={"x","y","width","height"};
++  if(!json_object_object_get_ex(node,"rect",&rect) || !rect || json_object_get_type(rect)!=json_type_object)return false;
++  json_object *frame=json_object_new_array();if(!frame)return false;
++  for(unsigned i=0;i<4;i++){
++   json_object *value=NULL;
++   if(!json_object_object_get_ex(rect,names[i],&value) || !value || json_object_get_type(value)!=json_type_int ||
++      json_object_get_int64(value)<INT32_MIN || json_object_get_int64(value)>INT32_MAX || (i>=2 && json_object_get_int64(value)<0)){json_object_put(frame);return false;}
++   json_object_array_add(frame,json_object_new_int64(json_object_get_int64(value)));
++  }
++  json_object_object_add(node,"lumen_transfer_frame",frame);
++ }
 + const char *keys[]={"nodes","floating_nodes"};
 + for(unsigned k=0;k<2;k++){
 +  json_object *children=NULL;if(!json_object_object_get_ex(node,keys[k],&children))continue;
@@ -282,7 +333,7 @@
 +#endif
 --- /dev/null
 +++ b/test/lumen_transfer_policy_test.c
-@@ -0,0 +1,27 @@
+@@ -0,0 +1,32 @@
 +/* Exercise the actual pure native destination predicate, including absence. */
 +#include <assert.h>
 +#include <stddef.h>
@@ -302,6 +353,11 @@
 + json_object *tree=json_tokener_parse(raw);assert(tree);
 + assert(lumen_transfer_normalize(tree));
 + assert(!strcmp(json_object_to_json_string_ext(tree,JSON_C_TO_STRING_PLAIN),expected));json_object_put(tree);
++ tree=json_tokener_parse("{\"id\":1,\"pid\":19,\"rect\":{\"x\":3,\"y\":4,\"width\":0,\"height\":0},\"lumen_transfer_frame\":\"untrusted\"}");
++ assert(tree && lumen_transfer_normalize(tree));json_object *frame=NULL;
++ assert(json_object_object_get_ex(tree,"lumen_transfer_frame",&frame) && json_object_get_type(frame)==json_type_array && json_object_array_length(frame)==4);
++ assert(json_object_get_int64(json_object_array_get_idx(frame,0))==3 && json_object_get_int64(json_object_array_get_idx(frame,2))==0);json_object_put(tree);
++ tree=json_tokener_parse("{\"id\":1,\"pid\":19,\"rect\":{\"x\":3,\"y\":4,\"width\":-1,\"height\":0}}");assert(tree && !lumen_transfer_normalize(tree));json_object_put(tree);
 + const char *bad[]={"{\"id\":1,\"floating_nodes\":[{}]}","{\"id\":1,\"floating_nodes\":[{\"id\":8},{\"id\":8}]}","{\"id\":1,\"nodes\":[{\"id\":8}],\"floating_nodes\":[{\"id\":8}]}","{\"id\":1,\"floating_nodes\":[{\"id\":1.0}]}","{\"id\":1,\"floating_nodes\":[{\"id\":9007199254740992}]}","{\"id\":1,\"nodes\":null}"};
 + for(size_t i=0;i<sizeof(bad)/sizeof(*bad);i++){tree=json_tokener_parse(bad[i]);assert(tree);assert(!lumen_transfer_normalize(tree));json_object_put(tree);}
 + tree=json_object_new_object();json_object_object_add(tree,"id",json_object_new_int(1));

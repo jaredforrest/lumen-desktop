@@ -65,10 +65,36 @@ fn walk<'a>(
         }
     }
 }
+fn fullscreen_in_path(node: &Value, wanted: &Value, inherited: bool) -> Option<bool> {
+    let fullscreen = inherited
+        || (matches!(node["type"].as_str(), Some("con" | "floating_con"))
+            && node["fullscreen_mode"] != 0);
+    if node["id"] == *wanted {
+        return Some(fullscreen);
+    }
+    for key in ["nodes", "floating_nodes"] {
+        for child in node[key].as_array().into_iter().flatten() {
+            if let Some(found) = fullscreen_in_path(child, wanted, fullscreen) {
+                return Some(found);
+            }
+        }
+    }
+    None
+}
+fn contains_fullscreen(node: &Value) -> bool {
+    (matches!(node["type"].as_str(), Some("con" | "floating_con")) && node["fullscreen_mode"] != 0)
+        || ["nodes", "floating_nodes"].iter().any(|key| {
+            node[*key]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .any(contains_fullscreen)
+        })
+}
 pub fn snapshot(tree: &Value) -> Result<Value> {
     // The shared traversal validates bytes/nodes/depth before recursive walking.
     let digest = Sha256::digest(topology(tree)?);
-    if tree["space_transfer_guard"] != 2
+    if tree["space_transfer_guard"] != 3
         || tree["window_groups"]["locked"] != false
         || tree["display_spaces"]["available"] != true
     {
@@ -95,6 +121,18 @@ fn topology(tree: &Value) -> Result<Vec<u8>> {
         if depth > 64 || !node.is_object() || ids.len() >= 8192 || !ids.insert(id(&node["id"])?) {
             return Err("Invalid or duplicate native transfer topology identity".into());
         }
+        node.as_object_mut().unwrap().remove("lumen_transfer_frame");
+        if node["pid"].as_i64().is_some_and(|pid| pid > 0) {
+            let mut frame = Vec::new();
+            for (index, key) in ["x", "y", "width", "height"].into_iter().enumerate() {
+                let value = node["rect"][key]
+                    .as_i64()
+                    .filter(|value| i32::try_from(*value).is_ok() && (index < 2 || *value >= 0))
+                    .ok_or("Invalid native transfer frame")?;
+                frame.push(json!(value));
+            }
+            node["lumen_transfer_frame"] = json!(frame);
+        }
         for key in ["nodes", "floating_nodes"] {
             if let Some(value) = node.get_mut(key) {
                 let children = value
@@ -118,7 +156,10 @@ fn topology(tree: &Value) -> Result<Vec<u8>> {
     guard::canonical_topology(&normalized)
 }
 pub fn source(tree: &Value, wanted: &Value) -> Result<Value> {
-    guard::canonical_topology(tree)?;
+    source_family(tree, wanted).map(|(capture, _)| capture)
+}
+pub fn source_family(tree: &Value, wanted: &Value) -> Result<(Value, Vec<Value>)> {
+    topology(tree)?;
     let mut all = Vec::new();
     walk(tree, None, None, &mut all);
     let (node, workspace, output) = all
@@ -130,33 +171,84 @@ pub fn source(tree: &Value, wanted: &Value) -> Result<Value> {
     let output = output.ok_or("Window has no output")?;
     let relation = &node["lumen_relationships"];
     let state = &node["lumen_state"];
-    let grouped = state["group_member"] != false;
+    let group_hidden = state["group_hidden"] != false;
     if node["shell"] != "xdg_shell"
         || node["sticky"] != false
         || node["fullscreen_mode"] != 0
+        || fullscreen_in_path(tree, wanted, false) != Some(false)
         || workspace["name"] == "__i3_scratch"
         || relation["parent_supported"] != true
         || !relation["parent"].is_null()
         || relation["version"] != 1
+        || !(relation["modal"].is_null() || relation["modal"].is_boolean())
         || relation["modal"] == true
-        || grouped
+        || group_hidden
         || !node["lumen_pair"]["id"].is_null()
         || node["lumen_pair"]["survivor"] == true
+        || state["pair_owned"] != false
         || state["hidden"] != false
         || state["minimised"] != false
         || state["filled"] != false
         || state["desktop_hidden"] != false
         || !state["restore_workspace"].is_null()
-        || all
-            .iter()
-            .any(|(other, _, _)| other["lumen_relationships"]["parent"] == node["id"])
     {
-        return Err("This window retains its current desktop while grouped, owned, hidden, filled, paired or full screen".into());
+        return Err("This window retains its current desktop while owned, group-hidden, hidden, filled, paired or full screen".into());
     }
     let rectangle = ["x", "y", "width", "height"].map(|key| node["rect"][key].clone());
     let captured = json!({"id":node["id"],"pid":node["pid"],"foreign":node["foreign_toplevel_identifier"],"workspace":workspace["id"],"output":output["id"],"rect":rectangle});
     validate_source(&captured)?;
-    Ok(captured)
+    let mut family = vec![(node, 0usize)];
+    let mut next = 0;
+    while next < family.len() {
+        let (parent, depth) = family[next];
+        for (child, child_workspace, child_output) in &all {
+            if child["lumen_relationships"]["parent"] != parent["id"] {
+                continue;
+            }
+            if family.len() >= 16
+                || depth >= 15
+                || family.iter().any(|(member, _)| member["id"] == child["id"])
+            {
+                return Err("Window family exceeds the captured transfer bound".into());
+            }
+            let relation = &child["lumen_relationships"];
+            let state = &child["lumen_state"];
+            if !matches!(child["floating"].as_str(), Some("user_on" | "auto_on"))
+                || child_workspace.is_none_or(|owner| owner["id"] != workspace["id"])
+                || child_output.is_none_or(|owner| owner["id"] != output["id"])
+                || child["shell"] != "xdg_shell"
+                || child["sticky"] != false
+                || child["fullscreen_mode"] != 0
+                || fullscreen_in_path(tree, &child["id"], false) != Some(false)
+                || relation["version"] != 1
+                || relation["parent_supported"] != true
+                || !(relation["modal"].is_null() || relation["modal"].is_boolean())
+                || relation["modal"] == true
+                || state["group_hidden"] != false
+                || state["hidden"] != false
+                || state["minimised"] != false
+                || state["filled"] != false
+                || state["desktop_hidden"] != false
+                || !state["restore_workspace"].is_null()
+                || !child["lumen_pair"]["id"].is_null()
+                || child["lumen_pair"]["survivor"] == true
+                || state["pair_owned"] != false
+            {
+                return Err("This window family retains its desktop while a member is modal, tiled, hidden, saved or paired".into());
+            }
+            let child_capture = json!({"id":child["id"],"pid":child["pid"],"foreign":child["foreign_toplevel_identifier"],"workspace":workspace["id"],"output":output["id"],"rect":[child["rect"]["x"],child["rect"]["y"],child["rect"]["width"],child["rect"]["height"]]});
+            validate_source(&child_capture)?;
+            family.push((child, depth + 1));
+        }
+        next += 1;
+    }
+    Ok((
+        captured,
+        family
+            .into_iter()
+            .map(|(member, _)| member.clone())
+            .collect(),
+    ))
 }
 pub fn destination(tree: &Value, desktop: &Value) -> Result<Value> {
     guard::canonical_topology(tree)?;
@@ -177,6 +269,9 @@ pub fn destination(tree: &Value, desktop: &Value) -> Result<Value> {
     }
     if live.is_none() && !desktop["id"].is_null() {
         return Err("Destination desktop retired".into());
+    }
+    if live.is_some_and(|(node, _, _)| contains_fullscreen(node)) {
+        return Err("A full-screen container retains this destination desktop".into());
     }
     let captured = json!({"logicalId":desktop["logicalId"],"workspace":desktop["id"],"output":output["id"],"name":desktop["name"]});
     validate_destination(&captured)?;
@@ -223,7 +318,7 @@ pub fn packet(snapshot: &Value, source: &Value, destination: &Value) -> Result<V
     fields(snapshot, &["digest", "session", "generation"])?;
     validate_source(source)?;
     validate_destination(destination)?;
-    let mut wire = b"LST2".to_vec();
+    let mut wire = b"LST3".to_vec();
     wire.extend(hex(text(&snapshot["digest"], 64)?, 32)?);
     wire.extend(hex(text(&snapshot["session"], 32)?, 16)?);
     let generation = text(&snapshot["generation"], 20)?
@@ -331,7 +426,130 @@ mod tests {
         assert_ne!(snapshot(&a).unwrap(), snapshot(&b).unwrap());
     }
     fn tree() -> Value {
-        json!({"type":"root","id":1,"space_transfer_guard":2,"display_spaces":{"available":true,"session":"ab".repeat(16),"generation":"3"},"window_groups":{"locked":false,"enabled":false,"groups":[]},"nodes":[{"type":"output","id":2,"name":"HEADLESS-1","nodes":[{"type":"workspace","id":4,"name":"one","nodes":[{"type":"con","id":8,"pid":19,"shell":"xdg_shell","app_id":"org.example.Editor","foreign_toplevel_identifier":"surface-a","sticky":false,"fullscreen_mode":0,"rect":{"x":3,"y":4,"width":320,"height":240},"lumen_relationships":{"version":1,"parent_supported":true,"parent":null,"modal":null},"lumen_pair":{"id":null,"survivor":false},"lumen_state":{"group_member":false,"hidden":false,"minimised":false,"filled":false,"desktop_hidden":false,"restore_workspace":null}}]}]}]})
+        json!({"type":"root","id":1,"space_transfer_guard":3,"display_spaces":{"available":true,"session":"ab".repeat(16),"generation":"3"},"window_groups":{"locked":false,"enabled":false,"groups":[]},"nodes":[{"type":"output","id":2,"name":"HEADLESS-1","nodes":[{"type":"workspace","id":4,"name":"one","nodes":[{"type":"con","id":8,"pid":19,"shell":"xdg_shell","app_id":"org.example.Editor","foreign_toplevel_identifier":"surface-a","sticky":false,"fullscreen_mode":0,"rect":{"x":3,"y":4,"width":320,"height":240},"lumen_relationships":{"version":1,"parent_supported":true,"parent":null,"modal":null},"lumen_pair":{"id":null,"survivor":false},"lumen_state":{"group_member":false,"group_hidden":false,"pair_owned":false,"hidden":false,"minimised":false,"filled":false,"desktop_hidden":false,"restore_workspace":null}}]}]}]})
+    }
+    #[test]
+    fn native_frame_projection_golden_accepts_zero_and_overwrites_reserved_field() {
+        let raw = json!({"id":1,"type":"con","pid":19,"rect":{"x":3,"y":4,"width":0,"height":0},"lumen_transfer_frame":"untrusted"});
+        let digest = format!("{:x}", Sha256::digest(topology(&raw).unwrap()));
+        assert_eq!(
+            digest,
+            "d827ac360164dfb9c15fb63c81809e6448f38e7428b2d120f33e622667f25e1e"
+        );
+        let mut clean = raw.clone();
+        clean
+            .as_object_mut()
+            .unwrap()
+            .remove("lumen_transfer_frame");
+        assert_eq!(topology(&raw).unwrap(), topology(&clean).unwrap());
+        clean["rect"]["x"] = json!(4);
+        assert_ne!(topology(&raw).unwrap(), topology(&clean).unwrap());
+        clean["rect"]["width"] = json!(-1);
+        assert!(topology(&clean).is_err());
+    }
+    fn ordinary_family_tree() -> Value {
+        let mut family = tree();
+        let root = &mut family["nodes"][0]["nodes"][0]["nodes"][0];
+        root["floating"] = json!("user_on");
+        let mut child = root.clone();
+        child["id"] = json!(9);
+        child["foreign_toplevel_identifier"] = json!("surface-child");
+        child["lumen_relationships"]["parent"] = json!(8);
+        child["rect"]["x"] = json!(21);
+        family["nodes"][0]["nodes"][0]["nodes"]
+            .as_array_mut()
+            .unwrap()
+            .push(child);
+        family
+    }
+    fn nonview_fullscreen_tree() -> Value {
+        let mut tree = tree();
+        let leaf = tree["nodes"][0]["nodes"][0]["nodes"][0].clone();
+        tree["nodes"][0]["nodes"][0]["nodes"][0] =
+            json!({"id":9,"type":"con","fullscreen_mode":1,"nodes":[leaf]});
+        assert_eq!(
+            tree["nodes"][0]["nodes"][0]["nodes"][0]["nodes"][0]["fullscreen_mode"],
+            0
+        );
+        tree
+    }
+    #[test]
+    fn workspace_fullscreen_label_is_not_a_container_fullscreen_ancestor() {
+        let mut tree = tree();
+        tree["nodes"][0]["nodes"][0]["fullscreen_mode"] = json!(1);
+        assert!(source(&tree, &json!(8)).is_ok());
+        assert!(
+            destination(
+                &tree,
+                &json!({"logicalId":"desktop-one","id":4,"name":"one","output":"HEADLESS-1"})
+            )
+            .is_ok()
+        );
+    }
+    #[test]
+    fn nonview_fullscreen_ancestor_does_not_offer_source() {
+        assert!(source(&nonview_fullscreen_tree(), &json!(8)).is_err());
+    }
+    #[test]
+    fn nonview_fullscreen_target_does_not_offer_destination() {
+        assert!(
+            destination(
+                &nonview_fullscreen_tree(),
+                &json!({"logicalId":"desktop-one","id":4,"name":"one","output":"HEADLESS-1"})
+            )
+            .is_err()
+        );
+    }
+    #[test]
+    fn tiled_root_accepts_only_floating_ordinary_descendants() {
+        let mut family = ordinary_family_tree();
+        family["nodes"][0]["nodes"][0]["nodes"][0]["floating"] = json!("user_off");
+        assert!(source(&family, &json!(8)).is_ok());
+        family["nodes"][0]["nodes"][0]["nodes"][1]["floating"] = json!("user_off");
+        assert!(source(&family, &json!(8)).is_err());
+    }
+    #[test]
+    fn ordinary_nonmodal_floating_family_is_captured_with_child_geometry() {
+        let mut family = ordinary_family_tree();
+        assert!(source(&family, &json!(8)).is_ok());
+        assert!(source(&family, &json!(9)).is_err());
+        let before = snapshot(&family).unwrap();
+        family["nodes"][0]["nodes"][0]["nodes"][1]["rect"]["x"] = json!(22);
+        assert_ne!(before, snapshot(&family).unwrap());
+        family["nodes"][0]["nodes"][0]["nodes"][1]["lumen_relationships"]["modal"] = json!(true);
+        assert!(source(&family, &json!(8)).is_err());
+        family["nodes"][0]["nodes"][0]["nodes"][1]["lumen_relationships"]["modal"] =
+            json!("unknown");
+        assert!(source(&family, &json!(8)).is_err());
+        family["nodes"][0]["nodes"][0]["nodes"][1]["lumen_relationships"]["modal"] = json!(false);
+        let child = family["nodes"][0]["nodes"][0]["nodes"][1].clone();
+        for index in 0..14 {
+            let mut extra = child.clone();
+            extra["id"] = json!(10 + index);
+            extra["foreign_toplevel_identifier"] = json!(format!("child-{index}"));
+            family["nodes"][0]["nodes"][0]["nodes"]
+                .as_array_mut()
+                .unwrap()
+                .push(extra);
+        }
+        assert!(source(&family, &json!(8)).is_ok());
+        let mut extra = child;
+        extra["id"] = json!(24);
+        family["nodes"][0]["nodes"][0]["nodes"]
+            .as_array_mut()
+            .unwrap()
+            .push(extra);
+        assert!(source(&family, &json!(8)).is_err());
+    }
+    #[test]
+    fn visible_grouped_root_is_not_a_blanket_transfer_exclusion() {
+        let mut grouped = tree();
+        let state = &mut grouped["nodes"][0]["nodes"][0]["nodes"][0]["lumen_state"];
+        state["group_member"] = json!(true);
+        state["group_hidden"] = json!(false);
+        assert!(source(&grouped, &json!(8)).is_ok());
+        grouped["nodes"][0]["nodes"][0]["nodes"][0]["lumen_state"]["group_hidden"] = json!(true);
+        assert!(source(&grouped, &json!(8)).is_err());
     }
     #[test]
     fn actual_native_null_dialog_is_independent_but_owned_or_masked_source_refuses() {
@@ -345,7 +563,8 @@ mod tests {
             ("lumen_relationships", "modal", json!(true)),
             ("lumen_relationships", "parent_supported", json!(false)),
             ("lumen_relationships", "parent", json!(7)),
-            ("lumen_state", "group_member", json!(true)),
+            ("lumen_state", "group_hidden", json!(true)),
+            ("lumen_state", "pair_owned", json!(true)),
             ("lumen_state", "hidden", json!(true)),
             ("lumen_state", "minimised", json!(true)),
             ("lumen_state", "filled", json!(true)),
@@ -389,7 +608,7 @@ mod tests {
     fn fixed_wire_is_bounded_and_contains_no_commands() {
         let (n, s, d) = values();
         let wire = packet(&n, &s, &d).unwrap();
-        assert_eq!(&wire[..4], b"LST2");
+        assert_eq!(&wire[..4], b"LST3");
         assert_eq!(
             wire.len(),
             4 + 32 + 16 + 8 + 8 + 4 + 4 + 9 + 8 + 8 + 16 + 8 + 8 + 4 + 3
@@ -398,7 +617,7 @@ mod tests {
         assert!(
             command(&n, &s, &d)
                 .unwrap()
-                .starts_with("lumen_space_transfer 4c535432")
+                .starts_with("lumen_space_transfer 4c535433")
         );
     }
     #[test]

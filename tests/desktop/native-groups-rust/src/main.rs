@@ -1,5 +1,6 @@
 //! Shared real compositor, D-Bus, keyboard and pointer harness for group fixtures.
 mod desktop_card;
+mod desktop_fullscreen;
 mod desktop_transfer;
 mod membership;
 mod presentation;

@@ -136,3 +136,4 @@ artifacts/native-identity-*
 artifacts/native-window-inventory-*
 artifacts/group-presentation-*
 artifacts/shortcut-layout-*
+artifacts/desktop-transfer-*
