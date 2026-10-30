@@ -1,6 +1,6 @@
 { pkgs, nixSettings, contextTools }:
 let
-  binary = pkgs.rustPlatform.buildRustPackage {
+  binary = (import ./owned-rust.nix { inherit pkgs; }) {
     pname = "lumen-text-tools";
     version = "0.1.0";
     src = ../res/lumen-desktop/text-tools;

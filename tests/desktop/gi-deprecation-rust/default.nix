@@ -3,7 +3,7 @@ let
   pythonBase = import ../../../packages/python-runtime.nix { inherit pkgs; };
   python = pythonBase.withPackages (packages: [ packages.pygobject3 ]);
 in
-pkgs.rustPlatform.buildRustPackage {
+(import ../../../packages/owned-rust.nix { inherit pkgs; }) {
   pname = "lumen-gi-deprecation-check";
   version = "0.1.0";
   src = ./.;

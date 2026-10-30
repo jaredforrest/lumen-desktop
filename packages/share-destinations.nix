@@ -1,5 +1,5 @@
 { pkgs }:
-pkgs.rustPlatform.buildRustPackage {
+(import ./owned-rust.nix { inherit pkgs; }) {
   pname = "lumen-share-destinations";
   version = "0.1.0";
   src = ../res/lumen-desktop/share-destinations;

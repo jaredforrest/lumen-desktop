@@ -1,6 +1,6 @@
 { pkgs }:
 let
-  binary = pkgs.rustPlatform.buildRustPackage {
+  binary = (import ./owned-rust.nix { inherit pkgs; }) {
     pname = "lumen-privacy-status";
     version = "0.1.0";
     src = ../res/lumen-desktop/privacy-status;

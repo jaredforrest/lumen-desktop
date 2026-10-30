@@ -3,7 +3,7 @@ let
   fileTags = pkgs.callPackage ./file-tags.nix { };
   filePreview = pkgs.callPackage ./file-preview.nix { };
 in
-pkgs.rustPlatform.buildRustPackage {
+(import ./owned-rust.nix { inherit pkgs; }) {
   pname = "lumen-file-surfaces-rust-wip";
   version = "0.1.0";
   src = ../res/lumen-desktop/file-surfaces;

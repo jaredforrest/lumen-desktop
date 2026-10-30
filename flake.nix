@@ -429,6 +429,7 @@
           builder = "${pkgs.nushell}/bin/nu";
           args = [ "${./tests/project/source_contracts.nu}" "${self}" ];
         };
+        owned-rust-warning-policy = import ./tests/project/rust-warning-policy { inherit pkgs; };
         placement-schema = let
           evaluate = values: import ./packages/desktop-settings-schema.nix { inherit (pkgs) lib; inherit values; };
           defaults = evaluate { };

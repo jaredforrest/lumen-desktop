@@ -1,5 +1,5 @@
 { pkgs }:
-pkgs.rustPlatform.buildRustPackage {
+(import ./owned-rust.nix { inherit pkgs; }) {
   pname = "lumen-native-namespace-policy";
   version = "0.1.0";
   src = ../res/ci/native-namespace-policy;

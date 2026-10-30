@@ -1,7 +1,7 @@
 { pkgs, providerPackage ? null }:
 let
   bridge = (import ./lumen-authorization-agent.nix { inherit pkgs; }).bridge;
-  binary = pkgs.rustPlatform.buildRustPackage {
+  binary = (import ./owned-rust.nix { inherit pkgs; }) {
     pname = "lumen-network-locations";
     version = "0.1.0";
     src = ../res/lumen-desktop/network-locations;

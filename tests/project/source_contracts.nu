@@ -33,6 +33,10 @@ def main [root: path] {
             $errors = ($errors | append $'First-party C++ source restored: ($relative)')
         }
         if ($path | str ends-with '.nix') {
+            let upstream_rust_builders = [packages/wordcraft-source.nix packages/gridcraft-source.nix packages/deckcraft-source.nix]
+            if ($content | str contains 'pkgs.rustPlatform.buildRustPackage') and $relative != 'packages/owned-rust.nix' and $relative not-in $upstream_rust_builders {
+                $errors = ($errors | append $'Owned Rust package bypasses the shared warning policy: ($relative)')
+            }
             for hit in ($content | parse -r '(?:import|callPackage)\s+(?<target>\.{1,2}/[\w./-]+)') {
                 let imported = (($path | path dirname) | path join $hit.target)
                 if not ($imported | path exists) {

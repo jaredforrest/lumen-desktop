@@ -1,5 +1,5 @@
 { pkgs }:
-pkgs.rustPlatform.buildRustPackage {
+(import ./owned-rust.nix { inherit pkgs; }) {
   pname = "lumen-document-history-safety";
   version = "0.1.0";
   src = pkgs.lib.fileset.toSource {

@@ -1,7 +1,7 @@
 { pkgs }:
 let
   exporter = pkgs.callPackage ./menu-export.nix { };
-  binary = pkgs.rustPlatform.buildRustPackage {
+  binary = (import ./owned-rust.nix { inherit pkgs; }) {
     pname = "lumen-menu-bridge";
     version = "0.1.0";
     src = ../res/lumen-desktop/global-menu/bridge;

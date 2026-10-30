@@ -8,7 +8,7 @@ let
       "${pkgs.noto-fonts-color-emoji}/share/fonts"
     ];
   };
-in pkgs.rustPlatform.buildRustPackage {
+in (import ../../packages/owned-rust.nix { inherit pkgs; }) {
   pname = "lumen-typography-probe";
   version = "0.1.0";
   src = ./typography-probe-rust;

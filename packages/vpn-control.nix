@@ -1,5 +1,5 @@
 { pkgs }:
-pkgs.rustPlatform.buildRustPackage {
+(import ./owned-rust.nix { inherit pkgs; }) {
   pname = "lumen-vpn-control";
   version = "0.1.0";
   src = ../res/lumen-desktop/vpn-control;

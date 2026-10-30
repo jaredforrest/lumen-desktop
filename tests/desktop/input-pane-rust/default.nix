@@ -1,5 +1,5 @@
 { pkgs }:
-pkgs.rustPlatform.buildRustPackage {
+(import ../../../packages/owned-rust.nix { inherit pkgs; }) {
   pname = "lumen-input-pane-fixture";
   version = "0.1.0";
   src = ./.;

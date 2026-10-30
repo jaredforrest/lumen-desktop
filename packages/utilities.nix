@@ -1,6 +1,6 @@
 { pkgs, rofiPackage ? pkgs.rofi, characterViewer ? import ../res/character-viewer { inherit pkgs; } }:
 let
-  binary = pkgs.rustPlatform.buildRustPackage {
+  binary = (import ./owned-rust.nix { inherit pkgs; }) {
     pname = "lumen-utilities";
     version = "0.1.0";
     src = ../res/utilities/conveniences;

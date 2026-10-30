@@ -1,6 +1,6 @@
 { pkgs, emojiFamily }:
 let
-  runtime = pkgs.rustPlatform.buildRustPackage {
+  runtime = (import ./owned-rust.nix { inherit pkgs; }) {
     pname = "lumen-desktop-doctor-runtime";
     version = "0.1.0";
     src = ../res/lumen-desktop/doctor;

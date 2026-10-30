@@ -20,7 +20,7 @@ let
       in pkgs.lib.makeSearchPath "lib/pkgconfig" inputs
         + ":" + pkgs.lib.makeSearchPath "share/pkgconfig" inputs;
   };
-  binary = pkgs.rustPlatform.buildRustPackage {
+  binary = (import ../../../packages/owned-rust.nix { inherit pkgs; }) {
     pname = "character-viewer-runtime";
     version = "0.1.0";
     src = source;

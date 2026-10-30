@@ -1,6 +1,6 @@
 { pkgs, timeZone ? "Europe/London" }:
 let
-  calendarRuntime = pkgs.rustPlatform.buildRustPackage {
+  calendarRuntime = (import ./owned-rust.nix { inherit pkgs; }) {
     pname = "lumen-calendar-runtime";
     version = "0.1.0";
     src = ../res/lumen-desktop/shell/calendar-runtime;
@@ -10,7 +10,7 @@ let
     nativeBuildInputs = [ pkgs.pkg-config ];
     buildInputs = [ pkgs.evolution-data-server pkgs.gnome-online-accounts pkgs.libical pkgs.glib-networking ];
   };
-  setupRuntime = pkgs.rustPlatform.buildRustPackage {
+  setupRuntime = (import ./owned-rust.nix { inherit pkgs; }) {
     pname = "lumen-icloud-setup";
     version = "0.1.0";
     src = ../res/lumen-desktop/icloud-setup;

@@ -2,7 +2,7 @@
 let
   stateFields = pkgs.writeText "profile-state-fields.json" (builtins.toJSON stateDefaults);
   cacheFields = pkgs.writeText "profile-cache-fields.json" (builtins.toJSON cacheDefaults);
-  runtime = pkgs.rustPlatform.buildRustPackage {
+  runtime = (import ./owned-rust.nix { inherit pkgs; }) {
     pname = "lumen-profile-tools";
     version = "0.1.0";
     src = ../res/lumen-desktop/profiles;

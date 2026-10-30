@@ -1,5 +1,5 @@
 { pkgs }:
-pkgs.rustPlatform.buildRustPackage {
+(import ../../../packages/owned-rust.nix { inherit pkgs; }) {
   pname = "lumen-office-workflows";
   version = "0.1.0";
   src = pkgs.lib.fileset.toSource {

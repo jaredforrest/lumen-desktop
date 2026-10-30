@@ -1,5 +1,5 @@
 { pkgs }:
-pkgs.rustPlatform.buildRustPackage {
+(import ./owned-rust.nix { inherit pkgs; }) {
   pname = "lumen-menu-export";
   version = "0.1.0";
   src = ../res/lumen-desktop/global-menu/export;
