@@ -65,9 +65,14 @@ impl Options {
         let mut args = env::args_os().skip(1);
         while let Some(arg) = args.next() {
             match arg.to_str() {
-                Some("lifecycle" | "session" | "recovery" | "mru") => {
-                    scenario = Some(arg.to_string_lossy().into_owned())
-                }
+                Some(
+                    "lifecycle"
+                    | "session"
+                    | "recovery"
+                    | "mru"
+                    | "window-mru"
+                    | "window-mru-baseline",
+                ) => scenario = Some(arg.to_string_lossy().into_owned()),
                 Some("--output") => {
                     output = Some(PathBuf::from(args.next().ok_or("Missing output")?))
                 }
@@ -449,6 +454,8 @@ impl Fixture {
                 include_str!("../recovery.qml.inc")
             } else if self.options.scenario == "mru" {
                 include_str!("../mru.qml.inc")
+            } else if self.options.scenario.starts_with("window-mru") {
+                include_str!("../window-mru.qml.inc")
             } else {
                 include_str!("../lifecycle.qml.inc")
             },
@@ -496,7 +503,7 @@ impl Fixture {
                 gapplication.display()
             ),
         )?;
-        if self.options.scenario == "mru" {
+        if self.options.scenario == "mru" || self.options.scenario.starts_with("window-mru") {
             for suffix in ["A", "B", "C"] {
                 let id = format!("org.example.Mru{suffix}");
                 fs::write(

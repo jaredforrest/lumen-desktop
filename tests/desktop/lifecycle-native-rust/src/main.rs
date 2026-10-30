@@ -4,6 +4,7 @@ mod lifecycle;
 mod mru;
 mod recovery;
 mod session;
+mod window_mru;
 
 use harness::{Options, Result, private_session};
 
@@ -17,6 +18,7 @@ fn main() -> Result<()> {
         "session" => session::run(options),
         "recovery" => recovery::run(options),
         "mru" => mru::run(options),
+        "window-mru" | "window-mru-baseline" => window_mru::run(options),
         _ => Err("Unknown scenario".into()),
     }
 }

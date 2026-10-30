@@ -17,16 +17,30 @@ struct State {
     windows: Vec<gtk::ApplicationWindow>,
     requests: u32,
     last_command: String,
+    duplicate_titles: bool,
+    generation: u32,
 }
 impl State {
     fn status(&self) {
         fs::write(
             self.root.join("client-state.json"),
-            json!({"windows":self.windows.len(),"requests":self.requests,"documents":DOCUMENTS})
+            json!({"windows":self.windows.len(),"requests":self.requests,"documents":DOCUMENTS,"generation":self.generation})
                 .to_string(),
         )
         .expect("client status");
     }
+}
+fn add_window(app: &gtk::Application, state: &mut State, index: usize) {
+    let window = gtk::ApplicationWindow::new(app);
+    window.set_title(&if state.duplicate_titles {
+        "Duplicate document".into()
+    } else {
+        format!("Lifecycle document {}", index + 1)
+    });
+    window.set_default_size(300, 200);
+    window.add(&gtk::Label::new(Some(DOCUMENTS[index % 2])));
+    window.show_all();
+    state.windows.push(window);
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -42,6 +56,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         windows: Vec::new(),
         requests: 0,
         last_command: String::new(),
+        duplicate_titles: env::args().nth(3).as_deref() == Some("--duplicate-titles"),
+        generation: 0,
     }));
     let started = state.clone();
     app.connect_startup(move |app| {
@@ -67,6 +83,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
         app.add_action(&action);
         let polling = started.clone();
+        let polling_app = app.clone();
         glib::timeout_add_local(Duration::from_millis(30), move || {
             let mut state = polling.borrow_mut();
             if let Ok(command) = fs::read_to_string(state.root.join("command")) {
@@ -78,6 +95,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         state.windows.clear();
                         state.status();
+                    } else if command.trim() == "close second" || command.trim() == "replace second"
+                    {
+                        if state.windows.len() > 1 {
+                            state.windows.remove(1).close();
+                        }
+                        if command.trim() == "replace second" {
+                            add_window(&polling_app, &mut state, 1);
+                        }
+                        state.generation += 1;
+                        state.status();
                     }
                 }
             }
@@ -88,13 +115,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     app.connect_activate(move |app| {
         let mut state = activated.borrow_mut();
         if state.windows.is_empty() {
-            for (index, document) in DOCUMENTS.iter().enumerate() {
-                let window = gtk::ApplicationWindow::new(app);
-                window.set_title(&format!("Lifecycle document {}", index + 1));
-                window.set_default_size(300, 200);
-                window.add(&gtk::Label::new(Some(document)));
-                window.show_all();
-                state.windows.push(window);
+            for index in 0..DOCUMENTS.len() {
+                add_window(app, &mut state, index);
             }
         }
         state.status();
