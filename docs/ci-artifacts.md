@@ -19,6 +19,8 @@ temporary tree. File copies stop after at most the remaining byte budget plus
 one detection byte, including when a source grows. This is a bounded diagnostic
 snapshot of normally quiescent test outputs, not an atomic snapshot of changing
 file contents or a general untrusted-filesystem security boundary.
+Selecting no regular fixture files is an error and publishes no upload tree;
+the two metadata files cannot make missing evidence look successful.
 
 Real Unix-socket and external/dangling/loop symlink fixtures verify omission,
 exact byte and mode preservation, policy exclusions and unchanged originals.

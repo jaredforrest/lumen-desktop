@@ -250,6 +250,13 @@ fn stage(root: &Path, includes: &str, output: &Path, limits: Limits) -> Result<R
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
             Err(error) => return Err(error.into()),
         }
+        if report.files == 0 {
+            return Err(format!(
+                "No regular fixture evidence selected ({} special entries omitted)",
+                report.skipped.len()
+            )
+            .into());
+        }
         let text = format!(
             "Regular files: {}\nBytes: {}\nSkipped entries (type, repository-relative path; links never followed):\n{}\n",
             report.files,
@@ -455,6 +462,30 @@ mod tests {
                 .raw_os_error(),
             Some(libc::ELOOP)
         );
+        Ok(())
+    }
+    #[test]
+    fn empty_missing_and_special_only_inputs_fail_without_publishing() -> Result<()> {
+        let f = Fixture::new();
+        let out = f.0.join("upload/backend");
+        for _ in 0..2 {
+            assert!(
+                stage(&f.0, "artifacts/case", &out, Limits::default())
+                    .unwrap_err()
+                    .to_string()
+                    .contains("No regular fixture evidence")
+            );
+            assert!(!out.exists());
+            fs::create_dir_all(f.0.join("artifacts/case"))?;
+        }
+        let _socket = UnixListener::bind(f.0.join("artifacts/case/runtime.sock"))?;
+        assert!(
+            stage(&f.0, "artifacts/case", &out, Limits::default())
+                .unwrap_err()
+                .to_string()
+                .contains("1 special entries")
+        );
+        assert!(!out.exists());
         Ok(())
     }
     #[test]
