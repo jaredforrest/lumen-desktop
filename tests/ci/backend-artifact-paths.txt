@@ -1,5 +1,6 @@
 artifacts/shortcut-editor
 artifacts/native-command-logs
+artifacts/files-native-drop-*
 artifacts/native-namespace-policy
 artifacts/calendar-toggle-contrast
 artifacts/owned-typography-qml

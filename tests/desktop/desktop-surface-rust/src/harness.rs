@@ -49,6 +49,7 @@ pub struct Options {
     pub multi_drag: bool,
     pub layer: String,
     pub skip_native_escape: bool,
+    pub effects: bool,
 }
 impl Options {
     pub fn parse() -> Result<Self> {
@@ -67,6 +68,7 @@ impl Options {
         let mut multi_drag = false;
         let mut layer = "bottom".to_owned();
         let mut skip_native_escape = false;
+        let mut effects = false;
         while let Some(arg) = args.next() {
             match arg.to_str() {
                 Some("--output") => {
@@ -83,6 +85,7 @@ impl Options {
                 Some("--multi-drag") => multi_drag = true,
                 Some("--skip-native-escape") => skip_native_escape = true,
                 Some("--inside") => inside = true,
+                Some("--effects") => effects = true,
                 Some("--layer") => {
                     layer = args
                         .next()
@@ -96,6 +99,7 @@ impl Options {
         require(layer == "bottom" || layer == "top", "Unknown layer")?;
         require(!multi_drag || layout, "Multi-drag requires layout")?;
         Ok(Self {
+            effects,
             scenario,
             output: env::current_dir()?.join(output.ok_or("--output required")?),
             launcher: launcher.ok_or("--launcher required")?.canonicalize()?,
@@ -230,6 +234,35 @@ impl Fixture {
         }
         for key in ["DISPLAY", "WAYLAND_DISPLAY", "SWAYSOCK"] {
             values.remove(key);
+        }
+        if options.effects {
+            for (key, value) in [
+                ("WLR_RENDERER", "gles2"),
+                ("WLR_RENDERER_FORCE_SOFTWARE", "1"),
+                ("WLR_RENDERER_ALLOW_SOFTWARE", "1"),
+                ("LIBGL_ALWAYS_SOFTWARE", "1"),
+                ("MESA_LOADER_DRIVER_OVERRIDE", "llvmpipe"),
+            ] {
+                values.insert(key.into(), value.into());
+            }
+            let driver = Path::new(env!("LUMEN_FIXTURE_SOFTWARE_DRIVER"));
+            values.insert(
+                "LIBGL_DRIVERS_PATH".into(),
+                driver.join("lib/dri").display().to_string(),
+            );
+            values.insert(
+                "__EGL_VENDOR_LIBRARY_FILENAMES".into(),
+                driver
+                    .join("share/glvnd/egl_vendor.d/50_mesa.json")
+                    .display()
+                    .to_string(),
+            );
+        }
+        if options.scenario.starts_with("files-drag") {
+            values.insert(
+                "FONTCONFIG_FILE".into(),
+                env!("LUMEN_FIXTURE_FONTCONFIG").into(),
+            );
         }
         let desktop = runtime.join("Desktop");
         fs::create_dir(&desktop)?;

@@ -25,6 +25,7 @@ Flickable {
     signal bandCommitted(var selection)
     signal bandCanceled(string reason)
     signal chosen(string path, bool directory)
+    signal dragRequested(var row)
     signal snapshotRestored()
     clip: true; contentWidth: columnRow.width; contentHeight: height
     property int resizingIndex:-1
@@ -111,6 +112,7 @@ Flickable {
                             PanelLabel {visible:modelData.directory;anchors.right:parent.right;anchors.rightMargin:6;height:parent.height;verticalAlignment:Text.AlignVCenter;text:"›";color:Theme.colors.muted}
                         }
                         FolderDropTarget {anchors.fill:parent;enabled:modelData.directory;folder:modelData.path;coordinator:root.dropCoordinator}
+                        DragHandler {target:null;acceptedButtons:Qt.LeftButton;onActiveChanged:if(active)root.dragRequested(modelData)}
                         onClicked:root.chosen(modelData.path,modelData.directory)
                     }
                 }

@@ -1,6 +1,7 @@
 //! Private desktop file surface and native drag acceptance.
 mod drag;
 mod files;
+mod files_drag;
 mod harness;
 
 use harness::{Options, Result, private_session};
@@ -13,6 +14,7 @@ fn main() -> Result<()> {
     match options.scenario.as_str() {
         "files" => files::run(options),
         "drag" => drag::run(options),
+        "files-drag" | "files-drag-gtk" => files_drag::run(options),
         _ => Err("Unknown desktop surface scenario".into()),
     }
 }

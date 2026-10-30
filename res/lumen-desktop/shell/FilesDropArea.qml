@@ -3,6 +3,7 @@ import QtQuick
 // One native drop receiver survives navigation and delegate replacement.
 DropArea {
     id: root
+    objectName: "files-native-drop"
     required property string currentFolder
     property var targets: []
     property var hoverTarget: null
@@ -40,15 +41,23 @@ DropArea {
         }
     }
     function clear() { spring.stop(); hoverTarget = null; destination = ""; }
-    onEntered: drag => { drag.accepted = drag.hasUrls; if (drag.hasUrls) locate(drag.x, drag.y); }
-    onPositionChanged: drag => { if (drag.hasUrls) locate(drag.x, drag.y); }
+    function copyUrls(offer) {
+        if (!offer.hasUrls || (offer.supportedActions & Qt.CopyAction)===0) return [];
+        const urls = offer.urls.map(url => url.toString());
+        // Full URI parsing remains authoritative in the file service.
+        return urls.length && urls.every(url => url.startsWith("file:///") || url.startsWith("file://localhost/")) ? urls : [];
+    }
+    function supportsCopy(offer) { return copyUrls(offer).length>0; }
+    onEntered: drag => { drag.accepted = supportsCopy(drag); if (drag.accepted) locate(drag.x, drag.y); else clear(); }
+    onPositionChanged: drag => { drag.accepted = supportsCopy(drag); if (drag.accepted) locate(drag.x, drag.y); else clear(); }
     onExited: clear()
     onDropped: drop => {
-        if (drop.hasUrls) {
+        const urls = copyUrls(drop);
+        if (urls.length) {
             const folder = destination || currentFolder;
-            filesDropped(drop.urls.map(u => u.toString()), folder);
+            filesDropped(urls, folder);
             drop.accept(Qt.CopyAction);
-        }
+        } else drop.accepted = false;
         clear();
     }
     Timer {

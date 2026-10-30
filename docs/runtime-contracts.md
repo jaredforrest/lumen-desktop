@@ -378,7 +378,17 @@ preserving relative offsets at screen edges. Whole-stack anchors also persist;
 expanded children follow the anchor and wrap into neighbouring columns as needed.
 `lumen-desktop-surface-fixture files --layout --multi-drag` verifies actual multi-item and
 expanded-stack pointer gestures, grouping-switch persistence and file preservation.
-Cross-application native file drops are not implemented by this slice.
+Native file interchange uses `text/uri-list` and Copy actions. The desktop
+surface already provides outbound offers and confirmed incoming copies; its
+layout tests above cover positioning rather than application interoperability.
+Files list, grid, columns and gallery offer the dragged row or its selected
+group through the existing native drag source. Incoming Files drops require
+the source to advertise Copy and provide absolute local file URLs before
+acknowledgement; the file service still performs authoritative URI parsing.
+Offers without Copy are rejected. Copy retains the source files. This does not claim native
+Move/Link operations, arbitrary MIME formats, or compatibility with every peer.
+The pinned GTK Wayland provider maps its Link intent to a native Copy offer;
+that offer is handled as Copy, not described as a rejected native Link offer.
 
 Hot Corners use native compositor transitions rather than pointer polling or
 input-capturing overlay windows. The `lumen-corner` tick protocol version1 carries
