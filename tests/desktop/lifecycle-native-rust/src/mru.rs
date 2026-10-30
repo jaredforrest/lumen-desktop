@@ -72,6 +72,7 @@ fn zero(f: &Fixture) -> Result<bool> {
 }
 pub fn run(options: Options) -> Result<()> {
     let mut f = Fixture::new(options)?;
+    f.launch(Path::new("swaymsg"), &["-m","-t","subscribe","[\"window\"]"], "native-window-events.log")?;
     let qml = f.qml.clone();
     let desktop = f.launch(
         Path::new("quickshell"),
@@ -107,11 +108,14 @@ pub fn run(options: Options) -> Result<()> {
     }
     let expected = [IDS[2], IDS[1], IDS[0]];
     order(&f, &expected)?;
+    save(&f.options.output.join("mru-after-focus-sequence.json"),&state(&f)?)?;
+    save(&f.options.output.join("native-before-zero-windows.json"),&f.tree()?)?;
     fs::write(
         f.options.output.join("client-1/command"),
         "hide all windows",
     )?;
     wait_true("retained middle application has zero windows", || zero(&f))?;
+    save(&f.options.output.join("native-after-zero-windows.json"),&f.tree()?)?;
     order(&f, &expected)?;
     let initial = state(&f)?;
     require(
