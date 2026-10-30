@@ -37,6 +37,7 @@ PanelWindow {
     readonly property bool keyboardReady:visible && keyboard.activeFocus && keyboard.Window.active
     property string pendingNativeRequest:""
     property var previewNativeFocus:null
+    property var previewInventoryWitness:null
     function identity(window) {
         const entry=shell.entryFor(window);
         return entry?entry.id:window.appId;
@@ -49,10 +50,12 @@ PanelWindow {
         if(!visible && (phase==="pending" || shell.nativeCommitBlocked))return;
         if(!visible){
             pendingNativeRequest="";
-            previewNativeFocus=JSON.parse(JSON.stringify(shell.nativeFocusedCapture || null));
+            const observation=SwitcherModel.nativeObservation(shell.nativeWindowObservation);
+            previewNativeFocus=observation?observation.source:null;
+            previewInventoryWitness=observation?observation.inventoryWitness:null;
             const windows=Array.from(shell.windows);
             items=SwitcherModel.snapshot(windows,shell.activationHistory,identity).map(item=>{
-                const pairs=shell.nativeWindowCoverageComplete===true?SwitcherModel.nativeGroupPairs(windows,shell.nativeWindowCaptures || [],identity,item.key):null;
+                const pairs=observation?SwitcherModel.nativeGroupPairs(windows,observation.captures,identity,item.key):null;
                 const native=pairs && pairs.length?pairs[0]:null;
                 const window=native?native.window:item.window;
                 const entry=shell.entryFor(window);
@@ -88,16 +91,17 @@ PanelWindow {
         if(!item)return;
         const epoch=shell.focusEpoch;
         const initialFocus=JSON.parse(JSON.stringify(previewNativeFocus));
+        const inventoryWitness=JSON.parse(JSON.stringify(previewInventoryWitness));
         phase="pending";
         // Allow the compositor to release the overlay keyboard grab first.
         Qt.callLater(()=>{
-            const live=shell.windows.filter(w=>identity(w)===item.key);
             if(epoch!==shell.focusEpoch){if(!visible)phase="cancelled";return;}
             if(item.nativeCapture){
-                pendingNativeRequest=shell.focusCapturedNative(item.nativeCapture,initialFocus);
+                pendingNativeRequest=shell.focusCapturedNative(item.nativeCapture,initialFocus,inventoryWitness);
                 if(!pendingNativeRequest)phase="cancelled";
                 return;
             }
+            const live=shell.windows.filter(w=>identity(w)===item.key);
             if(!live.length){
                 if(item.entry && shell.runningFor(item.entry) && item.instanceKey===shell.applicationInstanceKey(item.entry)){++commits;phase="committed";shell.activate(item.entry,false);}
                 else phase="cancelled";

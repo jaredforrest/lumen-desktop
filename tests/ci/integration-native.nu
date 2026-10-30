@@ -282,6 +282,7 @@ def main [] {
         ^nu tests/ci/run-native.nu $'owned_components_($variant)' -- (artifact 'desktop-policy-fixture/bin/lumen-desktop-policy-fixture') $'owned-components($suffix)' --launcher $shell --sway $sway --output $'artifacts/owned-components-($variant)'
     }
     ^nu tests/ci/run-native.nu application_lifecycle -- (artifact 'lifecycle-native-fixture/bin/lumen-lifecycle-native-fixture') lifecycle --launcher $shell --sway $basic --output artifacts/application-lifecycle
+    ^nu tests/ci/window-inventory.nu $shell $basic $effects
     ^nu tests/ci/run-native.nu session_end -- (artifact 'lifecycle-native-fixture/bin/lumen-lifecycle-native-fixture') session --launcher $shell --sway $basic --output artifacts/session-end
     ^nu tests/ci/run-native.nu session_end_effects -- (artifact 'lifecycle-native-fixture/bin/lumen-lifecycle-native-fixture') session --launcher $shell --sway $effects --effects --output artifacts/session-end-effects
     ^nu tests/ci/run-native.nu session_recovery_basic -- (artifact 'lifecycle-native-fixture/bin/lumen-lifecycle-native-fixture') recovery --launcher $shell --sway $basic --output artifacts/session-recovery-basic

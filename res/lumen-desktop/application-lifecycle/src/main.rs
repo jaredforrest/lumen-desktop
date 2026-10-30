@@ -7,7 +7,7 @@ use std::io::{Read,Write};
 use std::os::fd::AsRawFd;
 use std::os::unix::net::UnixStream;
 use std::path::PathBuf;
-use std::time::Duration;
+use std::time::{Duration,Instant};
 
 fn emit(available:bool,lifecycle:&Lifecycle,session:&SessionEnd,store:&mut Option<ObservationStore>,last:&mut Option<String>,error:&str,result:Option<Value>){
     let mut error=error.to_owned();let mut recovery=false;
@@ -19,38 +19,69 @@ fn emit(available:bool,lifecycle:&Lifecycle,session:&SessionEnd,store:&mut Optio
             }
         }
     }
-    let mut value=json!({"available":available,"applications":if available{lifecycle.rows()}else{Vec::new()},"activationHistory":if available{lifecycle.activation_history.order()}else{Vec::new()},"nativeGuardAvailable":available&&lifecycle.native_guard_available,"nativeWindows":if available&&lifecycle.native_guard_available{lifecycle.window_history.captures(lifecycle)}else{Vec::new()},"nativeCoverageComplete":available&&lifecycle.native_guard_available&&lifecycle.native_coverage_complete,"nativeFocused":if available{lifecycle.current_source_focus.clone()}else{Value::Null},"sessionEpoch":if available{lifecycle.epoch.clone()}else{None},"error":error,"recoveryAvailable":recovery,"session":session.state()});
+    let observation=if available&&lifecycle.native_guard_available{lifecycle.native_observation()}else{None};
+    let mut value=json!({"nativeObservation":observation,"available":available,"applications":if available{lifecycle.rows()}else{Vec::new()},"activationHistory":if available{lifecycle.activation_history.order()}else{Vec::new()},"nativeGuardAvailable":available&&lifecycle.native_guard_available,"nativeWindows":if available&&lifecycle.native_guard_available{lifecycle.window_history.captures(lifecycle)}else{Vec::new()},"nativeCoverageComplete":available&&lifecycle.native_guard_available&&lifecycle.native_coverage_complete,"nativeFocused":if available{lifecycle.current_source_focus.clone()}else{Value::Null},"sessionEpoch":if available{lifecycle.epoch.clone()}else{None},"error":error,"recoveryAvailable":recovery,"session":session.state()});
     if let Some(result)=result{value["result"]=result;}
     if let Ok(encoded)=serde_json::to_string(&value){
         if last.as_ref()!=Some(&encoded){println!("{encoded}");let _=std::io::stdout().flush();*last=Some(encoded);}
     }
 }
 fn refresh(query:&mut UnixStream,path:&PathBuf,expected:&str,lifecycle:&mut Lifecycle,session:&mut SessionEnd,protocol:&Cooperative,store:&mut Option<ObservationStore>,last:&mut Option<String>)->Result<Vec<Value>>{
-    send(query,4,"")?;
-    let (kind,tree)=receive(query)?;
-    if kind!=4{return Err("Unexpected compositor reply".into());}
+    refresh_until(query,path,expected,lifecycle,session,protocol,store,last,Instant::now()+Duration::from_secs(5))
+}
+fn refresh_until(query:&mut UnixStream,path:&PathBuf,expected:&str,lifecycle:&mut Lifecycle,session:&mut SessionEnd,protocol:&Cooperative,store:&mut Option<ObservationStore>,last:&mut Option<String>,deadline:Instant)->Result<Vec<Value>>{
+    let tree=lumen_application_lifecycle::events::tree(query,deadline)?;
     if epoch(path)?!=expected{return Err("Compositor session changed".into());}
     let nodes=window_nodes(&tree)?;
     lifecycle.refresh(expected,&nodes);session.tick(&nodes,lifecycle,protocol);
     emit(true,lifecycle,session,store,last,"",None);
     Ok(nodes)
 }
-fn handle(data:&Value,nodes:&mut Vec<Value>,query:&mut UnixStream,path:&PathBuf,expected:&str,lifecycle:&mut Lifecycle,session:&mut SessionEnd,protocol:&Cooperative,store:&mut Option<ObservationStore>,last:&mut Option<String>){
+// None means compositor shutdown; errors retire the observer before dispatch.
+fn pending(events:&mut UnixStream,nodes:&mut Vec<Value>,query:&mut UnixStream,path:&PathBuf,expected:&str,lifecycle:&mut Lifecycle,session:&mut SessionEnd,protocol:&Cooperative,store:&mut Option<ObservationStore>,last:&mut Option<String>)->Result<Option<bool>>{
+    let deadline=Instant::now()+Duration::from_millis(250);
+    let batch=lumen_application_lifecycle::events::drain(events)?;
+    let any=!batch.is_empty();
+    for (kind,event) in batch {
+        if kind==0x8000_0006{if let Some(store)=store{store.save(&[])?;}return Ok(None);}
+        if kind!=0x8000_0003{return Err("Unexpected compositor event".into());}
+        lifecycle.inventory.observe_event(&event);lifecycle.observe(&event["container"]);
+        let remaining=deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero(){return Err("Event processing budget exhausted".into());}
+        let updated=refresh_until(query,path,expected,lifecycle,session,protocol,store,last,deadline);
+        *nodes=updated?;lifecycle.observe_focus_event(&event);
+        if Instant::now()>=deadline{return Err("Event processing budget exhausted".into());}
+    }
+    Ok(Some(any))
+}
+fn handle(data:&Value,events:&mut UnixStream,nodes:&mut Vec<Value>,query:&mut UnixStream,path:&PathBuf,expected:&str,lifecycle:&mut Lifecycle,session:&mut SessionEnd,protocol:&Cooperative,store:&mut Option<ObservationStore>,last:&mut Option<String>)->Result<()>{
     let action=data["action"].as_str().unwrap_or("");
-    if action=="status"{emit(true,lifecycle,session,store,last,"",None);return;}
-    if action=="session_cancel"{session.cancel();emit(true,lifecycle,session,store,last,"",None);return;}
+    if action=="status"{emit(true,lifecycle,session,store,last,"",None);return Ok(());}
+    if action=="session_cancel"{session.cancel();emit(true,lifecycle,session,store,last,"",None);return Ok(());}
     if action=="focus_native"{
         let request=data["requestId"].as_str().filter(|id|!id.is_empty()&&id.len()<=128&&!id.chars().any(char::is_control));
         if !lifecycle.native_guard_available {
-            emit(true,lifecycle,session,store,last,"This compositor does not support guarded window activation.",Some(json!({"nativeFocus":{"requestId":request.unwrap_or(""),"requested":false,"unsupported":true,"error":"This compositor does not support guarded window activation. Window-based controls remain available."}})));return;
+            emit(true,lifecycle,session,store,last,"This compositor does not support guarded window activation.",Some(json!({"nativeFocus":{"requestId":request.unwrap_or(""),"requested":false,"unsupported":true,"error":"This compositor does not support guarded window activation. Window-based controls remain available."}})));return Ok(());
         }
         let mut uncertain=false;
+        let mut retire=false;
         let outcome=(||->Result<Value>{
             let request=request.ok_or("Invalid focus request")?;
             let switch_space=data["switchSpace"].as_bool().ok_or("Invalid workspace preference")?;
-            send(query,4,"")?;let (kind,tree)=receive(query)?;
-            if kind!=4||epoch(path)?!=expected{return Err("Compositor session changed".into());}
-            *nodes=window_nodes(&tree)?;lifecycle.refresh(expected,nodes);
+            let mut passes=0;
+            let sampling_deadline=Instant::now()+Duration::from_secs(5);
+            let tree=loop {
+                passes+=1;
+                if passes>3{retire=true;return Err("Compositor remained active during bounded focus barrier".into());}
+                pending(events,nodes,query,path,expected,lifecycle,session,protocol,store,last).map_err(|e|{retire=true;e})?.ok_or_else(||{retire=true;"Compositor shut down".to_owned()})?;
+                let tree=lumen_application_lifecycle::events::tree(query,sampling_deadline).map_err(|e|{retire=true;e})?;
+                if epoch(path)?!=expected{return Err("Compositor session changed".into());}
+                *nodes=window_nodes(&tree)?;lifecycle.refresh(expected,nodes);
+                let changed=pending(events,nodes,query,path,expected,lifecycle,session,protocol,store,last).map_err(|e|{retire=true;e})?.ok_or_else(||{retire=true;"Compositor shut down".to_owned()})?;
+                if !changed {break tree;}
+            };
+            let inventory=data.get("inventoryWitness").ok_or("Missing captured inventory witness")?;
+            lifecycle.require_inventory(inventory)?;
             let initial=data.get("initialFocus").ok_or("Missing captured source focus")?;
             if !lifecycle.source_focus_matches(initial){return Err("Native focus changed after preview".into());}
             let plan=lifecycle.native_focus_plan(&data["capture"],&tree,switch_space)?;
@@ -58,6 +89,7 @@ fn handle(data:&Value,nodes:&mut Vec<Value>,query:&mut UnixStream,path:&PathBuf,
             // Kernel-process witnesses are sampled. The typed compositor guard
             // independently checks actual source/surface topology at dispatch.
             lifecycle.native_focus_plan(&data["capture"],&tree,switch_space)?;
+            lifecycle.require_inventory(inventory)?;
             let packet=lumen_window_policy::guard::packet(&tree,initial,&plan.target,&plan.actions)?;
             let command=lumen_window_policy::guard::command(&packet)?;
             uncertain=true;send(query,0,&command)?;let (kind,reply)=receive(query)?;
@@ -69,7 +101,7 @@ fn handle(data:&Value,nodes:&mut Vec<Value>,query:&mut UnixStream,path:&PathBuf,
             Ok(json!({"requestId":request,"requested":plan.focus_allowed,"conId":plan.target["id"],"foreignId":plan.target["foreign_toplevel_identifier"]}))
         })();
         let result=outcome.unwrap_or_else(|_|json!({"requestId":request.unwrap_or(""),"requested":false,"uncertain":uncertain,"error":if uncertain{"The window action may have partially completed. No retry was attempted; check the desktop before opening the switcher again."}else{"The captured window, process or desktop state changed. Open the switcher again."}}));
-        emit(true,lifecycle,session,store,last,"",Some(json!({"nativeFocus":result})));return;
+        emit(true,lifecycle,session,store,last,"",Some(json!({"nativeFocus":result})));return if retire{Err("Bounded compositor observation retired".into())}else{Ok(())};
     }
     let result=(||->Result<Option<Value>>{
         if matches!(action,"session_begin"|"session_authorize"){
@@ -94,6 +126,7 @@ fn handle(data:&Value,nodes:&mut Vec<Value>,query:&mut UnixStream,path:&PathBuf,
             emit(true,lifecycle,session,store,last,"",Some(result));
         }
     }
+    Ok(())
 }
 fn watch()->Result<()>{
     let mut lifecycle=Lifecycle::default();lifecycle.bind_shell_owner(unsafe{libc::getppid()} as u32);let protocol=Cooperative;
@@ -127,11 +160,7 @@ fn watch()->Result<()>{
             let status=unsafe{libc::poll(polls.as_mut_ptr(),polls.len() as libc::nfds_t,1000)};
             if status<0{if std::io::Error::last_os_error().kind()==std::io::ErrorKind::Interrupted{continue;}return Err("Application observation unavailable".into());}
             if polls[0].revents!=0{
-                let (kind,event)=receive(&mut events)?;
-                if kind==0x8000_0006{if let Some(store)=&mut store{store.save(&[])?;}return Ok(());}
-                if kind==0x8000_0003{lifecycle.observe(&event["container"]);}
-                nodes=refresh(&mut query,&path,&identity,&mut lifecycle,&mut session,&protocol,&mut store,&mut last)?;
-                if kind==0x8000_0003{lifecycle.observe_focus_event(&event);}
+                if pending(&mut events,&mut nodes,&mut query,&path,&identity,&mut lifecycle,&mut session,&protocol,&mut store,&mut last)?.is_none(){return Ok(());}
             }
             if polls[1].revents!=0{
                 let mut chunk=[0_u8;65537];let count=std::io::stdin().read(&mut chunk).map_err(|error|error.to_string())?;
@@ -142,7 +171,7 @@ fn watch()->Result<()>{
                     let line=input.drain(..=position).collect::<Vec<_>>();
                     if line.len()>65537{return Err("Application request exceeds limit".into());}
                     let data:Value=serde_json::from_slice(&line).unwrap_or(Value::Null);
-                    handle(&data,&mut nodes,&mut query,&path,&identity,&mut lifecycle,&mut session,&protocol,&mut store,&mut last);
+                    handle(&data,&mut events,&mut nodes,&mut query,&path,&identity,&mut lifecycle,&mut session,&protocol,&mut store,&mut last)?;
                 }
             }
             lifecycle.prune();session.tick(&nodes,&mut lifecycle,&protocol);emit(true,&lifecycle,&session,&mut store,&mut last,"",None);

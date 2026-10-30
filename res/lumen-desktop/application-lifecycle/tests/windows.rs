@@ -110,11 +110,9 @@ fn exact_duplicate_title_window_order_reopens_and_reused_id_cannot_inherit() {
         json!({"id":14,"pid":owners.0[0].id(),"window":999,"app_id":null,"shell":"xwayland"}),
     );
     assert!(!reopened.native_coverage_complete(&mixed));
-    assert!(
-        reopened
-            .native_focus_plan(&chosen, &tree(&mixed), true)
-            .is_err()
-    );
+    // The planner remains bounded to captured process members. Preview inventory
+    // validation at the broker boundary now handles unrelated unsupported views.
+    assert!(reopened.native_focus_plan(&chosen, &tree(&mixed), true).is_ok());
     let mut unregistered = current.clone();
     unregistered.push(json!({"id":15,"pid":owners.0[0].id(),"app_id":null,"shell":"xdg_shell","window":null,"foreign_toplevel_identifier":"unknown"}));
     assert!(!reopened.native_coverage_complete(&unregistered));

@@ -11,6 +11,8 @@ pub mod session;
 pub mod cooperative;
 pub mod mru;
 pub mod windows;
+pub mod inventory;
+pub mod events;
 
 pub type Result<T>=std::result::Result<T,String>;
 pub const MAX_PROCESSES:usize=512;
@@ -87,11 +89,13 @@ pub fn valid_identity(value:&Value)->bool{
     value.as_object().is_some_and(|row|row.len()==4&&["pid","start","device","inode"].iter().all(|key|row.get(*key).and_then(Value::as_u64).is_some())&&row["pid"].as_u64().is_some_and(|pid|pid>=2&&pid<=u32::MAX as u64))
 }
 pub struct Process{pub identity:Value,pub handle:OwnedFd,pub apps:BTreeSet<String>}
-pub struct Lifecycle{pub processes:BTreeMap<u32,Process>,pub windows:HashMap<(u32,String),Vec<Value>>,pub epoch:Option<String>,pub activation_history:mru::History,pub window_history:windows::History,pub current_source_focus:Value,pub native_coverage_complete:bool,pub native_guard_available:bool,pub shell_owner:Option<Value>,focus_witnesses:HashMap<i64,Option<(u32,Value,String)>>}
-impl Default for Lifecycle{fn default()->Self{Self{processes:BTreeMap::new(),windows:HashMap::new(),epoch:None,activation_history:mru::History::default(),window_history:windows::History::default(),current_source_focus:Value::Null,native_coverage_complete:false,native_guard_available:false,shell_owner:None,focus_witnesses:HashMap::new()}}}
+pub struct Lifecycle{pub processes:BTreeMap<u32,Process>,pub windows:HashMap<(u32,String),Vec<Value>>,pub epoch:Option<String>,pub activation_history:mru::History,pub window_history:windows::History,pub current_source_focus:Value,pub native_coverage_complete:bool,pub native_guard_available:bool,pub shell_owner:Option<Value>,pub inventory:inventory::Inventory,focus_witnesses:HashMap<i64,Option<(u32,Value,String)>>}
+impl Default for Lifecycle{fn default()->Self{Self{processes:BTreeMap::new(),windows:HashMap::new(),epoch:None,activation_history:mru::History::default(),window_history:windows::History::default(),current_source_focus:Value::Null,native_coverage_complete:false,native_guard_available:false,shell_owner:None,inventory:inventory::Inventory::default(),focus_witnesses:HashMap::new()}}}
 impl Lifecycle{
+    pub fn native_observation(&self)->Option<Value>{self.inventory.observation(self).ok()}
+    pub fn require_inventory(&self,witness:&Value)->Result<()>{self.inventory.require(self,witness)}
     pub fn bind_shell_owner(&mut self,pid:u32){self.shell_owner=source_process_identity(pid).ok();}
-    pub fn close(&mut self){self.processes.clear();self.windows.clear();self.epoch=None;self.activation_history=mru::History::default();self.window_history=windows::History::default();self.current_source_focus=Value::Null;self.native_coverage_complete=false;self.native_guard_available=false;self.focus_witnesses.clear();}
+    pub fn close(&mut self){self.processes.clear();self.windows.clear();self.epoch=None;self.activation_history=mru::History::default();self.window_history=windows::History::default();self.current_source_focus=Value::Null;self.native_coverage_complete=false;self.native_guard_available=false;self.inventory.clear();self.focus_witnesses.clear();}
     pub fn observe(&mut self,node:&Value){
         if node["shell"]!="xdg_shell"||!node["window"].is_null(){return;}
         let Some(app)=node["app_id"].as_str().filter(|app|valid_app_id(app))else{return;};
@@ -140,6 +144,7 @@ impl Lifecycle{
         }
         let native=nodes.iter().filter_map(|node|self.native_record(node)).collect::<Vec<_>>();self.window_history.reconcile(&native);
         self.current_source_focus=self.source_focus(nodes);self.native_coverage_complete=self.native_coverage_complete(nodes);
+        self.inventory.refresh(nodes);
         self.rows()
     }
     pub fn prune(&mut self){self.processes.retain(|pid,process|!exited(&process.handle)&&process_identity(*pid).ok().as_ref()==Some(&process.identity));for witness in self.focus_witnesses.values_mut(){if witness.as_ref().is_some_and(|(pid,identity,app)|!self.processes.get(pid).is_some_and(|p|p.identity==*identity&&p.apps.contains(app))){*witness=None;}}let rows=self.rows();self.activation_history.prune(&rows);self.window_history.retain_processes(&self.records());}

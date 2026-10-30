@@ -186,6 +186,7 @@
         test-lifecycle-native-fixture = import ./tests/desktop/lifecycle-native-rust { inherit pkgs; };
         test-toplevel-identity-wire = import ./tests/desktop/toplevel-identity-wire-rust { inherit pkgs; };
         test-toplevel-identity-environment = pkgs.coreutils;
+        test-window-inventory-environment = pkgs.buildEnv { name = "lumen-window-inventory-environment"; paths = [ pkgs.coreutils privateBus pkgs.glib (import ./tests/desktop/provider-isolation { inherit pkgs; }) ]; };
         test-toplevel-identity-legacy-compositor = compositorPkgs.sway;
         test-media-control-fixture = import ./tests/desktop/media-control-rust { inherit pkgs; };
         test-system-popover-fixture = import ./tests/desktop/system-popover-rust { inherit pkgs; };

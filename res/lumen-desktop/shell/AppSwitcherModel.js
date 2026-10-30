@@ -1,4 +1,14 @@
 .pragma library
+// This witness describes one sampled broker observation, not compositor authority.
+function nativeObservation(value) {
+    if(!value || value.version!==1 || !Array.isArray(value.captures) || value.captures.length>1024)return null;
+    const w=value.inventoryWitness,s=value.source;
+    if(!w || Object.keys(w).sort().join(",")!=="count,digest,epoch,observer,revision,version" || w.version!==1)return null;
+    if(!/^[0-9a-f]{64}$/.test(w.observer) || !/^[0-9a-f]{64}$/.test(w.digest) || !/^[0-9a-f]{24}$/.test(w.epoch))return null;
+    if(!Number.isSafeInteger(w.count) || w.count<0 || w.count>1024 || !Number.isSafeInteger(w.revision) || w.revision<0)return null;
+    if(value.epoch!==w.epoch || !s || s.epoch!==w.epoch || !["native","none"].includes(s.kind))return null;
+    return JSON.parse(JSON.stringify(value));
+}
 // Freeze application membership at invocation; preview never changes focus/MRU.
 function snapshot(windows, history, identity) {
     const ordered=history.filter(w=>windows.includes(w)).concat(windows.filter(w=>!history.includes(w)));

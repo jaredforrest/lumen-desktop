@@ -143,9 +143,10 @@ ShellRoot {
     signal nativeFocusResult(var result)
     readonly property bool nativeWindowCoverageComplete:applicationLifecycle.nativeCoverageComplete
     readonly property var nativeWindowCaptures:applicationLifecycle.nativeWindows
+    readonly property var nativeWindowObservation:applicationLifecycle.nativeObservation
     readonly property var nativeFocusedCapture:applicationLifecycle.nativeFocused
     readonly property bool nativeCommitBlocked:applicationLifecycle.nativeRetiring
-    function focusCapturedNative(capture,initialFocus){return applicationLifecycle.focusNative(capture,initialFocus,Theme.preferences.switchToAppSpace!==false);}
+    function focusCapturedNative(capture,initialFocus,inventoryWitness){return applicationLifecycle.focusNative(capture,initialFocus,Theme.preferences.switchToAppSpace!==false,inventoryWitness);}
     property string applicationCommandError:""
     onApplicationCommandErrorChanged:if(applicationCommandError)applicationCommandTimer.restart()
     function reportApplicationError(message){applicationCommandError=message;applicationCommandTimer.restart();}

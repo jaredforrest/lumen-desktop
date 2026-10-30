@@ -155,6 +155,149 @@ fn same_capture(before: &Value, after: &Value) -> Result<()> {
     }
     Ok(())
 }
+fn observation(f: &Fixture) -> Result<Value> {
+    Ok(serde_json::from_str(&f.ipc(
+        "windowMruAudit",
+        "observation",
+        &[],
+    )?)?)
+}
+fn inventory_proof(mut f: Fixture, target: Value, source: Value) -> Result<()> {
+    let client = f.sibling("lifecycle-client")?;
+    let directory = f.options.output.join("unsupported-client");
+    fs::create_dir(&directory)?;
+    let unsupported = f.launch(
+        &client,
+        &[
+            directory.to_str().ok_or("Client path")?,
+            "org.quickshell",
+            "--empty-app-id",
+        ],
+        "unsupported-client.log",
+    )?;
+    let unsupported_id = wait("unregistered independent native client", || {
+        Ok(nodes(&f, "")?
+            .into_iter()
+            .find(|n| n["pid"] == f.processes[unsupported].0.id())
+            .map(|n| n["id"].clone()))
+    })?;
+    focus(&f, &source)?;
+    wait_true(
+        "unsupported group sampled, native source acknowledged",
+        || {
+            let s = state(&f)?;
+            Ok(s["nativeCoverageComplete"] == false
+                && s["nativeFocused"]["conId"] == source
+                && observation(&f)?["inventoryWitness"]["count"] == 6)
+        },
+    )?;
+    let preview = select(&f)?;
+    require(
+        preview["nativeCapture"]["conId"] == target,
+        "Unrelated unsupported group disabled exact native selection",
+    )?;
+    physical(&f, "Return")?;
+    wait_true(
+        "physical commit with unrelated unsupported group targets exact backing",
+        || Ok(focused(&f)?["id"] == target && state(&f)?["switcher"]["phase"] == "committed"),
+    )?;
+    save(
+        &f.options.output.join("inventory-positive.json"),
+        &json!({"preview":preview,"state":state(&f)?,"observation":observation(&f)?}),
+    )?;
+    focus(&f, &unsupported_id)?;
+    wait_true("unsupported source explicit", || {
+        Ok(observation(&f)?["source"]["kind"] == "unsupported")
+    })?;
+    let fallback = select(&f)?;
+    require(
+        fallback["nativeCapture"].is_null(),
+        "Unsupported source acquired native authority",
+    )?;
+    physical(&f, "Escape")?;
+    wait_true("fallback preview cancelled", || {
+        Ok(state(&f)?["switcher"]["visible"] == false)
+    })?;
+    focus(&f, &source)?;
+    wait_true("native source restored", || {
+        Ok(observation(&f)?["source"]["conId"] == source)
+    })?;
+    let before = observation(&f)?;
+    let pending = select(&f)?;
+    require(
+        pending["nativeCapture"]["conId"] == target,
+        "Native preview not captured",
+    )?;
+    let transient_root = f.options.output.join("transient-unsupported");
+    fs::create_dir(&transient_root)?;
+    let transient = f.launch(
+        &client,
+        &[
+            transient_root.to_str().ok_or("Transient path")?,
+            "org.example.InventoryTransient",
+            "--empty-app-id",
+        ],
+        "transient-unsupported.log",
+    )?;
+    wait_true("transient unrelated membership observed", || {
+        Ok(observation(&f)?["inventoryWitness"]["count"] == 8)
+    })?;
+    f.processes[transient].0.kill()?;
+    f.processes[transient].0.wait()?;
+    // The held switcher owns exclusive layer focus; GET_TREE can correctly
+    // report no focused native container until commit releases that layer.
+    f.call(
+        "swaymsg",
+        &[
+            &format!("[con_id={}]", source.as_u64().ok_or("Source identity")?),
+            "focus",
+        ],
+    )?;
+    let after = wait(
+        "same final inventory with advanced observed revision",
+        || {
+            let value = observation(&f)?;
+            Ok((value["inventoryWitness"]["count"] == 6
+                && value["inventoryWitness"]["digest"] == before["inventoryWitness"]["digest"]
+                && value["inventoryWitness"]["revision"].as_u64()
+                    > before["inventoryWitness"]["revision"].as_u64())
+            .then_some(value))
+        },
+    )?;
+    let serial = state(&f)?["nativeSerial"].clone();
+    picker(&f, "commit")?;
+    wait_true(
+        "observed ABA rejects old native preview without fallback",
+        || {
+            Ok(state(&f)?["switcher"]["phase"] == "cancelled"
+                && state(&f)?["nativeSerial"].as_u64() == serial.as_u64().map(|v| v + 1))
+        },
+    )?;
+    require(
+        focused(&f)?["id"] == source,
+        "Refused old inventory activated another target",
+    )?;
+    save(
+        &f.options.output.join("inventory-aba.json"),
+        &json!({"before":before,"after":after,"pending":pending,"state":state(&f)?}),
+    )?;
+    select(&f)?;
+    physical(&f, "Return")?;
+    wait_true(
+        "fresh preview after ABA still activates captured native target",
+        || Ok(focused(&f)?["id"] == target && state(&f)?["switcher"]["phase"] == "committed"),
+    )?;
+    save(
+        &f.options.output.join("result.json"),
+        &json!({"passed":true,"checks":["exact native group survives unrelated unsupported managed client","unsupported focused source preserves QObject fallback","observed membership ABA restores digest but advances revision","old preview refused without fallback or target activation","fresh preview after refusal succeeds"],"scope":"Actual owned native clients with one intentionally unregistered application ID; no XWayland or alias-provider claim"}),
+    )?;
+    // Stop clients and the desktop before their owned compositor. This avoids
+    // manufacturing a broken-Wayland diagnostic during successful teardown.
+    for process in f.processes.iter_mut().rev() {
+        process.stop()?;
+    }
+    Ok(())
+}
 fn baseline(mut f: Fixture, desktop: usize, second: Value, other: Value) -> Result<()> {
     save(
         &f.options.output.join("baseline-expectation.json"),
@@ -275,6 +418,9 @@ pub fn run(options: Options) -> Result<()> {
     recovery_evidence(&f, "seeded")?;
     let witness = capture(&f, &second, f.processes[owner].0.id())?;
     let first_witness = capture(&f, &first, f.processes[owner].0.id())?;
+    if f.options.scenario == "window-mru-inventory" {
+        return inventory_proof(f, second, other_id);
+    }
     require(
         witness["foreignId"] != first_witness["foreignId"],
         "Duplicate native windows share foreign ID",
@@ -587,5 +733,8 @@ pub fn run(options: Options) -> Result<()> {
         &f.options.output.join("result.json"),
         &json!({"passed":true,"checks":["duplicate titles have distinct exact native conID/foreignID/ownedPID witnesses","preview and physical Escape preserve backing-window focus","observer restart preserves captured backing-window identity","whole shell restart restores exact second-window MRU","physical Return targets exact duplicate-title native MRU","closed captured target refuses sibling fallback","same-process replacement cannot inherit stale capture","overlapping begin preserves pending owner and source, dispatches once and permits fresh preview afterward","owned Calendar panel source commits exact application backing window once without external app registration"],"scope":"Native duplicate-title backing-window MRU and captured physical switcher decisions; no modal/space/reference parity claim"}),
     )?;
+    for process in f.processes.iter_mut().rev() {
+        process.stop()?;
+    }
     Ok(())
 }

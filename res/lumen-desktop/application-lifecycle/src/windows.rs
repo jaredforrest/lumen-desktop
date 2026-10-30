@@ -245,9 +245,6 @@ impl Lifecycle {
             return Err("Invalid captured process group".into());
         }
         let nodes = crate::window_nodes(tree)?;
-        if !self.native_coverage_complete(&nodes) {
-            return Err("External window coverage changed; reopen the switcher".into());
-        }
         let records = nodes
             .iter()
             .filter_map(|node| self.native_record(node))

@@ -20,7 +20,7 @@ fn main() -> Result<()> {
         "session" => session::run(options),
         "recovery" => recovery::run(options),
         "mru" => mru::run(options),
-        "window-mru" | "window-mru-baseline" => window_mru::run(options),
+        "window-mru" | "window-mru-baseline" | "window-mru-inventory" => window_mru::run(options),
         "focus-guard" | "focus-guard-unsupported" => focus_guard::run(options),
         "identity" | "identity-absent" => identity::run(options),
         _ => Err("Unknown scenario".into()),

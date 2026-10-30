@@ -74,6 +74,7 @@ impl Options {
                     | "mru"
                     | "window-mru"
                     | "window-mru-baseline"
+                    | "window-mru-inventory"
                     | "focus-guard"
                     | "identity"
                     | "identity-absent"
@@ -436,7 +437,7 @@ impl Fixture {
         )?;
         let sway = self.options.sway.clone();
         let mut arguments = vec!["--unsupported-gpu", "-c", config.to_str().unwrap()];
-        if self.options.scenario == "identity" { arguments.push("-d"); }
+        if self.options.scenario == "identity" || self.options.scenario.starts_with("window-mru") { arguments.push("-d"); }
         self.launch(
             &sway,
             &arguments,
@@ -517,6 +518,9 @@ impl Fixture {
             helper.join("lumen-calendar"),
         )?;
         self.prepend_path(&helper)?;
+        if self.options.scenario.starts_with("window-mru") {
+            symlink(self.sibling("desktop-network-diagnose")?,helper.join("desktop-network-diagnose"))?;
+        }
         let applications = PathBuf::from(
             self.vars
                 .get("XDG_DATA_HOME")

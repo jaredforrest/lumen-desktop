@@ -9,6 +9,7 @@ QtObject {
     property var applications:[]
     property var activationHistory:[]
     property var nativeWindows:[]
+    property var nativeObservation:null
     property bool nativeCoverageComplete:false
     property bool nativeGuardAvailable:false
     property var nativeFocused:null
@@ -21,7 +22,7 @@ QtObject {
     signal nativeFocusResult(var result)
     function clearObservation(){
         recoveryAvailable=false;available=false;applications=[];activationHistory=[];
-        nativeWindows=[];nativeCoverageComplete=false;nativeGuardAvailable=false;nativeFocused=null;sessionEpoch="";pending=false;
+        nativeObservation=null;nativeWindows=[];nativeCoverageComplete=false;nativeGuardAvailable=false;nativeFocused=null;sessionEpoch="";pending=false;
     }
     function cancelNative(reason,retire){
         const request=nativeRequest;
@@ -32,11 +33,11 @@ QtObject {
         }
         if(request)nativeFocusResult({requestId:request,requested:false,uncertain:true,error:reason});
     }
-    function focusNative(capture,initialFocus,switchSpace){
+    function focusNative(capture,initialFocus,switchSpace,inventoryWitness){
         if(!available || nativePending || nativeRetiring || nativeAwaitingExit || !observer.running)return "";
         const request=sessionEpoch+":"+(++nativeSerial);
         nativeRequest=request;nativePending=true;nativeDeadline.restart();
-        try{observer.write(JSON.stringify({action:"focus_native",capture:capture,initialFocus:initialFocus,switchSpace:switchSpace,requestId:request})+"\n");}
+        try{observer.write(JSON.stringify({action:"focus_native",capture:capture,initialFocus:initialFocus,inventoryWitness:inventoryWitness,switchSpace:switchSpace,requestId:request})+"\n");}
         catch(error){cancelNative("The window request was interrupted. Its result is uncertain; wait for the desktop to reconnect.",true);return "";}
         return request;
     }
@@ -70,6 +71,7 @@ QtObject {
                 root.available=value.available===true;root.recoveryAvailable=root.available && value.recoveryAvailable===true;root.applications=root.available && Array.isArray(value.applications)?value.applications:[];root.error=value.error || "";root.session=value.session || {phase:"idle",token:"",error:""};
                 root.activationHistory=root.available && Array.isArray(value.activationHistory)?value.activationHistory:[];root.sessionEpoch=root.available && typeof value.sessionEpoch==="string"?value.sessionEpoch:"";
                 root.nativeGuardAvailable=root.available && value.nativeGuardAvailable===true;root.nativeCoverageComplete=root.available && value.nativeCoverageComplete===true;root.nativeWindows=root.available && Array.isArray(value.nativeWindows)?value.nativeWindows:[];root.nativeFocused=root.available?value.nativeFocused || null:null;
+                root.nativeObservation=root.available && root.nativeGuardAvailable && value.nativeObservation && value.nativeObservation.version===1 && value.nativeObservation.epoch===root.sessionEpoch?value.nativeObservation:null;
                 if(root.available)root.nativeRetiring=false;
                 if(value.result){
                     if(value.result.nativeFocus){

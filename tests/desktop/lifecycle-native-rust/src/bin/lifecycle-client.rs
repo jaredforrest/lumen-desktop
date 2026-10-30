@@ -1,5 +1,6 @@
 //! Disposable two-document GTK application with an advertised cooperative Quit action.
 use gio::prelude::*;
+use gtk::glib::object::ObjectType;
 use gtk::prelude::*;
 use serde_json::json;
 use std::cell::RefCell;
@@ -11,6 +12,12 @@ use std::time::Duration;
 
 const APP_ID: &str = "org.example.Lifecycle";
 const DOCUMENTS: [&str; 2] = ["dirty first", "dirty second"];
+unsafe extern "C" {
+    fn gdk_wayland_window_set_application_id(
+        window: *mut gdk::ffi::GdkWindow,
+        application_id: *const std::ffi::c_char,
+    );
+}
 
 struct State {
     root: PathBuf,
@@ -18,6 +25,7 @@ struct State {
     requests: u32,
     last_command: String,
     duplicate_titles: bool,
+    empty_app_id: bool,
     generation: u32,
 }
 impl State {
@@ -40,6 +48,15 @@ fn add_window(app: &gtk::Application, state: &mut State, index: usize) {
     window.set_default_size(300, 200);
     window.add(&gtk::Label::new(Some(DOCUMENTS[index % 2])));
     window.show_all();
+    if state.empty_app_id {
+        assert_eq!(env::var("GDK_BACKEND").as_deref(), Ok("wayland"));
+        let native = window.window().expect("Mapped owned GDK window");
+        // GTK3's public Wayland API sets the actual xdg application ID. This
+        // fixture mode intentionally lacks a usable application identity.
+        unsafe {
+            gdk_wayland_window_set_application_id(native.as_ptr(), c"".as_ptr());
+        }
+    }
     state.windows.push(window);
 }
 
@@ -57,6 +74,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         requests: 0,
         last_command: String::new(),
         duplicate_titles: env::args().nth(3).as_deref() == Some("--duplicate-titles"),
+        empty_app_id: env::args().nth(3).as_deref() == Some("--empty-app-id"),
         generation: 0,
     }));
     let started = state.clone();
