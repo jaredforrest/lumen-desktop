@@ -1,9 +1,6 @@
 --- a/include/sway/commands.h
 +++ b/include/sway/commands.h
-@@ -172,6 +172,8 @@
- sway_cmd cmd_rename;
- sway_cmd cmd_resize;
- sway_cmd cmd_scratchpad;
+@@ -175,3 +175,5 @@
 +sway_cmd cmd_lumen_space_transfer;
 +bool lumen_space_transfer_wire_ready(void);
  sway_cmd cmd_lumen_window;

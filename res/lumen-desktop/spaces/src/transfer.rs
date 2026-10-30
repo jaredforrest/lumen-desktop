@@ -498,11 +498,6 @@ mod tests {
         }
         tree["nodes"][0]["nodes"][0]["nodes"][1]["lumen_relationships"]["parent_supported"] = json!(false);
         assert!(source(&tree, &json!(8)).is_err());
-        tree["nodes"][0]["nodes"][0]["nodes"][1]["window_properties"]["transient_for"] = json!(999);
-        assert!(source(&tree, &json!(8)).is_ok());
-        tree["nodes"][0]["nodes"][0]["nodes"][1]["window_properties"]["transient_for"] = json!(100);
-        tree["nodes"][0]["nodes"][0]["nodes"][1]["shell"] = json!("xdg_shell");
-        assert!(source(&tree, &json!(8)).is_ok());
     }
     #[test]
     fn native_family_refusal_is_observed_even_when_unsupported_parent_is_redacted() {
@@ -515,6 +510,11 @@ mod tests {
         tree["nodes"][0]["nodes"][0]["nodes"][1]["lumen_relationships"]["parent"] = Value::Null;
         tree["nodes"][0]["nodes"][0]["nodes"][1]["lumen_relationships"]["parent_supported"] = json!(false);
         assert!(source(&tree, &json!(8)).is_err());
+        tree["nodes"][0]["nodes"][0]["nodes"][1]["window_properties"]["transient_for"] = json!(999);
+        assert!(source(&tree, &json!(8)).is_ok());
+        tree["nodes"][0]["nodes"][0]["nodes"][1]["window_properties"]["transient_for"] = json!(100);
+        tree["nodes"][0]["nodes"][0]["nodes"][1]["shell"] = json!("xdg_shell");
+        assert!(source(&tree, &json!(8)).is_ok());
     }
     #[test]
     fn enabled_projection_retains_every_family_member_until_explicitly_cleared() {
