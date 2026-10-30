@@ -1,7 +1,7 @@
 //! Real Settings parent scrolling, shortcut controls, text layout and paint.
 use lumen_files_share_menu_fixture::*;
 use serde_json::{Value, json};
-use std::{env, fs, path::Path, process::Command};
+use std::{fs, path::Path, process::Command};
 fn run(options: &Options) -> Result<()> {
     let mut values = private_environment()?;
     let root = &options.output;
