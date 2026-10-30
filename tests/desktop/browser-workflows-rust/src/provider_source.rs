@@ -5,10 +5,13 @@ mod tests {
 
     fn body<'a>(source: &'a str, signature: &str) -> &'a str {
         let rest = source
-            .split_once(signature)
-            .expect("Pinned upstream function")
-            .1;
-        let rest = rest.split_once('{').unwrap().1;
+            .match_indices(signature)
+            .find_map(|(index, _)| {
+                let rest = &source[index + signature.len()..];
+                let (declaration, body) = rest.split_once('{')?;
+                (!declaration.contains(';')).then_some(body)
+            })
+            .expect("Pinned upstream function definition, not forward declaration");
         let mut depth = 1;
         for (index, character) in rest.char_indices() {
             match character {
