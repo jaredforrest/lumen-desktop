@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="lumen_toplevel_identity_v1">
+  <copyright>Copyright 2026 Lumen Desktop contributors.
+    Permission to use, copy, modify, distribute, and sell this software and its
+    documentation for any purpose is hereby granted without fee, provided that
+    this copyright notice appear in all copies. THE SOFTWARE IS PROVIDED AS IS,
+    WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED.
+  </copyright>
+  <interface name="lumen_toplevel_identity_manager_v1" version="1">
+    <description summary="optional identity bridge for an existing foreign handle">
+      This project-owned protocol links a live wlr foreign toplevel handle to
+      its compositor's existing ext-foreign-toplevel-list identifier. It grants
+      no actuation authority. An unavailable bridge must preserve existing
+      foreign-toplevel behavior. All objects belong to one Wayland connection.
+    </description>
+    <request name="destroy" type="destructor"/>
+    <request name="resolve">
+      <description summary="resolve an exact live resource without heuristic joins">
+        handle must be a non-null zwlr_foreign_toplevel_handle_v1 resource on
+        this connection. A valid but inert, closed, or unsupported resource
+        returns unavailable. A malformed wire object ID or null argument may
+        cause a core protocol error before this request is dispatched.
+        The reply is one-shot and independent of the manager lifetime.
+      </description>
+      <arg name="id" type="new_id" interface="lumen_toplevel_identity_reply_v1"/>
+      <arg name="handle" type="object" interface="zwlr_foreign_toplevel_handle_v1"/>
+    </request>
+  </interface>
+  <interface name="lumen_toplevel_identity_reply_v1" version="1">
+    <description summary="one terminal identity result">
+      The server immediately snapshots the requested live resource membership
+      and sends exactly one result, destroying this server resource. A client
+      may locally destroy its proxy before the result to abandon observation;
+      there is no cancellation request racing the terminal result.
+    </description>
+    <enum name="status">
+      <entry name="unavailable" value="0"/>
+      <entry name="available" value="1"/>
+    </enum>
+    <event name="result" type="destructor">
+      <arg name="status" type="uint" enum="status"/>
+      <arg name="identifier" type="string" summary="existing ext identifier, or empty when unavailable"/>
+    </event>
+  </interface>
+</protocol>
