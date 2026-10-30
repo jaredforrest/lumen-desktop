@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import "ShortcutHints.js" as ShortcutHints
 Column {
     id:root
     objectName:"settings-configured-shortcuts"
@@ -22,7 +23,7 @@ Column {
     StatusMessage {width:parent.width;text:root.service.error;severity:"error"}
     StatusMessage {width:parent.width;text:root.service.message;severity:"success"}
     PanelLabel {width:parent.width;visible:root.service.busy;wrapMode:Text.Wrap;text:root.service.request.action==="status"?"Reading effective shortcuts…":"Building and applying the requested shortcut. The previous map remains active until activation completes."}
-    DesktopComboBox {id:selector;objectName:"shortcut-editor-action";width:parent.width;Accessible.name:"Shortcut action";model:root.service.bindings.map(item=>item.action+" · "+item.defaultChord+(item.enabled?"":" · disabled"));currentIndex:-1;enabled:!root.service.busy && count>0;onActivated:index=>{root.selected=root.service.bindings[index].id;root.dirty=false;root.synchronize();}}
+    DesktopComboBox {id:selector;objectName:"shortcut-editor-action";width:parent.width;Accessible.name:"Shortcut action";model:root.service.bindings.map(item=>ShortcutHints.actionName(item.action)+" · "+ShortcutHints.readableChord(item.defaultChord)+(item.enabled?"":" · disabled"));currentIndex:-1;enabled:!root.service.busy && count>0;onActivated:index=>{root.selected=root.service.bindings[index].id;root.dirty=false;root.synchronize();}}
     TextField {
         id:chord;objectName:"shortcut-editor-chord";width:parent.width;Accessible.name:"Shortcut symbol chord"
         placeholderText:"For example Super+Control+F12";color:Theme.colors.text;font.family:Theme.font;font.pixelSize:Theme.textSize(12);selectByMouse:true
