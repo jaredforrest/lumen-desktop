@@ -52,6 +52,19 @@ def main [] {
         let log = (open --raw ($logs | first))
         require ($log | str contains $case.expected) $'Missing retained output for ($case.name)'
     }
+    let inherited = ($workspace | path join ('long-inherited-temp-parent-' | fill --width 100 --character x))
+    mkdir $inherited
+    let folder = ($workspace | path join short-temp-policy)
+    mkdir $folder
+    cd $folder
+    with-env {TMPDIR: $inherited} {
+        let result = (^nu $runner short-temp -- nu -c 'print $env.TMPDIR' | complete)
+        require ($result.exit_code == 0) 'Short native temp policy failed'
+        require (($result.stdout | str trim) == '/tmp') 'Native child inherited an overlong temporary parent'
+        require ($env.TMPDIR == $inherited) 'Native guard changed its caller temporary parent'
+        let log = (glob 'artifacts/native-command-logs/*.log' | first | open --raw)
+        require (($log | str trim) == '/tmp') 'Short native temp policy output was not retained'
+    }
     cd $root
     rm --recursive $workspace
     print 'PASS native diagnostic guard and workflow coverage'
