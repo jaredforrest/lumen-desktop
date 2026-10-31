@@ -1656,6 +1656,9 @@ impl SelectionFixture {
             Ok(self.state().ok().filter(|value| predicate(value)))
         });
         if result.is_err() {
+            if let Ok(value) = self.ipc("trace", &[]) {
+                let _ = fs::write(self.0.out.join("failed-selection-trace.json"), value);
+            }
             if let Ok(value) = self.state() {
                 let _ = fs::write(
                     self.0.out.join("failed-state.json"),

@@ -8,7 +8,10 @@ ShellRoot {
  property var observedBand:null
  property string lastCancel:""
  property int beganCount:0
- Connections {target:fixture.observedBand;function onBegan(){fixture.beganCount++;}function onCanceled(reason){fixture.lastCancel=reason;}}
+ property var events:[]
+ function observe(kind){const b=fixture.band();events=events.concat([{kind:kind,mode:service.viewMode,band:String(b),view:b?String(b.view):"",pending:!!b && b.pending,activeFocus:!!b && b.activeFocus,focusItem:String(files.activeFocusItem),contentY:b?b.view.contentY:null,columns:service.columns.map(c=>({path:c.path,loaded:c.loaded,rows:c.rows.length}))}]).slice(-96);}
+ Connections {target:fixture.observedBand;function onBegan(){fixture.beganCount++;fixture.observe("began");}function onCanceled(reason){fixture.lastCancel=reason;fixture.observe("cancel:"+reason);}function onActiveFocusChanged(){fixture.observe("band-focus");}}
+ Connections {target:service;function onColumnsChanged(){fixture.observe("columns");}}
  QtObject {id:exported;property var state:({appName:"",title:"",windowId:0})}
  D.ScreenSaverState {id:permission;active:true}
  Window {id:bystander;visible:false;title:"Selection bystander";width:240;height:100;color:"#303030"}
@@ -19,7 +22,8 @@ ShellRoot {
  function find(name,item){if(item.objectName===name)return item;for(const child of item.children || []){const found=find(name,child);if(found)return found;}return null;}
  function band(){return find("files-"+(service.viewMode==="columns"?"column-band-"+service.path:service.viewMode+"-band-selection"),files.contentItem);}
  IpcHandler {target:"selectionAudit"
-  function mode(value:string):void {service.viewMode=value;}
+  function mode(value:string):void {service.viewMode=value;fixture.observe("mode");}
+  function trace():string {return JSON.stringify(fixture.events);}
   function showBystander(value:bool):void {bystander.visible=value;}
   function refresh():void {service.refresh();}
   function reverse():void {service.descending=!service.descending;service.refresh();}
