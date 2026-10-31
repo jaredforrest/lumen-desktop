@@ -1,11 +1,11 @@
 //! Exercise typed Settings destinations and the authored QML target names.
-use std::env;
+mod private_qml_root;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration};
 
 unsafe extern "C" { fn kill(pid: i32, signal: i32) -> i32; }
 
@@ -23,12 +23,7 @@ fn target_is_independent_of_record_field_order() {
 
 #[test]
 fn settings_search() {
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let root = env::temp_dir().join(format!("lumen-settings-search-{}-{nonce}", std::process::id()));
-    fs::create_dir(&root).unwrap();
+    let root = private_qml_root::create().unwrap();
     let result = (|| {
         let source_path = std::path::Path::new(file!()).canonicalize()?;
         let shell = source_path.parent().unwrap().parent().unwrap().parent().unwrap().join("res/lumen-desktop/shell");

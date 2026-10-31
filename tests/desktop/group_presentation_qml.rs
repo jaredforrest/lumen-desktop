@@ -1,4 +1,5 @@
 //! Actual production QML plus disposable stdio ownership and failure cases.
+mod private_qml_root;
 use std::{
     env, fs,
     os::unix::{
@@ -8,22 +9,14 @@ use std::{
     path::Path,
     process::{Command, Stdio},
     thread,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant},
 };
 unsafe extern "C" {
     fn kill(pid: i32, signal: i32) -> i32;
 }
 #[test]
 fn captured_group_presentation_transport() {
-    let root = env::temp_dir().join(format!(
-        "lumen-group-presentation-{}-{}",
-        std::process::id(),
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-    fs::create_dir(&root).unwrap();
+    let root = private_qml_root::create().unwrap();
     let result = (|| -> Result<(), Box<dyn std::error::Error>> {
         let source = Path::new(file!()).canonicalize()?;
         let shell = source

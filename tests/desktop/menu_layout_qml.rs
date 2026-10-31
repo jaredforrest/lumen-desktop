@@ -1,22 +1,17 @@
 //! Exercise the actual QML menu partition model at collision boundaries.
-use std::env;
+mod private_qml_root;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration};
 
 unsafe extern "C" { fn kill(pid: i32, signal: i32) -> i32; }
 
 #[test]
 fn menu_layout() {
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let root = env::temp_dir().join(format!("lumen-menu-layout-{}-{nonce}", std::process::id()));
-    fs::create_dir(&root).unwrap();
+    let root = private_qml_root::create().unwrap();
     let result = (|| {
         fs::write(
             root.join("MenuLayout.js"),

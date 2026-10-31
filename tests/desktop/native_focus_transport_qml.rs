@@ -1,4 +1,5 @@
 //! Real production QML transport with owned disposable stdio fault providers.
+mod private_qml_root;
 use std::{
     env, fs,
     io::Read,
@@ -9,7 +10,7 @@ use std::{
     path::PathBuf,
     process::{Command, Stdio},
     thread,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant},
 };
 unsafe extern "C" {
     fn kill(pid: i32, signal: i32) -> i32;
@@ -108,15 +109,7 @@ fn native_focus_transport() {
     let modes = env::var("LUMEN_NATIVE_FOCUS_MODES")
         .unwrap_or_else(|_| "success,malformed,unavailable,wrong-id,stall,exit".into());
     for mode in modes.split(',') {
-        let root = env::temp_dir().join(format!(
-            "lf-{}-{:x}",
-            std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
-        ));
-        fs::create_dir(&root).unwrap();
+        let root = private_qml_root::create().unwrap();
         fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
         let result = (|| -> Result<(), Box<dyn std::error::Error>> {
             fs::copy(&component, root.join("ApplicationLifecycleState.qml"))?;

@@ -1,22 +1,17 @@
 //! Exercise captured Trash confirmation tokens in production QML objects.
-use std::env;
+mod private_qml_root;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration};
 
 unsafe extern "C" { fn kill(pid: i32, signal: i32) -> i32; }
 
 #[test]
 fn trash_state() {
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let root = env::temp_dir().join(format!("lumen-trash-state-{}-{nonce}", std::process::id()));
-    fs::create_dir(&root).unwrap();
+    let root = private_qml_root::create().unwrap();
     let result = (|| {
         for (name, source) in [
             ("TrashActionsState.qml", include_str!("../../res/lumen-desktop/shell/TrashActionsState.qml")),

@@ -1,22 +1,17 @@
 //! Verify Quickshell's typed JSON adapter through an offscreen file round trip.
-use std::env;
+mod private_qml_root;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt;
 use std::process::{Command, Stdio};
 use std::thread;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration};
 
 unsafe extern "C" { fn kill(pid: i32, signal: i32) -> i32; }
 
 #[test]
 fn typed_json_adapter() {
-    let nonce = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let root = env::temp_dir().join(format!("lumen-json-adapter-{}-{nonce}", std::process::id()));
-    fs::create_dir(&root).unwrap();
+    let root = private_qml_root::create().unwrap();
     let result = (|| {
         let data = root.join("data.json");
         fs::write(&data, r#"{"numbers":[1,2,3],"words":["one","two"],"details":{"label":"loaded"},"inlineJson":{"deep":{"ok":true}}}"#)?;
