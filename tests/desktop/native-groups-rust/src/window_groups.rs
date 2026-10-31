@@ -390,8 +390,13 @@ pub fn run(ctx: &mut Context) -> Result<()> {
     act(ctx, "off", "", true, None)?;
     ensure(!truth(&state(ctx)?["enabled"]), "Group mode stayed enabled")?;
     for (index, n) in [1, 3].into_iter().enumerate() {
+        let after = ctx.window(n)?.ok_or("Window missing")?;
+        save(
+            &ctx.opt.output.join(format!("group-off-independent-state-{n}.json")),
+            &json!({"before":hidden[index],"after":no_group_hidden(&after),"nativeAfter":after,"groups":state(ctx)?}),
+        )?;
         ensure(
-            no_group_hidden(&ctx.window(n)?.ok_or("Window missing")?) == hidden[index],
+            no_group_hidden(&after) == hidden[index],
             "Independent hide state changed",
         )?;
     }
