@@ -539,12 +539,6 @@ fn inner(options: &Options) -> Result<()> {
             .to_string_lossy()
             .into_owned(),
     );
-    children.launch(
-        "wtype",
-        &["-k", "Shift_L", "-s", "60000"],
-        &envs,
-        &options.output.join("keyboard-seat.log"),
-    )?;
     let shell = children.launch(
         "quickshell",
         &["-p", source.to_str().ok_or("Invalid source")?],
@@ -576,8 +570,15 @@ fn inner(options: &Options) -> Result<()> {
     )?;
     let mut checks = Vec::new();
     focus(id, shell_pid, &envs)?;
+    children.launch(
+        "wtype",
+        &["-k", "Shift_L", "-s", "60000"],
+        &envs,
+        &options.output.join("keyboard-seat.log"),
+    )?;
     wait("owned current keyboard and effective default hint", || {
         let value = state(shell_pid, &envs)?;
+        fs::write(options.output.join("default-native-seats.json"),call("swaymsg", &["-r","-t","get_seats"],&envs)?)?;
         fs::write(
             options.output.join("default-hint-observation.json"),
             serde_json::to_vec_pretty(&value)?,
