@@ -60,7 +60,7 @@ Flickable {
         if(!waiting && columns.every(column=>column.loaded!==false)){pendingSnapshot=null;snapshotRestored();}
     }
     onColumnsChanged:Qt.callLater(()=>{if(pendingSnapshot)applySnapshot();else if(revealPending)revealCurrentFolder();})
-    onColumnPathKeyChanged:{resizeEpoch++;resizingIndex=-1;Qt.callLater(()=>{if(pendingSnapshot)applySnapshot();else if(resizingIndex<0)contentX=Math.max(0,contentWidth-width);});}
+    onColumnPathKeyChanged:{resizeEpoch++;resizingIndex=-1;revealPending=!pendingSnapshot;Qt.callLater(()=>{if(pendingSnapshot){revealPending=false;applySnapshot();}else if(resizingIndex<0 && revealPending)revealCurrentFolder();});}
     onContentWidthChanged:Qt.callLater(()=>{if(pendingSnapshot)applySnapshot();else if(revealPending)revealCurrentFolder();else contentX=clampOffset(contentX);})
     ScrollBar.horizontal: DesktopScrollBar {}
     Row {
