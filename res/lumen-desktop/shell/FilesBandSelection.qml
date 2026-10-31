@@ -56,6 +56,7 @@ Item {
     onPermittedChanged:if(!permitted)cancel()
     onVisibleChanged:if(!visible)cancel()
     onActiveFocusChanged:if(!activeFocus && pending)cancel("focus")
+    Component.onDestruction:cancel("destroy")
     Keys.onEscapePressed:event=>{if(pending){root.cancel("escape");event.accepted=true;}else event.accepted=false;}
     Connections {target:root.view
         function onContentXChanged(){root.cancel();}
