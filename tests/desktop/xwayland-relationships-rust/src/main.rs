@@ -783,7 +783,10 @@ impl Fixture {
         Ok(serde_json::from_str(&output)?)
     }
     fn command(&mut self, who: usize, action: &str, index: usize, value: i64) -> Result<()> {
-        self.clients[who].command(action, index, value)
+        self.clients[who].command(action, index, value)?;
+        let mut trace = fs::OpenOptions::new().create(true).append(true).open("/artifacts/client-commands.jsonl")?;
+        writeln!(trace, "{}", json!({"who":who,"action":action,"index":index,"value":value,"state":self.clients[who].state()?}))?;
+        Ok(())
     }
     fn xid(&mut self, who: usize, index: usize) -> Result<i64> {
         self.clients[who].xid(index)
@@ -798,7 +801,11 @@ impl Fixture {
         }))
     }
     fn mapped(&mut self, who: usize, index: usize) -> Result<Value> {
-        wait("actual mapped X11 surface", || self.node(who, index))
+        let result = wait(&format!("actual mapped X11 surface client {who} index {index}"), || self.node(who, index));
+        if result.is_err() {
+            fs::write("/artifacts/mapped-timeout.json", serde_json::to_vec_pretty(&json!({"who":who,"index":index,"client":self.clients[who].state()?,"tree":self.tree()?}))?)?;
+        }
+        result
     }
     fn relation(&mut self, who: usize, index: usize) -> Result<Value> {
         Ok(self
@@ -1255,6 +1262,24 @@ fn normal_checks(f: &mut Fixture) -> Result<()> {
         },
     )?;
     f.checks.push("Actual X11 primary pair admits a new same-process modal, routes exact input and restores/detaches its owner without stranding it");
+    f.ipc(&format!("lumen_pair create {owner} {partner}"))?;
+    for iteration in 0..16 {
+        f.command(0, "override", 3, 1)?;
+        f.node_wait("rapid remap unmanaged role", |node| node.is_none(), 0, 3)?;
+        f.command(0, "unmap", 3, 0)?;
+        f.command(0, "override", 3, 0)?;
+        f.command(0, "parent", 3, owner_xid)?;
+        f.command(0, "property", 3, 1)?;
+        let remapped = f.map(0, 3)?;
+        require(i(&remapped, "window")? == f.xid(0, 3)?, "Rapid remap changed X11 identity")?;
+        f.relation_wait("rapid remap exact paired parent", |r| r["parent"] == owner, 0, 3)?;
+        f.focus(0, 0, Some((0, 3)))?;
+        f.type_only(0, 3, &[(0, 0), (1, 0)])?;
+        fs::write(format!("/artifacts/rapid-remap-{iteration}.json"), serde_json::to_vec_pretty(&json!({"iteration":iteration,"client":f.clients[0].state()?,"tree":f.tree()?}))?)?;
+    }
+    f.ipc(&format!("lumen_pair leave {owner}"))?;
+    f.ipc(&format!("lumen_pair leave {partner}"))?;
+    f.checks.push("Sixteen acknowledged rapid override/unmap/remap cycles retain the exact managed modal and physical key recipient without a teardown wait");
     Ok(())
 }
 

@@ -1,7 +1,7 @@
 { pkgs, effects ? false, displaySpaces ? true, ownedGeometryEvents ? true, nativeFocusGuard ? true, allDesktopProjection ? (nativeFocusGuard && displaySpaces && ownedGeometryEvents) }:
 let
   alignedWlroots = pkgs.wlroots_0_20.overrideAttrs (old: {
-    patches = (old.patches or [ ]) ++ [ ../res/lumen-desktop/wlroots-udmabuf-raster-alignment.patch ../res/lumen-desktop/wlroots-xwayland-modal-state.patch ../res/lumen-desktop/wlroots-seat-capability-leave.patch ];
+    patches = (old.patches or [ ]) ++ [ ../res/lumen-desktop/wlroots-udmabuf-raster-alignment.patch ../res/lumen-desktop/wlroots-xwayland-modal-state.patch ../res/lumen-desktop/wlroots-seat-capability-leave.patch ../res/lumen-desktop/wlroots-xwayland-late-association.patch ];
   });
   compositor = if effects then pkgs.swayfx-unwrapped.override {
     wlroots_0_20 = alignedWlroots;

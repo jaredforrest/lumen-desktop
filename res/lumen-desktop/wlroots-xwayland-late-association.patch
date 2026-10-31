@@ -1,0 +1,43 @@
+--- a/xwayland/xwm.c
++++ b/xwayland/xwm.c
+@@ -1183,6 +1183,19 @@
+ 	return xcb_get_property(xwm->xcb_conn, 0, window_id, atom, XCB_ATOM_ANY, 0, len);
+ }
+ 
++struct xwayland_association_map_guard {
++	struct wl_listener dissociate;
++	bool live;
++};
++
++static void association_map_guard_retire(struct wl_listener *listener, void *data) {
++	struct xwayland_association_map_guard *guard =
++		wl_container_of(listener, guard, dissociate);
++	guard->live = false;
++	wl_list_remove(&guard->dissociate.link);
++	wl_list_init(&guard->dissociate.link);
++}
++
+ static void xwayland_surface_associate(struct wlr_xwm *xwm,
+ 		struct wlr_xwayland_surface *xsurface, struct wlr_surface *surface) {
+ 	assert(xsurface->surface == NULL);
+@@ -1236,7 +1249,20 @@
+ 		free(reply);
+ 	}
+ 
++	struct xwayland_association_map_guard guard = {
++		.dissociate.notify = association_map_guard_retire,
++		.live = true,
++	};
++	wl_signal_add(&xsurface->events.dissociate, &guard.dissociate);
+ 	wl_signal_emit_mutable(&xsurface->events.associate, NULL);
++
++	// The X11 surface serial can arrive after the Wayland buffer commit.
++	// Replay mapping only after associate listeners have installed map handlers;
++	// dissociation (including destruction) during the callback retires the guard.
++	wl_list_remove(&guard.dissociate.link);
++	if (guard.live && wlr_surface_has_buffer(surface)) {
++		wlr_surface_map(surface);
++	}
+ }
+ 
+ static void xwm_handle_create_notify(struct wlr_xwm *xwm,
