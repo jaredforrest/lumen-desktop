@@ -293,7 +293,8 @@ fn run_native(ctx: &mut Context) -> Result<()> {
     need(
         parent["pid"] == owned["pid"]
             && parent["app_id"] == "org.example.Editor"
-            && projection(ctx, &parent_id, false, true)?["enabled"] == false,
+            && projection(ctx, &parent_id, false, false)?["reason"] == "owned-family-pending"
+            && projection(ctx, &owned["id"], false, false)?["reason"] == "owned-family-pending",
         "Expected exact unassigned other-application family owner",
     )?;
     assign(ctx, &owned, "all", None)?;
