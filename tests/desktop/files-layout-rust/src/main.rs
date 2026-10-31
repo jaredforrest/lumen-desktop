@@ -1739,8 +1739,17 @@ impl SelectionFixture {
                 && after["preview"] == before["preview"] && after["selection"] == before["selection"],
             "Unrelated actual ancestor reply replaced or canceled the held current-column selection",
         )?;
+        let mut expected = before["preview"].as_array().ok_or("Captured column preview missing")?.clone();
+        require(!expected.is_empty(), "Captured column preview must be nonempty")?;
+        expected.sort_by_key(|value| value.to_string());
         self.button(children, pointer, "r")?;
-        self.wait("column replay exact physical commit", |v| v["pending"] == false && v["selection"].as_array().is_some_and(|a| a.contains(&geometry["path"])))?;
+        let committed = self.wait("column replay exact physical commit", |v| {
+            let Some(paths) = v["selection"].as_array() else { return false; };
+            let mut actual = paths.clone();
+            actual.sort_by_key(|value| value.to_string());
+            v["pending"] == false && v["preview"].is_null() && actual == expected
+        })?;
+        fs::write(self.0.out.join("column-ancestor-exact-commit.json"), serde_json::to_vec_pretty(&json!({"expectedMembership":expected,"committed":committed}))?)?;
         self.record(checks, "columns: replayed actual ancestor facts preserve held native band identity, scroll, focus and preview until exact physical commit".into())?;
         for kind in ["current", "path", "count"] {
             let geometry = self.box_geometry()?;
