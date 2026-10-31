@@ -69,9 +69,10 @@ Flickable {
         Repeater {
             id:columnRepeater
             onItemAdded:if(root.revealPending)Qt.callLater(root.revealCurrentFolder)
-            model: root.columns
+            model: root.columns.length
             Item {
-                required property var modelData; required property int index
+                required property int index
+                readonly property var modelData:root.columns[index] || ({path:"",name:"",rows:[],loaded:false})
                 property alias listView:columnList
                 id:columnPane
                 property int dragWidth:-1
