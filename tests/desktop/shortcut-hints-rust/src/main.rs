@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::env;
 use std::error::Error;
 use std::fs::{self, File};
+use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -23,6 +24,7 @@ struct Options {
     launcher: PathBuf,
     fixtures: PathBuf,
     sway: PathBuf,
+    keyboard: PathBuf,
     output: PathBuf,
     effects: bool,
     fontconfig: Option<PathBuf>,
@@ -34,6 +36,7 @@ fn options() -> Result<Options> {
     let mut launcher = None;
     let mut fixtures = None;
     let mut sway = None;
+    let mut keyboard = None;
     let mut output = None;
     let mut effects = false;
     let mut fontconfig = None;
@@ -50,6 +53,9 @@ fn options() -> Result<Options> {
                 fixtures = Some(PathBuf::from(args.next().ok_or("Missing fixtures")?))
             }
             Some("--sway") => sway = Some(PathBuf::from(args.next().ok_or("Missing Sway")?)),
+            Some("--keyboard") => {
+                keyboard = Some(PathBuf::from(args.next().ok_or("Missing keyboard")?))
+            }
             Some("--output") => output = Some(PathBuf::from(args.next().ok_or("Missing output")?)),
             Some("--effects") => effects = true,
             Some("--source-revision") => {
@@ -77,6 +83,7 @@ fn options() -> Result<Options> {
         launcher: launcher.ok_or("--launcher required")?,
         fixtures: fixtures.ok_or("--fixtures required")?,
         sway: sway.ok_or("--sway required")?,
+        keyboard: keyboard.ok_or("--keyboard required")?,
         output: output.ok_or("--output required")?,
         effects,
         fontconfig,
@@ -134,6 +141,8 @@ fn outer(options: &Options) -> Result<()> {
         .arg(&options.fixtures)
         .arg("--sway")
         .arg(&options.sway)
+        .arg("--keyboard")
+        .arg(&options.keyboard)
         .arg("--output")
         .arg(&options.output)
         .env_clear()
@@ -394,15 +403,82 @@ fn audit(shell: u32, command: &str, envs: &BTreeMap<String, String>) -> Result<S
 fn state(shell: u32, envs: &BTreeMap<String, String>) -> Result<Value> {
     Ok(serde_json::from_str(&audit(shell, "status", envs)?)?)
 }
-fn key(key: &str, envs: &BTreeMap<String, String>) -> Result<()> {
-    call(
-        "wtype",
-        &[
-            "-M", "logo", "-M", "ctrl", "-k", key, "-m", "ctrl", "-m", "logo",
-        ],
-        envs,
-    )?;
-    Ok(())
+struct Keyboard {
+    index: usize,
+    log: PathBuf,
+    serial: u32,
+}
+impl Keyboard {
+    fn start(
+        options: &Options,
+        children: &mut Children,
+        envs: &BTreeMap<String, String>,
+    ) -> Result<Self> {
+        let tool = fs::canonicalize(&options.keyboard)?;
+        require(
+            tool.starts_with("/nix/store"),
+            "Immutable physical keyboard required",
+        )?;
+        let log = options.output.join("keyboard-seat.log");
+        let stream = File::create(&log)?;
+        let child = Command::new(tool)
+            .env_clear()
+            .envs(envs)
+            .env("LUMEN_TEST_LAYOUT", "us")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::from(stream.try_clone()?))
+            .stderr(Stdio::from(stream))
+            .process_group(0)
+            .spawn()?;
+        let index = children.0.len();
+        children.0.push(child);
+        let mut keyboard = Self {
+            index,
+            log,
+            serial: 0,
+        };
+        keyboard.ack(children, "ready")?;
+        keyboard.event(children, 'm', 0, 0)?;
+        Ok(keyboard)
+    }
+    fn ack(&self, children: &mut Children, expected: &str) -> Result<()> {
+        wait("owned physical keyboard roundtrip", || {
+            let bytes = fs::read(&self.log)?;
+            require(bytes.len() < 16384, "Keyboard transcript bound")?;
+            require(
+                children.0[self.index].try_wait()?.is_none(),
+                "Owned keyboard exited before acknowledgement",
+            )?;
+            Ok(std::str::from_utf8(&bytes)?
+                .lines()
+                .any(|line| line == expected)
+                .then_some(()))
+        })
+    }
+    fn event(&mut self, children: &mut Children, op: char, value: u32, pressed: u32) -> Result<()> {
+        self.serial += 1;
+        let input = children.0[self.index]
+            .stdin
+            .as_mut()
+            .ok_or("Keyboard stdin")?;
+        writeln!(input, "{op} {} {value} {pressed}", self.serial)?;
+        input.flush()?;
+        self.ack(children, &format!("ack {}", self.serial))
+    }
+    fn key(&mut self, children: &mut Children, key: &str) -> Result<()> {
+        let code = match key {
+            "f" => 33,
+            "x" => 45,
+            "Escape" => 1,
+            _ => return Err(fail("Unsupported exact fixture key")),
+        };
+        if key != "Escape" {
+            self.event(children, 'm', 68, 0)?;
+        }
+        self.event(children, 'k', code, 1)?;
+        self.event(children, 'k', code, 0)?;
+        self.event(children, 'm', 0, 0)
+    }
 }
 fn focus(id: u64, shell: u32, envs: &BTreeMap<String, String>) -> Result<()> {
     call("swaymsg", &[&format!("[con_id={id}] focus")], envs)?;
@@ -570,15 +646,13 @@ fn inner(options: &Options) -> Result<()> {
     )?;
     let mut checks = Vec::new();
     focus(id, shell_pid, &envs)?;
-    children.launch(
-        "wtype",
-        &["-k", "Shift_L", "-s", "60000"],
-        &envs,
-        &options.output.join("keyboard-seat.log"),
-    )?;
+    let mut keyboard = Keyboard::start(options, &mut children, &envs)?;
     wait("owned current keyboard and effective default hint", || {
         let value = state(shell_pid, &envs)?;
-        fs::write(options.output.join("default-native-seats.json"),call("swaymsg", &["-r","-t","get_seats"],&envs)?)?;
+        fs::write(
+            options.output.join("default-native-seats.json"),
+            call("swaymsg", &["-r", "-t", "get_seats"], &envs)?,
+        )?;
         fs::write(
             options.output.join("default-hint-observation.json"),
             serde_json::to_vec_pretty(&value)?,
@@ -589,14 +663,14 @@ fn inner(options: &Options) -> Result<()> {
         state(shell_pid, &envs)?["hint"] == "Ctrl+Super+F",
         "Default hint changed",
     )?;
-    key("f", &envs)?;
+    keyboard.key(&mut children, "f")?;
     wait("default exact dispatch", || {
         Ok(window(&envs)?
             .and_then(|row| row["fullscreen_mode"].as_i64())
             .is_some_and(|mode| mode > 0)
             .then_some(()))
     })?;
-    key("f", &envs)?;
+    keyboard.key(&mut children, "f")?;
     wait("default reverse toggle", || {
         Ok(window(&envs)?
             .and_then(|row| row["fullscreen_mode"].as_i64())
@@ -639,14 +713,14 @@ fn inner(options: &Options) -> Result<()> {
         "Invalid reload received a runtime acknowledgement",
     )?;
     focus(id, shell_pid, &envs)?;
-    key("f", &envs)?;
+    keyboard.key(&mut children, "f")?;
     wait("Old dispatch retained in invalid-reload fixture", || {
         Ok(window(&envs)?
             .and_then(|w| w["fullscreen_mode"].as_i64())
             .is_some_and(|mode| mode > 0)
             .then_some(()))
     })?;
-    key("f", &envs)?;
+    keyboard.key(&mut children, "f")?;
     wait("Old dispatch reset after negative", || {
         Ok(window(&envs)?
             .is_some_and(|w| w["fullscreen_mode"] == 0)
@@ -673,20 +747,20 @@ fn inner(options: &Options) -> Result<()> {
         Ok((state(shell_pid, &envs)?["hint"] == "Ctrl+Super+X").then_some(()))
     })?;
     focus(id, shell_pid, &envs)?;
-    key("f", &envs)?;
+    keyboard.key(&mut children, "f")?;
     thread::sleep(Duration::from_millis(250));
     require(
         window(&envs)?.ok_or("Window lost")?["fullscreen_mode"] == 0,
         "Old binding still active",
     )?;
-    key("x", &envs)?;
+    keyboard.key(&mut children, "x")?;
     wait("new physical binding dispatch", || {
         Ok(window(&envs)?
             .and_then(|row| row["fullscreen_mode"].as_i64())
             .is_some_and(|mode| mode > 0)
             .then_some(()))
     })?;
-    key("x", &envs)?;
+    keyboard.key(&mut children, "x")?;
     wait("new binding reverse toggle", || {
         Ok(window(&envs)?
             .and_then(|row| row["fullscreen_mode"].as_i64())
@@ -720,7 +794,7 @@ fn inner(options: &Options) -> Result<()> {
             .ok_or("Invalid image output")?],
         &envs,
     )?;
-    call("wtype", &["-k", "Escape"], &envs)?;
+    keyboard.key(&mut children, "Escape")?;
     wait("menu dismissed", || {
         Ok((state(shell_pid, &envs)?["menu"] == "").then_some(()))
     })?;
