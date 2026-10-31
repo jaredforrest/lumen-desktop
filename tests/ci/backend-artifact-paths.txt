@@ -107,6 +107,7 @@ artifacts/application-desktops-*
 artifacts/network-connectivity-provider
 artifacts/power-provider
 artifacts/overview-lifecycle
+artifacts/window-layout-menu
 artifacts/window-relationships-*
 artifacts/xwayland-relationships-*
 artifacts/xwayland-no-xres-*

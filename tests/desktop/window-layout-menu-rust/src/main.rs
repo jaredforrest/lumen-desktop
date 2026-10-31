@@ -4,7 +4,7 @@ use std::env;
 use std::error::Error;
 use std::ffi::OsString;
 use std::fs::{self, File};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -120,11 +120,73 @@ struct PrivateRoot(PathBuf);
 impl PrivateRoot {
     fn new() -> Result<Self> {
         let nonce = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
-        let path = env::temp_dir().join(format!("lml-{}-{nonce}", std::process::id()));
+        // UNIX socket names must remain short even when CI's TMPDIR is nested.
+        let path = Path::new("/tmp").join(format!("lml-{}-{nonce}", std::process::id()));
         fs::create_dir(&path)?;
         fs::set_permissions(&path, fs::Permissions::from_mode(0o700))?;
         Ok(Self(path))
     }
+}
+
+fn start_bus(
+    executable: &Path,
+    config: &Path,
+    output: &Path,
+    values: &BTreeMap<String, String>,
+) -> Result<(Managed, String)> {
+    let log_path = output.join("bus.log");
+    let mut bus = Managed(
+        Command::new(executable)
+            .arg("--nofork")
+            .arg("--print-address=1")
+            .arg(format!("--config-file={}", config.display()))
+            .env_clear()
+            .envs(values)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::from(File::create(&log_path)?))
+            .spawn()?,
+    );
+    let stdout = bus
+        .0
+        .stdout
+        .take()
+        .ok_or("Private bus address pipe missing")?;
+    let (sender, receiver) = mpsc::channel();
+    let reader = thread::spawn(move || {
+        let mut address = String::new();
+        let result = BufReader::new(stdout)
+            .take(4097)
+            .read_line(&mut address)
+            .map(|_| address);
+        let _ = sender.send(result);
+    });
+    let received = receiver.recv_timeout(Duration::from_secs(5));
+    let address = received.as_ref().ok().and_then(|r| r.as_ref().ok());
+    let valid =
+        address.is_some_and(|s| s.starts_with("unix:") && s.ends_with('\n') && s.len() <= 4096);
+    if !valid {
+        let observed = bus.0.try_wait()?;
+        if observed.is_none() {
+            let _ = bus.0.kill();
+        }
+        let final_status = bus.0.wait()?;
+        let _ = reader.join();
+        let mut stderr = String::new();
+        File::open(&log_path)?
+            .take(8192)
+            .read_to_string(&mut stderr)?;
+        let diagnostic = format!(
+            "Private bus startup failed: observed={observed:?}; final={final_status}; address={received:?}; stderr={stderr}"
+        );
+        fs::write(output.join("bus-startup-failure.txt"), &diagnostic)?;
+        return Err(fail(diagnostic));
+    }
+    let address = received??;
+    reader
+        .join()
+        .map_err(|_| "Private bus address reader panicked")?;
+    Ok((bus, address.trim().into()))
 }
 impl Drop for PrivateRoot {
     fn drop(&mut self) {
@@ -216,38 +278,13 @@ fn run(options: Options) -> Result<()> {
             values["XDG_RUNTIME_DIR"]
         ),
     )?;
-    let bus_log = File::create(output.join("bus.log"))?;
-    let mut bus = Managed(
-        Command::new(program("dbus-daemon", &values)?)
-            .arg("--nofork")
-            .arg("--print-address=1")
-            .arg(format!("--config-file={}", bus_config.display()))
-            .env_clear()
-            .envs(&values)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::from(bus_log))
-            .spawn()?,
-    );
-    let stdout = bus
-        .0
-        .stdout
-        .take()
-        .ok_or("Private bus address pipe missing")?;
-    let (sender, receiver) = mpsc::channel();
-    thread::spawn(move || {
-        let mut address = String::new();
-        let result = BufReader::new(stdout)
-            .read_line(&mut address)
-            .map(|_| address);
-        let _ = sender.send(result);
-    });
-    let address = receiver.recv_timeout(Duration::from_secs(5))??;
-    require(
-        address.starts_with("unix:"),
-        "Private bus did not return UNIX address",
+    let (mut bus, address) = start_bus(
+        &program("dbus-daemon", &values)?,
+        &bus_config,
+        &output,
+        &values,
     )?;
-    values.insert("DBUS_SESSION_BUS_ADDRESS".into(), address.trim().into());
+    values.insert("DBUS_SESSION_BUS_ADDRESS".into(), address);
     let sway_config = output.join("sway.conf");
     fs::write(&sway_config, "output * resolution 800x600\n")?;
     values.insert("WLR_BACKENDS".into(), "headless".into());
@@ -325,5 +362,97 @@ fn main() {
     if let Err(error) = options().and_then(run) {
         eprintln!("Window layout menu fixture: {error}");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn config(output: &Path, runtime: &Path) -> Result<PathBuf> {
+        let path = output.join("test-bus.conf");
+        fs::write(
+            &path,
+            format!(
+                "<busconfig><type>session</type><listen>unix:tmpdir={}</listen><policy context=\"default\"><allow own=\"*\"/><allow send_destination=\"*\"/><allow receive_sender=\"*\"/></policy></busconfig>",
+                runtime.display()
+            ),
+        )?;
+        Ok(path)
+    }
+
+    #[test]
+    fn actual_bus_starts_at_short_private_socket() -> Result<()> {
+        let root = PrivateRoot::new()?;
+        let runtime = root.0.join("xdg_runtime_dir");
+        fs::create_dir(&runtime)?;
+        fs::set_permissions(&runtime, fs::Permissions::from_mode(0o700))?;
+        let (mut bus, address) = start_bus(
+            Path::new(env!("LUMEN_TEST_DBUS_DAEMON")),
+            &config(&root.0, &runtime)?,
+            &root.0,
+            &BTreeMap::new(),
+        )?;
+        require(address.starts_with("unix:"), "Actual daemon address absent")?;
+        require(
+            bus.0.try_wait()?.is_none(),
+            "Actual daemon exited after readiness",
+        )?;
+        bus.0.kill()?;
+        bus.wait(5)?;
+        Ok(())
+    }
+
+    #[test]
+    fn actual_bus_failure_retains_exit_and_stderr() -> Result<()> {
+        let root = PrivateRoot::new()?;
+        let invalid = root.0.join("invalid.conf");
+        fs::write(&invalid, "<busconfig><broken></busconfig>")?;
+        let error = match start_bus(
+            Path::new(env!("LUMEN_TEST_DBUS_DAEMON")),
+            &invalid,
+            &root.0,
+            &BTreeMap::new(),
+        ) {
+            Ok(_) => {
+                return Err(fail(
+                    "Invalid real daemon configuration unexpectedly started",
+                ));
+            }
+            Err(error) => error.to_string(),
+        };
+        let log = fs::read_to_string(root.0.join("bus.log"))?;
+        require(
+            !log.is_empty() && error.contains(&log),
+            "Daemon stderr discarded",
+        )?;
+        require(
+            error.contains("exit status: 1") && error.contains("Ok(Ok(\"\"))"),
+            "EOF or actual exit status discarded",
+        )?;
+        require(
+            fs::read_to_string(root.0.join("bus-startup-failure.txt"))? == error,
+            "Retained diagnostic differs",
+        )
+    }
+
+    #[test]
+    fn actual_overlong_socket_directory_fails_with_retained_cause() -> Result<()> {
+        let root = PrivateRoot::new()?;
+        let runtime = root.0.join("x".repeat(100));
+        fs::create_dir(&runtime)?;
+        let error = match start_bus(
+            Path::new(env!("LUMEN_TEST_DBUS_DAEMON")),
+            &config(&root.0, &runtime)?,
+            &root.0,
+            &BTreeMap::new(),
+        ) {
+            Ok(_) => return Err(fail("Overlong real UNIX socket unexpectedly started")),
+            Err(error) => error.to_string(),
+        };
+        require(
+            error.contains("too long"),
+            format!("Expected actual socket bound failure: {error}"),
+        )
     }
 }
