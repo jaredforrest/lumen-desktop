@@ -17,7 +17,7 @@ ShellRoot {
  QtObject {id:notifications;property bool available:false;property bool dnd:false;property var applications:[];property var history:[];property var policies:({});property string error:""}
  QtObject {id:searchState;property bool available:false;property bool scanning:false;property int indexed:0}
  QtObject {id:inventory;property bool available:true;property string error:"";property var bindings:[{enabled:true,action:"overview",chord:"Mod4+Tab",scope:"global",appId:""}]}
- QtObject {id:shellStub;property var audioState:audio;property var notifications:notifications;property var search:searchState;property var shortcuts:inventory;property var screenSaverPreferences:null;property string volume:""}
+ QtObject {id:shellStub;property var audioState:audio;property var notifications:notifications;property var search:searchState;property var shortcuts:inventory;property var screenSaverPreferences:null;property string volume:"";property var windowGroupPresentation:undefined;property string windowGroupPresentationError:""}
  QtObject {id:editorService;property bool available:true;property bool editable:true;property bool configuredEditable:true;property bool runtimeConfirmed:true;property string runtimeDetail:"";property bool busy:false;property var request:({action:"status"});property string generation:"synthetic-typography";property var bindings:[{id:"window.fullscreen.toggle",action:"window.fullscreen.toggle",defaultChord:"Mod4+Control+f",chord:"Mod4+Control+f",enabled:true,editable:true}];property string boundary:"Owned default-mode symbol bindings only. Raw compositor configuration, runtime changes, keycodes and undeclared application shortcuts are not covered.";property string error:"This disposable presentation cannot apply configuration. Correct the shortcut and review the current generation before trying again.";property string message:"";property int writes:0;function change(){++writes;throw Error("Typography acceptance must never mutate settings");}}
  D.SettingsWindow {id:editor;shell:shellStub;service:preferences}
  TestCase {
@@ -38,6 +38,12 @@ ShellRoot {
    return {text:item.text,fontSize:item.font.pixelSize,width:item.width,height:item.height,contentWidth:item.contentWidth,contentHeight:item.contentHeight,color:String(item.color)};
   });}
   function capture(path){imageSaved=false;paintRoot.grabToImage(result=>{imageSaved=result.saveToFile(path);});waitFor(()=>imageSaved,"Settings paint capture failed");}
+  function groupRetryAvailability(){
+   const retry=walk(editor.contentItem,[]).find(item=>item.text==="Retry group presentation");check(retry,"Actual group retry button missing");
+   const cases=[{name:"missing",state:undefined,enabled:false},{name:"null",state:null,enabled:false},{name:"malformed",state:{available:"yes",presentationSupported:true,locked:false},enabled:false},{name:"unavailable",state:{available:false,presentationSupported:true,locked:false},enabled:false},{name:"unsupported",state:{available:true,presentationSupported:false,locked:false},enabled:false},{name:"locked",state:{available:true,presentationSupported:true,locked:true},enabled:false},{name:"supported",state:{available:true,presentationSupported:true,locked:false},enabled:true}];
+   for(const c of cases){shellStub.windowGroupPresentation=c.state;wait(1);check(retry.enabled===c.enabled,"Group retry availability mismatch: "+c.name);}
+   shellStub.windowGroupPresentation=undefined;wait(1);check(retry.enabled===false,"Retired observer left Retry enabled");
+  }
   function runCase(c){
    editor.visible=false;D.Theme.font=palettes.font;D.Theme.colors=palettes[c.mode];D.Theme.preferences={textScale:c.scale,reduceMotion:true,reduceTransparency:true};preferences.preferences={mode:c.mode,textScale:c.scale,reduceMotion:true};
    editor.implicitWidth=c.width;editor.implicitHeight=c.height;
@@ -64,6 +70,7 @@ ShellRoot {
    records.push({name:c.name,mode:c.mode,scale:c.scale,width:editor.width,height:editor.height,paneHeight:pane.height,viewportHeight:viewport.height,frames:frames});
   }
   function run(){
+   groupRetryAvailability();
    const cases=[];for(const mode of ["light","dark"])for(const scale of [1,1.5])for(const compact of [true,false])cases.push({name:mode+"-"+scale+"-"+(compact?"compact":"regular"),mode:mode,scale:scale,width:compact?480:790,height:compact?360:640});
    for(const c of cases)runCase(c);
    console.log("SHORTCUT_SETTINGS_TYPOGRAPHY_PASS "+JSON.stringify(records));Qt.quit();
