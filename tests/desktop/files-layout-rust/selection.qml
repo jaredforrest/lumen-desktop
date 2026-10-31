@@ -24,6 +24,7 @@ ShellRoot {
  IpcHandler {target:"selectionAudit"
   function mode(value:string):void {service.viewMode=value;fixture.observe("mode");}
   function trace():string {return JSON.stringify(fixture.events);}
+  function mark():string {fixture.observe("before-begin");return JSON.stringify(fixture.events);}
   function showBystander(value:bool):void {bystander.visible=value;}
   function refresh():void {service.refresh();}
   function reverse():void {service.descending=!service.descending;service.refresh();}

@@ -1695,6 +1695,10 @@ impl SelectionFixture {
         self.0.pointer(children, pointer, action)
     }
     fn begin(&self, box_geometry: &Value, children: &mut Children, pointer: usize) -> Result<()> {
+        fs::write(
+            self.0.out.join("selection-last-begin-trace.json"),
+            self.ipc("mark", &[])?,
+        )?;
         self.point(&box_geometry["start"], children, pointer)?;
         self.button(children, pointer, "p")?;
         self.wait("selection pending", |v| v["pending"] == true)?;
