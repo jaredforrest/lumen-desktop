@@ -27,18 +27,18 @@ fn emit(available:bool,lifecycle:&Lifecycle,session:&SessionEnd,store:&mut Optio
     }
 }
 fn refresh(query:&mut UnixStream,path:&PathBuf,expected:&str,lifecycle:&mut Lifecycle,session:&mut SessionEnd,protocol:&Cooperative,store:&mut Option<ObservationStore>,last:&mut Option<String>)->Result<Vec<Value>>{
-    refresh_until(query,path,expected,lifecycle,session,protocol,store,last,Instant::now()+Duration::from_secs(5))
+    let nodes=sample_until(query,path,expected,lifecycle,session,protocol,Instant::now()+Duration::from_secs(5))?;
+    emit(true,lifecycle,session,store,last,"",None);Ok(nodes)
 }
-fn refresh_until(query:&mut UnixStream,path:&PathBuf,expected:&str,lifecycle:&mut Lifecycle,session:&mut SessionEnd,protocol:&Cooperative,store:&mut Option<ObservationStore>,last:&mut Option<String>,deadline:Instant)->Result<Vec<Value>>{
+fn sample_until(query:&mut UnixStream,path:&PathBuf,expected:&str,lifecycle:&mut Lifecycle,session:&mut SessionEnd,protocol:&Cooperative,deadline:Instant)->Result<Vec<Value>>{
     let tree=lumen_application_lifecycle::events::tree(query,deadline)?;
     if epoch(path)?!=expected{return Err("Compositor session changed".into());}
     let nodes=window_nodes(&tree)?;
     lifecycle.refresh(expected,&nodes);session.tick(&nodes,lifecycle,protocol);
-    emit(true,lifecycle,session,store,last,"",None);
     Ok(nodes)
 }
 // None means compositor shutdown; errors retire the observer before dispatch.
-fn pending(events:&mut UnixStream,nodes:&mut Vec<Value>,query:&mut UnixStream,path:&PathBuf,expected:&str,lifecycle:&mut Lifecycle,session:&mut SessionEnd,protocol:&Cooperative,store:&mut Option<ObservationStore>,last:&mut Option<String>)->Result<Option<bool>>{
+fn pending(events:&mut UnixStream,nodes:&mut Vec<Value>,query:&mut UnixStream,path:&PathBuf,expected:&str,lifecycle:&mut Lifecycle,session:&mut SessionEnd,protocol:&Cooperative,store:&mut Option<ObservationStore>)->Result<Option<bool>>{
     let deadline=Instant::now()+Duration::from_millis(250);
     let batch=lumen_application_lifecycle::events::drain(events)?;
     let any=!batch.is_empty();
@@ -49,7 +49,10 @@ fn pending(events:&mut UnixStream,nodes:&mut Vec<Value>,query:&mut UnixStream,pa
         else {lifecycle.inventory.observe_scope_event();}
         let remaining=deadline.saturating_duration_since(Instant::now());
         if remaining.is_zero(){return Err("Event processing budget exhausted".into());}
-        let updated=refresh_until(query,path,expected,lifecycle,session,protocol,store,last,deadline);
+        // Keep every invalidation, sample and focus receipt ordered, but do not
+        // repeat durable journal fsync/publication inside the sampling budget.
+        // The enclosing observation/action emits once after the whole batch.
+        let updated=sample_until(query,path,expected,lifecycle,session,protocol,deadline);
         *nodes=updated?;if window_event{lifecycle.observe_focus_event(&event);}
         if Instant::now()>=deadline{return Err("Event processing budget exhausted".into());}
     }
@@ -74,11 +77,11 @@ fn handle(data:&Value,events:&mut UnixStream,nodes:&mut Vec<Value>,query:&mut Un
             let tree=loop {
                 passes+=1;
                 if passes>3{retire=true;return Err("Compositor remained active during bounded focus barrier".into());}
-                pending(events,nodes,query,path,expected,lifecycle,session,protocol,store,last).map_err(|e|{retire=true;e})?.ok_or_else(||{retire=true;"Compositor shut down".to_owned()})?;
+                pending(events,nodes,query,path,expected,lifecycle,session,protocol,store).map_err(|e|{retire=true;e})?.ok_or_else(||{retire=true;"Compositor shut down".to_owned()})?;
                 let tree=lumen_application_lifecycle::events::tree(query,sampling_deadline).map_err(|e|{retire=true;e})?;
                 if epoch(path)?!=expected{return Err("Compositor session changed".into());}
                 *nodes=window_nodes(&tree)?;lifecycle.refresh(expected,nodes);
-                let changed=pending(events,nodes,query,path,expected,lifecycle,session,protocol,store,last).map_err(|e|{retire=true;e})?.ok_or_else(||{retire=true;"Compositor shut down".to_owned()})?;
+                let changed=pending(events,nodes,query,path,expected,lifecycle,session,protocol,store).map_err(|e|{retire=true;e})?.ok_or_else(||{retire=true;"Compositor shut down".to_owned()})?;
                 if !changed {break tree;}
             };
             let inventory=data.get("inventoryWitness").ok_or("Missing captured inventory witness")?;
@@ -161,7 +164,7 @@ fn watch()->Result<()>{
             let status=unsafe{libc::poll(polls.as_mut_ptr(),polls.len() as libc::nfds_t,1000)};
             if status<0{if std::io::Error::last_os_error().kind()==std::io::ErrorKind::Interrupted{continue;}return Err("Application observation unavailable".into());}
             if polls[0].revents!=0{
-                if pending(&mut events,&mut nodes,&mut query,&path,&identity,&mut lifecycle,&mut session,&protocol,&mut store,&mut last)?.is_none(){eprintln!("Application observer stopped: compositor shutdown");return Ok(());}
+                if pending(&mut events,&mut nodes,&mut query,&path,&identity,&mut lifecycle,&mut session,&protocol,&mut store)?.is_none(){eprintln!("Application observer stopped: compositor shutdown");return Ok(());}
             }
             if polls[1].revents!=0{
                 let mut chunk=[0_u8;65537];let count=std::io::stdin().read(&mut chunk).map_err(|error|error.to_string())?;
@@ -182,3 +185,4 @@ fn watch()->Result<()>{
     session.cancel();lifecycle.close();result
 }
 fn main(){if let Err(error)=watch(){eprintln!("Application observer retired: {}",error.chars().take(256).collect::<String>());}}
+#[cfg(test)] mod pending_tests;
