@@ -1722,6 +1722,7 @@ impl SelectionFixture {
         wait("all actual column replies before controlled replay", || {
             Ok(self.band_state().ok().filter(|v| v["columnsReady"] == true && !v["band"].is_null()))
         })?;
+        fs::write(self.0.out.join("column-held-ancestor-fact.json"), self.ipc("holdAncestorReply", &[])?)?;
         let geometry = self.box_geometry()?;
         self.begin(&geometry, children, pointer)?;
         let before = self.band_state()?;
