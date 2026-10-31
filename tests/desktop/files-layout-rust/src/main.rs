@@ -1714,6 +1714,50 @@ impl SelectionFixture {
         )?;
         Ok(())
     }
+    fn band_state(&self) -> Result<Value> {
+        Ok(serde_json::from_str(&self.ipc("bandState", &[])?)?)
+    }
+    fn column_reply_journey(&self, children: &mut Children, pointer: usize, checks: &mut Vec<String>) -> Result<()> {
+        self.ipc("mode", &["columns"])?;
+        wait("all actual column replies before controlled replay", || {
+            Ok(self.band_state().ok().filter(|v| v["columnsReady"] == true && !v["band"].is_null()))
+        })?;
+        let geometry = self.box_geometry()?;
+        self.begin(&geometry, children, pointer)?;
+        let before = self.band_state()?;
+        let receipt: Value = serde_json::from_str(&self.ipc("replayColumnReply", &["ancestor"])?)?;
+        require(receipt.get("error").is_none(), "Actual ancestor replay precondition missing")?;
+        // A separate IPC roundtrip observes QML's queued model/layout work.
+        let after = self.band_state()?;
+        fs::write(self.0.out.join("column-ancestor-reply-held.json"), serde_json::to_vec_pretty(&json!({"before":before,"receipt":receipt,"after":after,"trace":serde_json::from_str::<Value>(&self.ipc("trace", &[])?)?}))?)?;
+        require(
+            before["pending"] == true && before["active"] == true && before["focus"] == true
+                && after["band"] == before["band"] && after["view"] == before["view"]
+                && after["contentX"] == before["contentX"] && after["contentY"] == before["contentY"]
+                && after["pending"] == true && after["active"] == true && after["focus"] == true
+                && after["preview"] == before["preview"] && after["selection"] == before["selection"],
+            "Unrelated actual ancestor reply replaced or canceled the held current-column selection",
+        )?;
+        self.button(children, pointer, "r")?;
+        self.wait("column replay exact physical commit", |v| v["pending"] == false && v["selection"].as_array().is_some_and(|a| a.contains(&geometry["path"])))?;
+        self.record(checks, "columns: replayed actual ancestor facts preserve held native band identity, scroll, focus and preview until exact physical commit".into())?;
+        for kind in ["current", "path", "count"] {
+            let geometry = self.box_geometry()?;
+            let selection = self.state()?["selection"].clone();
+            self.begin(&geometry, children, pointer)?;
+            let receipt: Value = serde_json::from_str(&self.ipc("replayColumnReply", &[kind])?)?;
+            self.wait("changed own column retires captured selection", |v| v["pending"] == false && v["preview"].is_null())?;
+            self.button(children, pointer, "r")?;
+            let after = self.state()?;
+            fs::write(self.0.out.join(format!("column-{kind}-reply-cancel.json")), serde_json::to_vec_pretty(&json!({"receipt":receipt,"after":after,"selectionBefore":selection}))?)?;
+            require(after["selection"] == selection, "Changed own column committed or retargeted selection")?;
+            self.ipc("reloadColumns", &[])?;
+            wait("actual column listings restored", || {
+                Ok(self.band_state().ok().filter(|v| v["columnsReady"] == true && !v["band"].is_null()))
+            })?;
+        }
+        self.record(checks, "columns: actual current-row, path and column-count changes still cancel held selection without committing".into())
+    }
     fn tree_node_named(&self, name: &str) -> Result<Option<Value>> {
         let tree: Value =
             serde_json::from_str(&call("swaymsg", &["-r", "-t", "get_tree"], &self.0.envs)?)?;
@@ -1920,6 +1964,9 @@ fn selection_inner(options: &Options) -> Result<()> {
     } else {
         options.views.clone()
     };
+    if views.iter().any(|mode| mode == "columns") {
+        fixture.column_reply_journey(&mut children, pointer, &mut checks)?;
+    }
     for mode in &views {
         fixture.ipc("mode", &[mode])?;
         let box_geometry = fixture.box_geometry()?;

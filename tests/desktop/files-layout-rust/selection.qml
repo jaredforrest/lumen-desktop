@@ -25,6 +25,9 @@ ShellRoot {
   function mode(value:string):void {service.viewMode=value;fixture.observe("mode");}
   function trace():string {return JSON.stringify(fixture.events);}
   function mark():string {fixture.observe("before-begin");return JSON.stringify(fixture.events);}
+  function bandState():string {const b=fixture.band();return JSON.stringify({band:b?String(b):null,view:b?String(b.view):null,pending:!!b && b.pending,active:!!b && b.active,focus:!!b && b.activeFocus,preview:files.bandPreviewPaths,selection:files.selectedPaths,contentX:b?b.view.contentX:null,contentY:b?b.view.contentY:null,columnsReady:service.columns.length>0 && service.columns.every(c=>c.loaded===true),columns:service.columns.map(c=>({path:c.path,loaded:c.loaded,rows:c.rows.length}))});}
+  function replayColumnReply(kind:string):string {const columns=service.columns.slice(),index=columns.findIndex(c=>kind==="ancestor"?c.path!==service.path:c.path===service.path);if(index<0)return JSON.stringify({error:"No captured column"});const old=columns[index],before=JSON.parse(bandState());columns[index]=Object.assign({},old,{rows:kind==="current"?old.rows.slice().reverse():old.rows,loaded:true});if(kind==="path")columns[index]=Object.assign({},columns[index],{path:old.path+"-retired"});if(kind==="count")columns.splice(index,1);fixture.observe("replay-before:"+kind);service.columns=columns;fixture.observe("replay-after:"+kind);return JSON.stringify({kind:kind,path:old.path,index:index,rows:old.rows.map(r=>r.path),before:before});}
+  function reloadColumns():void {service.loadColumns();}
   function showBystander(value:bool):void {bystander.visible=value;}
   function refresh():void {service.refresh();}
   function reverse():void {service.descending=!service.descending;service.refresh();}
