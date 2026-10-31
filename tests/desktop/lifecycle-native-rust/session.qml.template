@@ -5,15 +5,18 @@ import "__SHELL_URI__" as D
 ShellRoot {
  id:audit
  property var transitions:[]
+ property int authorizationCount:0
  function record(kind,detail){transitions=transitions.concat([{kind:kind,detail:detail,available:lifecycle.available,session:lifecycle.session,error:lifecycle.error}]).slice(-64);}
  D.ApplicationLifecycleState {id:lifecycle}
- Connections {target:lifecycle;function onAvailableChanged(){audit.record("availability","");}function onSessionChanged(){audit.record("session","");}}
+ Connections {target:lifecycle;function onAvailableChanged(){audit.record("availability","");}function onSessionChanged(){audit.record("session","");}function onSessionAuthorized(authorization){++audit.authorizationCount;}}
  Connections {target:lifecycle.observer.stderr;function onStreamFinished(){audit.record("provider-stderr",lifecycle.observer.stderr.text.slice(0,1024));}}
  D.SessionOptions {id:options;lifecycle:lifecycle}
  IpcHandler {target:"sessionAudit"
   function begin():void{options.show("reboot");options.confirm();}
   function confirm():void{options.confirm();}
   function cancel():void{options.dismiss();}
-  function status():string{return JSON.stringify({available:lifecycle.available,session:lifecycle.session,applications:lifecycle.applications,visible:options.visible,error:options.error,transitions:audit.transitions});}
+  function retireObserver():void{lifecycle.observer.running=false;}
+  function authorize(token:string):void{lifecycle.sessionCommand("session_authorize",token);}
+  function status():string{return JSON.stringify({available:lifecycle.available,session:lifecycle.session,applications:lifecycle.applications,visible:options.visible,error:options.error,transitions:audit.transitions,authorizationCount:audit.authorizationCount});}
  }
 }

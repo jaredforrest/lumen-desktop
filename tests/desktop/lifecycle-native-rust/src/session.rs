@@ -90,6 +90,67 @@ pub fn run(options: Options) -> Result<()> {
     )?;
     f.ipc("sessionAudit", "begin", &[])?;
     wait_true("second prompt", || Ok(app_state(&f)?["prompt"] == true))?;
+    let before_loss = state(&f)?;
+    let retired_token = before_loss["session"]["token"]
+        .as_str()
+        .filter(|token| !token.is_empty())
+        .ok_or("Missing pending session token")?
+        .to_owned();
+    f.ipc("sessionAudit", "retireObserver", &[])?;
+    wait_true(
+        "owned observer retirement cancels pending authorization",
+        || {
+            let observed = state(&f)?;
+            save(
+                &f.options.output.join("observer-loss.json"),
+                &json!({"before":before_loss,"after":observed}),
+            )?;
+            Ok(observed["available"] == false
+                && observed["session"]["phase"] == "idle"
+                && observed["error"]
+                    == "Application observation was lost. The session remains open.")
+        },
+    )?;
+    require(
+        f.processes[first].alive()? && app_state(&f)?["prompt"] == true && !marker.exists(),
+        "Observer retirement exited dirty application or invoked final action",
+    )?;
+    wait_true(
+        "owned observer reconnects without resuming session action",
+        || Ok(state(&f)?["available"] == true && application(&f)?),
+    )?;
+    require(
+        phase(&f, "idle")? && state(&f)?["authorizationCount"] == 0 && !marker.exists(),
+        "Observer reconnect reused retired session authorization",
+    )?;
+    f.ipc("sessionAudit", "authorize", &[&retired_token])?;
+    wait_true("retired token is refused by the new observer", || {
+        Ok(phase(&f, "blocked")?)
+    })?;
+    require(
+        state(&f)?["authorizationCount"] == 0 && !marker.exists(),
+        "Retired observer token authorized a host action",
+    )?;
+    save(
+        &f.options
+            .output
+            .join("observer-reconnected-stale-token.json"),
+        &state(&f)?,
+    )?;
+    focus_prompt(&f)?;
+    f.call("wtype", &["-k", "Escape"])?;
+    wait_true(
+        "cancel original application prompt after observer loss",
+        || Ok(app_state(&f)?["choice"] == "cancel" && app_state(&f)?["prompt"] == false),
+    )?;
+    f.ipc("sessionAudit", "cancel", &[])?;
+    wait_true("idle after explicit observation-loss cancellation", || {
+        phase(&f, "idle")
+    })?;
+    f.ipc("sessionAudit", "begin", &[])?;
+    wait_true("fresh application prompt after observer loss", || {
+        Ok(app_state(&f)?["prompt"] == true)
+    })?;
     choose(&f, "s")?;
     wait_true("saved client exit", || Ok(!f.processes[first].alive()?))?;
     wait_true("session ready after save", || phase(&f, "ready"))?;
@@ -134,6 +195,7 @@ pub fn run(options: Options) -> Result<()> {
         &json!({"passed":true,"checks":[
             "native app-owned modal save/cancel/discard",
             "cancel preserves live dirty application",
+            "owned observer loss cancels authorization; reconnect refuses retired token and requires fresh user preflight",
             "save persists document",
             "no implicit final action after ready or cancellation",
             "explicit fresh confirmation invokes injected final-action stub once"
