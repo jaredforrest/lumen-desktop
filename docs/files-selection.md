@@ -53,3 +53,18 @@ retain native file-drag offers. The active leaf uses the captured service row
 array after checking equality with the view adapter's ordered identities; the
 view adapter itself is not treated as an authoritative array. Native acceptance
 artifacts are required separately from the source and offscreen tests.
+
+Column panes retain their objects when a reply changes a different ancestor's
+listing. Such replies must preserve the current pane's viewport, input focus and
+held selection preview. A change to the current column's ordered rows, path or
+presence still retires the gesture; destroying a pending selection component
+clears its preview without committing.
+
+The native fixture records actual column reply/object lifetimes and includes a
+controlled replay of an ancestor fact captured from the real file provider. It
+holds that fact before a physical gesture, then applies the production reducer's
+replacement shape during the gesture. This isolates the late-reply interleaving;
+it is not a claim that the replay itself is another provider request. The test
+requires stable pane/view identity, scroll, focus and preview, followed by exact
+captured membership on physical release. Current-row, path and column-count
+changes must still cancel with unchanged committed selection.
