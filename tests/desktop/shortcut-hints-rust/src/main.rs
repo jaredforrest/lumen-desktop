@@ -541,7 +541,7 @@ fn inner(options: &Options) -> Result<()> {
     );
     children.launch(
         "wtype",
-        &["-s", "60000"],
+        &["-k", "Shift_L", "-s", "60000"],
         &envs,
         &options.output.join("keyboard-seat.log"),
     )?;
@@ -576,6 +576,14 @@ fn inner(options: &Options) -> Result<()> {
     )?;
     let mut checks = Vec::new();
     focus(id, shell_pid, &envs)?;
+    wait("owned current keyboard and effective default hint", || {
+        let value = state(shell_pid, &envs)?;
+        fs::write(
+            options.output.join("default-hint-observation.json"),
+            serde_json::to_vec_pretty(&value)?,
+        )?;
+        Ok((value["layout"]["available"] == true && value["hint"] == "Ctrl+Super+F").then_some(()))
+    })?;
     require(
         state(shell_pid, &envs)?["hint"] == "Ctrl+Super+F",
         "Default hint changed",
