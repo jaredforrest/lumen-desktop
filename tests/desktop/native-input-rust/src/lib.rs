@@ -21,7 +21,9 @@ pub type Result<T> = std::result::Result<T, Box<dyn Error>>;
 fn private_runtime_root() -> std::io::Result<TempDir> {
     // Qt local IPC reserves two bytes in sun_path. Keep framework-generated
     // socket suffixes independent of inherited CI/Nix TMPDIR path lengths.
-    tempfile::Builder::new().prefix("lni-").tempdir_in("/tmp")
+    let root = tempfile::Builder::new().prefix("lni-").tempdir_in("/tmp")?;
+    fs::set_permissions(root.path(), fs::Permissions::from_mode(0o700))?;
+    Ok(root)
 }
 
 #[cfg(test)]
