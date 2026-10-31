@@ -161,11 +161,11 @@ fn watch()->Result<()>{
             let status=unsafe{libc::poll(polls.as_mut_ptr(),polls.len() as libc::nfds_t,1000)};
             if status<0{if std::io::Error::last_os_error().kind()==std::io::ErrorKind::Interrupted{continue;}return Err("Application observation unavailable".into());}
             if polls[0].revents!=0{
-                if pending(&mut events,&mut nodes,&mut query,&path,&identity,&mut lifecycle,&mut session,&protocol,&mut store,&mut last)?.is_none(){return Ok(());}
+                if pending(&mut events,&mut nodes,&mut query,&path,&identity,&mut lifecycle,&mut session,&protocol,&mut store,&mut last)?.is_none(){eprintln!("Application observer stopped: compositor shutdown");return Ok(());}
             }
             if polls[1].revents!=0{
                 let mut chunk=[0_u8;65537];let count=std::io::stdin().read(&mut chunk).map_err(|error|error.to_string())?;
-                if count==0{return Ok(());}
+                if count==0{eprintln!("Application observer stopped: request stream closed");return Ok(());}
                 input.extend_from_slice(&chunk[..count]);
                 if input.len()>65536&&!input.contains(&b'\n'){return Err("Application request exceeds limit".into());}
                 while let Some(position)=input.iter().position(|byte|*byte==b'\n'){
