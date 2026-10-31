@@ -137,8 +137,7 @@ pub fn run(options: Options) -> Result<()> {
             .join("observer-reconnected-stale-token.json"),
         &state(&f)?,
     )?;
-    focus_prompt(&f)?;
-    f.call("wtype", &["-k", "Escape"])?;
+    choose(&f, "c")?;
     wait_true(
         "cancel original application prompt after observer loss",
         || Ok(app_state(&f)?["choice"] == "cancel" && app_state(&f)?["prompt"] == false),
