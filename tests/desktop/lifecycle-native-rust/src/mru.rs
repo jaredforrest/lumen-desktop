@@ -46,6 +46,7 @@ fn focus(f: &Fixture, id: &str) -> Result<()> {
 }
 fn selected(f: &Fixture, id: &str) -> Result<Value> {
     let mut value = picker(f, "begin")?;
+    let mut attempts=vec![value.clone()];
     let count = value["items"]
         .as_array()
         .ok_or("Switcher items missing")?
@@ -55,7 +56,9 @@ fn selected(f: &Fixture, id: &str) -> Result<Value> {
             return Ok(value);
         }
         value = picker(f, "next")?;
+        attempts.push(value.clone());
     }
+    save(&f.options.output.join(format!("selection-missing-{id}.json")),&json!({"requested":id,"attempts":attempts,"state":state(f)?,"tree":f.tree()?}))?;
     Err("Live switcher missing captured application".into())
 }
 fn client(f: &Fixture, index: usize) -> Result<Value> {
