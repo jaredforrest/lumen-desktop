@@ -1,4 +1,6 @@
 //! Software rendered production MenuCard text at every supported text scale.
+#[path = "../private_runtime.rs"]
+mod private_runtime;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::env;
@@ -72,7 +74,7 @@ fn run(launcher: &Path, font_config: &Path, output: &Path) -> Result<()> {
         .replace("@OUTPUT@",&Value::String(output.display().to_string()).to_string());
     let qml=output.join("fixture.qml"); fs::write(&qml,fixture)?;
     let home=output.join("home");fs::create_dir(&home)?;
-    let runtime=output.join("runtime");fs::create_dir(&runtime)?;fs::set_permissions(&runtime,fs::Permissions::from_mode(0o700))?;
+    let private_runtime=private_runtime::PrivateRuntime::new()?;let runtime=private_runtime.path();
     let mut environment=env::vars().collect::<BTreeMap<_,_>>();environment.extend(vars);
     for key in ["WAYLAND_DISPLAY","DISPLAY","SWAYSOCK","AT_SPI_BUS_ADDRESS"] {environment.remove(key);}
     for (key,value) in [("HOME",home.display().to_string()),("XDG_RUNTIME_DIR",runtime.display().to_string()),("FONTCONFIG_FILE",font_config.display().to_string()),("QT_QPA_PLATFORM","offscreen".into()),("QT_QPA_PLATFORMTHEME","generic".into()),("QT_QUICK_BACKEND","software".into()),("QT_ACCESSIBILITY","0".into()),("QT_LINUX_ACCESSIBILITY_ALWAYS_ON","0".into()),("NO_AT_BRIDGE","1".into()),("GTK_A11Y","none".into())] {environment.insert(key.into(),value);}
@@ -84,12 +86,13 @@ fn run(launcher: &Path, font_config: &Path, output: &Path) -> Result<()> {
     let end=Instant::now()+Duration::from_secs(35);
     let status=loop {if let Some(status)=child.try_wait()? {break status;} if Instant::now()>end {unsafe {libc::kill(-(child.id() as i32),libc::SIGKILL);} child.wait()?;return Err("Menu typography QML timed out".into());}thread::sleep(Duration::from_millis(30));};
     let text=fs::read_to_string(&log)?;
+    let runtime_ipc_bytes=private_runtime.verify_log(&text)?;
     need(status.success() && !text.contains("MENU_TEXT_FAILURE"),format!("Menu QML failed: {text}"))?;
-    for marker in ["WARN","ReferenceError:","TypeError:","Binding loop"] {need(!text.contains(marker),format!("Menu QML warning: {marker}"))?;}
+    for marker in ["WARN","ReferenceError:","TypeError:","Binding loop","Failed to start IPC"] {need(!text.contains(marker),format!("Menu QML warning: {marker}"))?;}
     let line=text.lines().find_map(|line|line.split_once("MENU_TEXT_RESULT ").map(|(_,value)|value)).ok_or("Missing menu text result")?;
     let mut records:Vec<Value>=serde_json::from_str(line)?;need(records.len()==16,"Expected 16 menu cases")?;
     for row in &mut records {let capture=PathBuf::from(row["capture"].as_str().ok_or("capture")?);for name in ["label","shortcut"] {let pixels=ink(&capture,&row[name])?;row[name]["ink"]=json!(pixels);}}
-    fs::write(output.join("result.json"),serde_json::to_vec_pretty(&json!({"passed":true,"cases":records}))?)?;
+    fs::write(output.join("result.json"),serde_json::to_vec_pretty(&json!({"passed":true,"cases":records,"runtimeIpcBytes":runtime_ipc_bytes}))?)?;
     Ok(())
 }
 fn main() -> Result<()> {

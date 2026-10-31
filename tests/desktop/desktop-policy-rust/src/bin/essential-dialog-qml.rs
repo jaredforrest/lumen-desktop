@@ -1,4 +1,6 @@
 //! Software-rendered production essential dialog text at constrained sizes and scales.
+#[path = "../private_runtime.rs"]
+mod private_runtime;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::env;
@@ -95,7 +97,7 @@ fn run(launcher:&Path,font_config:&Path,output:&Path)->Result<()> {
         .replace("@OUTPUT@",&Value::String(output.display().to_string()).to_string());
     let qml=output.join("fixture.qml");fs::write(&qml,fixture)?;
     let home=output.join("home");fs::create_dir(&home)?;
-    let runtime=output.join("runtime");fs::create_dir(&runtime)?;fs::set_permissions(&runtime,fs::Permissions::from_mode(0o700))?;
+    let private_runtime=private_runtime::PrivateRuntime::new()?;let runtime=private_runtime.path();
     let bin=output.join("bin");fs::create_dir(&bin)?;
     let exe=env::current_exe()?;for name in ["lumen-window-pair","lumen-display-settings"]{symlink(&exe,bin.join(name))?;}
     let mut environment=env::vars().collect::<BTreeMap<_,_>>();environment.extend(vars);
@@ -115,13 +117,14 @@ fn run(launcher:&Path,font_config:&Path,output:&Path)->Result<()> {
     let end=Instant::now()+Duration::from_secs(45);
     let status=loop {if let Some(status)=child.try_wait()?{break status;}if Instant::now()>end{unsafe{libc::kill(-(child.id() as i32),libc::SIGKILL);}child.wait()?;return Err("Essential dialog QML timed out".into());}thread::sleep(Duration::from_millis(30));};
     let text=fs::read_to_string(&log)?;
+    let runtime_ipc_bytes=private_runtime.verify_log(&text)?;
     need(status.success() && !text.contains("ESSENTIAL_DIALOG_FAILURE"),format!("Essential dialog QML failed: {text}"))?;
-    for marker in ["WARN","ReferenceError:","TypeError:","Binding loop"]{need(!text.contains(marker),format!("Essential dialog QML warning: {marker}"))?;}
+    for marker in ["WARN","ReferenceError:","TypeError:","Binding loop","Failed to start IPC"]{need(!text.contains(marker),format!("Essential dialog QML warning: {marker}"))?;}
     let line=text.lines().find_map(|line|line.split_once("ESSENTIAL_DIALOG_RESULT ").map(|(_,value)|value)).ok_or("Missing QML result")?;
     let mut records:Vec<Value>=serde_json::from_str(line)?;need(records.len()==48,"Expected 48 dialog cases")?;
     need(!output.join("mutations.jsonl").exists(),"A private provider mutation occurred")?;
     for row in &mut records {let capture=PathBuf::from(row["capture"].as_str().ok_or("Capture")?);let pixels=ink(&capture,&row["painted"])?;row["painted"]["ink"]=json!(pixels);}
-    fs::write(output.join("result.json"),serde_json::to_vec_pretty(&json!({"passed":true,"cases":records,"scope":"Production dialog QML painted action labels, text roles and focus reveal; transport adapted"}))?)?;
+    fs::write(output.join("result.json"),serde_json::to_vec_pretty(&json!({"passed":true,"cases":records,"runtimeIpcBytes":runtime_ipc_bytes,"scope":"Production dialog QML painted action labels, text roles and focus reveal; transport adapted"}))?)?;
     Ok(())
 }
 fn main()->Result<()> {

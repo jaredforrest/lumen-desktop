@@ -1,4 +1,6 @@
 //! Actual switcher function routing with real QObjects; no compositor required.
+#[path = "../private_runtime.rs"]
+mod private_runtime;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::os::unix::fs::PermissionsExt;
@@ -79,7 +81,8 @@ fn run() -> Result<()> {
         );
     fs::write(output.join("shell.qml"), fixture)?;
     fs::write(output.join("AppSwitcherModel.js"), &model)?;
-    for name in ["home", "runtime", "config", "cache", "state"] {
+    let runtime = private_runtime::PrivateRuntime::new()?;
+    for name in ["home", "config", "cache", "state"] {
         fs::create_dir(output.join(name))?;
         fs::set_permissions(output.join(name), fs::Permissions::from_mode(0o700))?;
     }
@@ -91,7 +94,7 @@ fn run() -> Result<()> {
         .arg(output.join("shell.qml"))
         .env_clear()
         .env("HOME", output.join("home"))
-        .env("XDG_RUNTIME_DIR", output.join("runtime"))
+        .env("XDG_RUNTIME_DIR", runtime.path())
         .env("XDG_CONFIG_HOME", output.join("config"))
         .env("XDG_CACHE_HOME", output.join("cache"))
         .env("XDG_STATE_HOME", output.join("state"))
@@ -122,6 +125,7 @@ fn run() -> Result<()> {
         thread::sleep(Duration::from_millis(20));
     };
     let log = fs::read_to_string(log)?;
+    let runtime_ipc_bytes = runtime.verify_log(&log)?;
     if !status.success()
         || !log.contains("SWITCHER_COVERAGE_PASS ")
         || log.contains("SWITCHER_COVERAGE_FAILED")
@@ -130,7 +134,7 @@ fn run() -> Result<()> {
             .lines()
             .filter(|line| !line.contains("SWITCHER_COVERAGE_PASS "))
             .any(|line| {
-                ["WARN", "TypeError", "ReferenceError", "Binding loop"]
+                ["WARN", "TypeError", "ReferenceError", "Binding loop", "Failed to start IPC"]
                     .iter()
                     .any(|marker| line.contains(marker))
             })
@@ -151,7 +155,7 @@ fn run() -> Result<()> {
     fs::write(
         output.join("result.json"),
         serde_json::to_vec_pretty(
-            &json!({"passed":true,"cases":cases,"production":source,"quickshell":quickshell,"productionSha256":format!("{:x}",Sha256::digest(production.as_bytes())),"modelSha256":format!("{:x}",Sha256::digest(model)),"scope":"Unmodified production identity/command/commit bodies and model; actual offscreen QML with real QObjects. Synthetic broker and desktop-entry resolution; no native/XWayland client or compositor acceptance."}),
+            &json!({"passed":true,"cases":cases,"runtimeIpcBytes":runtime_ipc_bytes,"production":source,"quickshell":quickshell,"productionSha256":format!("{:x}",Sha256::digest(production.as_bytes())),"modelSha256":format!("{:x}",Sha256::digest(model)),"scope":"Unmodified production identity/command/commit bodies and model; actual offscreen QML with real QObjects. Synthetic broker and desktop-entry resolution; no native/XWayland client or compositor acceptance."}),
         )?,
     )?;
     Ok(())
