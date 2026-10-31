@@ -6,13 +6,17 @@ const IDS: [&str; 3] = ["org.example.MruA", "org.example.MruB", "org.example.Mru
 fn state(f: &Fixture) -> Result<Value> {
     f.state("mruAudit", "last-mru.json")
 }
-fn physical(f:&Fixture,key:&str)->Result<()>{
-    wait_true("switcher owns keyboard before physical decision",||{
-        let current=state(f)?;
-        save(&f.options.output.join("mru-keyboard-readiness.json"),&current)?;
-        Ok(current["switcher"]["keyboardReady"]==true)
+fn physical(f: &Fixture, key: &str) -> Result<()> {
+    wait_true("switcher owns keyboard before physical decision", || {
+        let current = state(f)?;
+        save(
+            &f.options.output.join("mru-keyboard-readiness.json"),
+            &current,
+        )?;
+        Ok(current["switcher"]["keyboardReady"] == true)
     })?;
-    f.call("wtype",&["-k",key])?;Ok(())
+    f.call("wtype", &["-k", key])?;
+    Ok(())
 }
 fn ordered(value: &Value, key: &str) -> Vec<String> {
     value[key]
@@ -26,8 +30,11 @@ fn ordered(value: &Value, key: &str) -> Vec<String> {
 }
 fn order(f: &Fixture, expected: &[&str]) -> Result<()> {
     wait_true("real application activation order", || {
-        let value=state(f)?;
-        Ok(ordered(&value,"history")==expected && ordered(&value,"observerHistory")==expected)
+        let value = state(f)?;
+        Ok(
+            ordered(&value, "history") == expected
+                && ordered(&value, "observerHistory") == expected,
+        )
     })
 }
 fn picker(f: &Fixture, action: &str) -> Result<Value> {
@@ -46,7 +53,7 @@ fn focus(f: &Fixture, id: &str) -> Result<()> {
 }
 fn selected(f: &Fixture, id: &str) -> Result<Value> {
     let mut value = picker(f, "begin")?;
-    let mut attempts=vec![value.clone()];
+    let mut attempts = vec![value.clone()];
     let count = value["items"]
         .as_array()
         .ok_or("Switcher items missing")?
@@ -58,7 +65,12 @@ fn selected(f: &Fixture, id: &str) -> Result<Value> {
         value = picker(f, "next")?;
         attempts.push(value.clone());
     }
-    save(&f.options.output.join(format!("selection-missing-{id}.json")),&json!({"requested":id,"attempts":attempts,"state":state(f)?,"tree":f.tree()?}))?;
+    save(
+        &f.options
+            .output
+            .join(format!("selection-missing-{id}.json")),
+        &json!({"requested":id,"attempts":attempts,"state":state(f)?,"tree":f.tree()?}),
+    )?;
     Err("Live switcher missing captured application".into())
 }
 fn client(f: &Fixture, index: usize) -> Result<Value> {
@@ -83,7 +95,11 @@ fn zero(f: &Fixture) -> Result<bool> {
 }
 pub fn run(options: Options) -> Result<()> {
     let mut f = Fixture::new(options)?;
-    f.launch(Path::new("swaymsg"), &["-m","-t","subscribe","[\"window\"]"], "native-window-events.log")?;
+    f.launch(
+        Path::new("swaymsg"),
+        &["-m", "-t", "subscribe", "[\"window\"]"],
+        "native-window-events.log",
+    )?;
     let qml = f.qml.clone();
     let desktop = f.launch(
         Path::new("quickshell"),
@@ -110,23 +126,42 @@ pub fn run(options: Options) -> Result<()> {
     // GTK window objects may exist before their surfaces have mapped. Require
     // both compositor observation and shell toplevel enumeration before focus.
     wait_true("all native application surfaces mapped", || {
-        let value=state(&f)?;
-        Ok(IDS.iter().all(|id| value["windows"].as_array().is_some_and(|windows|windows.iter().filter(|window|window.as_str()==Some(id)).count()==2)
-            && value["apps"].as_array().is_some_and(|apps|apps.iter().any(|app|app["appId"]==*id && app["windowCount"]==2))))
+        let value = state(&f)?;
+        Ok(IDS.iter().all(|id| {
+            value["windows"].as_array().is_some_and(|windows| {
+                windows
+                    .iter()
+                    .filter(|window| window.as_str() == Some(id))
+                    .count()
+                    == 2
+            }) && value["apps"].as_array().is_some_and(|apps| {
+                apps.iter()
+                    .any(|app| app["appId"] == *id && app["windowCount"] == 2)
+            })
+        }))
     })?;
     for id in IDS {
         focus(&f, id)?;
     }
     let expected = [IDS[2], IDS[1], IDS[0]];
     order(&f, &expected)?;
-    save(&f.options.output.join("mru-after-focus-sequence.json"),&state(&f)?)?;
-    save(&f.options.output.join("native-before-zero-windows.json"),&f.tree()?)?;
+    save(
+        &f.options.output.join("mru-after-focus-sequence.json"),
+        &state(&f)?,
+    )?;
+    save(
+        &f.options.output.join("native-before-zero-windows.json"),
+        &f.tree()?,
+    )?;
     fs::write(
         f.options.output.join("client-1/command"),
         "hide all windows",
     )?;
     wait_true("retained middle application has zero windows", || zero(&f))?;
-    save(&f.options.output.join("native-after-zero-windows.json"),&f.tree()?)?;
+    save(
+        &f.options.output.join("native-after-zero-windows.json"),
+        &f.tree()?,
+    )?;
     order(&f, &expected)?;
     let initial = state(&f)?;
     require(
@@ -169,7 +204,7 @@ pub fn run(options: Options) -> Result<()> {
         "Switcher relative order differs before restart",
     )?;
     order(&f, &expected)?;
-    physical(&f,"Escape")?;
+    physical(&f, "Escape")?;
     wait_true("physical Escape closes preview", || {
         Ok(state(&f)?["switcher"]["visible"] == false)
     })?;
@@ -222,7 +257,7 @@ pub fn run(options: Options) -> Result<()> {
     let preview = selected(&f, IDS[1])?;
     let commits = preview["commits"].as_u64().ok_or("Switcher commit count")?;
     order(&f, &expected)?;
-    physical(&f,"Return")?;
+    physical(&f, "Return")?;
     wait_true("physical commit reopens retained owner", || {
         Ok(client(&f, 1)?["windows"] == 2 && state(&f)?["active"] == IDS[1])
     })?;
@@ -246,6 +281,26 @@ pub fn run(options: Options) -> Result<()> {
     wait_true("stale target windows hidden", || {
         Ok(client(&f, 2)?["windows"] == 0)
     })?;
+    let original_instances = instances(&initial, IDS[2])?;
+    wait_true(
+        "same retained owner published after its last native surface closes",
+        || {
+            let observed = state(&f)?;
+            save(
+                &f.options.output.join("mru-stale-target-readiness.json"),
+                &observed,
+            )?;
+            Ok(observed["apps"].as_array().is_some_and(|rows| {
+                rows.iter().any(|row| {
+                    row["appId"] == IDS[2] && row["zeroWindows"] == true && row["windowCount"] == 0
+                })
+            }) && observed["windows"]
+                .as_array()
+                .is_some_and(|windows| !windows.iter().any(|window| window == IDS[2]))
+                && instances(&observed, IDS[2])? == original_instances
+                && f.processes[children[2]].alive()?)
+        },
+    )?;
     let captured = selected(&f, IDS[2])?;
     let commits = captured["commits"].clone();
     f.stop(children[2])?;
@@ -254,7 +309,7 @@ pub fn run(options: Options) -> Result<()> {
             .as_array()
             .is_some_and(|rows| !rows.iter().any(|row| row["appId"] == IDS[2])))
     })?;
-    physical(&f,"Return")?;
+    physical(&f, "Return")?;
     wait_true("stale physical commit fails closed", || {
         let v = state(&f)?;
         Ok(v["switcher"]["visible"] == false
