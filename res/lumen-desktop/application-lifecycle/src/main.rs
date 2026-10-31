@@ -181,4 +181,4 @@ fn watch()->Result<()>{
     if result.is_err(){emit(false,&lifecycle,&session,&mut store,&mut last,"Application lifecycle observation is unavailable; window-based state remains available.",None);}
     session.cancel();lifecycle.close();result
 }
-fn main(){let _=watch();}
+fn main(){if let Err(error)=watch(){eprintln!("Application observer retired: {}",error.chars().take(256).collect::<String>());}}
