@@ -19,6 +19,36 @@ use walkdir::WalkDir;
 pub mod keyboard;
 
 pub type Result<T> = std::result::Result<T, Box<dyn Error>>;
+
+fn private_runtime_root() -> std::io::Result<TempDir> {
+    let root = tempfile::Builder::new().prefix("lni-").tempdir_in("/tmp")?;
+    fs::set_permissions(root.path(), fs::Permissions::from_mode(0o700))?;
+    Ok(root)
+}
+
+#[cfg(test)]
+mod runtime_tests {
+    use super::*;
+    use std::os::unix::{ffi::OsStrExt, net::UnixListener};
+
+    #[test]
+    fn private_runtime_reserves_qt_socket_suffix_and_retires_after_use() {
+        let root = private_runtime_root().unwrap();
+        let path = root.path().to_owned();
+        assert_eq!(path.parent(), Some(Path::new("/tmp")));
+        assert_eq!(
+            fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        let socket = path.join("quickshell/by-id/xxxxxxxxxxxxxxxx/ipc.sock");
+        assert!(socket.as_os_str().as_bytes().len() <= 106);
+        fs::create_dir_all(socket.parent().unwrap()).unwrap();
+        let listener = UnixListener::bind(&socket).unwrap();
+        drop(listener);
+        drop(root);
+        assert!(!path.exists());
+    }
+}
 pub fn fail(message: impl Into<String>) -> Box<dyn Error> {
     message.into().into()
 }
@@ -160,14 +190,14 @@ impl Session {
         session.out = fs::canonicalize(output)?;
         Ok(session)
     }
-    pub fn new(output: &Path, launcher: &Path, sway: &Path, prefix: &str) -> Result<Self> {
+    pub fn new(output: &Path, launcher: &Path, sway: &Path, _prefix: &str) -> Result<Self> {
         ensure(
             !output.exists(),
             format!("Fresh output directory required: {}", output.display()),
         )?;
         fs::create_dir_all(output)?;
         let out = fs::canonicalize(output)?;
-        let root = tempfile::Builder::new().prefix(prefix).tempdir()?;
+        let root = private_runtime_root()?;
         fs::set_permissions(root.path(), fs::Permissions::from_mode(0o700))?;
         let mut values = env::vars().collect::<BTreeMap<_, _>>();
         values.insert("HOME".into(), s(root.path()));
