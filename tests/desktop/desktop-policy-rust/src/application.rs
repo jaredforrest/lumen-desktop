@@ -287,17 +287,46 @@ fn run_native(ctx: &mut Context) -> Result<()> {
     let owned = wait("owned utility", || {
         Ok(ctx.app("org.example.Utility")?.into_iter().next())
     })?;
-    assign(ctx, &owned, "all", None)?;
-    await_projection(ctx, &owned, false, false)?;
+    let parent_id = native_id(ctx, &owned["id"])?["lumen_relationships"]["parent"].clone();
+    let parent = native_id(ctx, &parent_id)?;
+    let owned_placement = placement(ctx, &owned)?;
     need(
-        ctx.row(&owned["id"])?["allDesktopMembership"]["status"] == "pending",
-        "Owned utility became active",
+        parent["pid"] == owned["pid"]
+            && parent["app_id"] == "org.example.Editor"
+            && projection(ctx, &parent_id, false, true)?["enabled"] == false,
+        "Expected exact unassigned other-application family owner",
+    )?;
+    assign(ctx, &owned, "all", None)?;
+    let pending = await_projection(ctx, &owned, true, false)?;
+    save(
+        &ctx.opt.output.join("owned-family-direct-intent.json"),
+        &json!({"childBefore":owned,"childAfter":native_id(ctx,&owned["id"])?,"parentBefore":parent,"parentAfter":native_id(ctx,&parent_id)?,"placementBefore":owned_placement,"placementAfter":placement(ctx,&owned)?}),
+    )?;
+    need(
+        pending["reason"] == "owned-family-pending"
+            && pending["projected"] == false
+            && ctx.row(&owned["id"])?["allDesktopMembership"]["status"] == "pending"
+            && projection(ctx, &parent_id, false, false)?["reason"] == "owned-family-pending"
+            && native_id(ctx, &parent_id)?["pid"] == parent["pid"]
+            && native_id(ctx, &parent_id)?["foreign_toplevel_identifier"]
+                == parent["foreign_toplevel_identifier"]
+            && placement(ctx, &owned)? == owned_placement,
+        "Explicit utility intent inherited owner authority, projected an incomplete family or changed its origin",
     )?;
     ctx.write(relation, "modal\n")?;
     wait("modal utility", || {
         Ok((native_id(ctx, &owned["id"])?["lumen_relationships"]["modal"] == true).then_some(()))
     })?;
-    await_projection(ctx, &owned, false, false)?;
+    let modal = await_projection(ctx, &owned, true, false)?;
+    need(
+        modal["reason"] == "modal-owner-suspended"
+            && projection(ctx, &parent_id, false, false)?["reason"] == "modal-owner-suspended",
+        "Modal suspension lost the child's direct intent or granted owner intent",
+    )?;
+    save(
+        &ctx.opt.output.join("owned-family-modal-suspension.json"),
+        &json!({"child":native_id(ctx,&owned["id"])?,"parent":native_id(ctx,&parent_id)?}),
+    )?;
     ctx.write(relation, "unmodal\n")?;
     wait("unmodal utility", || {
         Ok((native_id(ctx, &owned["id"])?["lumen_relationships"]["modal"] == false).then_some(()))
@@ -314,7 +343,7 @@ fn run_native(ctx: &mut Context) -> Result<()> {
         relation_log.contains("unknown command") && !relation_log.contains("ack unparent-unknown"),
         "False unknown-command acknowledgement",
     )?;
-    checks.push("Owned/modal roles remain pending with native constraints; only real unparent/unmodal permits reconciliation, and the exact helper rejects unknown commands");
+    checks.push("Explicit utility assignment stages only its direct flag; unassigned other-app owner stays unassigned, incomplete/modal families remain pending, and real unparent/unmodal converges without inherited authority; exact helper rejects unknown commands");
     let grouped = ctx.foot("membership-grouped", "grouped")?;
     let grouped_peer = ctx.foot("membership-grouped", "grouped-peer")?;
     let groups = ctx.tree()?["window_groups"].clone();
