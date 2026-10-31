@@ -202,12 +202,38 @@ fn group_hidden(group: &Value) -> Result<bool> {
         .iter()
         .all(|m| truth(&m["group_hidden"])))
 }
-fn no_group_hidden(row: &Value) -> Value {
+fn independent_state(row: &Value) -> Value {
     let mut value = row["lumen_state"].clone();
     if let Some(map) = value.as_object_mut() {
         map.remove("group_hidden");
+        map.remove("group_member");
     }
     value
+}
+#[cfg(test)]
+mod independent_state_tests {
+    use super::*;
+
+    #[test]
+    fn group_disable_cannot_hide_independent_state_changes() {
+        let before = json!({"lumen_state":{"version":1,"group_hidden":true,"group_member":true,"hidden":true,"minimised":true,"desktop_hidden":false,"restore_workspace":"1","restore_workspaces":["1"]}});
+        let mut off = before.clone();
+        off["lumen_state"]["group_hidden"] = json!(false);
+        off["lumen_state"]["group_member"] = json!(false);
+        assert_eq!(independent_state(&before), independent_state(&off));
+        for field in ["hidden", "minimised", "desktop_hidden"] {
+            let mut mutated = off.clone();
+            mutated["lumen_state"][field] = json!(!off["lumen_state"][field].as_bool().unwrap());
+            assert_ne!(
+                independent_state(&before),
+                independent_state(&mutated),
+                "{field}"
+            );
+        }
+        let mut mutated = off.clone();
+        mutated["lumen_state"]["restore_workspaces"] = json!(["2"]);
+        assert_ne!(independent_state(&before), independent_state(&mutated));
+    }
 }
 pub fn run(ctx: &mut Context) -> Result<()> {
     ensure(
@@ -384,19 +410,34 @@ pub fn run(ctx: &mut Context) -> Result<()> {
         true,
     )?;
     let hidden = [
-        no_group_hidden(&ctx.window(1)?.ok_or("Window 1 missing")?),
-        no_group_hidden(&ctx.window(3)?.ok_or("Window 3 missing")?),
+        ctx.window(1)?.ok_or("Window 1 missing")?,
+        ctx.window(3)?.ok_or("Window 3 missing")?,
     ];
     act(ctx, "off", "", true, None)?;
     ensure(!truth(&state(ctx)?["enabled"]), "Group mode stayed enabled")?;
+    let off = state(ctx)?;
+    ensure(
+        off["groups"].as_array().is_some_and(Vec::is_empty),
+        "Disabled native groups retained membership rows",
+    )?;
+    for n in 0..4 {
+        let row = ctx.window(n)?.ok_or("Group member missing after disable")?;
+        ensure(
+            row["lumen_state"]["group_member"] == false
+                && row["lumen_state"]["group_hidden"] == false,
+            "Group-owned membership or visibility mask survived disable",
+        )?;
+    }
     for (index, n) in [1, 3].into_iter().enumerate() {
         let after = ctx.window(n)?.ok_or("Window missing")?;
         save(
-            &ctx.opt.output.join(format!("group-off-independent-state-{n}.json")),
-            &json!({"before":hidden[index],"after":no_group_hidden(&after),"nativeAfter":after,"groups":state(ctx)?}),
+            &ctx.opt
+                .output
+                .join(format!("group-off-independent-state-{n}.json")),
+            &json!({"nativeBefore":hidden[index],"nativeAfter":after,"independentBefore":independent_state(&hidden[index]),"independentAfter":independent_state(&after),"groups":off}),
         )?;
         ensure(
-            no_group_hidden(&after) == hidden[index],
+            independent_state(&after) == independent_state(&hidden[index]),
             "Independent hide state changed",
         )?;
     }
