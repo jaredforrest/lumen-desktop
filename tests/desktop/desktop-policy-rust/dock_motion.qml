@@ -28,7 +28,8 @@ ShellRoot {
             {key:"trash",action:"trash",image:"files.svg",canvas:68}
         ]
         property bool dockPreferencesBusy: settings.applying
-        property var referenceDock: Model.build(reference,apps,[],settings.preferences.dockPins,[apps[3]],true,settings.preferences.dockFolders,settings.preferences.dockFiles)
+        property bool emptyModel:false
+        property var referenceDock: emptyModel?[]:Model.build(reference,apps,[],settings.preferences.dockPins,[apps[3]],true,settings.preferences.dockFolders,settings.preferences.dockFiles)
         property string popupOwner: ""
         property date currentDate: new Date()
         property var activations: []
@@ -52,10 +53,13 @@ ShellRoot {
         target: "dockAudit"
         function applyPins(value:string):string {settings.setPreference("dockPins",value.split("|"));return JSON.stringify({applying:settings.applying});}
         function pollSettings():string {settings.refresh();return JSON.stringify({started:settings.busy,applying:settings.applying});}
+        function dismissDock():string {stub.claimPopup("fixture-other");return "dismissed";}
+        function focusDock():string {stub.requestDockFocus(dock.outputName);return "requested";}
+        function emptyDock(value:bool):string {stub.emptyModel=value;return "updated";}
         function status(): string {
             return JSON.stringify({keys:stub.referenceDock.map(x=>x.key),separators:stub.referenceDock.map(x=>x.separatorBefore),
                 width:dock.width,height:dock.height,slot:dock.slot,shelf:dock.shelfThickness,
-                pressedKey:dock.pressedKey,pressIntent:dock.pressIntent?dock.pressIntent.item.key:"",intentValid:!!dock.dragIntentValid(),pointerEvents:audit.pointerEvents,dragging:dock.dragging,hovered:dock.hovered,pointerSlot:dock.pointerSlot,
+                pressedKey:dock.pressedKey,pressIntent:dock.pressIntent?dock.pressIntent.item.key:"",intentValid:!!dock.dragIntentValid(),pointerEvents:audit.pointerEvents,dragging:dock.dragging,hovered:dock.hovered,pointerSlot:dock.pointerSlot,keyboardMode:dock.keyboardMode,keyboardIndex:dock.keyboardIndex,popupOwner:stub.popupOwner,
                 contains:dock.fixturePointer.containsMouse,pressed:dock.fixturePointer.pressed,
                 tip:dock.fixtureTip.text,tipVisible:dock.fixtureTipWindow.visible,tiles:dock.fixtureTiles(),
                 activations:stub.activations,busy:settings.busy,applying:settings.applying,ready:settings.available,pins:settings.preferences.dockPins});

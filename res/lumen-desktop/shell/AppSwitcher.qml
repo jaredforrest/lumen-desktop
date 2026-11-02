@@ -131,10 +131,10 @@ PanelWindow {
             if([Qt.Key_Meta,Qt.Key_Super_L,Qt.Key_Super_R].includes(event.key)){root.commit();event.accepted=true;}
         }
         MouseArea {anchors.fill:parent;onClicked:root.command("cancel")}
-        Rectangle {
+        PanelSurface {
             anchors.centerIn:parent
             width:Math.min((root.screen?root.screen.width:1000)-64,root.items.length*root.tileWidth+32)
-            height:Math.max(142,118+Math.ceil(Theme.textSize(12)*1.5));radius:20;color:Theme.colors.background;border.color:Theme.outline
+            height:Math.max(142,118+Math.ceil(Theme.textSize(12)*1.5));radius:20
             ListView {
                 id:view;anchors.fill:parent;anchors.margins:16;orientation:ListView.Horizontal
                 model:root.items;clip:true;spacing:0

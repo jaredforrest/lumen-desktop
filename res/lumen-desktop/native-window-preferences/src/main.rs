@@ -130,6 +130,8 @@ fn gimp(config:&Path,args:&[String])->Result<()> {
 }
 
 fn run(app:&str,args:&[String])->Result<()> {
+    // Inspection commands do not mutate supported application profiles.
+    if ["brave","gimp","obsidian"].contains(&app) && args.iter().any(|arg|["--help", "-h", "--version"].contains(&arg.as_str())) { return Ok(()); }
     let home=env::var_os("HOME").ok_or("HOME is missing")?;
     let config=env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(||PathBuf::from(home).join(".config"));
     match app {

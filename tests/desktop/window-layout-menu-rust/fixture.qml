@@ -28,6 +28,18 @@ ShellRoot {
         onTriggered: {
             menu.event('{"lumen_layout":1,"id":42,"x":20,"y":30}');
             check(menu.target === 42, "valid target");
+            const capture={version:1,conId:43,pid:123,foreignId:"0123456789abcdef0123456789abcdef",appId:"org.quickshell",title:"Captured window",key:"43:123:0123456789abcdef0123456789abcdef"};
+            menu.event(JSON.stringify({lumen_layout:1,id:43,x:20,y:30,capture:capture}));
+            check(menu.target===43 && menu.targetCapture.key===capture.key,"capture retained");
+            menu.event('{"lumen_layout":1,"id":0}');
+            check(menu.targetCapture.key===capture.key,"native leave cannot cancel captured hover");
+            menu.event(JSON.stringify({lumen_layout:1,id:44,x:20,y:30,capture:capture}));
+            check(menu.target===43,"reject capture for another window");
+            menu.pairedLayoutsSupported=true;
+            check(menu.choices.length===11,"captured menu excludes uncaptured pairing actions");
+            menu.dismiss();
+            menu.pairedLayoutsSupported=false;
+            menu.event('{"lumen_layout":1,"id":42,"x":20,"y":30}');
             menu.event('{"lumen_layout":1,"id":"43","x":20,"y":30}');
             check(menu.target === 42, "reject string target");
             menu.event('{"lumen_layout":1,"id":-1,"x":20,"y":30}');

@@ -222,7 +222,7 @@ PanelWindow {
         visible: bar.menu!=="" || menuFade.running || (shell.popupOwner!=="" && !(shell.popupOwner==="exported" && exported.output===bar.screen) && shell.popupOwner!=="dock:"+bar.outputName)
         anchors { top:true; bottom:true; left:true; right:true }
         exclusionMode: ExclusionMode.Ignore
-        mask:Region {y:bar.special?0:Theme.barHeight;width:dismiss.width;height:dismiss.height-y}
+        mask:Region {y:bar.special?0:Theme.barHeight;width:bar.menu!=="" || shell.popupOwner!==""?dismiss.width:0;height:dismiss.height-y}
         color: "transparent"
         WlrLayershell.namespace: "lumen-menu-popup"
         WlrLayershell.layer: WlrLayer.Overlay
@@ -242,6 +242,8 @@ PanelWindow {
         FocusFlickable {
             id:systemViewport
             visible:["Internet","Wi-Fi","Bluetooth","VPN","Sound","Controls","Focus","Date","Calendar","Now Playing","Capture"].includes(bar.systemMenu)
+            // Keep the closing animation, but release its interactive area immediately.
+            enabled:bar.menu!=="" && bar.menu===bar.systemMenu
             width:systemPanel.width;height:Math.min(systemPanel.height,Math.max(1,parent.height-Theme.barHeight-24))
             x:Math.max(8,parent.width-width-12);y:Theme.barHeight+10
             contentWidth:width;contentHeight:systemPanel.height;clip:true;boundsBehavior:Flickable.StopAtBounds

@@ -33,6 +33,16 @@ Item {
         }
     }
     function clear() { password.clear();passwordVisible=false;password.forceActiveFocus(); }
+    function clearResponse() { password.clear();passwordVisible=false; }
+    component AuthAction: Button {
+        focusPolicy: Qt.StrongFocus
+        background: Rectangle {
+            radius: height / 2
+            color: parent.down ? "#60ffffff" : parent.hovered ? "#45ffffff" : "#25ffffff"
+            border.width: parent.activeFocus ? 2 : 0
+            border.color: "white"
+        }
+    }
     function submit() {
         if (view.busy || !password.text.length) return;
         const response = password.text;
@@ -44,17 +54,28 @@ Item {
     // Keep foreground contrast consistent on both the greeter and lock surfaces.
     Rectangle { anchors.fill: parent; color: "#08000000" }
     Column {
+        width: parent.width
         anchors.horizontalCenter: parent.horizontalCenter
         y: Math.round(view.height * 0.092)
         spacing: -6 * view.unit
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
+            width: Math.max(1, view.width - 48 * view.unit)
+            horizontalAlignment: Text.AlignHCenter
+            elide: Text.ElideRight
+            textFormat: Text.PlainText
             text: Qt.formatDate(view.now, Qt.locale().dateFormat(Locale.LongFormat).replace("dddd", "ddd"))
             font.family: "Interlude Variable"; font.pixelSize: 24 * view.unit; font.weight: Font.DemiBold
             color: "#d8e7ee"
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
+            width: Math.max(1, view.width - 48 * view.unit)
+            horizontalAlignment: Text.AlignHCenter
+            fontSizeMode: Text.Fit
+            minimumPixelSize: Math.round(54 * view.unit)
+            textFormat: Text.PlainText
+            objectName: "clock"
             text: Qt.formatTime(view.now, Qt.locale().timeFormat(Locale.ShortFormat))
             font.family: "Interlude Variable"; font.pixelSize: Math.round(122 * view.unit); font.weight: Font.Medium
             color: "#c7e1e9"
@@ -70,10 +91,9 @@ Item {
             text: Quickshell.env("LUMEN_AUTH_LAYOUT") || "UK"; color: "#eeeeee"
             font.family: "Interlude Variable"; font.pixelSize: 13 * view.unit
         }
-        Button {
-            width: 22 * view.unit; height: width
+        AuthAction {
+            width: 28 * view.unit; height: width
             contentItem: PowerIcon {}
-            background: Item {}
             Accessible.name: "Power options"
             onClicked: powerPopup.open()
         }
@@ -95,7 +115,11 @@ Item {
         }
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
+            objectName: "displayName"
+            width: parent.width; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight
+            textFormat: Text.PlainText
             text: view.displayName; color: "white"
+            Accessible.name: view.displayName
             font.family: "Interlude Variable"; font.pixelSize: 18 * view.unit; font.weight: Font.DemiBold
         }
         Rectangle {
@@ -115,17 +139,17 @@ Item {
                 passwordCharacter: "●"; selectByMouse: true
                 enabled: !view.busy; background: Item {}
                 onAccepted: view.submit()
-                Keys.onEscapePressed: password.clear()
+                Accessible.name: view.echoResponse ? view.prompt : "Password"
+                Keys.onEscapePressed: view.clearResponse()
                 Component.onCompleted: forceActiveFocus()
             }
-            Button {
+            AuthAction {
                 anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
                 anchors.rightMargin: 5 * view.unit
                 width: 26 * view.unit; height: width
                 enabled: !view.busy && password.text.length > 0
                 text: "→"; font.pixelSize: 19 * view.unit
                 contentItem: Text { text: parent.text; color: "white"; horizontalAlignment: Text.AlignHCenter; verticalAlignment: Text.AlignVCenter; font: parent.font }
-                background: Rectangle { radius: width/2; color: parent.hovered ? "#45ffffff" : "#25ffffff" }
                 onClicked: view.submit()
                 Accessible.name: "Continue"
             }
@@ -137,7 +161,20 @@ Item {
             visible: !view.echoResponse
             enabled: !view.busy
             checked: false
+            focusPolicy: Qt.StrongFocus
             text: "Show password"
+            indicator: Rectangle {
+                implicitWidth: 15 * view.unit; implicitHeight: implicitWidth
+                x: visibilityToggle.leftPadding; y: (visibilityToggle.height - height) / 2
+                radius: 4 * view.unit
+                color: visibilityToggle.checked ? "#eeeeee" : "#25ffffff"
+                border.color: visibilityToggle.activeFocus ? "white" : "#90ffffff"
+                border.width: visibilityToggle.activeFocus ? 2 : 1
+                Text {
+                    anchors.centerIn: parent; text: visibilityToggle.checked ? "✓" : ""
+                    color: "#263949"; font.pixelSize: 12 * view.unit
+                }
+            }
             contentItem: Text { text: visibilityToggle.text; color: "white"; font: visibilityToggle.font; verticalAlignment: Text.AlignVCenter; leftPadding: visibilityToggle.indicator.width + visibilityToggle.spacing }
             font.family: "Interlude Variable"; font.pixelSize: 12 * view.unit
             Accessible.name: "Show password"
@@ -145,6 +182,8 @@ Item {
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
             width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap
+            objectName: "authenticationError"
+            textFormat: Text.PlainText
             text: view.errorMessage; color: "#fff1e9"
             font.family: "Interlude Variable"; font.pixelSize: 13 * view.unit
         }
@@ -178,7 +217,7 @@ Item {
                         radius: 7 * view.unit
                         color: parent.hovered || parent.activeFocus ? "#467eabce" : "transparent"
                     }
-                    onClicked: { powerPopup.close(); view.powerRequested(modelData.action); }
+                    onClicked: { view.clearResponse(); powerPopup.close(); view.powerRequested(modelData.action); }
                 }
             }
         }

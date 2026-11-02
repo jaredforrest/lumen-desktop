@@ -118,6 +118,9 @@ fn validate_options(args: &[String]) -> Result<()> {
     Ok(())
 }
 fn run(args: &[String]) -> Result<()> {
+    if args.first().is_some_and(|arg| arg == "--capture" || arg == "--captured") {
+        return captured_request(args);
+    }
     if args.len() < 2 {
         return Err("expected an application identity and window title".into());
     }
@@ -173,6 +176,83 @@ fn run(args: &[String]) -> Result<()> {
     }
     Ok(())
 }
+fn native_nodes<'a>(node: &'a Value, out: &mut Vec<&'a Value>, depth: usize) -> Result<()> {
+    if depth > 64 || out.len() > 8192 { return Err("Window inventory exceeds its bound".into()); }
+    out.push(node);
+    for key in ["nodes", "floating_nodes"] {
+        for child in node[key].as_array().into_iter().flatten() { native_nodes(child,out,depth+1)?; }
+    }
+    Ok(())
+}
+fn foreign(value: &Value) -> Result<&str> {
+    let id=value.as_str().ok_or("Native window identity unavailable")?;
+    if id.len()!=32 || !id.bytes().all(|b|b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) {return Err("Invalid native window identity".into());}
+    Ok(id)
+}
+fn capture_window(tree: &Value, app: &str, title: &str) -> Result<Value> {
+    if app.is_empty() || app.len()>4096 || title.len()>4096 {return Err("Bounded native window labels required".into());}
+    let mut nodes=Vec::new();native_nodes(tree,&mut nodes,0)?;
+    let matches=nodes.into_iter().filter(|n|n["app_id"]==app && n["name"]==title && n["pid"].as_u64().is_some_and(|p|p>0)).collect::<Vec<_>>();
+    if matches.len()!=1 {return Err("The window identity is missing or ambiguous".into());}
+    let node=matches[0];let id=node["id"].as_u64().filter(|id|*id>0 && *id<=9_007_199_254_740_991).ok_or("Invalid native container")?;
+    let pid=node["pid"].as_u64().filter(|pid|*pid<=u32::MAX.into()).ok_or("Invalid native PID")?;
+    let foreign=foreign(&node["foreign_toplevel_identifier"])?;
+    Ok(serde_json::json!({"version":1,"conId":id,"pid":pid,"foreignId":foreign,"appId":app,"title":title,"key":format!("{id}:{pid}:{foreign}")}))
+}
+fn capture_identity(capture: &Value) -> Result<(u64,u64,&str,&str)> {
+    if capture["version"]!=1 {return Err("Unsupported window capture".into());}
+    let id=capture["conId"].as_u64().filter(|id|*id>0 && *id<=9_007_199_254_740_991).ok_or("Invalid captured container")?;
+    let pid=capture["pid"].as_u64().filter(|pid|*pid>0 && *pid<=u32::MAX.into()).ok_or("Invalid captured PID")?;
+    let foreign=foreign(&capture["foreignId"])?;
+    let app=capture["appId"].as_str().filter(|app|!app.is_empty() && app.len()<=4096).ok_or("Invalid captured application")?;
+    if !capture["title"].as_str().is_some_and(|title|title.len()<=4096) {return Err("Invalid captured title".into());}
+    if capture["key"]!=format!("{id}:{pid}:{foreign}") {return Err("Window capture key mismatch".into());}
+    Ok((id,pid,foreign,app))
+}
+fn captured_node<'a>(tree: &'a Value,capture: &Value) -> Result<&'a Value> {
+    let (id,pid,foreign,app)=capture_identity(capture)?;
+    let mut nodes=Vec::new();native_nodes(tree,&mut nodes,0)?;
+    nodes.into_iter().find(|node|node["id"]==id && node["pid"]==pid && node["foreign_toplevel_identifier"]==foreign && node["app_id"]==app).ok_or("The captured window is no longer available".into())
+}
+fn captured_action(capture: &Value, action: &str) -> Result<String> {
+    let (id,_,_,_)=capture_identity(capture)?;
+    if !["close","minimize","fullscreen","fill","left","right","top","bottom","top-left","top-right","bottom-left","bottom-right","restore"].contains(&action) {return Err("Unsupported captured window action".into());}
+    Ok(format!("[con_id={id}] lumen_window {action}"))
+}
+fn layout_hover(node: &Value, capture: &Value, x:f64,y:f64) -> Result<Value> {
+    let (id,_,_,_)=capture_identity(capture)?;
+    if !x.is_finite() || !y.is_finite() || x.abs()>100_000.0 || y.abs()>100_000.0 {return Err("Invalid hover anchor".into());}
+    let coordinate=|axis:&str| -> Result<f64> {Ok(node["rect"][axis].as_f64().ok_or("Missing native frame coordinate")?+node["window_rect"][axis].as_f64().ok_or("Missing native client coordinate")?)};
+    Ok(serde_json::json!({"lumen_layout":1,"id":id,"x":coordinate("x")?+x,"y":coordinate("y")?+y,"capture":capture}))
+}
+fn captured_request(args: &[String]) -> Result<()> {
+    if args[0]=="--capture" {
+        if args.len()!=3 {return Err("Capture requires application and title".into());}
+        let tree=swaymsg(&["-r","-t","get_tree"])?;
+        println!("{}",capture_window(&tree,&args[1],&args[2])?);return Ok(());
+    }
+    if args.len()<3 || args[1].len()>16384 {return Err("Bounded captured request required".into());}
+    let capture:Value=serde_json::from_str(&args[1]).map_err(|e|e.to_string())?;
+    capture_identity(&capture)?;
+    if args[2]=="--layout-leave" && args.len()==3 {
+        let payload=serde_json::json!({"lumen_layout":1,"id":0,"capture":capture});
+        let reply=swaymsg(&["-t","send_tick",&payload.to_string()])?;
+        if reply["success"]!=true {return Err("Window menu leave rejected".into());}return Ok(());
+    }
+    let tree=swaymsg(&["-r","-t","get_tree"])?;
+    let node=captured_node(&tree,&capture)?;
+    if args[2]=="--action" && args.len()==4 {
+        let reply=swaymsg(&["-r",&captured_action(&capture,&args[3])?])?;
+        if !reply.as_array().is_some_and(|rows|rows.len()==1 && rows[0]["success"]==true) {return Err("Captured window action rejected".into());}
+    } else if args[2]=="--layout-hover" && args.len()==5 {
+        let x=args[3].parse::<f64>().map_err(|_|"Invalid hover x")?;
+        let y=args[4].parse::<f64>().map_err(|_|"Invalid hover y")?;
+        let payload=layout_hover(node,&capture,x,y)?;
+        let reply=swaymsg(&["-t","send_tick",&payload.to_string()])?;
+        if reply["success"]!=true {return Err("Window menu hover rejected".into());}
+    } else {return Err("Unknown captured request".into());}
+    Ok(())
+}
 fn main() {
     if let Err(error) = run(&env::args().skip(1).collect::<Vec<_>>()) {
         eprintln!("Unable to focus window: {error}");
@@ -184,6 +264,31 @@ fn main() {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn captured_controls_refuse_replacement_without_title_retargeting() {
+        let mut original=window(17,"Document");
+        original["foreign_toplevel_identifier"]=json!("0123456789abcdef0123456789abcdef");
+        let capture=capture_window(&tree(vec![original.clone()],"1"),"writer","Document").unwrap();
+        let mut renamed=original.clone();renamed["name"]=json!("Renamed");
+        assert!(captured_node(&tree(vec![renamed],"1"),&capture).is_ok());
+        let mut replaced=original.clone();replaced["foreign_toplevel_identifier"]=json!("fedcba9876543210fedcba9876543210");
+        assert!(captured_node(&tree(vec![replaced],"1"),&capture).is_err());
+        let mut reused=original.clone();reused["pid"]=json!(999);
+        assert!(captured_node(&tree(vec![reused],"1"),&capture).is_err());
+        assert!(capture_window(&tree(vec![original.clone(),original],"1"),"writer","Document").is_err());
+        assert_eq!(captured_action(&capture,"top-left").unwrap(),"[con_id=17] lumen_window top-left");
+        assert!(captured_action(&capture,"close; exec injected").is_err());
+    }
+    #[test]
+    fn green_hover_anchor_uses_live_native_frame_and_client_offset() {
+        let mut node=window(17,"Document");node["foreign_toplevel_identifier"]=json!("0123456789abcdef0123456789abcdef");
+        node["rect"]=json!({"x":-100,"y":20});node["window_rect"]=json!({"x":2,"y":32});
+        let capture=capture_window(&tree(vec![node.clone()],"1"),"writer","Document").unwrap();
+        let payload=layout_hover(&node,&capture,60.0,30.0).unwrap();
+        assert_eq!(payload["x"],-38.0);assert_eq!(payload["y"],82.0);assert_eq!(payload["capture"],capture);
+        assert!(layout_hover(&node,&capture,f64::NAN,0.0).is_err());
+        assert!(layout_hover(&json!({}),&capture,0.0,0.0).is_err());
+    }
     fn window(id: i64, title: &str) -> Value {
         json!({"id": id, "type": "con", "pid": id+100, "app_id":"writer", "name":title, "focused":false})
     }

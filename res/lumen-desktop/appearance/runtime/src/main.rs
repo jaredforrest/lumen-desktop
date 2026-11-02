@@ -401,7 +401,10 @@ fn execute() -> Result<(), String> {
                 format!("animation_duration_ms {}", if prefs["reduceMotion"] == true { "0" } else { "160" }),
                 "layer_effects \"lumen-dock\" \"blur enable; blur_ignore_transparent enable; corner_radius 0\"".into(),
                 "layer_effects \"lumen-menu\" \"blur enable\"".into(),
-                "layer_effects \"lumen-menu-popup\" \"blur enable; blur_ignore_transparent enable\"".into()];
+                "layer_effects \"lumen-menu-popup\" \"blur enable; blur_ignore_transparent enable\"".into(),
+                "layer_effects \"lumen-app-switcher\" \"blur enable; blur_ignore_transparent enable; corner_radius 0\"".into(),
+                "layer_effects \"lumen-window-layout\" \"blur enable; blur_ignore_transparent enable; corner_radius 0\"".into(),
+                "layer_effects \"lumen-paired-windows\" \"blur enable; blur_ignore_transparent enable; corner_radius 0\"".into()];
             for command in commands {
                 if !run("swaymsg", &[&command]) {
                     warnings.push(format!("Could not apply compositor appearance: {}", command.split_whitespace().next().unwrap_or("")));

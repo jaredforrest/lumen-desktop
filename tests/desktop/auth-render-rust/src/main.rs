@@ -615,6 +615,10 @@ fn inner(options: &Options) -> Result<()> {
     checks.push("shared login/lock layout pixel comparison");
     for (method, label) in [
         (
+            "presentationSemantics",
+            "authentication identity and errors render literally with named input and bounded clock",
+        ),
+        (
             "secretRetention",
             "authentication view clears responses across busy masking and visibility transitions",
         ),

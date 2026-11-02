@@ -26,8 +26,8 @@ PanelWindow {
     property int hovered: -1
     property bool keyboardMode:false
     property int keyboardIndex:0
-    function leaveKeyboard(){keyboardMode=false;hovered=-1;if(shell.popupOwner==="dock:"+outputName)shell.claimPopup("");}
-    Connections {target:shell;function onRequestDockFocus(name){if(dock.displayAllowed && (shell.displaySpaces?shell.displaySpaces.dockOutput(name):name)===dock.outputName){shell.claimPopup("dock:"+dock.outputName);dock.keyboardMode=true;dock.hovered=dock.keyboardIndex;keyboard.focus=true;}}}
+    function leaveKeyboard(){keyboardMode=false;hovered=-1;pointerSlot=-1;if(shell.popupOwner==="dock:"+outputName)shell.claimPopup("");}
+    Connections {target:shell;function onRequestDockFocus(name){if(dock.displayAllowed && shell.referenceDock.length && (shell.displaySpaces?shell.displaySpaces.dockOutput(name):name)===dock.outputName){shell.claimPopup("dock:"+dock.outputName);dock.keyboardIndex=Math.max(0,Math.min(dock.keyboardIndex,shell.referenceDock.length-1));dock.keyboardMode=true;dock.hovered=dock.keyboardIndex;dock.pointerSlot=dock.keyboardIndex;keyboard.forceActiveFocus();}}}
     property real pointerSlot: -1
     property string pressedKey: ""
     property real pressX:0
@@ -36,7 +36,7 @@ PanelWindow {
     function cancelDrag(){pressedKey="";pressIntent=null;dragging=false;dragCompleted=true;}
     function removableDrag(){const item=dragIntentValid()?pressIntent.item:null;return item && (["file","folder"].includes(item.action) || (item.action!=="minimized-window" && item.entry && shell.canConfigureDockEntry(item.entry) && shell.isDockPinned(item.entry)));}
     function dragIntentValid(){return pressIntent && pressIntent.items===shell.referenceDock && !shell.dockPreferencesBusy && shell.referenceDock.includes(pressIntent.item);}
-    Connections {target:shell;function onDockPreferencesBusyChanged(){if(shell.dockPreferencesBusy && dock.pressIntent)dock.cancelDrag();}function onReferenceDockChanged(){if(dock.pressIntent && !dock.dragIntentValid())dock.cancelDrag();}}
+    Connections {target:shell;function onDockPreferencesBusyChanged(){if(shell.dockPreferencesBusy && dock.pressIntent)dock.cancelDrag();}function onReferenceDockChanged(){if(dock.pressIntent && !dock.dragIntentValid())dock.cancelDrag();if(dock.keyboardMode)dock.leaveKeyboard();dock.hovered=-1;dock.pointerSlot=-1;}}
     property bool dragging:false
     property bool dragCompleted:false
     property string dropError:""
@@ -50,7 +50,7 @@ PanelWindow {
     Process {id:dropWorker;stdout:StdioCollector {onStreamFinished:{try{const result=JSON.parse(text);dock.dropError=result.error || "";}catch(e){dock.dropError="The application could not open this drop";}dropErrorTimer.restart();}}}
     Timer {id:dropErrorTimer;interval:6000;onTriggered:dock.dropError=""}
     function trackPointer(x, y) {
-        keyboardMode = false;
+        if (keyboardMode) leaveKeyboard();
         const position = (x - 12) / slot;
         if (y < 0 || y >= surface.height-28 || position < 0 || position >= shell.referenceDock.length) {
             hovered = -1; pointerSlot = -1;
@@ -121,7 +121,7 @@ PanelWindow {
         if(contextEntry)shell.claimPopup("dock:"+outputName);
         else {if(shell.popupOwner==="dock:"+outputName)shell.popupOwner="";hideTimer.restart();}
     }
-    Connections {target:shell; function onDismissPopups(owner) {if(owner!=="dock:"+dock.outputName){dock.contextEntry=null;dock.contextAlias=null;dock.keyboardMode=false;dock.hovered=-1;hideTimer.restart();}} }
+    Connections {target:shell; function onDismissPopups(owner) {if(owner!=="dock:"+dock.outputName){dock.cancelDrag();dock.closeContext();dock.keyboardMode=false;dock.hovered=-1;dock.pointerSlot=-1;tooltipLifecycle.dismiss();hideTimer.restart();}} }
     readonly property real slot: (surface.width-24)/Math.max(1,shell.referenceDock.length)
     readonly property real iconSize: Math.max(12,Math.min(requestedSize,slot-8))
     anchors { bottom:!dock.vertical;left:dock.position==="left";right:dock.position==="right" }
@@ -144,12 +144,13 @@ PanelWindow {
                 event.accepted=true;return;
             }
             if(!dock.keyboardMode)return;
+            if(!shell.referenceDock.length){dock.leaveKeyboard();event.accepted=true;return;}
             if(event.key===Qt.Key_F1){tooltipLifecycle.help();event.accepted=true;return;}
             if(event.key===Qt.Key_Escape){dock.leaveKeyboard();event.accepted=true;}
             else if([Qt.Key_Home,Qt.Key_End].includes(event.key) || (dock.vertical?[Qt.Key_Up,Qt.Key_Down]:[Qt.Key_Left,Qt.Key_Right]).includes(event.key)){
                 const n=shell.referenceDock.length;
                 dock.keyboardIndex=event.key===Qt.Key_Home?0:event.key===Qt.Key_End?n-1:(dock.keyboardIndex+([Qt.Key_Right,Qt.Key_Down].includes(event.key)?1:-1)+n)%n;
-                dock.hovered=dock.keyboardIndex;event.accepted=true;
+                dock.hovered=dock.keyboardIndex;dock.pointerSlot=dock.keyboardIndex;event.accepted=true;
             } else if(event.key===Qt.Key_Return || event.key===Qt.Key_Space){const item=shell.referenceDock[dock.keyboardIndex];dock.leaveKeyboard();shell.activateDock(item,!!(event.modifiers & Qt.ShiftModifier),dock.outputName,event.modifiers);event.accepted=true;}
             else if(event.key===Qt.Key_Menu || (!dock.vertical && event.key===Qt.Key_Up) || (dock.vertical && event.key===(dock.position==="left"?Qt.Key_Right:Qt.Key_Left))){const item=shell.referenceDock[dock.keyboardIndex];if(item.entry || ["file","folder"].includes(item.action))dock.openContext(item,dock.keyboardIndex);event.accepted=true;}
         }
@@ -250,6 +251,7 @@ PanelWindow {
             dock.pressIntent=mouse.button===Qt.LeftButton && dock.hovered>=0 && !shell.dockPreferencesBusy?{items:shell.referenceDock,item:shell.referenceDock[dock.hovered]}:null;
         }
         onReleased: mouse => {
+            dock.trackPointer(mouse.x,mouse.y);
             if(dock.dragging){
                 const source=dock.dragIntentValid()?dock.pressIntent.item:null;
                 const target=shell.referenceDock[dock.hovered];
@@ -264,7 +266,7 @@ PanelWindow {
         onClicked: mouse => {
             if(dock.dragCompleted){dock.dragCompleted=false;return;}
             dock.trackPointer(mouse.x, mouse.y);
-            if (dock.hovered < 0) return;
+            if (dock.hovered < 0) {dock.pressedKey="";dock.pressIntent=null;return;}
             const index = dock.hovered;
             const item = DockInteraction.releaseTarget(shell.referenceDock,dock.pressedKey,index);
             dock.pressedKey="";dock.pressIntent=null;

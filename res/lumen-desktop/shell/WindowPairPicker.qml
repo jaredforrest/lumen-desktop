@@ -43,7 +43,7 @@ PanelWindow {
     }
     Rectangle {anchors.fill:parent;color:"#55000000"}
     MouseArea {anchors.fill:parent;onClicked:root.visible=false}
-    Rectangle {id:content;anchors.centerIn:parent;width:Math.min(Math.round(520*Theme.textScale),root.width-32);height:Math.min(Math.round(520*Theme.textScale),root.height-32);color:Theme.colors.background;radius:12;border.color:Theme.outline;focus:true
+    PanelSurface {id:content;anchors.centerIn:parent;width:Math.min(Math.round(520*Theme.textScale),root.width-32);height:Math.min(Math.round(520*Theme.textScale),root.height-32);radius:12;focus:true
         MouseArea {anchors.fill:parent;onClicked:event=>event.accepted=true}
         Keys.onEscapePressed:root.visible=false
         Keys.onReturnPressed:if(!root.busy && root.canChoose && root.current)root.send(root.paired?"replace":"create")

@@ -78,3 +78,19 @@ fn stale_lock_after_reboot_allows_frame_setting(){
     fixture.run("obsidian",&[]);
     assert_eq!(fixture.read("obsidian/obsidian.json")["frame"],"native");
 }
+
+#[test]
+fn inspection_commands_do_not_create_or_mutate_appearance_state(){
+    let fixture=Fixture::new();
+    for app in ["brave","obsidian","gimp"]{
+        fixture.run(app,&["--version"]);
+        fixture.run(app,&["--help"]);
+    }
+    assert_eq!(fs::read_dir(&fixture.root).unwrap().count(),0);
+    let path=fixture.root.join("BraveSoftware/Brave-Browser/Default/Preferences");
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    let original=b"{\"browser\":{\"custom_chrome_frame\":true},\"retained\":7}";
+    fs::write(&path,original).unwrap();
+    fixture.run("brave",&["--version"]);
+    assert_eq!(fs::read(&path).unwrap(),original);
+}

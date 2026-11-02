@@ -19,6 +19,7 @@ PanelWindow {
     property bool edgeTilingSupported: false
     property bool pairedLayoutsSupported:false
     property double target: 0
+    property var targetCapture: null
     property real anchorX: 0
     property real anchorY: 0
     property int selected: 0
@@ -31,22 +32,33 @@ PanelWindow {
         {label:"Top Left",action:"top-left"},{label:"Top Right",action:"top-right"},
         {label:"Bottom Left",action:"bottom-left"},{label:"Bottom Right",action:"bottom-right"},
         {label:"Restore Previous Size",action:"restore"}
-    ].concat(pairedLayoutsSupported?[
+    ].concat(pairedLayoutsSupported && !targetCapture?[
         {label:"Pair Full Screen on Left",action:"pair-left"},
         {label:"Pair Full Screen on Right",action:"pair-right"},
         {label:"Manage Paired Windows",action:"pair-manage"}
     ]:[])
-    function dismiss() { opening.stop(); leaving.stop();visible=false;target=0;if(shell.popupOwner==="window-layout")shell.popupOwner=""; }
+    function dismiss() { opening.stop(); leaving.stop();visible=false;target=0;targetCapture=null;if(shell.popupOwner==="window-layout")shell.popupOwner=""; }
+    function validCapture(capture,id) {
+        return capture && capture.version===1 && capture.conId===id && Number.isSafeInteger(capture.pid) && capture.pid>0 &&
+            typeof capture.foreignId==="string" && /^[0-9a-f]{32}$/.test(capture.foreignId) &&
+            capture.appId==="org.quickshell" && typeof capture.title==="string" &&
+            capture.key===id+":"+capture.pid+":"+capture.foreignId;
+    }
     function event(payload) {
         let data;
         try {data=JSON.parse(payload);}catch(e){return;}
         if(!data || typeof data!=="object" || Array.isArray(data))return;
         if(data.lumen_drag_overview===1){if(edgeTilingSupported && Number.isSafeInteger(data.id) && data.id>0)root.shell.dragOverview(data.id);return;}
         if(data.lumen_layout!==1 || !Number.isSafeInteger(data.id) || data.id<0)return;
-        if(data.id===0){opening.stop();if(visible)leaving.restart();return;}
+        if(data.id===0){
+            if(targetCapture?(!data.capture || data.capture.key!==targetCapture.key):!!data.capture)return;
+            opening.stop();if(visible)leaving.restart();return;
+        }
         if(!Number.isFinite(data.x) || !Number.isFinite(data.y))return;
-        if(visible && target===data.id)return;
-        target=data.id;anchorX=data.x;anchorY=data.y;opening.restart();
+        if(data.capture && !validCapture(data.capture,data.id))return;
+        const capture=data.capture || null;
+        if(visible && target===data.id && (targetCapture?targetCapture.key:"")===(capture?capture.key:""))return;
+        target=data.id;targetCapture=capture;anchorX=data.x;anchorY=data.y;opening.restart();
     }
     function open() {
         if(!target)return;
@@ -57,8 +69,9 @@ PanelWindow {
     }
     function apply(index) {
         if(!supported || index<0 || index>=choices.length || !Number.isSafeInteger(target) || target<=0)return;
-        const id=target,action=choices[index].action;
+        const id=target,action=choices[index].action,capture=targetCapture;
         dismiss();
+        if(capture){Quickshell.execDetached(["lumen-focus-window","--captured",JSON.stringify(capture),"--action",action]);return;}
         if(action.startsWith("pair-")){root.shell.pairWindow(id,action.substring(5));return;}
         Quickshell.execDetached(["swaymsg","[con_id="+id+"] lumen_window "+action]);
     }
@@ -98,12 +111,11 @@ PanelWindow {
             else root.dismiss();
         }
     }
-    Rectangle {
+    PanelSurface {
         id:card
         x:Math.max(8,Math.min(root.width-width-8,root.anchorX-(root.screen?root.screen.x:0)-52))
         y:Math.max(8,Math.min(root.height-height-8,root.anchorY-(root.screen?root.screen.y:0)+16))
         width:230;height:column.implicitHeight+12;radius:Theme.menuRadius
-        color:Theme.popoverMaterial;border.color:Theme.outline
         HoverHandler {id:cardHover}
         Column {
             id:column;x:6;y:6;width:parent.width-12

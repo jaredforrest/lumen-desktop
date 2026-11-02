@@ -27,6 +27,21 @@ PanelWindow {
    toggle.checked=true;view.submit();
    return shown && hidden && field.text.length===0 && !toggle.checked;
   }
+  function presentationSemantics(): bool {
+   function walk(item){let result=[item];for(const child of item.children || [])result=result.concat(walk(child));return result;}
+   const nodes=walk(view);
+   const field=nodes.find(n=>n.objectName==="password");
+   const label=nodes.find(n=>n.objectName==="displayName");
+   const error=nodes.find(n=>n.objectName==="authenticationError");
+   const clock=nodes.find(n=>n.objectName==="clock");
+   const previous=view.displayName;
+   view.displayName="<b>Synthetic user</b>";
+   const literal=label.text===view.displayName && label.textFormat===Text.PlainText && error.textFormat===Text.PlainText;
+   view.displayName=previous;
+   const named=field.Accessible.name==="Password";
+   field.text="synthetic";view.passwordVisible=true;view.clearResponse();
+   return literal && named && clock.width<=view.width && field.text.length===0 && !view.passwordVisible;
+  }
   function bounds(): string {
    function walk(item){let result=[item];for(const child of item.children || [])result=result.concat(walk(child));return result;}
    const field=walk(view).find(n=>n.objectName==="password");const position=field.mapToItem(view,0,0);
