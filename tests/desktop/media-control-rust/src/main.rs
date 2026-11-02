@@ -725,31 +725,46 @@ impl Driver {
         })?;
         checks.push("Actual MPRIS properties supply title/artist/status and keyboard source selection/play target the second player");
 
-        control_add(&session, "gamma", json!({}))?;
+        let control = Proxy::new(&session, CONTROL_NAME, CONTROL_PATH, CONTROL_NAME)?;
+        control.call::<_, _, ()>("Add", &(json!({"name":"gamma","identity":"Player gamma","holdIdentity":true,"properties":{}}).to_string(),))?;
         self.wait_for("three media players", || {
             Ok(self.state()?["players"]
                 .as_array()
                 .is_some_and(|v| v.len() == 3))
         })?;
+        let cold = self.state()?;
+        save_json(&self.out.join("chooser-held-identity.json"), &cold)?;
+        require(cold["players"].as_array().is_some_and(|rows| rows.iter().any(|row| row["name"] == "org.mpris.MediaPlayer2.gamma" && row["identity"] == "")), "Controlled player Identity was not held independently of Player publication")?;
+        control.call::<_, _, ()>("ReleaseIdentity", &("gamma",))?;
+        self.wait_for("closed chooser observes hydrated player Identity", || {
+            let state = self.state()?;
+            save_json(&self.out.join("chooser-identity-released.json"), &state)?;
+            Ok(state["sourceOpen"] == false && state["players"].as_array().is_some_and(|rows| rows.iter().any(|row| row["name"] == "org.mpris.MediaPlayer2.gamma" && row["identity"] == "Player gamma")) && state["choices"].as_array().is_some_and(|rows| rows.iter().any(|row| row == "Player gamma")))
+        })?;
+        require(cold["choices"].as_array().is_some_and(|rows| rows.iter().any(|row| row == "Media player")), format!("Cold media source lacks nonempty stable fallback: {cold}"))?;
+        save_json(&self.out.join("chooser-before-open.json"), &self.state()?)?;
         self.ipc("focus", &["media-source"])?;
         self.key(&["-k", "space"])?;
         self.wait_for("source chooser open", || {
             Ok(self.state()?["sourceOpen"] == true)
         })?;
+        let open_snapshot = self.state()?;
+        save_json(&self.out.join("chooser-open-before-removal.json"), &open_snapshot)?;
+        let frozen_choices = open_snapshot["choices"].clone();
         control_remove(&session, "gamma")?;
-        control_add(&session, "delta", json!({}))?;
+        control.call::<_, _, ()>("Add", &(json!({"name":"delta","identity":" \t ","properties":{}}).to_string(),))?;
         self.wait_for("replacement source list", || {
-            Ok(self.state()?["players"]
-                .as_array()
-                .is_some_and(|v| v.len() == 3))
+            let state = self.state()?;
+            Ok(state["players"].as_array().is_some_and(|rows| rows.len() == 3 && rows.iter().any(|row| row["name"] == "org.mpris.MediaPlayer2.delta") && !rows.iter().any(|row| row["name"] == "org.mpris.MediaPlayer2.gamma")))
         })?;
+        save_json(&self.out.join("chooser-after-replacement.json"), &self.state()?)?;
         let choices = self.state()?["choices"]
             .as_array()
             .ok_or("Source choices missing")?
             .clone();
         require(
-            choices.iter().any(|row| row == "Player gamma")
-                && !choices.iter().any(|row| row == "Player delta"),
+            Value::Array(choices.clone()) == frozen_choices
+                && choices.iter().any(|row| row == "Player gamma"),
             format!("Open chooser identity changed: {choices:?}"),
         )?;
         self.key(&["-k", "End", "-k", "Return"])?;
@@ -760,6 +775,11 @@ impl Driver {
             self.selected()?.ends_with(".beta"),
             format!("Stale chooser selected {}", self.selected()?),
         )?;
+        self.wait_for("closed chooser whitespace Identity fallback", || {
+            let state = self.state()?;
+            save_json(&self.out.join("chooser-whitespace-identity.json"), &state)?;
+            Ok(state["players"].as_array().is_some_and(|rows| rows.iter().any(|row| row["name"] == "org.mpris.MediaPlayer2.delta" && row["identity"] == " \t ")) && state["choices"].as_array().is_some_and(|rows| rows.iter().any(|row| row == "Media player")))
+        })?;
         control_remove(&session, "delta")?;
         self.wait_for("two players after chooser", || {
             Ok(self.state()?["players"]
@@ -767,6 +787,7 @@ impl Driver {
                 .is_some_and(|v| v.len() == 2))
         })?;
         checks.push("An open source chooser retains its labels and identities; a removed choice cannot select a replacement row");
+
 
         let before = control_calls(&session)?.len();
         let point = self.point("media-next", 0.5)?;
@@ -949,6 +970,47 @@ impl Driver {
             "Position did not invoke SetPosition",
         )?;
         checks.push("Real keyboard player-volume and pointer position controls write typed MPRIS properties/methods");
+
+        control.call::<_, _, ()>("Add", &(json!({"name":"epsilon","identity":"Player epsilon","holdIdentity":true,"properties":{}}).to_string(),))?;
+        self.wait_for("closed chooser cold Identity fallback", || {
+            let state = self.state()?;
+            Ok(state["players"].as_array().is_some_and(|rows| rows.iter().any(|row| row["name"] == "org.mpris.MediaPlayer2.epsilon" && row["identity"] == "")) && state["choices"].as_array().is_some_and(|rows| rows.iter().any(|row| row == "Media player")))
+        })?;
+        self.ipc("focus", &["media-source"])?;
+        self.key(&["-k", "space"])?;
+        self.wait_for("cold source chooser open", || Ok(self.state()?["sourceOpen"] == true))?;
+        let frozen = self.state()?["choices"].clone();
+        require(frozen.as_array().is_some_and(|rows| rows.iter().any(|row| row == "Media player")), "Popup did not capture cold fallback at open")?;
+        control.call::<_, _, ()>("ReleaseIdentity", &("epsilon",))?;
+        self.wait_for("Identity hydrated while popup remains open", || {
+            let state = self.state()?;
+            save_json(&self.out.join("chooser-open-hydrated.json"), &state)?;
+            Ok(state["sourceOpen"] == true && state["players"].as_array().is_some_and(|rows| rows.iter().any(|row| row["name"] == "org.mpris.MediaPlayer2.epsilon" && row["identity"] == "Player epsilon")))
+        })?;
+        require(self.state()?["choices"] == frozen, "Hydration replaced the open chooser snapshot")?;
+        self.key(&["-k", "Escape"])?;
+        self.wait_for("closed chooser refreshes previously frozen Identity", || {
+            let state = self.state()?;
+            save_json(&self.out.join("chooser-closed-hydrated.json"), &state)?;
+            Ok(state["sourceOpen"] == false && state["choices"].as_array().is_some_and(|rows| rows.iter().any(|row| row == "Player epsilon")))
+        })?;
+        control_remove(&session, "epsilon")?;
+        self.wait_for("two players after hydration", || Ok(self.state()?["players"].as_array().is_some_and(|rows| rows.len() == 2)))?;
+        checks.push("Independent Identity hydration supplies stable nonempty fallback, refreshes only closed labels, and preserves the open snapshot through real property arrival");
+        self.ipc("focus", &["media-source"])?;
+        self.key(&["-k", "space"])?;
+        self.wait_for("chooser open before same-turn close replay", || Ok(self.state()?["sourceOpen"] == true))?;
+        self.ipc("reopenReplacementReplay", &[])?;
+        self.wait_for("deferred close callback replay observed", || Ok(self.state()?["deferredReplay"].is_object()))?;
+        let replay = self.state()?;
+        save_json(&self.out.join("chooser-deferred-close-replay.json"), &replay)?;
+        require(replay["deferredReplay"]["closedObserved"] == 1 && replay["deferredReplay"]["opened"] == true && replay["deferredReplay"]["liveSourceCount"] == 2 && replay["deferredReplay"]["liveLabels"] != replay["deferredReplay"]["before"] && replay["deferredReplay"]["before"].as_array().is_some_and(|rows| rows.len() == 2) && replay["deferredReplay"]["sameObjects"] == true && replay["sourceOpen"] == true, format!("Deferred old close callback replaced reopened snapshot: {replay}"))?;
+        self.key(&["-k", "Escape"])?;
+        self.wait_for("live model restored after replay", || Ok(self.state()?["sourceOpen"] == false && self.state()?["players"].as_array().is_some_and(|rows| rows.len() == 2)))?;
+        checks.push("Controlled same-turn actual popup close/reopen and observed-model replay cannot let a deferred old close replace the new open object snapshot");
+
+
+
 
         control_remove(&session, "beta")?;
         self.wait_for("one remaining player", || {

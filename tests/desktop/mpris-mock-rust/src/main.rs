@@ -6,7 +6,7 @@ use std::error::Error;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
 use zbus::interface;
 use zbus::object_server::SignalEmitter;
 use zbus::zvariant::{ObjectPath, OwnedValue, Value};
@@ -85,6 +85,8 @@ struct PlayerData {
     name: String,
     generation: u64,
     identity: String,
+    identity_held: AtomicBool,
+    identity_ready: tokio::sync::Notify,
     properties: Mutex<Map<String, Json>>,
     recorder: Recorder,
 }
@@ -141,7 +143,12 @@ impl Root {
         false
     }
     #[zbus(property)]
-    fn identity(&self) -> String {
+    async fn identity(&self) -> String {
+        loop {
+            let ready = self.0.identity_ready.notified();
+            if !self.0.identity_held.load(Ordering::Acquire) { break; }
+            ready.await;
+        }
         self.0.identity.clone()
     }
     #[zbus(property)]
@@ -332,6 +339,8 @@ impl Control {
             name: name.clone(),
             generation,
             identity: config["identity"].as_str().unwrap_or(short).to_owned(),
+            identity_held: AtomicBool::new(config["holdIdentity"].as_bool().unwrap_or(false)),
+            identity_ready: tokio::sync::Notify::new(),
             properties: Mutex::new(default_properties()),
             recorder: self.recorder.clone(),
         });
@@ -354,6 +363,13 @@ impl Control {
             .unwrap()
             .players
             .insert(short.to_owned(), Entry { data, connection });
+        Ok(())
+    }
+    fn release_identity(&self, key: &str) -> zbus::fdo::Result<()> {
+        let state = self.state.lock().unwrap();
+        let entry = state.players.get(key).ok_or_else(|| failed("Player missing"))?;
+        entry.data.identity_held.store(false, Ordering::Release);
+        entry.data.identity_ready.notify_waiters();
         Ok(())
     }
     async fn remove(&self, key: &str) -> zbus::fdo::Result<()> {

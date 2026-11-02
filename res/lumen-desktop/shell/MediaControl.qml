@@ -20,15 +20,16 @@ PanelSurface {
     function duration(value){const s=Math.max(0,Math.floor(value));return Math.floor(s/60)+":"+String(s%60).padStart(2,"0");}
     property var players: Mpris.players.values.filter(p => p.dbusName !== "org.mpris.MediaPlayer2.playerctld")
     readonly property var player: players.find(p=>p.dbusName===selectedPlayer) || players.find(p => p.isPlaying) || players[0] || null
-    function sourceChoices(){return root.players.map(player=>({player:player,label:player.identity}));}
-    onPlayersChanged:if(sourceSelector && !sourceSelector.popup.visible)sourceSelector.choices=root.sourceChoices()
+    function sourceChoices(){return root.players.map(player=>{const identity=String(player.identity || "");return {player:player,label:identity.trim().length?identity:"Media player"};});}
+    readonly property var liveSourceChoices:root.sourceChoices()
+    onLiveSourceChoicesChanged:if(sourceSelector && !sourceSelector.popup.visible)sourceSelector.choices=root.liveSourceChoices
     DialogButton {visible:!root.expanded;x:parent.width-34;y:8;width:26;height:22;text:"•••";Accessible.name:"Expand Now Playing";onClicked:root.expandRequested()}
     Timer {interval:1000;repeat:true;running:root.visible && root.expanded && !!root.player && root.player.isPlaying;onTriggered:root.player.positionChanged()}
     Column {
         id:mediaContents
         x: 16; y: 13; width: parent.width - 32; spacing: 5
-        DesktopComboBox {id:sourceSelector;objectName:"media-source";property var choices:[];visible:root.expanded && root.players.length>1;width:parent.width;model:choices.map(row=>row.label);Accessible.name:"Media source";currentIndex:choices.findIndex(row=>row.player===root.player);onActivated:index=>{const chosen=choices[index]?choices[index].player:null;if(chosen && root.players.includes(chosen))root.selectedPlayer=chosen.dbusName;}Component.onCompleted:choices=root.sourceChoices()
-            Connections {target:sourceSelector.popup;function onClosed(){Qt.callLater(()=>sourceSelector.choices=root.sourceChoices());}}
+        DesktopComboBox {id:sourceSelector;objectName:"media-source";property var choices:[];visible:root.expanded && root.players.length>1;width:parent.width;model:choices.map(row=>row.label);Accessible.name:"Media source";currentIndex:choices.findIndex(row=>row.player===root.player);onActivated:index=>{const chosen=choices[index]?choices[index].player:null;if(chosen && root.players.includes(chosen))root.selectedPlayer=chosen.dbusName;}Component.onCompleted:choices=root.liveSourceChoices
+            Connections {target:sourceSelector.popup;function onAboutToShow(){sourceSelector.choices=root.liveSourceChoices;}function onClosed(){Qt.callLater(()=>{if(!sourceSelector.popup.visible)sourceSelector.choices=root.liveSourceChoices;});}}
         }
         Rectangle {
             width: 32; height: 32; radius: 7; color: Theme.colors.surface
