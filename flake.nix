@@ -460,6 +460,7 @@
           cargoLock.lockFile = ./res/lumen-desktop/window-policy/Cargo.lock;
           installPhase = ''mkdir -p "$out"; touch "$out/passed"'';
         };
+        native-application-appearance = pkgs.callPackage ./packages/native-window-preferences-rust.nix { };
         group-presentation-schema = let
           evaluate = values: import ./packages/desktop-settings-schema.nix { inherit (pkgs) lib; inherit values; };
           rejects = value: !(builtins.tryEval (builtins.deepSeq (evaluate { windows.groupWindowMode = value; }) true)).success;
