@@ -87,7 +87,17 @@ PanelWindow {
         stdout:SplitParser {onRead:data=>{try {const message=JSON.parse(data);if(typeof message.payload==="string")root.event(message.payload);}catch(e){}}}
         onExited:restart.restart()
     }
-    MouseArea {id:background;anchors.fill:parent;hoverEnabled:true;onClicked:root.dismiss()}
+    MouseArea {
+        id:background
+        anchors.fill:parent
+        hoverEnabled:true
+        onClicked: mouse => {
+            // The overlay covers the original control after its menu opens.
+            // Preserve the control's click action rather than swallowing it.
+            if(root.overTrigger)root.apply((mouse.modifiers & Qt.AltModifier)?1:0);
+            else root.dismiss();
+        }
+    }
     Rectangle {
         id:card
         x:Math.max(8,Math.min(root.width-width-8,root.anchorX-(root.screen?root.screen.x:0)-52))

@@ -14,6 +14,12 @@ Row {
     y: 14
     readonly property bool controlsHovered: [0,1,2].some(i=>{const b=lights.itemAt(i);return b && b.hovered;})
     signal triggered(int action)
+    function activate(index, modifiers) {
+        if (Theme.nativeWindowActions && root.Window.window) {
+            const action = index === 2 && (modifiers & Qt.AltModifier) ? "fill" : ["close","minimize","fullscreen"][index];
+            Quickshell.execDetached(["lumen-focus-window", "org.quickshell", root.Window.window.title, "--action", action]);
+        } else root.triggered(index);
+    }
     spacing: 0
     Repeater {
         id:lights
@@ -29,7 +35,7 @@ Row {
                 anchors.centerIn: parent
                 width: 12; height: 12
                 radius: 6
-                color: button.enabled && (root.windowActive || root.controlsHovered) ? button.modelData : Theme.dark ? "#555559" : "#ceced2"
+                color: button.enabled && root.windowActive ? button.modelData : Theme.dark ? "#555559" : "#ceced2"
                 border.width: 1
                 border.color: button.activeFocus ? Theme.colors.accent : Qt.darker(color, 1.12)
                 FocusOutline {focused:button.activeFocus;inset:-3;radius:9}
@@ -42,10 +48,11 @@ Row {
                     width: 8; height: 8; ink: "#333333"
                 }
             }
-            onClicked: {
-                if (Theme.nativeWindowActions && root.Window.window)
-                    Quickshell.execDetached(["lumen-focus-window", "org.quickshell", root.Window.window.title, "--action", ["close","minimize","fullscreen"][index]]);
-                else root.triggered(index);
+            onClicked: root.activate(index, 0)
+            MouseArea {
+                anchors.fill:parent
+                enabled:button.enabled
+                onClicked: mouse => root.activate(button.index, mouse.modifiers)
             }
         }
     }
