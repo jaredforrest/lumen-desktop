@@ -403,8 +403,9 @@ mod bus_tests {
             .args(["8s", env!("LUMEN_DBUS_RUN_SESSION"), "--", env!("LUMEN_TEST_DBUS_SEND"), "--session", "--print-reply", "--dest=org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus.ListActivatableNames"])
             .env_remove("DBUS_SESSION_BUS_ADDRESS")
             .output()?;
-        require(result.status.success(), format!("Private session probe failed: {}", String::from_utf8_lossy(&result.stderr)))?;
+        if !result.status.success() { return Err(fail(format!("Private session probe failed: {}", String::from_utf8_lossy(&result.stderr)))); }
         let output = String::from_utf8(result.stdout)?;
-        require(output.contains("string \"org.freedesktop.DBus\"") && output.matches("string \"").count() == 1, format!("Host activation configuration escaped into private session: {output}"))
+        if !(output.contains("string \"org.freedesktop.DBus\"") && output.matches("string \"").count() == 1) { return Err(fail(format!("Host activation configuration escaped into private session: {output}"))); }
+        Ok(())
     }
 }
