@@ -176,7 +176,7 @@
         test-capture-observation-shim = import ./tests/desktop/capture-observation-shim { inherit pkgs; };
         test-application-isolation = import ./tests/desktop/application-isolation { inherit pkgs; };
         test-speech-transport-fixture = import ./tests/desktop/speech-transport-rust { inherit pkgs; };
-        test-force-quit-native = import ./tests/desktop/force-quit-native { inherit pkgs; };
+        test-force-quit-native = import ./tests/desktop/force-quit-native { inherit pkgs privateBus; };
         test-application-control = pkgs.callPackage ./packages/application-control.nix { };
         test-input-pane-fixture = import ./tests/desktop/input-pane-rust { inherit pkgs; };
         test-transport-frame-fixture = import ./tests/desktop/transport-frame-rust { inherit pkgs; };
