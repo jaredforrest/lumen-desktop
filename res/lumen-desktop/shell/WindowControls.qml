@@ -10,11 +10,11 @@ Row {
     property bool canMinimize: true
     property bool canFullscreen: true
     // All desktop-owned windows use the same inset and traffic-light geometry.
-    x: 14
-    y: 18
+    x: 10
+    y: 14
     readonly property bool controlsHovered: [0,1,2].some(i=>{const b=lights.itemAt(i);return b && b.hovered;})
     signal triggered(int action)
-    spacing: 8
+    spacing: 0
     Repeater {
         id:lights
         model: ["#ff5f57", "#febc2e", "#28c840"]
@@ -22,10 +22,12 @@ Row {
             id: button
             required property int index
             required property string modelData
-            width: 12; height: 12
+            width: 20; height: 20
             enabled: index === 0 || (index === 1 ? root.canMinimize : root.canFullscreen)
             Accessible.name: ["Close " + root.windowName, "Minimize " + root.windowName, "Enter full screen"][index]
             background: Rectangle {
+                anchors.centerIn: parent
+                width: 12; height: 12
                 radius: 6
                 color: button.enabled && (root.windowActive || root.controlsHovered) ? button.modelData : Theme.dark ? "#555559" : "#ceced2"
                 border.width: 1

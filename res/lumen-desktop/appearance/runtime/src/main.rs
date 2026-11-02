@@ -399,7 +399,7 @@ fn execute() -> Result<(), String> {
                 "shadow_inactive_color #00000030".into(),"shadow_offset 0 6".into(),"blur enable".into(),
                 "blur_xray disable".into(),"blur_passes 3".into(),"blur_radius 5".into(),
                 format!("animation_duration_ms {}", if prefs["reduceMotion"] == true { "0" } else { "160" }),
-                "layer_effects \"lumen-dock\" \"blur enable; corner_radius 22\"".into(),
+                "layer_effects \"lumen-dock\" \"blur enable; blur_ignore_transparent enable; corner_radius 0\"".into(),
                 "layer_effects \"lumen-menu\" \"blur enable\"".into(),
                 "layer_effects \"lumen-menu-popup\" \"blur enable; blur_ignore_transparent enable\"".into()];
             for command in commands {

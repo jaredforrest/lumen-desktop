@@ -6,7 +6,9 @@ Rectangle {
     border.color: Theme.outline
     border.width: 1
     MouseArea { anchors.fill: parent }
-    layer.enabled: GraphicsInfo.api !== GraphicsInfo.Software
+    // The compositor blurs translucent layers. A second offscreen shadow
+    // makes its near-transparent padding part of that blur region.
+    layer.enabled: !Theme.compositorEffects && GraphicsInfo.api !== GraphicsInfo.Software
     layer.effect: MultiEffect {
         shadowEnabled: true
         shadowBlur: 0.65

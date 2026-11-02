@@ -20,7 +20,8 @@ Item {
     readonly property bool enclosingMaterial:["Controls","Date","Now Playing","VPN"].includes(kind)
     implicitHeight:panelContents.height+(enclosingMaterial?24:0)
     height:implicitHeight
-    PanelSurface {anchors.fill:parent;visible:root.enclosingMaterial}
+    // Notification cards and widgets own their individual materials.
+    PanelSurface {anchors.fill:parent;visible:root.enclosingMaterial && root.kind!=="Date"}
     Column {id:panelContents;x:root.enclosingMaterial?12:0;y:x;width:parent.width-x*2;spacing:12
     ControlCentre {visible:root.kind==="Controls";width:parent.width;shell:root.shell;onSettingsRequested:root.settingsRequested();onPanelRequested:name=>root.panelRequested(name)}
     PanelSurface {visible:root.kind==="Internet";width:parent.width;height:internetBody.height+28
