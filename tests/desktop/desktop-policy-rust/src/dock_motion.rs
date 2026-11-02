@@ -170,11 +170,12 @@ pub fn run(ctx: &mut Context) -> Result<()> {
     need(writes(ctx)?.is_empty() && state(ctx)?["activations"].as_array().is_some_and(Vec::is_empty),"Dismissed Dock drag dispatched on release")?;
     checks.push("A competing popup cancels held Dock dragging and exclusive keyboard ownership without a release action");
     ctx.move_pointer((30.0,400.0))?;
+    let mut keyboard=physical_keyboard::Keyboard::start(ctx,"dock-keyboard.log")?;
     ctx.ipc("focusDock",&[])?;
     wait("Dock keyboard focus",||Ok((state(ctx)?["keyboardMode"]==true).then_some(())))?;
-    ctx.key(&["-k","End"])?;
+    keyboard.key("End")?;
     wait("Keyboard magnification follows selection",|| {let row=state(ctx)?;Ok((row["hovered"]==row["pointerSlot"] && row["keyboardIndex"].as_u64()==Some(all.len() as u64-1)).then_some(()))})?;
-    ctx.key(&["-k","Escape"])?;
+    keyboard.key("Escape")?;
     wait("Dock Escape dismisses keyboard mode",|| {let row=state(ctx)?;Ok((row["keyboardMode"]==false && row["hovered"]==-1 && row["pointerSlot"]==-1 && row["popupOwner"]=="").then_some(()))})?;
     ctx.ipc("focusDock",&[])?;
     wait("Dock keyboard refocus",||Ok((state(ctx)?["keyboardMode"]==true).then_some(())))?;
