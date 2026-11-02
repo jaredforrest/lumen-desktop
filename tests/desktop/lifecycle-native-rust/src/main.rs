@@ -27,6 +27,7 @@ fn main() -> Result<()> {
         "projection-probe"
         | "projection"
         | "projection-interaction"
+        | "projection-clear-readiness"
         | "projection-focus"
         | "projection-protocol"
         | "projection-family"

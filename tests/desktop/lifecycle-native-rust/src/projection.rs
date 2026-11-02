@@ -211,6 +211,9 @@ pub fn run(options: Options) -> Result<()> {
     if f.options.scenario == "projection-focus" {
         return focus_journey(&mut f, id, &owned);
     }
+    if f.options.scenario == "projection-clear-readiness" {
+        return clear_readiness_probe(&mut f, id, &folder);
+    }
     if full {
         journey(&mut f, id, &owned, &before, &origin)?;
     }
@@ -265,11 +268,15 @@ fn clear_journey(f: &mut Fixture, id: u64, folder: &std::path::Path) -> Result<V
             .as_i64()
             .ok_or("Clear height")?
             / 2;
-    lock::pointer(f, pointer, &log, 2, &format!("m {x} {y}\np\nr\n"))?;
+    let previous = pointer_witness(folder)?["sequence"].as_u64().unwrap_or(0);
+    lock::pointer(f, pointer, &log, 2, &format!("m {x} {y}\n"))?;
+    wait_pointer_witness(f, folder, previous, x, y, id, "foreground-clear")?;
+    lock::pointer(f, pointer, &log, 3, "p\nr\n")?;
     wait_true(
         "foreground cleared view receives actual GTK pointer input",
         || Ok(clicks(folder)? == count + 1 && focused(f)? == id),
     )?;
+    require_press_at(folder, x, y, &view(f, id)?)?;
 
     request(f, &operation(&view(f, id)?, true)?, None)?;
     let source_folder = f.options.output.join("clear-source");
@@ -311,6 +318,292 @@ fn clear_journey(f: &mut Fixture, id: u64, folder: &std::path::Path) -> Result<V
         "Background clear changed independent source focus, layout or desktop",
     )?;
     Ok(clear)
+}
+
+fn pointer_witness(folder: &std::path::Path) -> Result<Value> {
+    let path = folder.join("pointer-0.json");
+    if !path.exists() {
+        return Ok(Value::Null);
+    }
+    let bytes = fs::read(path)?;
+    require(bytes.len() <= 4096, "Owned pointer witness bound")?;
+    // A concurrently replaced diagnostic file can be sampled during its write.
+    Ok(serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+}
+fn pointer_matches(witness: &Value, previous: u64, x: i64, y: i64, node: &Value) -> bool {
+    let expected_x = x as f64
+        - node["rect"]["x"].as_f64().unwrap_or(f64::NAN)
+        - node["window_rect"]["x"].as_f64().unwrap_or(f64::NAN);
+    let expected_y = y as f64
+        - node["rect"]["y"].as_f64().unwrap_or(f64::NAN)
+        - node["window_rect"]["y"].as_f64().unwrap_or(f64::NAN);
+    witness["index"] == 0
+        && matches!(witness["kind"].as_str(), Some("enter" | "motion"))
+        && witness["time"].as_u64().is_some()
+        && witness["sequence"].as_u64().is_some_and(|s| s > previous)
+        && witness["position"][0]
+            .as_f64()
+            .is_some_and(|p| (p - expected_x).abs() <= 1.0)
+        && witness["position"][1]
+            .as_f64()
+            .is_some_and(|p| (p - expected_y).abs() <= 1.0)
+        && witness["width"] == node["window_rect"]["width"]
+        && witness["height"] == node["window_rect"]["height"]
+}
+fn require_press_at(folder: &std::path::Path, x: i64, y: i64, node: &Value) -> Result<()> {
+    let bytes = fs::read(folder.join("clicks.jsonl"))?;
+    require(bytes.len() <= 65536, "Pointer press journal bound")?;
+    let rows = std::str::from_utf8(&bytes)?
+        .lines()
+        .map(serde_json::from_str::<Value>)
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let press = rows
+        .iter()
+        .rev()
+        .find(|row| row["type"] == "ButtonPress")
+        .ok_or("Missing actual press")?;
+    let expected_x = x as f64
+        - node["rect"]["x"].as_f64().ok_or("Press frame x")?
+        - node["window_rect"]["x"].as_f64().ok_or("Press client x")?;
+    let expected_y = y as f64
+        - node["rect"]["y"].as_f64().ok_or("Press frame y")?
+        - node["window_rect"]["y"].as_f64().ok_or("Press client y")?;
+    require(
+        press["index"] == 0
+            && press["position"][0]
+                .as_f64()
+                .is_some_and(|p| (p - expected_x).abs() <= 1.0)
+            && press["position"][1]
+                .as_f64()
+                .is_some_and(|p| (p - expected_y).abs() <= 1.0),
+        "Physical press missed exact owned client coordinate",
+    )
+}
+fn wait_pointer_witness(
+    f: &Fixture,
+    folder: &std::path::Path,
+    previous: u64,
+    x: i64,
+    y: i64,
+    id: u64,
+    label: &str,
+) -> Result<()> {
+    wait_true(
+        "fresh actual owned pointer recipient before physical press",
+        || {
+            let witness = pointer_witness(folder)?;
+            let node = view(f, id)?;
+            save(
+                &f.options
+                    .output
+                    .join(format!("{label}-pointer-readiness.json")),
+                &json!({"previousSequence":previous,"point":[x,y],"witness":witness,"node":node,"tree":f.tree()?}),
+            )?;
+            Ok(pointer_matches(&witness, previous, x, y, &node))
+        },
+    )
+}
+
+struct OwnedPause(std::os::fd::OwnedFd);
+impl OwnedPause {
+    fn new(f: &mut Fixture, process: usize) -> Result<Self> {
+        use std::os::fd::FromRawFd;
+        require(
+            f.processes[process].0.try_wait()?.is_none(),
+            "Owned configure participant exited",
+        )?;
+        let pid = f.processes[process].0.id();
+        let fd = unsafe { libc::syscall(libc::SYS_pidfd_open, pid, 0) };
+        require(fd >= 0, "Owned configure participant pidfd unavailable")?;
+        let guard = Self(unsafe { std::os::fd::OwnedFd::from_raw_fd(fd as i32) });
+        guard.signal(libc::SIGSTOP)?;
+        wait_true("owned configure participant stopped", || {
+            Ok(fs::read_to_string(format!("/proc/{pid}/status"))?
+                .lines()
+                .any(|line| line.starts_with("State:") && line.contains("T (stopped)")))
+        })?;
+        Ok(guard)
+    }
+    fn signal(&self, signal: i32) -> Result<()> {
+        use std::os::fd::AsRawFd;
+        require(
+            unsafe {
+                libc::syscall(
+                    libc::SYS_pidfd_send_signal,
+                    self.0.as_raw_fd(),
+                    signal,
+                    std::ptr::null::<libc::siginfo_t>(),
+                    0,
+                )
+            } == 0,
+            "Owned participant signal failed",
+        )
+    }
+}
+impl Drop for OwnedPause {
+    fn drop(&mut self) {
+        let _ = self.signal(libc::SIGCONT);
+    }
+}
+fn clear_readiness_probe(f: &mut Fixture, id: u64, folder: &std::path::Path) -> Result<()> {
+    // Manual causal diagnostic: the unchanged compositor transaction timeout
+    // can expire if this process is descheduled before its immediate press.
+    // Such a run refuses to claim the negative; do not retry it into acceptance.
+    request(f, &format!("[con_id={id}] floating enable"), None)?;
+    request(
+        f,
+        &format!("[con_id={id}] resize set width 300 px height 200 px"),
+        None,
+    )?;
+    request(f, &format!("[con_id={id}] move position 30 100"), None)?;
+    let driver = lock::pinned(f, "wlrctl")?;
+    let pointer = f.launch_input_args(
+        &driver,
+        &["pointer", "move", "0", "0"],
+        "clear-probe-pointer.log",
+    )?;
+    let log = f.options.output.join("clear-probe-pointer.log");
+    lock::pointer(f, pointer, &log, 10, "m 0 0\n")?;
+    request(f, "seat seat0 cursor set 0 0", None)?;
+    let previous = pointer_witness(folder)?["sequence"].as_u64().unwrap_or(0);
+    lock::pointer(f, pointer, &log, 11, "m 100 160\n")?;
+    wait_pointer_witness(f, folder, previous, 100, 160, id, "probe-initial")?;
+    let other_folder = f.options.output.join("configure-blocker");
+    fs::create_dir(&other_folder)?;
+    let program = f.sibling("lifecycle-client")?;
+    let process = f.launch(
+        &program,
+        &[
+            other_folder.to_str().ok_or("Blocker folder")?,
+            "org.example.ConfigureBlocker",
+            "--projection-input",
+        ],
+        "configure-blocker.log",
+    )?;
+    let pid = f.processes[process].0.id();
+    let blocker = wait("independently owned configure participant", || {
+        Ok(nodes(f)?
+            .into_iter()
+            .find(|node| node["pid"] == pid && node["name"] == "Lifecycle document 1")
+            .and_then(|node| node["id"].as_u64()))
+    })?;
+    let target_pid = view(f, id)?["pid"].as_u64().ok_or("Owned target PID")?;
+    require(
+        target_pid != u64::from(pid)
+            && f.processes
+                .iter()
+                .any(|child| u64::from(child.0.id()) == target_pid),
+        "Configure blocker must be a different independently owned process",
+    )?;
+    request(f, &format!("[con_id={blocker}] floating enable"), None)?;
+    request(
+        f,
+        &format!("[con_id={blocker}] resize set width 200 px height 180 px"),
+        None,
+    )?;
+    request(
+        f,
+        &format!("[con_id={blocker}] move position 450 100"),
+        None,
+    )?;
+    wait_true("blocker actual configure allocation", || {
+        let client = view(f, blocker)?["window_rect"].clone();
+        Ok(fs::read(other_folder.join("allocation-0.json"))
+            .ok()
+            .and_then(|b| serde_json::from_slice::<Value>(&b).ok())
+            .is_some_and(|a| {
+                a["width"] == client["width"]
+                    && a["height"] == client["height"]
+                    && a["width"].as_u64().is_some_and(|w| w > 0)
+            }))
+    })?;
+    request(f, &format!("[con_id={id}] focus"), None)?;
+    let count = clicks(folder)?;
+    let previous = pointer_witness(folder)?["sequence"].as_u64().unwrap_or(0);
+    let paused = OwnedPause::new(f, process)?;
+    request(
+        f,
+        &format!("[con_id={blocker}] resize set width 250 px height 220 px"),
+        None,
+    )?;
+    request(
+        f,
+        &format!("[con_id={id}] resize set width 400 px height 250 px"),
+        None,
+    )?;
+    request(f, &format!("[con_id={id}] move position 800 400"), None)?;
+    request(f, &operation(&view(f, id)?, false)?, None)?;
+    let pending = view(f, id)?;
+    let x = pending["rect"]["x"].as_i64().ok_or("Pending x")? + 100;
+    let y = pending["rect"]["y"].as_i64().ok_or("Pending y")? + 100;
+    lock::pointer(
+        f,
+        pointer,
+        &log,
+        12,
+        &format!("m {} {}\np\nr\n", x - 100, y - 160),
+    )?;
+    let witness = pointer_witness(folder)?;
+    let observed = clicks(folder)?;
+    let target_status = fs::read_to_string(format!("/proc/{target_pid}/status"))?;
+    require(
+        !target_status
+            .lines()
+            .any(|line| line.starts_with("State:") && line.contains("T (stopped)")),
+        "Input target must remain runnable during held participant negative",
+    )?;
+    save(
+        &f.options.output.join("clear-pending-negative.json"),
+        &json!({"target":pending,"witness":witness,"previousSequence":previous,"clicksBefore":count,"clicksAfter":observed,"blockerPid":pid,"targetProcessAlive":nodes(f)?.iter().any(|n|n["id"]==id),"targetStatus":target_status,"tree":f.tree()?}),
+    )?;
+    require(
+        observed == count && !pointer_matches(&witness, previous, x, y, &pending),
+        "Controlled immediate press unexpectedly reached pending target; pending-scene negative not established",
+    )?;
+    paused.signal(libc::SIGCONT)?;
+    drop(paused);
+    // Re-enter after the held participant is runnable; no deadline changes or sleeps.
+    lock::pointer(f, pointer, &log, 13, "m -20 -20\n")?;
+    let previous = pointer_witness(folder)?["sequence"].as_u64().unwrap_or(0);
+    lock::pointer(f, pointer, &log, 14, "m 20 20\n")?;
+    wait_pointer_witness(f, folder, previous, x, y, id, "probe-ready")?;
+    lock::pointer(f, pointer, &log, 15, "p\nr\n")?;
+    wait_true("fresh exact GTK recipient receives physical press", || {
+        Ok(clicks(folder)? == count + 1 && focused(f)? == id)
+    })?;
+    require_press_at(folder, x, y, &view(f, id)?)?;
+    save(
+        &f.options.output.join("result.json"),
+        &json!({"passed":true,"checks":2,"scope":"Controlled independently owned configure hold exposes pending-tree input gap; fresh exact live GTK pointer witness gates physical press. Original historical timeout remains separate evidence."}),
+    )
+}
+
+#[cfg(test)]
+mod pointer_witness_tests {
+    use super::*;
+    #[test]
+    fn readiness_requires_fresh_exact_recipient_point_and_client_geometry() {
+        let node =
+            json!({"rect":{"x":800,"y":432},"window_rect":{"x":2,"y":0,"width":396,"height":216}});
+        let witness = json!({"index":0,"sequence":3,"kind":"motion","time":42,"position":[98,100],"width":396,"height":216});
+        assert!(pointer_matches(&witness, 2, 900, 532, &node));
+        assert!(!pointer_matches(&witness, 3, 900, 532, &node));
+        assert!(!pointer_matches(&witness, 2, 950, 532, &node));
+        assert!(!pointer_matches(&witness, 2, 900, 560, &node));
+        for (key, value) in [
+            ("index", json!(1)),
+            ("kind", json!("press")),
+            ("width", json!(300)),
+            ("height", json!(200)),
+        ] {
+            let mut invalid = witness.clone();
+            invalid[key] = value;
+            assert!(
+                !pointer_matches(&invalid, 2, 900, 532, &node),
+                "Invalid {key} accepted"
+            );
+        }
+    }
 }
 
 fn current_workspace(f: &Fixture) -> Result<Value> {

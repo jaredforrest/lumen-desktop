@@ -81,6 +81,7 @@ impl Options {
                     | "projection-probe"
                     | "projection"
                     | "projection-interaction"
+                    | "projection-clear-readiness"
                     | "projection-focus"
                     | "projection-protocol"
                     | "projection-family"

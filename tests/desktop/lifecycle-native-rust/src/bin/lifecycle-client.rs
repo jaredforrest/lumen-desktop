@@ -3,7 +3,7 @@ use gio::prelude::*;
 use gtk::glib::object::ObjectType;
 use gtk::prelude::*;
 use serde_json::json;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::env;
 use std::fs;
 use std::io::Write;
@@ -53,15 +53,33 @@ fn add_window(app: &gtk::Application, state: &mut State, index: usize) {
         input.add(&label);
         window.add(&input);
         let root = state.root.clone();
+        let allocation_root = root.clone();
         window.connect_size_allocate(move |_, allocation| {
             fs::write(
-                root.join(format!("allocation-{index}.json")),
+                allocation_root.join(format!("allocation-{index}.json")),
                 json!({"index":index,"width":allocation.width(),"height":allocation.height()})
                     .to_string(),
             )
             .expect("owned allocation evidence");
         });
         input.add_events(gdk::EventMask::BUTTON_PRESS_MASK);
+        input.add_events(gdk::EventMask::ENTER_NOTIFY_MASK | gdk::EventMask::POINTER_MOTION_MASK);
+        let sequence = Rc::new(Cell::new(0_u64));
+        let event_root = root.clone();
+        let event_sequence = sequence.clone();
+        input.connect_enter_notify_event(move |widget, event| {
+            let serial = event_sequence.get().checked_add(1).expect("pointer sequence");
+            event_sequence.set(serial);
+            fs::write(event_root.join(format!("pointer-{index}.json")), json!({"index":index,"sequence":serial,"kind":"enter","time":event.time(),"position":event.position(),"width":widget.allocated_width(),"height":widget.allocated_height()}).to_string()).expect("owned pointer enter");
+            gtk::glib::Propagation::Proceed
+        });
+        let event_root = root.clone();
+        input.connect_motion_notify_event(move |widget, event| {
+            let serial = sequence.get().checked_add(1).expect("pointer sequence");
+            sequence.set(serial);
+            fs::write(event_root.join(format!("pointer-{index}.json")), json!({"index":index,"sequence":serial,"kind":"motion","time":event.time(),"position":event.position(),"width":widget.allocated_width(),"height":widget.allocated_height()}).to_string()).expect("owned pointer motion");
+            gtk::glib::Propagation::Proceed
+        });
         let root = state.root.clone();
         input.connect_button_press_event(move |_, event| {
             let mut journal = fs::OpenOptions::new()

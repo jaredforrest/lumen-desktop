@@ -104,6 +104,25 @@ actions invoke the production switcher command interface; they are not a claim
 about physical shortcut delivery. Native capture is additionally required for
 the supported native cases; the paired fallback keeps the exact QObject identity.
 
+Foreground-clear pointer checks wait for a fresh enter or motion event from the
+exact owned GTK window at the intended client-local coordinate and client size
+before pressing. Pending tree geometry, keyboard focus and a pointer-driver
+roundtrip alone do not establish that a scene transaction has applied. The
+existing core and interaction journeys enforce this on both providers, retaining
+the raw press coordinate and exact recipient count afterward.
+
+`lumen-lifecycle-native-fixture projection-clear-readiness` is a manual causal
+diagnostic, with the same launcher/provider/output arguments as other projection
+journeys. It briefly pauses an independently owned configure participant through
+a pidfd while the input target remains runnable, showing that an immediate press
+at pending geometry can miss, then requiring a fresh target witness and exact
+press after resumption. All error paths resume the participant before fixture
+cleanup. This diagnostic deliberately retains the ordinary compositor timeout;
+if scheduling lets that timeout expire before the negative, it refuses to claim
+the reproduction. It is not an automatic CI negative or a retry-until-pass test.
+The historical interaction timeout lacked a hit-event trace and is retained as
+separate evidence rather than asserting its precise cause from a later pass.
+
 ```sh
 nix-shell -p cargo rustc --run 'CARGO_TARGET_DIR=/tmp/lumen-spaces-target cargo test --offline --manifest-path res/lumen-desktop/spaces/Cargo.toml'
 nix build .#shell .#compositor-basic .#compositor .#test-window-relationships
