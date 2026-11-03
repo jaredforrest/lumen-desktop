@@ -8,5 +8,6 @@
   postInstall = ''
     mkdir -p "$out/share/lumen-window-layout-menu-fixture"
     cp fixture.qml "$out/share/lumen-window-layout-menu-fixture/fixture.qml"
+    cp corner-preview.qml "$out/share/lumen-window-layout-menu-fixture/corner-preview.qml"
   '';
 }

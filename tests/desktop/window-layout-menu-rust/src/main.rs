@@ -26,12 +26,14 @@ struct Options {
     launcher: PathBuf,
     sway: PathBuf,
     output: PathBuf,
+    corner_preview: bool,
 }
 
 fn options() -> Result<Options> {
     let mut launcher = None;
     let mut sway = None;
     let mut output = None;
+    let mut corner_preview = false;
     let mut args = env::args_os().skip(1);
     while let Some(arg) = args.next() {
         match arg.to_str() {
@@ -40,6 +42,7 @@ fn options() -> Result<Options> {
             }
             Some("--sway") => sway = Some(PathBuf::from(args.next().ok_or("Missing compositor")?)),
             Some("--output") => output = Some(PathBuf::from(args.next().ok_or("Missing output")?)),
+            Some("--corner-preview") => corner_preview = true,
             _ => return Err(fail("Unknown layout-menu fixture option")),
         }
     }
@@ -47,6 +50,7 @@ fn options() -> Result<Options> {
         launcher: launcher.ok_or("--launcher required")?,
         sway: sway.ok_or("--sway required")?,
         output: output.ok_or("--output required")?,
+        corner_preview,
     })
 }
 
@@ -316,9 +320,10 @@ fn run(options: Options) -> Result<()> {
         .ok_or("Executable directory missing")?
         .parent()
         .ok_or("Package root missing")?
-        .join("share/lumen-window-layout-menu-fixture/fixture.qml");
+        .join(if options.corner_preview {"share/lumen-window-layout-menu-fixture/corner-preview.qml"} else {"share/lumen-window-layout-menu-fixture/fixture.qml"});
     let scene = fs::read_to_string(scene_source)?
-        .replace("@SHELL_ASSETS@", &format!("file:{}", assets.display()));
+        .replace("@SHELL_ASSETS@", &format!("file:{}", assets.display()))
+        .replace("@CORNER_CAPTURE@", output.join("wide-corners.png").to_str().ok_or("Invalid capture path")?);
     let scene_file = output.join("shell.qml");
     fs::write(&scene_file, scene)?;
     let result = Command::new(program("timeout", &values)?)
@@ -341,7 +346,7 @@ fn run(options: Options) -> Result<()> {
         format!("Layout menu scene exited {}: {text}", result.status),
     )?;
     require(
-        text.contains("LAYOUT_MENU_PASS"),
+        text.contains(if options.corner_preview {"CORNER_PREVIEW_PASS"} else {"LAYOUT_MENU_PASS"}),
         format!("Layout menu did not complete checks: {text}"),
     )?;
     require(
@@ -349,7 +354,7 @@ fn run(options: Options) -> Result<()> {
         format!("Layout menu load failed: {text}"),
     )?;
     let mut report = File::create(output.join("result.json"))?;
-    report.write_all(b"{\"passed\":true,\"checks\":[\"Packaged layout menu validates targets, capabilities, popup ownership, and visible opening on a private Qt compositor\"]}\n")?;
+    report.write_all(if options.corner_preview {b"{\"passed\":true,\"checks\":[\"Wide native-frame visual capture produced; image review required\"]}\n"} else {b"{\"passed\":true,\"checks\":[\"Packaged layout menu validates targets, capabilities, popup ownership, and visible opening on a private Qt compositor\"]}\n"})?;
     sway.0.kill()?;
     sway.wait(5)?;
     bus.0.kill()?;
