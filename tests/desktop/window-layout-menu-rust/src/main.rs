@@ -290,7 +290,9 @@ fn run(options: Options) -> Result<()> {
     )?;
     values.insert("DBUS_SESSION_BUS_ADDRESS".into(), address);
     let sway_config = output.join("sway.conf");
-    fs::write(&sway_config, "output * resolution 800x600\n")?;
+    fs::write(&sway_config, if options.corner_preview {
+        "output * resolution 2560x1440\ncorner_radius 12\nsmart_corner_radius disable\ndefault_floating_border normal 2\nclient.focused #c8c8c8 #f2f2f2 #111111 #c8c8c8 #c8c8c8\n"
+    } else {"output * resolution 800x600\n"})?;
     values.insert("WLR_BACKENDS".into(), "headless".into());
     values.insert("WLR_RENDERER".into(), "pixman".into());
     if options.corner_preview {
