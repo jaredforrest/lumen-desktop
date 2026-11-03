@@ -106,6 +106,7 @@ fn populated_calendar(input: &str) -> Result<String> {
     for day in days {
         for (slot, (title, calendar, start, end, all_day)) in [
             ("Design review", "Studio", "09:30", "10:30", false),
+            ("Sketch workshop", "Studio", "10:00", "11:00", false),
             ("Lunch with Sam", "Personal", "12:30", "13:30", false),
             ("Release planning", "Studio", "14:00", "15:00", false),
             ("Focus day", "Personal", "00:00", "23:59", true),
@@ -117,7 +118,8 @@ fn populated_calendar(input: &str) -> Result<String> {
                 "notes":"Synthetic release-review event. No personal account is connected.","editable":false}));
         }
     }
-    let selected: Vec<_> = events.iter().filter(|event| event["date"] == date).cloned().collect();
+    events.push(json!({"id":"review-residency","title":"Studio residency","calendar":"Personal","calendarId":"Personal","provider":"Sample","date":format!("{prefix}-02"),"endDate":format!("{prefix}-05"),"startTime":"00:00","endTime":"23:59","allDay":true,"location":"Studio","notes":"Synthetic multi-day event.","editable":false}));
+    let selected: Vec<_> = events.iter().filter(|event| event["date"].as_str().unwrap_or("") <= date && event["endDate"].as_str().unwrap_or("") >= date).cloned().collect();
     Ok(format!("{}\n", json!({"configured":true,"events":selected,"monthEvents":events,
         "total":selected.len(),"month":month,"date":date,"timezone":"Europe/London",
         "lastSuccess":format!("{date}T08:00:00Z"),"providers":[{"id":"sample","name":"Sample calendars","configured":true}]})))
@@ -302,7 +304,9 @@ mod tests {
         let input=r#"{"action":"list","month":"2026-11-01","selectedDate":"2026-11-03"}"#;
         let response:Value=serde_json::from_str(&populated_calendar(input).unwrap()).unwrap();
         assert_eq!(response["configured"],true);
-        assert_eq!(response["events"].as_array().unwrap().len(),4);
+        assert_eq!(response["events"].as_array().unwrap().len(),6);
+        assert!(response["events"].as_array().unwrap().iter().any(|e| e["date"] != e["endDate"]));
+        assert!(response["events"].as_array().unwrap().iter().any(|e| e["startTime"] == "10:00"));
         assert!(response["monthEvents"].as_array().unwrap().len()>20);
         assert!(response["events"].as_array().unwrap().iter().any(|e|e["allDay"]==true));
         assert!(populated_calendar(r#"{"action":"create"}"#).is_err());

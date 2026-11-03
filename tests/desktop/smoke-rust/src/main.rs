@@ -1148,8 +1148,12 @@ context.objects = [
         write(&studio.join("Project Plan.csv"), "Milestone,Status\nDesign review,In progress\nVisual baseline,Review\nRelease,Planned\n")?;
         fs::copy(self.assets.join("wallpaper.png"), studio.join("Landscape.png"))?;
         for (name,contents) in [("README.md","# Studio\n\nA synthetic review workspace.\n"),("Project.json",r#"{"name":"Lumen Review","status":"in progress"}"#),("Welcome.html","<!doctype html><title>Studio</title><h1>Welcome to the studio</h1>"),("Poster.svg",r##"<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480"><rect width="640" height="480" fill="#336699"/><text x="40" y="240" fill="white" font-size="48">Studio</text></svg>"##)] {write(&studio.join(name),contents)?;}
+        // Valid minimal media/archive files and a long name exercise varied list geometry.
+        let mut wave=Vec::from(&b"RIFF"[..]);wave.extend(40u32.to_le_bytes());wave.extend(b"WAVEfmt ");wave.extend(16u32.to_le_bytes());wave.extend(1u16.to_le_bytes());wave.extend(1u16.to_le_bytes());wave.extend(8000u32.to_le_bytes());wave.extend(16000u32.to_le_bytes());wave.extend(2u16.to_le_bytes());wave.extend(16u16.to_le_bytes());wave.extend(b"data");wave.extend(4u32.to_le_bytes());wave.extend([0u8;4]);fs::write(studio.join("Studio ambience.wav"),wave)?;
+        fs::write(studio.join("Studio archive.zip"),[80u8,75,5,6,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0])?;
+        write(&studio.join("Studio presentation with a deliberately long descriptive name for the upcoming release review.txt"),"Synthetic long-name sample.\n")?;
         self.ipc("files", &[studio.to_str().ok_or("Studio path")?])?;
-        self.wait_for("Studio content", || Ok(self.state()?["busy"] == false && self.state()?["count"] == 11))?;
+        self.wait_for("Studio content", || Ok(self.state()?["busy"] == false && self.state()?["count"] == 14))?;
         self.wait_for("Studio focus", || Ok(self.ipc_json("status", &[])?["windows"].as_array().is_some_and(|rows| rows.iter().any(|r| r["title"].as_str().unwrap_or("").contains("Studio") && r["active"] == true))))?;
         for (number, view) in [("1","grid"),("2","list"),("3","columns"),("4","gallery")] {
             self.key(&["-M","ctrl","-k",number,"-m","ctrl"])?;
@@ -1157,6 +1161,7 @@ context.objects = [
             thread::sleep(Duration::from_millis(450));
             self.capture(&format!("files-{view}.png"))?;
             self.key(&["-M","ctrl","-k","a","-m","ctrl"])?;
+            self.wait_for("All sample files selected",||Ok(self.state()?["selection"].as_array().is_some_and(|rows|rows.len()==14)))?;
             thread::sleep(Duration::from_millis(200));
             self.capture(&format!("files-{view}-selected.png"))?;
             self.key(&["-M","shift","-k","F10","-m","shift"])?;
@@ -1183,6 +1188,11 @@ context.objects = [
             self.ipc(method, &[])?;
             thread::sleep(Duration::from_millis(600));
             self.window_capture(title, filename)?;
+            if method=="calendar" {
+                self.key(&["-M","ctrl","-k","1","-m","ctrl"])?;
+                thread::sleep(Duration::from_millis(350));self.window_capture("Calendar","calendar-day.png")?;
+                self.key(&["-M","ctrl","-k","3","-m","ctrl"])?;
+            }
         }
         for (page, filename) in [("Appearance","appearance.png"),("Desktop & Dock","desktop-settings.png"),("Displays","displays.png"),("Sound","sound.png"),("Privacy & Security","privacy.png"),("Accessibility","accessibility.png"),("Wallpaper","wallpaper.png"),("Internet Accounts","accounts.png")] {
             self.ipc("settings", &[page])?;
