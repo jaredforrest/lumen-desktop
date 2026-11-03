@@ -6,8 +6,8 @@ and machine policy remain in the consuming configuration.
 
 | Group | Work included | Acceptance |
 |---|---|---|
-| Window consistency | Captured-window actions, integrated green hover menu, alternate fill action, shared layout material, negotiated client decorations | Helper identity tests and layout fixture passed; real disposable native fill/minimize/close and retired-target rejection passed. Integrated-control pointer acceptance awaits activation |
-| Desktop surfaces | Dock drag cancellation and blank-space release, consistent switcher/layout/pairing material, inactive closing panels cannot intercept input, calendar/notification/control centre review | Expanded physical Dock regression passed; synthetic Dock screenshot reviewed. Final installed multi-panel visual pass awaits activation |
+| Window consistency | Captured-window actions, integrated green hover menu, alternate fill action, shared layout material, negotiated client decorations | Helper identity tests and layout fixture passed. Installed disposable Files window passed physical green hover/fullscreen, alternate-click fill, minimize, restore and close |
+| Desktop surfaces | Dock drag cancellation and blank-space release, consistent switcher/layout/pairing material, inactive closing panels cannot intercept input, calendar/notification/control centre review | Expanded physical Dock regression passed. Installed Files, layout menu, Dock, control centre, calendar/notifications and search screenshots reviewed together |
 | Everyday workflows | Application switching and cancellation, workspace navigation, minimize/restore/fullscreen, file navigation and operations, password-prompt focus and appearance | Packaged application switching, cancellation, modifier release and same-app cycling passed. Shared authentication scenario passed; unchanged file/workspace implementations were retained |
 | Application styling | Supported browser/office styling, application-owned dialog boundaries, authentication controls and accessible focus | Application preference preservation and inspection tests passed. Shared authentication views reviewed at constrained sizes. Third-party interior fidelity is not established by these tests |
 
@@ -38,6 +38,15 @@ Runtime changes are in `f95d0540`; persistent-keyboard fixture correction is in
 The desktop package, source contracts, window-policy checks and personalized
 system candidate built successfully. Publication changes passed a scoped secret
 scan. Activation requires the consuming machine's temporary rebuild grant.
+
+Activated on 2026-11-03 through consuming revision `e10b730`. The desktop service
+is active with no failed user units. All 204 unrelated pending configuration paths
+and their staged/unstaged patches were restored byte-for-byte. Disposable test
+windows were closed and temporary input devices were released and removed.
+
+The installed visual review still shows a wrapped Appearance tile label at the
+current control-centre width. Calendar data loading is not certified by a surface
+review. These remain open; the installed receipt is not a complete parity claim.
 
 The delayed menu now accepts a captured integrated-control identity. Paired-window
 choices remain native-control-only until their picker carries that same captured
