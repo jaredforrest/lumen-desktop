@@ -16,10 +16,10 @@ AbstractButton {
             PanelLabel {width:parent.width;visible:root.detail!=="";text:root.detail;color:Theme.colors.muted;font.pixelSize:Theme.textSize(11);wrapMode:Text.WordWrap}
         }
         Rectangle {
-            id:switchTrack;anchors.right:parent.right;anchors.verticalCenter:parent.verticalCenter;width:32;height:20;radius:10
-            color:root.checked?Theme.colors.accent:Theme.colors.field;opacity:root.enabled?1:0.4
+            id:switchTrack;anchors.right:parent.right;anchors.verticalCenter:parent.verticalCenter;width:36;height:22;radius:11
+            color:root.checked?Theme.selectionFill:Theme.dark?"#636366":"#b9b9bf";opacity:root.enabled?1:0.4
             border.color:root.activeFocus?Theme.colors.text:"transparent";border.width:root.activeFocus?2:0
-            Rectangle {x:root.checked?14:2;y:2;width:16;height:16;radius:8;color:"white";border.width:1;border.color:Theme.textOnOpaqueFill(switchTrack.color)}
+            Rectangle {x:root.checked?16:2;y:2;width:18;height:18;radius:9;color:"white";border.width:0}
         }
     }
     background:Rectangle {radius:10;color:Theme.colors.surface;border.color:root.activeFocus?Theme.colors.accent:Theme.hairline}

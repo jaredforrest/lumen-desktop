@@ -2,6 +2,13 @@ import QtQuick
 import QtQuick.Controls
 TextField {
     id:control
+    leftPadding:10
+    rightPadding:10
+    topPadding:6
+    bottomPadding:6
+    verticalAlignment:TextInput.AlignVCenter
+    selectionColor:Theme.selectionFill
+    selectedTextColor:Theme.selectionText
     function compositionReturn(event) {
         if(!inputMethodComposing && !(event.modifiers & Qt.GroupSwitchModifier)){event.accepted=false;return;}
         // Replace Qt's commit-plus-accepted path with a commit request only.

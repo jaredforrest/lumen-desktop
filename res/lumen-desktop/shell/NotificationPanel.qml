@@ -12,11 +12,11 @@ Column {
     readonly property string preferenceError:widgetState?widgetState.error:""
     width:344;spacing:14
     Loader {id:fallback;active:!root.shell.widgets;sourceComponent:Component {WidgetState {}}}
-    function status(){return {width:width,height:height,style:preferences.style,calendarVisible:preferences.calendarVisible,calendarFirst:preferences.calendarFirst,selected:calendar.iso(calendar.selected),followingToday:calendar.followingToday,events:calendar.events.length,busy:calendar.busy,preferenceError:preferenceError};}
+    function status(){return {width:width,height:height,style:preferences.style,calendarVisible:preferences.calendarVisible,calendarFirst:preferences.calendarFirst,selected:calendar.iso(calendar.selected),followingToday:calendar.followingToday,notificationGroups:notifications.stackStatus(),events:calendar.events.length,busy:calendar.busy,preferenceError:preferenceError};}
     Connections {target:root.widgetState;function onEditorRequested(){root.editingWidgets=true;}}
     function setPreference(key,value){if(widgetState)widgetState.setPreference(key,value);}
     Column {id:before;visible:root.preferences.calendarFirst;width:parent.width}
-    NotificationCentre {width:parent.width;service:root.shell.notifications;reduceTransparency:root.preferences.reduceTransparency || !!Theme.preferences.reduceTransparency;onVisibleChanged:if(visible)root.shell.notifications.seen()}
+    NotificationCentre {id:notifications;width:parent.width;service:root.shell.notifications;reduceTransparency:root.preferences.reduceTransparency || !!Theme.preferences.reduceTransparency;onVisibleChanged:if(visible)root.shell.notifications.seen()}
     Column {id:after;visible:!root.preferences.calendarFirst;width:parent.width}
     CalendarCard {
         id:calendar;objectName:"calendar-widget"

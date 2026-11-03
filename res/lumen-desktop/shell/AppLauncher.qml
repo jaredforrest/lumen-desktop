@@ -91,7 +91,7 @@ PanelSurface {
         selectedKey=resultKey(results[selectedIndex]);
     }
     Connections {target:root.service;function onOpened(){if(root.visible)root.closeRequested();}function onBrowseRequested(path){if(root.visible){root.closeRequested();root.shell.openFiles(path);}}}
-    function status() {return {provider:provider,count:results.length,selected:selectedIndex,kind:current?current.kind:"",preview:previewOpen,previewType:service.preview.type || "",grid:gridMode};}
+    function status() {return {query:search.text,provider:provider,count:results.length,selected:selectedIndex,kind:current?current.kind:"",preview:previewOpen,previewType:service.preview.type || "",grid:gridMode};}
     function setProvider(name) {if(!providerChoices.includes(name))return;provider=name;gridMode=false;selectedKey="";selectedIndex=0;search.forceActiveFocus();if(name==="Clipboard"){previewOpen=false;clipboard.search(search.text);}else if(providerEnabled("Files") && (name==="Files" || name==="All"))service.search(search.text);}
     function cycleProvider() {const choices=providerChoices;setProvider(choices[(choices.indexOf(provider)+1)%choices.length]);}
     function activatePreviewKey(key,parent){if(key && key===resultKey(current))launchKey(key,parent);}

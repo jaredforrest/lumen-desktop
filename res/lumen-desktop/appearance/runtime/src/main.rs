@@ -7,7 +7,7 @@ use std::{env, fs, fs::OpenOptions, io::Write, os::fd::AsRawFd, path::{Path, Pat
 const PALETTE: &str = include_str!("../../palette.json");
 const LAUNCHER: &str = include_str!("../../launcher.rasi.in");
 const ACCENTS: &[(&str, &str, &str)] = &[
-    ("blue", "#007aff", "#0a84ff"), ("purple", "#a855c7", "#bf5af2"),
+    ("blue", "#0066d6", "#0a64d0"), ("purple", "#a855c7", "#bf5af2"),
     ("pink", "#d94382", "#ff6482"), ("red", "#df3038", "#ff453a"),
     ("orange", "#b65c00", "#ff9f0a"), ("yellow", "#947500", "#ffd60a"),
     ("green", "#248a3d", "#30d158"), ("graphite", "#707078", "#98989f"),
@@ -515,6 +515,6 @@ mod tests {
         let mut altered = palettes.clone();
         altered["light"]["selectedText"] = json!("#ffffff");
         assert_eq!(resolve_palette(&altered,"light",&json!({"accent":"red"})).unwrap()["selectedText"],"#ffffff");
-        assert_eq!(resolve_palette(&altered,"light",&json!({"accent":"blue"})).unwrap()["selectedText"],"#000000");
+        assert_eq!(resolve_palette(&altered,"light",&json!({"accent":"blue"})).unwrap()["selectedText"],"#ffffff");
     }
 }

@@ -9,9 +9,10 @@ Column {
     DesktopComboBox {objectName:"menu-visibility";width:parent.width;model:["Always visible","Visible on desktop","Visible in full screen","Automatically hide everywhere"];currentIndex:["always","desktop","fullscreen","auto_hide"].indexOf(root.service.menuBarPreferences.visibility || "desktop");Accessible.name:"Menu bar visibility";enabled:root.service.available && !root.service.busy;onActivated:index=>root.service.setMenuBarPreference("visibility",["always","desktop","fullscreen","auto_hide"][index])}
     Repeater {model:StatusModel.normalize(root.service.menuBarPreferences.order)
         Row {required property string modelData;required property int index;width:root.width;spacing:8
-            PanelLabel {width:Math.max(60,parent.width-160);text:modelData.charAt(0).toUpperCase()+modelData.slice(1);anchors.verticalCenter:parent.verticalCenter}
-            DialogButton {text:"←";enabled:index>0 && !root.service.busy;Accessible.name:"Move "+modelData+" left";onClicked:root.service.setMenuBarPreference("order",StatusModel.move(root.service.menuBarPreferences.order,modelData,index-1))}
-            DialogButton {text:"→";enabled:index<4 && !root.service.busy;Accessible.name:"Move "+modelData+" right";onClicked:root.service.setMenuBarPreference("order",StatusModel.move(root.service.menuBarPreferences.order,modelData,index+1))}
+            objectName:"menu-order-row-"+modelData
+            PanelLabel {width:Math.max(0,parent.width-96);text:modelData.charAt(0).toUpperCase()+modelData.slice(1);wrapMode:Text.Wrap;anchors.verticalCenter:parent.verticalCenter}
+            DialogButton {width:40;text:"←";enabled:index>0 && !root.service.busy;Accessible.name:"Move "+modelData+" left";onClicked:root.service.setMenuBarPreference("order",StatusModel.move(root.service.menuBarPreferences.order,modelData,index-1))}
+            DialogButton {width:40;text:"→";enabled:index<4 && !root.service.busy;Accessible.name:"Move "+modelData+" right";onClicked:root.service.setMenuBarPreference("order",StatusModel.move(root.service.menuBarPreferences.order,modelData,index+1))}
         }
     }
     DesktopComboBox {width:parent.width;model:["Locale time format","12-hour time","24-hour time"];currentIndex:["locale","12","24"].indexOf(root.service.menuBarPreferences.hourCycle || "locale");Accessible.name:"Clock hour format";onActivated:index=>root.service.setMenuBarPreference("hourCycle",["locale","12","24"][index])}

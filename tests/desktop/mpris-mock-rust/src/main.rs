@@ -1,4 +1,5 @@
 //! Private, replaceable MPRIS players for native media-control acceptance.
+mod review_bluetooth;
 use serde_json::{Map, Value as Json, json};
 use std::collections::HashMap;
 use std::env;
@@ -444,11 +445,17 @@ async fn main() -> AppResult<()> {
         })),
         recorder,
     };
-    let _connection = zbus::connection::Builder::session()?
+    let builder = zbus::connection::Builder::session()?
         .name(CONTROL_NAME)?
-        .serve_at(CONTROL_PATH, control)?
-        .build()
-        .await?;
+        .serve_at(CONTROL_PATH, control)?;
+    let builder=if env::var("LUMEN_REVIEW_BLUETOOTH").as_deref()==Ok("1") {
+        builder.name("org.bluez")?
+            .serve_at("/",zbus::fdo::ObjectManager)?
+            .serve_at("/org/bluez/hci0",review_bluetooth::Adapter{powered:true})?
+            .serve_at("/org/bluez/hci0/dev_02_00_00_00_00_02",review_bluetooth::Headphones)?
+            .serve_at("/org/bluez/hci0/dev_02_00_00_00_00_02",review_bluetooth::Battery)?
+    } else {builder};
+    let _connection=builder.build().await?;
     std::future::pending::<()>().await;
     Ok(())
 }

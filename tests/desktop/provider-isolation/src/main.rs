@@ -57,10 +57,16 @@ fn serve(kind: &str, output: &Path, command: Option<&str>, input: &str) -> Resul
         .append(true)
         .open(output.join(format!("{kind}-provider-requests.jsonl")))?;
     writeln!(log, "{}", request)?;
+    if kind=="system" && request["action"]=="displays" && env::var("LUMEN_REVIEW_POPULATED").as_deref()==Ok("1") {
+        return Ok(format!("{}\n",json!({"displays":[{"bus":"review","name":"Studio Display","level":0.72,"maximum":100}]})));
+    }
     if request["action"] != "status" {
         return Err("Unexpected fixture provider action".into());
     }
-    Ok(format!("{}\n", payload(kind)?))
+    let data=if kind=="system" && env::var("LUMEN_REVIEW_POPULATED").as_deref()==Ok("1") {
+        json!({"wifi":{"available":true,"phase":"connected","connectivity":"full","name":"Studio Wi-Fi","networks":[{"name":"Studio Wi-Fi","connected":true,"signal":92}]},"bluetoothRadios":{},"power":{"available":true,"present":true,"percentage":82,"state":"discharging","secondsToEmpty":14400}})
+    } else { payload(kind)? };
+    Ok(format!("{data}\n"))
 }
 
 fn calendar(input: &str) -> Result<String> {
@@ -79,6 +85,72 @@ fn calendar(input: &str) -> Result<String> {
             "date": request["selectedDate"],
         })
     ))
+}
+
+fn populated_calendar(input: &str) -> Result<String> {
+    let request: Value = serde_json::from_str(input)?;
+    if !["list", "load", "sync"].iter().any(|action| request["action"] == *action) {
+        return Err("Review calendar rejects mutations".into());
+    }
+    let month = request["month"].as_str().ok_or("Missing review month")?;
+    let date = request["selectedDate"].as_str().ok_or("Missing review date")?;
+    if !month.is_ascii() || !date.is_ascii() || month.len() < 7 || date.len() != 10 || !date.starts_with(&month[..7]) {
+        return Err("Review calendar requires a selected date in the requested month".into());
+    }
+    let prefix = &month[..7];
+    let mut days = vec![2, 4, 8, 12, 18, 22, 27];
+    days.push(date[8..].parse::<u32>()?);
+    days.sort_unstable();
+    days.dedup();
+    let mut events = Vec::new();
+    for day in days {
+        for (slot, (title, calendar, start, end, all_day)) in [
+            ("Design review", "Studio", "09:30", "10:30", false),
+            ("Lunch with Sam", "Personal", "12:30", "13:30", false),
+            ("Release planning", "Studio", "14:00", "15:00", false),
+            ("Focus day", "Personal", "00:00", "23:59", true),
+        ].into_iter().enumerate() {
+            let day = format!("{prefix}-{day:02}");
+            events.push(json!({"id":format!("review-{day}-{slot}"),"title":title,"calendar":calendar,
+                "calendarId":calendar,"provider":"Sample","date":day,"endDate":day,
+                "startTime":start,"endTime":end,"allDay":all_day,"location":"Studio",
+                "notes":"Synthetic release-review event. No personal account is connected.","editable":false}));
+        }
+    }
+    let selected: Vec<_> = events.iter().filter(|event| event["date"] == date).cloned().collect();
+    Ok(format!("{}\n", json!({"configured":true,"events":selected,"monthEvents":events,
+        "total":selected.len(),"month":month,"date":date,"timezone":"Europe/London",
+        "lastSuccess":format!("{date}T08:00:00Z"),"providers":[{"id":"sample","name":"Sample calendars","configured":true}]})))
+}
+
+fn review_settings(path: &Path, args: &[String]) -> Result<String> {
+    if fs::symlink_metadata(path)?.file_type().is_symlink() { return Err("Review settings cannot follow symlinks".into()); }
+    let mut data:Value=serde_json::from_slice(&fs::read(path)?)?;
+    match args.first().map(String::as_str) {
+        Some("read") if args.len()==1 => {},
+        Some("set" | "patch") if args.len()==3 && data.get(&args[1]).is_some() => {
+            let next:Value=serde_json::from_str(&args[2])?;
+            if args[0]=="patch" {
+                let patch=next.as_object().ok_or("Review patch must be an object")?;
+                let section=data[&args[1]].as_object_mut().ok_or("Review section must be an object")?;
+                for (key,value) in patch {section.insert(key.clone(),value.clone());}
+            } else {data[&args[1]]=next;}
+            let pending=path.with_extension("pending");
+            fs::write(&pending,serde_json::to_vec(&data)?)?;
+            fs::rename(pending,path)?;
+        },
+        _ => return Err("Unsupported private review settings request".into()),
+    }
+    Ok(format!("{data}\n"))
+}
+
+fn review_displays(input:&str) -> Result<String> {
+    let request:Value=serde_json::from_str(input)?;
+    if request["action"]!="status" {return Err("Review display discovery rejects mutations".into());}
+    Ok(format!("{}\n",json!({"outputs":[
+        {"name":"DP-1","label":"Studio Display","mode":"2560x1440@60.000Hz","modes":["2560x1440@60.000Hz","1920x1080@60.000Hz"],"scale":1.25,"x":0,"y":0,"enabled":true},
+        {"name":"eDP-1","label":"Laptop Display","mode":"1920x1080@60.000Hz","modes":["1920x1080@60.000Hz"],"scale":1,"x":2048,"y":360,"enabled":true}
+    ],"pending":"","seconds":0})))
 }
 
 struct Prepared {
@@ -151,10 +223,31 @@ fn main() -> Result<()> {
         .file_name()
         .and_then(OsStr::to_str)
         .unwrap_or_default();
+    if name=="lumen-fixture-settings" || name=="lumen-nix-settings" {
+        let path=PathBuf::from(env::var_os("LUMEN_REVIEW_SETTINGS").ok_or("Missing private settings path")?);
+        print!("{}",review_settings(&path,&env::args().skip(1).collect::<Vec<_>>())?);
+        return Ok(());
+    }
+    if env::var("LUMEN_REVIEW_POPULATED").as_deref()==Ok("1") && name=="lumen-system-controls" {
+        let output=invoked.parent().and_then(Path::parent).ok_or("Missing review output")?;
+        print!("{}",serve("system",output,env::args().nth(1).as_deref(),"")?);return Ok(());
+    }
+    if env::var("LUMEN_REVIEW_POPULATED").as_deref()==Ok("1") && name=="lumen-display-settings" {
+        let mut line=String::new();io::stdin().lock().read_line(&mut line)?;
+        print!("{}",review_displays(&line)?);return Ok(());
+    }
+    if env::var("LUMEN_REVIEW_POPULATED").as_deref()==Ok("1") && name=="lumen-nearby-sharing" {
+        if env::args().nth(1).as_deref()!=Some("status") {return Err("Review sharing rejects actions".into());}
+        println!("{}",json!({"available":true,"active":true,"canSend":true,"detail":"Contacts Only"}));return Ok(());
+    }
+    if env::var("LUMEN_REVIEW_POPULATED").as_deref()==Ok("1") && name=="desktop-network-diagnose" {
+        if !matches!(env::args().nth(1).as_deref(),Some("--cached" | "--refresh")) {return Err("Review network discovery is read-only".into());}
+        println!("{}",json!({"status":"online","reason":"healthy","message":"Connected via Studio Wi-Fi","routes":{"4":{"available":true,"interface":"wlan0"},"6":{"available":false,"interface":""}},"dns":{"status":"resolved"},"vpn":{"state":"disconnected","selected_route":false,"locked_down":false},"checks":[{"ok":true}]}));return Ok(());
+    }
     if name == "lumen-fixture-calendar" || name == "lumen-calendar" {
         let mut line = String::new();
         io::stdin().lock().read_line(&mut line)?;
-        print!("{}", calendar(&line)?);
+        print!("{}", if env::var("LUMEN_REVIEW_POPULATED").as_deref() == Ok("1") { populated_calendar(&line)? } else { calendar(&line)? });
         return Ok(());
     }
     if let Some(kind) = name.strip_suffix("-unavailable-provider") {
@@ -183,6 +276,38 @@ fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn review_settings_persist_and_reject_unknown_sections() {
+        let root=tempfile::tempdir().unwrap();let path=root.path().join("settings.json");
+        fs::write(&path,r#"{"appearance":{"reduceMotion":false}}"#).unwrap();
+        review_settings(&path,&["set".into(),"appearance".into(),r#"{"reduceMotion":true}"#.into()]).unwrap();
+        let read:Value=serde_json::from_str(&review_settings(&path,&["read".into()]).unwrap()).unwrap();
+        assert_eq!(read["appearance"]["reduceMotion"],true);
+        review_settings(&path,&["patch".into(),"appearance".into(),r#"{"reduceTransparency":true}"#.into()]).unwrap();
+        let read:Value=serde_json::from_str(&review_settings(&path,&["read".into()]).unwrap()).unwrap();
+        assert_eq!(read["appearance"]["reduceMotion"],true);
+        assert_eq!(read["appearance"]["reduceTransparency"],true);
+        assert!(review_settings(&path,&["set".into(),"unknown".into(),"{}".into()]).is_err());
+        let link=root.path().join("link.json");symlink(&path,&link).unwrap();
+        assert!(review_settings(&link,&["read".into()]).is_err());
+    }
+    #[test]
+    fn review_displays_are_multiple_and_cannot_change_real_outputs() {
+        let result:Value=serde_json::from_str(&review_displays(r#"{"action":"status"}"#).unwrap()).unwrap();
+        assert_eq!(result["outputs"].as_array().unwrap().len(),2);
+        assert!(review_displays(r#"{"action":"apply"}"#).is_err());
+    }
+    #[test]
+    fn review_calendar_is_populated_and_read_only() {
+        let input=r#"{"action":"list","month":"2026-11-01","selectedDate":"2026-11-03"}"#;
+        let response:Value=serde_json::from_str(&populated_calendar(input).unwrap()).unwrap();
+        assert_eq!(response["configured"],true);
+        assert_eq!(response["events"].as_array().unwrap().len(),4);
+        assert!(response["monthEvents"].as_array().unwrap().len()>20);
+        assert!(response["events"].as_array().unwrap().iter().any(|e|e["allDay"]==true));
+        assert!(populated_calendar(r#"{"action":"create"}"#).is_err());
+        assert!(populated_calendar(r#"{"action":"list","month":"2026-11-01","selectedDate":"2026-12-03"}"#).is_err());
+    }
     #[test]
     fn status_and_rejection() {
         let root = tempfile::tempdir().unwrap();

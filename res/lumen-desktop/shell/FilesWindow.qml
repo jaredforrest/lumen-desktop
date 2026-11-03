@@ -144,6 +144,7 @@ FloatingWindow {
     readonly property string previewMessage:previewOpen && !previewLimits.enabled?"Preview hidden: widen this window to keep both panes usable.":""
     readonly property int previewWidth:LayoutModel.previewWidth(previewDragWidth>=0?previewDragWidth:service.previewWidth,width-sidebarWidth-24,Theme.textScale)
     readonly property var current:service.rows[selected] || null
+    readonly property bool contextMenuOpen:actions.visible
     property int sidebarDragWidth:-1
     readonly property int sidebarMaximum:LayoutModel.sidebarMaximum(width)
     readonly property int sidebarWidth:LayoutModel.sidebarWidth(sidebarDragWidth>=0?sidebarDragWidth:service.sidebarWidth,width)
@@ -278,6 +279,7 @@ FloatingWindow {
             else if(ctrl && !shift && event.key===Qt.Key_N)root.shell.newFilesWindow(root.service.path);
             else if(ctrl && event.key===Qt.Key_Tab)root.switchTab((root.activeTab+(shift?-1:1)+root.tabs.length)%root.tabs.length);
             else if(ctrl && event.key===Qt.Key_A)root.selectAll();
+            else if((event.key===Qt.Key_Menu || (shift && event.key===Qt.Key_F10)) && root.current){actions.x=Math.max(8,root.width-actions.width-16);actions.y=80;actions.open();}
             else if(ctrl && event.key===Qt.Key_Z)root.service.undo();
             else if(ctrl && event.key===Qt.Key_I && root.current)root.service.send("info",{path:root.current.path});
             else if(ctrl && event.key===Qt.Key_K)networkPopup.open();

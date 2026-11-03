@@ -8,6 +8,7 @@ Column {
     property var facts: ({})
     property string error: ""
     spacing: 12
+    PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:"Manage app permissions and review the security of this device.";color:Theme.colors.muted}
     function refresh() {
         if (worker.running) return;
         error = "";

@@ -38,7 +38,7 @@ FloatingWindow {
     FontMetrics {id:yearTitleMetrics;font.family:Theme.font;font.pixelSize:Theme.textRole("subheading")}
     readonly property int yearDayHeight:Math.ceil(yearDayMetrics.height)+4
     readonly property int yearTitleHeight:Math.ceil(yearTitleMetrics.height)+8
-    readonly property color red:Theme.dark?"#ff453a":"#ff3b30"
+    readonly property color red:Theme.calendarTodayFill
     readonly property date selected:calendar.selected
     readonly property date month:calendar.month
     readonly property date weekStart:new Date(selected.getFullYear(),selected.getMonth(),selected.getDate()-((selected.getDay()-Qt.locale().firstDayOfWeek%7+7)%7))
@@ -189,7 +189,7 @@ FloatingWindow {
                             color:calendar.iso(day)===calendar.iso(root.selected)?(Theme.dark?"#323235":"#f5f5f7"):(index%7>4?(Theme.dark?"#242426":"#fafafa"):root.canvasColor)
                             border.width:activeFocus?2:0.5;border.color:activeFocus?Theme.colors.accent:Theme.hairline
                             MouseArea {anchors.fill:parent;onClicked:root.choose(cell.day);onDoubleClicked:if(calendar.writableCalendars.length)root.create(cell.day)}
-                            Rectangle {anchors.right:parent.right;anchors.rightMargin:5;y:4;width:root.dayMarkerSize;height:root.dayMarkerSize;radius:width/2;color:cell.current?root.red:"transparent";PanelLabel {anchors.centerIn:parent;text:cell.day.getDate();font.pixelSize:Theme.textRole("body");color:cell.current?Theme.textOnOpaqueFill(root.red):cell.inMonth?Theme.colors.text:Theme.colors.muted}}
+                            Rectangle {anchors.right:parent.right;anchors.rightMargin:5;y:4;width:root.dayMarkerSize;height:root.dayMarkerSize;radius:width/2;color:cell.current?root.red:"transparent";PanelLabel {anchors.centerIn:parent;text:cell.day.getDate();font.pixelSize:Theme.textRole("body");color:cell.current?Theme.calendarTodayText:cell.inMonth?Theme.colors.text:Theme.colors.muted}}
                             Column {x:3;y:root.dayMarkerSize+8;width:parent.width-6;spacing:2
                                 Repeater {model:cell.items.slice(0,Math.max(0,Math.floor((cell.height-root.dayMarkerSize-27)/(root.eventRowHeight+1))))
                                     delegate:AbstractButton {id:eventButton;required property var modelData;width:parent.width;height:root.eventRowHeight;Accessible.name:modelData.title

@@ -561,6 +561,7 @@ fn setup(opt: Options) -> Result<Driver> {
         &copied_assets,
     )?;
     let assets = copied_assets.join(source_assets.file_name().ok_or("Assets have no name")?);
+    if let Some(wallpaper) = env::var_os("LUMEN_RELEASE_WALLPAPER") { fs::set_permissions(assets.join("wallpaper.png"), fs::Permissions::from_mode(0o644))?; fs::copy(wallpaper, assets.join("wallpaper.png"))?; }
     let mut vars: BTreeMap<String, String> = env::vars().collect();
     for key in [
         "PATH",
@@ -571,6 +572,9 @@ fn setup(opt: Options) -> Result<Driver> {
         "QT_QPA_PLATFORMTHEME",
         "QT_LINUX_ACCESSIBILITY_ALWAYS_ON",
         "LUMEN_FILE_JOBS_BIN",
+        "LUMEN_NOTIFICATION_HELPER",
+        "LUMEN_NEARBY_SHARING_LABEL",
+        "LUMEN_SEARCH_BIN",
     ] {
         if let Some(value) = exported.get(key) {
             vars.insert(key.into(), value.clone());
@@ -599,6 +603,7 @@ fn setup(opt: Options) -> Result<Driver> {
         ("GDK_BACKEND", "wayland".into()),
         ("LUMEN_FILE_SERVICE", "0".into()),
         ("LUMEN_LAUNCH_SCOPES", "0".into()),
+        ("LUMEN_NEARBY_SHARING_PROVIDER", "".into()),
         ("GLOBAL_MENU_ENABLED", "0".into()),
         ("QT_ACCESSIBILITY", "0".into()),
         ("QT_LINUX_ACCESSIBILITY_ALWAYS_ON", "0".into()),
@@ -684,6 +689,76 @@ fn setup(opt: Options) -> Result<Driver> {
     })
 }
 impl Driver {
+    fn review_providers(&mut self) -> Result<()> {
+        let mut defaults:Value=serde_json::from_str(&self.run_command("lumen-nix-settings", &["read"])?)?;
+        defaults["notifications"]["preview"]=json!("always");
+        defaults["appearance"]["mode"]=json!(self.opt.theme);
+        let settings=self.run.join("review-settings.json");save_json(&settings,&defaults)?;
+        self.vars.insert("LUMEN_REVIEW_SETTINGS".into(),settings.display().to_string());
+        let helper=resolve_command(Path::new("lumen-fixture-settings"),self.vars.get("PATH").ok_or("PATH missing")?)?;
+        symlink(&helper,self.run.join("bin/lumen-nix-settings"))?;
+        symlink(&helper,self.run.join("bin/lumen-system-controls"))?;
+        symlink(&helper,self.run.join("bin/lumen-display-settings"))?;
+        symlink(&helper,self.run.join("bin/lumen-nearby-sharing"))?;
+        symlink(&helper,self.run.join("bin/desktop-network-diagnose"))?;
+        self.vars.insert("LUMEN_NEARBY_SHARING_PROVIDER".into(),helper.display().to_string());
+        self.vars.insert("LUMEN_NIX_SETTINGS_BIN".into(),helper.display().to_string());
+        self.vars.insert("LUMEN_REVIEW_POPULATED".into(),"1".into());
+        self.vars.insert("LUMEN_NEARBY_SHARING_ICON".into(),env::var("LUMEN_REVIEW_SHARING_ICON").unwrap_or_default());
+        self.vars.insert("LUMEN_SEARCH_ROOTS".into(),json!([self.run.join("Documents").display().to_string(),self.run.join("Studio").display().to_string()]).to_string());
+        let appearance=PathBuf::from(env::var_os("LUMEN_REVIEW_APPEARANCE_BIN").ok_or("Pinned review appearance runtime missing")?);
+        require(appearance.starts_with("/nix/store") && appearance.is_file(),"Immutable appearance runtime required")?;
+        symlink(appearance,self.run.join("bin/lumen-appearance"))?;
+        if let Some(bundle)=env::var_os("LUMEN_REVIEW_SHORTCUT_BUNDLE") {
+            let bundle=read_json(Path::new(&bundle))?;let config=self.run.join("config/lumen-desktop");fs::create_dir_all(&config)?;
+            for (key,name) in [("registry","shortcuts.json"),("editor","shortcut-editor.json")] {fs::copy(bundle[key].as_str().ok_or("Missing shortcut fixture")?,config.join(name))?;}
+        }
+        self.vars.insert("PIPEWIRE_REMOTE".into(),"lumen-review-audio".into());
+        self.vars.insert("PIPEWIRE_RUNTIME_DIR".into(),self.runtime.display().to_string());
+        self.vars.insert("PULSE_SERVER".into(),format!("unix:{}/absent-pulse",self.runtime.display()));
+        let audio=self.run.join("review-audio.conf");
+        write(&audio,r#"
+context.properties = { core.daemon = true core.name = lumen-review-audio }
+context.spa-libs = { audio.convert.* = audioconvert/libspa-audioconvert support.* = support/libspa-support }
+context.modules = [
+ { name = libpipewire-module-protocol-native }
+ { name = libpipewire-module-spa-node-factory }
+ { name = libpipewire-module-client-node }
+ { name = libpipewire-module-adapter }
+ { name = libpipewire-module-metadata }
+ { name = libpipewire-module-access }
+]
+context.objects = [
+ { factory = metadata args = { metadata.name = default metadata.values = [
+   { key = default.audio.sink type = "Spa:String:JSON" value = { name = review-speakers } }
+   { key = default.audio.source type = "Spa:String:JSON" value = { name = review-microphone } }
+ ] } }
+ { factory = adapter args = { factory.name = support.null-audio-sink node.name = review-speakers node.description = "Studio Speakers" media.class = Audio/Sink audio.position = [ FL FR ] } }
+ { factory = adapter args = { factory.name = support.null-audio-sink node.name = review-headphones node.description = "Studio Headphones" media.class = Audio/Sink audio.position = [ FL FR ] } }
+ { factory = adapter args = { factory.name = support.null-audio-sink node.name = review-microphone node.description = "Studio Microphone" media.class = Audio/Source audio.position = [ MONO ] } }
+]
+"#)?;
+        self.launch(Path::new("pipewire"), &["-c",audio.to_str().ok_or("Audio config path")?],"review-audio")?;
+        self.wait_for("Private audio socket",||Ok(self.runtime.join("lumen-review-audio").exists()))?;
+        if let Some(player)=env::var_os("LUMEN_REVIEW_MPRIS_BIN") {
+            self.vars.insert("DBUS_SYSTEM_BUS_ADDRESS".into(),self.vars.get("DBUS_SESSION_BUS_ADDRESS").ok_or("Private review bus missing")?.clone());
+            self.vars.insert("LUMEN_REVIEW_BLUETOOTH".into(),"1".into());
+            let player=PathBuf::from(player);require(player.starts_with("/nix/store") && player.is_file(),"Immutable media fixture required")?;
+            self.vars.insert("LUMEN_MPRIS_CALLS".into(),self.run.join("review-media-actions.jsonl").display().to_string());
+            self.launch(&player,&[],"review-media")?;
+            self.wait_for("Private media source",||Ok(self.run_command("gdbus", &["call","--session","--dest","org.lumen.MediaFixture","--object-path","/org/lumen/MediaFixture","--method","org.lumen.MediaFixture.Add",r#"{"name":"studio","identity":"Studio Music"}"#]).is_ok()))?;
+            self.run_command("gdbus", &["call","--session","--dest","org.lumen.MediaFixture","--object-path","/org/lumen/MediaFixture","--method","org.lumen.MediaFixture.Configure","studio",r#"{"PlaybackStatus":"Playing","Metadata":{"mpris:trackid":"/review/track","mpris:length":240000000,"xesam:title":"Morning Light","xesam:artist":["Studio Sessions"]}}"#])?;
+        }
+        Ok(())
+    }
+
+    fn review_notify(&self, app:&str, title:&str, body:&str) -> Result<()> {
+        self.run_command("gdbus", &["call","--session","--dest","org.freedesktop.Notifications",
+            "--object-path","/org/freedesktop/Notifications","--method","org.freedesktop.Notifications.Notify",
+            app,"0","",title,body,"[]","{}","0"])?;
+        Ok(())
+    }
+
     fn compositor(&mut self) -> Result<Value> {
         let mut config = String::from(
             "output HEADLESS-1 resolution 1440x1000\nxwayland disable\ndefault_border none\nfor_window [app_id=\"org.quickshell\"] floating enable\n",
@@ -743,7 +818,8 @@ impl Driver {
                 .ok_or("Assets parent missing")?
                 .join("appearance/palette.json"),
         )?;
-        let appearance = self.run.join("appearance.json");
+        let appearance = if env::var_os("LUMEN_RELEASE_CAPTURE").is_some() {self.run.join("state/lumen-desktop/appearance.json")} else {self.run.join("appearance.json")};
+        fs::create_dir_all(appearance.parent().ok_or("Appearance parent missing")?)?;
         save_json(
             &appearance,
             &json!({"font":palettes["font"],"palette":palettes[&self.opt.theme],"preferences":{"mode":self.opt.theme,"reduceMotion":true}}),
@@ -1063,6 +1139,130 @@ impl Driver {
         }
         Ok(())
     }
+
+    fn release_capture(&self, checks: Vec<String>) -> Result<()> {
+        let studio = self.run.join("Studio");
+        fs::create_dir_all(&studio)?;
+        for name in ["Projects", "Documents", "Images", "Notes"] { fs::create_dir_all(studio.join(name))?; }
+        write(&studio.join("Release Notes.txt"), "Lumen Desktop\n\nA shared desktop experience.\n\nReview the shell, Files, Calendar and Settings.\n")?;
+        write(&studio.join("Project Plan.csv"), "Milestone,Status\nDesign review,In progress\nVisual baseline,Review\nRelease,Planned\n")?;
+        fs::copy(self.assets.join("wallpaper.png"), studio.join("Landscape.png"))?;
+        for (name,contents) in [("README.md","# Studio\n\nA synthetic review workspace.\n"),("Project.json",r#"{"name":"Lumen Review","status":"in progress"}"#),("Welcome.html","<!doctype html><title>Studio</title><h1>Welcome to the studio</h1>"),("Poster.svg",r##"<svg xmlns="http://www.w3.org/2000/svg" width="640" height="480"><rect width="640" height="480" fill="#336699"/><text x="40" y="240" fill="white" font-size="48">Studio</text></svg>"##)] {write(&studio.join(name),contents)?;}
+        self.ipc("files", &[studio.to_str().ok_or("Studio path")?])?;
+        self.wait_for("Studio content", || Ok(self.state()?["busy"] == false && self.state()?["count"] == 11))?;
+        self.wait_for("Studio focus", || Ok(self.ipc_json("status", &[])?["windows"].as_array().is_some_and(|rows| rows.iter().any(|r| r["title"].as_str().unwrap_or("").contains("Studio") && r["active"] == true))))?;
+        for (number, view) in [("1","grid"),("2","list"),("3","columns"),("4","gallery")] {
+            self.key(&["-M","ctrl","-k",number,"-m","ctrl"])?;
+            self.wait_for("Studio view", || Ok(self.state()?["view"] == view))?;
+            thread::sleep(Duration::from_millis(450));
+            self.capture(&format!("files-{view}.png"))?;
+            self.key(&["-M","ctrl","-k","a","-m","ctrl"])?;
+            thread::sleep(Duration::from_millis(200));
+            self.capture(&format!("files-{view}-selected.png"))?;
+            self.key(&["-M","shift","-k","F10","-m","shift"])?;
+            self.wait_for("Selected file actions",||Ok(self.state()?["contextMenu"]==true))?;
+            thread::sleep(Duration::from_millis(250));
+            self.capture(&format!("files-{view}-actions.png"))?;
+            self.key(&["-k","Escape"])?;
+            self.wait_for("File actions dismissed",||Ok(self.state()?["contextMenu"]==false))?;
+            self.key(&["-k","Escape"])?;
+        }
+        self.key(&["-M","ctrl","-k","2","-m","ctrl"])?;
+        self.key(&["-k","Down","-k","Down","-k","Down","-k","Down","-k","Down"])?;
+        self.wait_for("Image selection",||Ok(self.state()?["selected"]=="Landscape.png"))?;
+        self.key(&["-M","ctrl","-k","4","-m","ctrl"])?;
+        self.wait_for("Selected image in Gallery",||Ok(self.state()?["view"]=="gallery" && self.state()?["selected"]=="Landscape.png"))?;
+        thread::sleep(Duration::from_millis(350));self.capture("files-gallery-image.png")?;
+        self.key(&["-k","space"])?;
+        self.wait_for("Image Quick Look",||Ok(self.ipc_json("quickLookStatus",&[])?["type"]=="image"))?;
+        thread::sleep(Duration::from_millis(400));self.capture("files-image-preview.png")?;
+        self.key(&["-k","Escape"])?;
+        thread::sleep(Duration::from_millis(400));
+        self.capture("desktop.png")?;
+        for (method, title, filename) in [("calendar","Calendar","calendar-app.png"),("remoteDesktop","Remote Desktop","remote-app.png"),("textTools","Text Tools","text-tools-app.png")] {
+            self.ipc(method, &[])?;
+            thread::sleep(Duration::from_millis(600));
+            self.window_capture(title, filename)?;
+        }
+        for (page, filename) in [("Appearance","appearance.png"),("Desktop & Dock","desktop-settings.png"),("Displays","displays.png"),("Sound","sound.png"),("Privacy & Security","privacy.png"),("Accessibility","accessibility.png"),("Wallpaper","wallpaper.png"),("Internet Accounts","accounts.png")] {
+            self.ipc("settings", &[page])?;
+            self.wait_for("release settings page", || Ok(self.ipc_json("settingsStatus", &[])?["page"] == page))?;
+            thread::sleep(Duration::from_millis(400));
+            self.window_capture("System Settings", filename)?;
+        }
+        self.ipc("menu", &["Controls"])?;
+        thread::sleep(Duration::from_millis(500));
+        self.capture("controls.png")?;
+        self.ipc("menu", &["Launcher"])?;
+        thread::sleep(Duration::from_millis(500));
+        self.capture("search.png")?;
+        self.key(&["Calendar"])?;
+        self.wait_for("Typed launcher search", || Ok(self.ipc_json("searchStatus",&[])?["views"].as_array().is_some_and(|rows|rows.iter().any(|r| r.to_string().contains("Calendar")))))?;
+        thread::sleep(Duration::from_millis(500));self.capture("search-calendar.png")?;
+        for (query,filename,has_results) in [("Release","search-files.png",true),("zzzz-no-such-review-item","search-empty.png",false),("Open Control Centre","search-actions.png",true)] {
+            self.key(&["-M","ctrl","-k","a","-m","ctrl"])?;self.key(&[query])?;
+            self.wait_for("Typed search result state",||{let state=self.ipc_json("searchStatus",&[])?;Ok(state["available"]==true && state["searching"]==false && state["views"].as_array().is_some_and(|rows|rows.iter().any(|r|r["query"]==query && (r["count"].as_u64().unwrap_or(0)>0)==has_results)))})?;
+            thread::sleep(Duration::from_millis(250));self.capture(filename)?;
+        }
+        self.key(&["-k","Return"])?;
+        self.wait_for("Search action activation",||Ok(self.ipc_json("layout",&[])?[0]["menu"]=="Controls"))?;
+        self.capture("search-action-open.png")?;
+        self.ipc("menu", &[""])?;
+        self.ipc("notificationCentre", &["open"])?;
+        thread::sleep(Duration::from_millis(500));
+        self.capture("calendar-panel.png")?;
+        self.wait_for("Notification transport", || Ok(self.ipc_json("notificationStatus",&[])?["available"]==true))?;
+        self.review_notify("Calendar","Design review in 10 minutes","Studio - bring the latest layout sketches.")?;
+        self.wait_for("One notification", || Ok(self.ipc_json("notificationStatus",&[])?["count"]==1))?;
+        thread::sleep(Duration::from_millis(300));self.capture("notifications-single.png")?;
+        self.review_notify("Calendar","Lunch with Sam","Today at 12:30.")?;
+        self.review_notify("Calendar","Release planning","Today at 14:00.")?;
+        self.wait_for("Calendar stack", || Ok(self.ipc_json("notificationStatus",&[])?["count"]==3))?;
+        thread::sleep(Duration::from_millis(300));self.capture("notifications-stack.png")?;
+        if let Some(pointer)=env::var_os("LUMEN_REVIEW_POINTER_BIN") {
+            let pointer=PathBuf::from(pointer);require(pointer.starts_with("/nix/store") && pointer.is_file(),"Immutable pointer fixture required")?;
+            let stack=self.ipc_json("layout",&[])?[0]["calendar"]["notificationGroups"][0].clone();
+            self.run_command("swaymsg",&[&format!("seat seat0 cursor set {} {}",number(&stack,"x")?+number(&stack,"width")?/2.,number(&stack,"y")?+number(&stack,"height")?/2.)])?;
+            self.run_command(pointer.to_str().ok_or("Pointer path")?,&["pointer","click","left"])?;
+            self.wait_for("Notification stack expanded",||Ok(self.ipc_json("layout",&[])?[0]["calendar"]["notificationGroups"][0]["expanded"]==true))?;
+            thread::sleep(Duration::from_millis(250));self.capture("notifications-expanded.png")?;
+            let stack=self.ipc_json("layout",&[])?[0]["calendar"]["notificationGroups"][0].clone();
+            self.run_command("swaymsg",&[&format!("seat seat0 cursor set {} {}",number(&stack,"x")?+50.,number(&stack,"y")?+13.)])?;
+            self.run_command(pointer.to_str().ok_or("Pointer path")?,&["pointer","click","left"])?;
+            self.wait_for("Notification stack collapsed",||Ok(self.ipc_json("layout",&[])?[0]["calendar"]["notificationGroups"][0]["expanded"]==false))?;
+        }
+        self.review_notify("Files","Copy complete","Project assets are ready in Studio.")?;
+        self.review_notify("Files","Export complete","The preview has been saved.")?;
+        self.wait_for("Multiple notification groups", || Ok(self.ipc_json("notificationStatus",&[])?["count"]==5))?;
+        thread::sleep(Duration::from_millis(300));self.capture("notifications-groups.png")?;
+        self.ipc("notificationCentre", &["close"])?;
+        self.ipc("settings", &["Accessibility"])?;
+        let mut preference_checks=Vec::new();
+        for (key,label,control_id) in [("reduceTransparency","Reduce transparency","reduce-transparency"),("reduceMotion","Reduce motion","reduce-motion"),("increaseContrast","Increase contrast","increase-contrast")] {
+            self.ipc("settings", &["Accessibility"])?;
+            self.key(&["-M","ctrl","-k","f","-m","ctrl"])?;
+            self.key(&["-M","ctrl","-k","a","-m","ctrl"])?;
+            self.key(&[label])?;self.key(&["-k","Return"])?;
+            self.wait_for("Accessible setting receives keyboard focus",||{let state=self.ipc_json("settingsStatus",&[])?;Ok(state["controlId"]==control_id && state["controlFocused"]==true && state["busy"]==false)})?;
+            for enabled in [true,false] {
+                self.key(&["-k","space"])?;
+                self.wait_for("Saved accessibility preference",||Ok(read_json(&self.run.join("review-settings.json"))?["appearance"][key]==enabled && read_json(Path::new(self.vars.get("LUMEN_APPEARANCE_STATE").ok_or("Appearance path")?))?["preferences"][key]==enabled && self.ipc_json("settingsStatus",&[])?["busy"]==false))?;
+                preference_checks.push(json!({"key":key,"enabled":enabled,"persisted":true,"appearancePublished":true}));
+                if enabled {thread::sleep(Duration::from_millis(250));self.capture(&format!("accessibility-{key}.png"))?;}
+            }
+        }
+        save_json(&self.run.join("accessibility-preference-checks.json"),&json!({"scope":"Physical keyboard through Settings search, actual switch activation, private persistence and published appearance state", "checks":preference_checks}))?;
+        self.ipc("settings", &["Displays"])?;
+        for scale in ["1.25","1.5"] {
+            self.run_command("swaymsg",&[&format!("output HEADLESS-1 scale {scale}")])?;
+            let expected=(1440.0/scale.parse::<f64>()?).round() as i64;
+            self.wait_for("Output scale observed by the shell",||Ok(self.ipc_json("status",&[])?["screens"].as_array().is_some_and(|rows|rows.iter().any(|row|row["name"]=="HEADLESS-1" && row["width"].as_i64()==Some(expected)))))?;
+            thread::sleep(Duration::from_millis(600));self.capture(&format!("displays-scale-{scale}.png"))?;
+        }
+        self.run_command("swaymsg",&["output HEADLESS-1 scale 1"])?;
+        save_json(&self.run.join("release-capture.json"), &json!({"purpose":"Release presentation screenshots of prepared desktop in an isolated session", "priorWorkflowChecks":checks,"accountData":"Synthetic; no personal accounts or devices available"}))?;
+        Ok(())
+    }
     fn finish(&self, mut checks: Vec<String>) -> Result<()> {
         self.key(&["-k", "Escape"])?;
         self.ipc("menu", &["Controls"])?;
@@ -1211,7 +1411,12 @@ impl Driver {
         Ok(())
     }
     fn execute(mut self) -> Result<()> {
+        if env::var_os("LUMEN_RELEASE_CAPTURE").is_some() {self.review_providers()?;}
         let capabilities = self.compositor()?;
+        if env::var_os("LUMEN_RELEASE_CAPTURE").is_some() {
+            let notification=PathBuf::from(self.vars.get("LUMEN_NOTIFICATION_HELPER").ok_or("Pinned notification service missing")?);
+            self.launch(&notification,&["serve"],"review-notifications")?;
+        }
         if self.opt.menu_only {
             return self.menu_only();
         }
@@ -1230,7 +1435,7 @@ impl Driver {
             .iter()
             .map(|value| value.as_str().unwrap_or("").into())
             .collect();
-        self.finish(checks)
+        if env::var_os("LUMEN_RELEASE_CAPTURE").is_some() { self.release_capture(checks) } else { self.finish(checks) }
     }
 }
 fn main() {

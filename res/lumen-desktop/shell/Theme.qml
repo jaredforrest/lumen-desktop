@@ -25,9 +25,13 @@ Singleton {
         return (luminance+0.05)/0.05>=1.05/(luminance+0.05)?"#000000":"#ffffff";
     }
     property string font: "Interlude Variable"
-    property var colors: ({background:"#f2f2f4",surface:"#ffffff",field:"#e5e5e8",text:"#202023",muted:"#626267",border:"#c8c8ce",hover:"#dedee3",accent:"#007aff",selectedText:"#000000"})
+    property var colors: ({background:"#f2f2f4",surface:"#ffffff",field:"#e5e5e8",text:"#202023",muted:"#626267",border:"#c8c8ce",hover:"#dedee3",accent:"#0066d6",selectedText:"#ffffff"})
     readonly property color backgroundTone: colors.background
     readonly property bool dark: backgroundTone.hslLightness < 0.5
+    readonly property color selectionFill: dark ? "#0a64d0" : "#0066d6"
+    readonly property color selectionText: "#ffffff"
+    readonly property color calendarTodayFill: "#d32f2f"
+    readonly property color calendarTodayText: "#ffffff"
     readonly property color errorText: colors.error || (dark ? "#ffaba5" : "#b42318")
     readonly property color successText: colors.success || (dark ? "#55d788" : "#196633")
     readonly property color warningText: colors.warning || (dark ? "#e0b85a" : "#775000")

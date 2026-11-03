@@ -4,6 +4,8 @@ import Quickshell
 import "LUMEN_ASSETS" as D
 
 ShellRoot {
+    QtObject {id:clockService;property bool available:true;property bool busy:false;property var menuBarPreferences:({order:["battery","sound","focus","search","controls"]});function setMenuBarPreference(key,value){}}
+    D.ClockSettings {id:clock;width:190;service:clockService}
     D.DesktopComboBox { id: baseline; width: 400; model: ["Standard"] }
     Window {
         visible: true
@@ -28,6 +30,9 @@ ShellRoot {
         onTriggered: {
             try {
                 if (D.Theme.textScale !== 1.5) throw Error("Preference not loaded");
+                for(const row of clock.children.filter(item=>String(item.objectName).startsWith("menu-order-row-"))){for(const item of row.children){if(item.visible && item.x+item.width>row.width+0.5)throw Error("Clock reorder control overflow");}}
+                const indicator=combo.indicator;
+                if(Math.abs(indicator.y+indicator.height/2-combo.height/2)>0.5)throw Error("Dropdown indicator is not centred");
                 for (const control of [toggle, row, button, combo]) {
                     const text = [];
                     labels(control.contentItem, text);

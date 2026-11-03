@@ -32,6 +32,7 @@ pub fn special(name: &str) -> Option<u32> {
         "Down" => 108,
         "Home" => 102,
         "End" => 107,
+        "F10" => 68,
         "F11" => 87,
         "F12" => 88,
         "space" => 57,

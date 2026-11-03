@@ -3,13 +3,19 @@ Canvas {
     id: root
     property string name
     property color ink:Theme.colors.text
+    property url imageSource:""
+    onImageSourceChanged:{if(imageSource.toString())loadImage(imageSource);requestPaint();}
+    Component.onCompleted:if(imageSource.toString())loadImage(imageSource)
+    onImageLoaded:requestPaint()
     width:22;height:22
     onWidthChanged:requestPaint()
     onHeightChanged:requestPaint()
     onNameChanged:requestPaint()
     onInkChanged:requestPaint()
     onPaint: {
-        const c=getContext("2d");c.reset();c.scale(width/24,height/24);
+        const c=getContext("2d");c.reset();
+        if(imageSource.toString() && isImageLoaded(imageSource)){c.drawImage(imageSource,0,0,width,height);c.globalCompositeOperation="source-in";c.fillStyle=ink;c.fillRect(0,0,width,height);return;}
+        c.scale(width/24,height/24);
         c.strokeStyle=ink;c.fillStyle=ink;c.lineWidth=1.7;c.lineCap="round";c.lineJoin="round";
         function line(points){c.beginPath();c.moveTo(points[0][0],points[0][1]);for(let i=1;i<points.length;i++)c.lineTo(points[i][0],points[i][1]);c.stroke();}
         function arc(x,y,r,a,b){c.beginPath();c.arc(x,y,r,a,b);c.stroke();}

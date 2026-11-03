@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
 import Quickshell.Io
 import Quickshell.Bluetooth
 import "BatteryModel.js" as BatteryModel
@@ -38,9 +39,9 @@ Column {
             PanelLabel {width:parent.width;visible:text!=="";text:root.power?BatteryModel.estimate(root.power):"";color:Theme.colors.muted;font.pixelSize:Theme.textSize(11);elide:Text.ElideRight}
         }
     }
-    Flow {visible:!root.editing;width:parent.width;spacing:10
+    GridLayout {visible:!root.editing;width:parent.width;columns:root.singleColumn?1:2;columnSpacing:10;rowSpacing:10
         Repeater {model:root.preferences.order.filter(id=>!root.preferences.hidden.includes(id))
-            delegate:Loader {required property string modelData;width:root.singleColumn || ["brightness","sound"].includes(modelData)?root.width:(root.width-10)/2;height:Math.max(modelData==="media"?130:62,item?item.implicitHeight:0)
+            delegate:Loader {required property string modelData;Layout.fillWidth:true;Layout.columnSpan:root.singleColumn || ["brightness","sound"].includes(modelData)?1+(root.singleColumn?0:1):1;Layout.rowSpan:!root.singleColumn && modelData==="media"?2:1;Layout.preferredWidth:root.singleColumn || ["brightness","sound"].includes(modelData)?root.width:(root.width-10)/2;Layout.preferredHeight:Math.max(modelData==="media"?134:62,item?item.implicitHeight:0);Layout.alignment:Qt.AlignTop
                 sourceComponent:({wifi:componentWifi,bluetooth:componentBluetooth,sharing:componentSharing,media:componentMedia,displays:componentDisplays,appearance:componentAppearance,focus:componentFocus,brightness:componentBrightness,sound:componentSound})[modelData]
             }
         }
@@ -49,7 +50,7 @@ Column {
         detail:root.internet.message;
         onClicked:root.panelRequested("Internet")}
     ControlRow {visible:!root.editing;width:parent.width;text:"VPN";detail:root.shell.vpn.mullvad.state==="connected"?"Mullvad connected"+(root.shell.vpn.tailscale.online?" · Tailscale connected":""):root.shell.vpn.tailscale.online?"Tailscale connected":"Disconnected";onClicked:root.panelRequested("VPN")}
-    ControlRow {visible:!root.editing;width:parent.width;text:"Capture observations…";detail:"PipeWire-visible activity";onClicked:root.panelRequested("Capture")}
+    ControlRow {visible:!root.editing;width:parent.width;text:"Screen & audio access…";detail:"Review capture activity";onClicked:root.panelRequested("Capture")}
     Column {visible:root.editing;width:parent.width;spacing:5
         PanelLabel {text:"Edit controls";font.weight:Font.DemiBold}
         Repeater {model:root.preferences.order
@@ -66,9 +67,10 @@ Column {
         DialogButton {width:parent.width-parent.children[0].width-8;text:"System Settings…";onClicked:root.settingsRequested()}
     }
     PanelLabel {visible:root.error!=="";width:parent.width;wrapMode:Text.WordWrap;text:root.error;color:Theme.colors.muted}
+    Item {width:1;height:6}
     Component {id:componentWifi;ControlTile {label:"Wi-Fi";symbol:"wifi";unavailable:NetworkState.state(root.shell.systemState.wifi).unavailable;active:NetworkState.state(root.shell.systemState.wifi).active;subtitle:NetworkState.state(root.shell.systemState.wifi).label;onClicked:root.panelRequested("Wi-Fi")}}
     Component {id:componentBluetooth;ControlTile {label:"Bluetooth";symbol:"bluetooth";unavailable:!Bluetooth.defaultAdapter;active:!!Bluetooth.defaultAdapter && Bluetooth.defaultAdapter.enabled;subtitle:active?"On":"Off";onClicked:root.panelRequested("Bluetooth")}}
-    Component {id:componentSharing;ControlTile {label:root.sharingLabel;subtitle:root.sharingSubtitle;symbol:"nearby";active:root.sharingActive;unavailable:!root.sharingAvailable;accessibleLabel:root.sharingLabel+" receiving controls";onClicked:{root.shell.claimPopup("");AppLaunch.run(["lumen-nearby-sharing","open"]);}}}
+    Component {id:componentSharing;ControlTile {label:root.sharingLabel;subtitle:root.sharingSubtitle;symbol:"nearby";iconSource:NearbySharingState.iconSource;active:root.sharingActive;unavailable:!root.sharingAvailable;accessibleLabel:root.sharingLabel+" receiving controls";onClicked:{root.shell.claimPopup("");AppLaunch.run(["lumen-nearby-sharing","open"]);}}}
     Component {id:componentMedia;MediaControl {onExpandRequested:root.panelRequested("Now Playing")}}
     Component {id:componentDisplays;ControlTile {label:"Displays";subtitle:"Settings";symbol:"screen";unavailable:false;onClicked:root.shell.openSettings("Displays")}}
     Component {id:componentAppearance;ControlTile {label:"Appearance";subtitle:"Settings";symbol:"contrast";unavailable:false;onClicked:root.shell.openSettings("Appearance")}}

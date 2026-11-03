@@ -7,6 +7,7 @@ Column {
     property bool reduceTransparency:false
     property var expandedGroups:({})
     spacing:12
+    function stackStatus(){const rows=[];for(let i=0;i<groupRepeater.count;i++){const group=groupRepeater.itemAt(i);if(group && group.visible){const point=group.mapToItem(null,0,0);rows.push({key:group.modelData.key,expanded:group.expanded,count:group.modelData.rows.length,x:point.x,y:point.y,width:group.width,height:group.height});}}return rows;}
     ControlRow {visible:root.service.available && root.service.history.length>0;width:parent.width;height:26;text:"Clear All";onClicked:root.service.command({action:"clear"})}
     PanelSurface {
         visible:!root.service.available || root.service.history.length===0;width:parent.width;height:Math.max(65,emptyLabel.implicitHeight+28);radius:18;color:root.reduceTransparency?Theme.colors.background:Theme.popoverMaterial
@@ -17,6 +18,7 @@ Column {
         }
     }
     Repeater {
+        id:groupRepeater
         model:root.service.groups
         Column {
             id:group

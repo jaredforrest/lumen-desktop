@@ -6,5 +6,6 @@
   cargoLock.lockFile = ./Cargo.lock;
   postInstall = ''
     ln -s lumen-fixture-providers "$out/bin/lumen-fixture-calendar"
+    ln -s lumen-fixture-providers "$out/bin/lumen-fixture-settings"
   '';
 }
