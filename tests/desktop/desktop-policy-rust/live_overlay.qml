@@ -61,6 +61,7 @@ ShellRoot {
  IpcHandler {target:"liveOverlay"
   function open(value:string):void {audit.actions=[];layer.visible=false;switcher.visible=false;overview.visible=false;audit.family=value;if(value==="switcher")switcher.command("begin");else if(value==="overview")overview.show("");else {layer.visible=true;if(value==="launcher"){launcher.setProvider("Applications");Qt.callLater(launcher.focusSearch);}}}
   function focusTarget():bool{const item=audit.target();if(!item)return false;item.forceActiveFocus();return item.activeFocus;}
+  function focusManagement():bool{const item=audit.walk(overview.contentItem).find(child=>child.objectName==="overview-management-toggle");if(!item)return false;item.forceActiveFocus();return item.activeFocus;}
   function status():string{return JSON.stringify(audit.state());}
  }
 }

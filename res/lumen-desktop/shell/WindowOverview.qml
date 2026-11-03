@@ -59,6 +59,7 @@ FloatingWindow {
     readonly property bool overviewActive:content.Window.window?content.Window.window.active:false
     onOverviewActiveChanged:if(!overviewActive){desktopStrip.cancel();desktopWindowDrag.cancel();}
     property string appFilter:""
+    property bool managementExpanded:false
     property string error:""
     property int selected:0
     property double draggedId:0
@@ -96,6 +97,7 @@ FloatingWindow {
         MouseArea {width:parent.width;height:44;onPressed:if(content.Window.window)content.Window.window.startSystemMove()}
         WindowControls {windowName:"Window Overview";canMinimize:false;canFullscreen:false;windowActive:content.Window.window?content.Window.window.active:false;onTriggered:index=>{if(index===0)root.visible=false;}}
         PanelLabel {x:100;y:14;visible:!Theme.nativeWindowFrame;text:root.appFilter?"Application Windows":"Windows & Workspaces";font.weight:Font.DemiBold}
+        DialogButton {objectName:"overview-management-toggle";anchors.right:parent.right;anchors.rightMargin:20;y:6;height:32;text:root.managementExpanded?"Done":"Manage Desktops…";Accessible.name:root.managementExpanded?"Hide desktop management":"Show desktop management";onClicked:root.managementExpanded=!root.managementExpanded}
         FocusFlickable {id:bodyViewport;objectName:"overview-body-scroll";x:0;y:44;width:parent.width;height:parent.height-y;clip:true;contentWidth:width;contentHeight:body.height
             ScrollBar.vertical:DesktopScrollBar {}
             Item {id:body;width:bodyViewport.width;height:Math.max(bodyViewport.height,grid.y+root.cardHeight+footer.implicitHeight+29)
@@ -106,23 +108,23 @@ FloatingWindow {
             onReorderRequested:request=>root.send(request)
             onCancelledEdit:reason=>root.error=reason
         }
-        Flow {id:desktopCommands;x:20;y:desktopStrip.y+desktopStrip.height+8;spacing:6;width:parent.width-40
+        Flow {id:desktopCommands;visible:root.managementExpanded;x:20;y:desktopStrip.y+desktopStrip.height+8;spacing:6;width:parent.width-40
             DesktopComboBox {id:desktopOutput;width:Math.min(parent.width,120*Theme.textScale);model:root.outputs;textRole:"label";Accessible.name:"Desktop display";enabled:!root.busy && !desktopStrip.editing;onCurrentIndexChanged:{const id=(root.outputs[currentIndex] || {}).logicalId;if(!root.managedDesktop || root.managedDesktop.outputId!==id){const next=root.workspaces.find(item=>item.available && item.outputId===id);root.managedDesktopId=next?next.logicalId:"";}}}
             DesktopComboBox {id:manageDesktop;width:Math.min(parent.width,150*Theme.textScale);model:root.workspaces.filter(item=>item.outputId===(root.outputs[desktopOutput.currentIndex] || {}).logicalId && item.available);textRole:"label";Accessible.name:"Manage desktop";enabled:!root.busy && !desktopStrip.editing;onActivated:index=>root.managedDesktopId=model[index].logicalId}
             DialogButton {width:Math.max(76,implicitWidth);text:"New";Accessible.name:"Create desktop";enabled:!root.busy && !desktopStrip.editing && root.outputs.length>0;onClicked:root.send({action:"desktop-create",outputId:root.outputs[desktopOutput.currentIndex].logicalId,revision:root.revision,sessionEpoch:root.sessionEpoch})}
             DialogButton {width:Math.max(76,implicitWidth);text:"Remove";Accessible.name:"Remove desktop";enabled:root.removalSupported && !root.busy && !desktopStrip.editing && !!root.managedDesktop && root.workspaces.filter(item=>item.outputId===root.managedDesktop.outputId && item.available).length>1;onClicked:root.beginRemoval()}
         }
-        Flow {id:orderCommands;x:20;y:desktopCommands.y+desktopCommands.implicitHeight+6;spacing:6;width:parent.width-manageGroups.width-50
+        Flow {id:orderCommands;visible:root.managementExpanded || desktopStrip.editing;x:20;y:desktopCommands.y+(desktopCommands.visible?desktopCommands.implicitHeight:0)+6;spacing:6;width:parent.width-manageGroups.width-50
             DialogButton {width:42;text:"←";Accessible.name:"Move desktop left";enabled:!root.busy;onClicked:{desktopStrip.selectedId=root.managedDesktopId;desktopStrip.step(-1);}}
             DialogButton {width:42;text:"→";Accessible.name:"Move desktop right";enabled:!root.busy;onClicked:{desktopStrip.selectedId=root.managedDesktopId;desktopStrip.step(1);}}
             DialogButton {width:Math.max(80,implicitWidth);text:"Save Order";visible:desktopStrip.editing;enabled:!root.busy;onClicked:desktopStrip.commit()}
             DialogButton {width:Math.max(65,implicitWidth);text:"Cancel";visible:desktopStrip.editing;onClicked:desktopStrip.cancel()}
         }
-        DialogButton {id:manageGroups;x:parent.width-width-20;y:orderCommands.y;width:Math.max(128,implicitWidth);objectName:"window-groups-open";text:"Window Groups";Accessible.name:"Manage window groups";enabled:!!root.windowGroups && !desktopStrip.editing;onClicked:groupsDialog.open()}
+        DialogButton {id:manageGroups;visible:root.managementExpanded;x:parent.width-width-20;y:orderCommands.y;width:Math.max(128,implicitWidth);objectName:"window-groups-open";text:"Window Groups";Accessible.name:"Manage window groups";enabled:!!root.windowGroups && !desktopStrip.editing;onClicked:groupsDialog.open()}
 
-        PanelLabel {id:orderHelp;x:20;y:orderCommands.y+Math.max(30,orderCommands.implicitHeight,manageGroups.height)+5;width:parent.width-40;height:Math.max(16,implicitHeight);wrapMode:Text.WordWrap;font.pixelSize:Theme.textRole("caption");color:Theme.colors.muted;text:desktopStrip.editing?"Manual order turns off recent-use ordering · Return to save · Escape to cancel":"Drag desktops to reorder · Control + Left/Right to preview order"}
+        PanelLabel {id:orderHelp;visible:root.managementExpanded || desktopStrip.editing;x:20;y:orderCommands.y+Math.max(30,orderCommands.implicitHeight,manageGroups.height)+5;width:parent.width-40;height:Math.max(16,implicitHeight);wrapMode:Text.WordWrap;font.pixelSize:Theme.textRole("caption");color:Theme.colors.muted;text:desktopStrip.editing?"Manual order turns off recent-use ordering · Return to save · Escape to cancel":"Drag desktops to reorder · Control + Left/Right to preview order"}
 
-        GridView {id:grid;objectName:"overview-window-grid";x:20;y:orderHelp.y+orderHelp.height+9;width:parent.width-40;height:parent.height-y-footer.implicitHeight-29;clip:true;cellWidth:Math.floor(width/Math.max(1,Math.floor(width/(250*Theme.textScale))));cellHeight:root.cardHeight+8;model:root.matches;ScrollBar.vertical:DesktopScrollBar {}
+        GridView {id:grid;objectName:"overview-window-grid";x:20;y:orderHelp.visible?orderHelp.y+orderHelp.height+9:desktopStrip.y+desktopStrip.height+12;width:parent.width-40;height:parent.height-y-footer.implicitHeight-29;clip:true;cellWidth:Math.floor(width/Math.max(1,Math.floor(width/(250*Theme.textScale))));cellHeight:root.cardHeight+8;model:root.matches;ScrollBar.vertical:DesktopScrollBar {}
             delegate:AbstractButton {
                 id:windowCard
                 required property var modelData;required property int index
@@ -150,18 +152,18 @@ FloatingWindow {
         }
         GroupMembershipStrip {x:20;y:footer.y+10;width:parent.width-40;z:30;controller:root.shell.groupMembershipDrag}
         Column {id:footer;x:20;y:grid.y+grid.height+17;width:parent.width-40;spacing:10;visible:!(root.shell.groupMembershipDrag && root.shell.groupMembershipDrag.active)
-        Row {width:parent.width;height:Math.max(30,workspace.implicitHeight,moveCommand.implicitHeight,output.implicitHeight);spacing:8
+        Row {visible:root.managementExpanded || root.draggedId>0;width:parent.width;height:Math.max(30,workspace.implicitHeight,moveCommand.implicitHeight,output.implicitHeight);spacing:8
             DesktopComboBox {id:workspace;width:(parent.width-136)/2;model:root.workspaces.filter(item=>item.available);textRole:"label";Accessible.name:"Destination desktop"}
             DialogButton {id:moveCommand;width:120;text:"Move Window";enabled:!!root.current && !root.busy && workspace.count>0;onClicked:root.send({action:"move",id:root.current.id,pid:root.current.pid,logicalId:workspace.model[workspace.currentIndex].logicalId,sessionEpoch:root.sessionEpoch})}
             DesktopComboBox {id:output;width:(parent.width-136)/2;enabled:!!root.current && !root.busy;model:root.outputs;textRole:"label";Accessible.name:"Destination display";onActivated:index=>{if(root.current)root.send({action:"output",id:root.current.id,pid:root.current.pid,output:root.outputs[index].name});}}
         }
-        Row {spacing:8;width:parent.width;height:Math.max(30,assignment.implicitHeight,assignCommand.implicitHeight)
+        Row {visible:root.managementExpanded;spacing:8;width:parent.width;height:Math.max(30,assignment.implicitHeight,assignCommand.implicitHeight)
             DesktopComboBox {id:assignment;width:parent.width-168;model:root.assignmentChoices;textRole:"label";Accessible.name:"Persistent application desktop assignment"}
             DialogButton {id:assignCommand;width:160;text:"Assign Application";enabled:!!root.current && !!root.current.application && !root.busy;onClicked:{const choice=root.assignmentChoices[assignment.currentIndex];root.send({action:"assign",id:root.current.id,pid:root.current.pid,kind:choice.kind,target:choice.target,sessionEpoch:root.sessionEpoch});}}
         }
         Flow {width:parent.width;spacing:20
-        PanelLabel {width:Math.max(200,parent.width-recentOrdering.width-20);topPadding:4;font.pixelSize:Theme.textRole("metadata");color:Theme.colors.muted;text:root.error || (root.current && root.current.transferUnavailable || "") || (root.current && root.current.allDesktopMembership && root.current.allDesktopMembership.reason ? root.current.allDesktopMembership.reason : "") || (root.draggedId>0?"Choose a desktop, then Move Window · Escape to cancel":"Arrow keys to select · Return to open · Escape to close");wrapMode:Text.WordWrap}
-        SettingsToggle {id:recentOrdering;width:Math.min(parent.width,250*Theme.textScale);height:Math.max(36,implicitHeight);text:"Recent desktop order";enabled:!root.busy;Accessible.name:"Order desktops by recent use";checked:root.autoReorder;onToggled:root.send({action:"ordering",enabled:checked})}
+        PanelLabel {width:Math.max(200,parent.width-(recentOrdering.visible?recentOrdering.width+20:0));topPadding:4;font.pixelSize:Theme.textRole("metadata");color:Theme.colors.muted;text:root.error || (root.current && root.current.transferUnavailable || "") || (root.current && root.current.allDesktopMembership && root.current.allDesktopMembership.reason ? root.current.allDesktopMembership.reason : "") || (root.draggedId>0?"Choose a desktop, then Move Window · Escape to cancel":"Arrow keys to select · Return to open · Escape to close");wrapMode:Text.WordWrap}
+        SettingsToggle {id:recentOrdering;visible:root.managementExpanded;width:Math.min(parent.width,250*Theme.textScale);height:Math.max(36,implicitHeight);text:"Recent desktop order";enabled:!root.busy;Accessible.name:"Order desktops by recent use";checked:root.autoReorder;onToggled:root.send({action:"ordering",enabled:checked})}
 
         }
 

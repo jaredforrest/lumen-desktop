@@ -4,6 +4,37 @@ Implementation and acceptance are tracked separately. Existing functionality is
 verified rather than replaced merely to count it as new work. Personal assets
 and machine policy remain in the consuming configuration.
 
+## Demonstration baseline
+
+The release target is a polished ordinary desktop, not a minimum feature list.
+Build success and component assertions are prerequisites; neither is visual acceptance.
+The same candidate must be reviewed as complete screens on a normal wallpaper,
+in light and dark appearance. A diagnostic checkerboard supplements that review
+for transparent padding and blur leaks. Isolated graphical sessions allow this
+work without restarting a user's running desktop.
+
+Release-blocking visible defects include rough or doubled corners, blur outside
+the painted panel, inconsistent or doubled title bars, clipped ordinary labels,
+unreadable text over wallpaper, leftover overlays, hover freezes and missing
+normal ways to dismiss a surface or leave fullscreen. Everyday acceptance covers
+launch/search, app switching, file navigation and preview, Save/Open, the Dock,
+calendar and notifications, settings, password prompts and window controls.
+Rare failure and unusual hardware cases follow this baseline.
+
+Window Overview opens around search and the desktop/window list. The explicit
+Manage Desktops disclosure contains creation, removal, ordering, persistent
+assignment and display movement controls. Its disclosure must work with the
+keyboard; opening it alone must not send a management action. Direct window drag
+still exposes its destination controls during the drag workflow.
+
+The current visual batch fixes full selected-date wrapping and gives the empty
+notification status and widget-edit action their own readable surfaces. The
+isolated smoke configuration now uses the shipped Dock alpha mask rather than
+the obsolete full-buffer rounded blur rule. It captures all four Files views
+and the calendar over the normal wallpaper, in addition to diagnostic captures.
+These receipts do not certify an unobserved third-party application interior or
+the renderer in an older, still-running graphical session.
+
 | Group | Work included | Acceptance |
 |---|---|---|
 | Window consistency | Captured-window actions, integrated green hover menu, alternate fill action, shared layout material, negotiated client decorations | Helper identity tests and layout fixture passed. Installed disposable Files window passed physical green hover/fullscreen, alternate-click fill, minimize, restore and close |

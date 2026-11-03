@@ -8,10 +8,13 @@ Column {
     property var expandedGroups:({})
     spacing:12
     ControlRow {visible:root.service.available && root.service.history.length>0;width:parent.width;height:26;text:"Clear All";onClicked:root.service.command({action:"clear"})}
-    PanelLabel {
-        visible:!root.service.available || root.service.history.length===0;width:parent.width;height:65
+    PanelSurface {
+        visible:!root.service.available || root.service.history.length===0;width:parent.width;height:Math.max(65,emptyLabel.implicitHeight+28);radius:18;color:root.reduceTransparency?Theme.colors.background:Theme.popoverMaterial
+        PanelLabel {
+        id:emptyLabel;anchors.fill:parent;anchors.margins:14
         horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter;wrapMode:Text.WordWrap
         text:!root.service.available?"Connecting to notifications…":root.service.dnd?"Do Not Disturb is on\nNo notifications":"No notifications";color:Theme.colors.muted
+        }
     }
     Repeater {
         model:root.service.groups

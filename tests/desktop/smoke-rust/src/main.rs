@@ -683,8 +683,9 @@ impl Driver {
         let mut config = String::from(
             "output HEADLESS-1 resolution 1440x1000\nxwayland disable\ndefault_border none\nfor_window [app_id=\"org.quickshell\"] floating enable\n",
         );
+        config.push_str(&format!("output HEADLESS-1 bg {} fill\n", serde_json::to_string(&self.assets.join("wallpaper.png").display().to_string())?));
         if self.opt.effects {
-            config.push_str("corner_radius 12\nshadows enable\nshadow_blur_radius 28\nanimation_duration_ms 0\nblur enable\nblur_xray disable\nlayer_effects \"lumen-dock\" \"blur enable; corner_radius 22\"\nlayer_effects \"lumen-menu-popup\" \"blur enable; blur_ignore_transparent enable\"\n");
+            config.push_str("corner_radius 12\nshadows enable\nshadow_blur_radius 28\nanimation_duration_ms 0\nblur enable\nblur_xray disable\nlayer_effects \"lumen-dock\" \"blur enable; blur_ignore_transparent enable; corner_radius 0\"\nlayer_effects \"lumen-menu-popup\" \"blur enable; blur_ignore_transparent enable\"\n");
         }
         let conf = self.run.join("sway.conf");
         write(&conf, config)?;
@@ -817,6 +818,8 @@ impl Driver {
             "Failed to load configuration",
             "ReferenceError:",
             "TypeError:",
+            "polish() loop",
+            "Binding loop detected",
             "Unable to assign",
         ])?;
         let result = json!({"passed":true,"checks":["1080/720/480 no menu-status collision","hidden menus and status actions in overflow","real keyboard selection, activation and dismissal"],"layouts":layouts});
@@ -934,6 +937,8 @@ impl Driver {
         ] {
             self.key(&["-M", "ctrl", "-k", number, "-m", "ctrl"])?;
             self.wait_for("Files view", || Ok(self.state()?["view"] == view))?;
+            thread::sleep(Duration::from_millis(300));
+            self.capture(&format!("files-{view}.png"))?;
         }
         self.key(&["-k", "Down", "-k", "space"])?;
         self.wait_for("Quick Look text", || {
@@ -1070,6 +1075,10 @@ impl Driver {
         })?;
         self.capture("calendar-accounts.png")?;
         self.key(&["-k", "Escape"])?;
+        self.ipc("notificationCentre", &["open"])?;
+        thread::sleep(Duration::from_millis(500));
+        self.capture("calendar-wallpaper.png")?;
+        self.ipc("notificationCentre", &["close"])?;
         let mut ppm = b"P6\n64 64\n255\n".to_vec();
         for y in 0..64 {
             for x in 0..64 {
@@ -1177,7 +1186,7 @@ impl Driver {
                 ("controls.png", [1130, 100, 1420, 450]),
             ] {
                 require(
-                    self.screenshot_mean(image, area)? > 60.,
+                    self.screenshot_mean(image, area)? > if self.opt.theme == "dark" { 25. } else { 60. },
                     format!("Incomplete effects interior: {image}"),
                 )?;
             }

@@ -26,7 +26,12 @@ Column {
         onOpenCalendar:day=>root.shell.openCalendarAt(day,null)
         onEventRequested:(event,day)=>root.shell.openCalendarAt(day,event)
     }
-    ControlRow {width:parent.width;height:Math.max(30,implicitHeight);text:root.editingWidgets?"Done":"Edit Widgets";onClicked:root.editingWidgets=!root.editingWidgets}
+    TextMetrics {id:editMetrics;font.family:Theme.font;font.pixelSize:Theme.textRole("body");text:root.editingWidgets?"Done":"Edit Widgets"}
+    PanelSurface {
+        width:Math.min(root.width,editMetrics.advanceWidth+32);height:Math.max(32,editMetrics.height+14);radius:height/2
+        anchors.horizontalCenter:parent.horizontalCenter
+        ControlRow {id:widgetEdit;anchors.fill:parent;text:root.editingWidgets?"Done":"Edit Widgets";onClicked:root.editingWidgets=!root.editingWidgets}
+    }
     PanelSurface {
         visible:root.editingWidgets;width:parent.width;implicitHeight:editor.height+28;radius:18
         Column {id:editor;x:14;y:14;width:parent.width-28;spacing:8

@@ -31,6 +31,9 @@ fn counts(ctx: &Context, image: &Path, colors: &[[i32; 3]]) -> Result<Vec<usize>
 }
 
 pub fn run(ctx: &mut Context) -> Result<()> {
+    // This corpus pins Qt's software scenegraph and exercises its opaque fallback.
+    // Do not inherit effects capabilities observed from the caller's desktop.
+    ctx.vars.insert("LUMEN_COMPOSITOR_EFFECTS".into(), "0".into());
     ctx.vars.insert("LUMEN_UNIFIED_OWNED_HEADERS".into(), "1".into());
     ctx.vars.insert("LUMEN_NATIVE_WINDOW_CONTROLS".into(), "0".into());
     ctx.vars.insert("LUMEN_NATIVE_WINDOW_ACTIONS".into(), "0".into());
@@ -113,6 +116,18 @@ pub fn run(ctx: &mut Context) -> Result<()> {
             checks.push(json!({"family":family,"mode":mode,"reduced":reduced,"state":row,"capture":capture,"pixels":pixels,"nativeId":identity}));
         }
         need(state(ctx)?["actions"] == json!([]), "Overlay invoked action during appearance changes")?;
+        if family == "overview" {
+            let has_assignment = |row: &Value| row["texts"].as_array().is_some_and(|rows| rows.iter().any(|item| item["text"] == "Assign Application"));
+            need(!has_assignment(&state(ctx)?), "Overview initially exposes desktop management")?;
+            need(ctx.ipc("focusManagement", &[])? == "true", "Management disclosure cannot receive keyboard focus")?;
+            ctx.key(&["-k", "space"])?;
+            wait("Overview desktop management shown", || Ok(has_assignment(&state(ctx)?).then_some(())))?;
+            ctx.picture("overview-management.png")?;
+            ctx.key(&["-k", "space"])?;
+            wait("Overview desktop management hidden", || Ok((!has_assignment(&state(ctx)?)).then_some(())))?;
+            ctx.picture("overview-everyday.png")?;
+            checks.push(json!({"family":"overview","managementDisclosure":"Actual keyboard activation reveals and hides the existing assignment controls without invoking a management action"}));
+        }
         if family == "controls" || family == "notifications" {
             ctx.key(&["-k", "Return"])?;
             let expected = if family == "controls" { "settings" } else { "default" };

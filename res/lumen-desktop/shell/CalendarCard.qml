@@ -188,7 +188,7 @@ PanelSurface {
         }
         Row {
             width:parent.width
-            PanelLabel {width:parent.width-58;text:Qt.formatDateTime(root.selected,Qt.locale().dateFormat(root.compact?Locale.LongFormat:Locale.ShortFormat));font.pixelSize:root.textSize(root.compact?15:13);font.weight:Font.DemiBold;verticalAlignment:Text.AlignVCenter;height:Math.max(24,root.textSize(15)+8)}
+            PanelLabel {objectName:"calendar-selected-date";width:parent.width-58;text:Qt.formatDateTime(root.selected,Qt.locale().dateFormat(root.compact?Locale.LongFormat:Locale.ShortFormat));font.pixelSize:root.textSize(root.compact?15:13);font.weight:Font.DemiBold;wrapMode:Text.WordWrap;elide:Text.ElideNone;verticalAlignment:Text.AlignVCenter;height:Math.max(24,implicitHeight)}
             AbstractButton {width:58;height:Math.max(24,root.textSize(15)+8);enabled:!root.busy;text:"Today";Accessible.name:"Go to today";contentItem:PanelLabel {text:parent.text;color:(root.monochrome?Theme.colors.muted:Theme.colors.accent);horizontalAlignment:Text.AlignRight;verticalAlignment:Text.AlignVCenter} onClicked:root.goToday()}
         }
         PanelLabel {visible:root.events.length===0;width:parent.width;wrapMode:Text.WordWrap;color:Theme.colors.muted;text:!root.loaded?(root.busy?"Loading calendar…":"Calendar unavailable"):!root.configured?"Connect a calendar to see your appointments here.":!root.lastSuccess?"Calendars are configured, but no successful sync has completed.":"No events on this day"}
