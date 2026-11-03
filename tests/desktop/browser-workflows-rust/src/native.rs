@@ -618,7 +618,7 @@ impl Native {
             self.profile.display().to_string(),
             format!("{origin}/page"),
             "normal".into(),
-            if matches!(self.opt.workflow, Workflow::Permissions | Workflow::Library) || self.opt.gtk_theme_directory.is_some() {
+            if matches!(self.opt.workflow, Workflow::Permissions | Workflow::Library) {
                 "true"
             } else {
                 "false"
@@ -850,7 +850,7 @@ impl Native {
         if matches!(
             self.opt.workflow,
             Workflow::Permissions | Workflow::Library | Workflow::KeyboardSave
-        ) || self.opt.gtk_theme_directory.is_some() {
+        ) {
             let prefix = self.opt.at_spi_prefix.clone();
             let mut updated = self.env.clone();
             self.a11y = Some(accessibility_dbus::start(&prefix, &mut updated, self)?);
@@ -1200,23 +1200,9 @@ impl Native {
         )?;
         self.capture("chooser-accept.png")?;
         if self.opt.gtk_theme_directory.is_some() {
-            let target = wait("themed chooser Save control", Duration::from_secs(15), || {
-                let rows = self.a11y.as_mut().ok_or("Private accessibility observer")?.snapshot()?;
-                save(&self.out.join("themed-chooser-accessibility.json"), &json!({"chooser":chooser,"controls":rows}))?;
-                let targets = rows.into_iter().filter(|row| row["pid"] == chooser["pid"]
-                    && row["name"] == "Save" && matches!(row["role"].as_str(), Some("button" | "push button"))
-                    && row["states"]["showing"] == true && row["states"]["sensitive"] == true).collect::<Vec<_>>();
-                Ok((targets.len() == 1).then(|| targets[0].clone()))
-            })?;
-            let (x,y,w,h) = self.a11y.as_mut().ok_or("Private accessibility observer")?.bounds_captured(&target)?;
-            let left = as_i64(&chooser["rect"], "x")? + as_i64(&chooser["window_rect"], "x")? + i64::from(x);
-            let top = as_i64(&chooser["rect"], "y")? + as_i64(&chooser["window_rect"], "y")? + i64::from(y);
-            ensure(w > 0 && h > 0 && left >= as_i64(&chooser["rect"], "x")? && top >= as_i64(&chooser["rect"], "y")?
-                && left+i64::from(w) <= as_i64(&chooser["rect"], "x")?+as_i64(&chooser["rect"], "width")?
-                && top+i64::from(h) <= as_i64(&chooser["rect"], "y")?+as_i64(&chooser["rect"], "height")?, "Themed Save control outside captured chooser")?;
-            save(&self.out.join("chooser-accept-bounds.json"), &json!({"native":chooser,"control":target,"bounds":[left,top,w,h],"route":"physical pointer using read-only captured accessibility bounds"}))?;
-            self.pointer_click(left as f64+f64::from(w)/2., top as f64+f64::from(h)/2.)?;
-            return Ok(());
+            ensure(self.windows()?.iter().any(|row| row["id"] == chooser["id"] && row["focused"] == true), "Themed chooser lost keyboard focus")?;
+            save(&self.out.join("chooser-accept-bounds.json"), &json!({"native":chooser,"route":"physical Return in captured themed chooser; pointer target appearance is not inferred"}))?;
+            return self.key(&["-k", "Return"]);
         }
         let image = Image::load_png(&self.out.join("chooser-accept.png"))?;
         let rect = &chooser["rect"];

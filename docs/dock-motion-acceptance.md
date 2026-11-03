@@ -10,6 +10,11 @@ not claim exclusive keyboard focus. Pointer motion returns keyboard ownership
 to the application, and a release resolves its actual coordinates rather than a
 previous hover position.
 
+Refreshing the ordinary app list retains keyboard selection by the stable item
+key. Removing that selected key still releases keyboard ownership. The native
+scenario refreshes the list while its last item is selected, checks retained
+focus and selection, then exercises Escape and model removal separately.
+
 The production Dock, SettingsState and DockModel are unchanged. Read-only geometry/tooltip aliases are applied to a copied source file with original/modified hashes and exact round-trip proof. An explicit synthetic settings transport records the actual captured pin-order write and reconstructs that order after a private shell restart. This establishes the owned UI/transport contract; it does not claim production configuration or system rebuild persistence. Existing production appearance preference tests cover the separate typed schema boundary; production configuration writes remain outside this fixture.
 
 Every run uses a private headless compositor, session bus, disposable home, copied production assets and pinned Nix tools. The settings transport is a Rust fixture binary. No reference-platform timing or pixel equivalence is inferred from this functional acceptance.

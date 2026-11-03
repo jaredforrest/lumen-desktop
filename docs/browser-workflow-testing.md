@@ -14,6 +14,9 @@ disposable data home and records it in the dependency receipt; it never reads
 the user's GTK configuration or browser profile. Without this input, chooser
 captures establish the default toolkit presentation only. A successful save
 alone does not certify the consuming desktop's configured appearance.
+The optional themed capture uses physical Return in the captured focused chooser
+to accept a new file, then checks the actual saved content and completed download
+record. It does not infer a pointer target from toolkit button fill colors.
 
 The separate `browser-fonts` Rust 2024 fixture replaces the former Python font audit. Inside a disposable `/home/fixture` and `/artifacts` boundary, pass `--browser`, `--profile`, `--output` and `--cases` (a JSON array with explicit `name`, `family`, `text`, `expectedFamilies` and `expectedGlyphCount`). It checks Chromium's actual platform-font selection for every case and saves a painted PNG plus observations. The fixture package's build runs its validation tests; running a particular font policy still requires the corresponding explicit case file and installed font input.
 

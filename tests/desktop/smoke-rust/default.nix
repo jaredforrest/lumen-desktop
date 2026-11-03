@@ -4,4 +4,8 @@
   version = "0.1.0";
   src = ./.;
   cargoLock.lockFile = ./Cargo.lock;
+  postPatch = ''
+    cp ${../browser-workflows-rust/src/keyboard.rs} src/keyboard.rs
+  '';
+  LUMEN_SMOKE_KEYBOARD = "${import ../physical_keyboard_driver.nix { inherit pkgs; }}/bin/lumen-test-physical-keyboard";
 }

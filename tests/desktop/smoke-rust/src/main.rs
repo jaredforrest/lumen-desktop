@@ -1,5 +1,7 @@
 //! Exercise the installed desktop shell in a disposable native compositor.
 use serde_json::{Value, json};
+mod keyboard;
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::env;
 use std::error::Error;
@@ -305,6 +307,7 @@ struct Driver {
     assets: PathBuf,
     vars: BTreeMap<String, String>,
     processes: Vec<Managed>,
+    keyboard: RefCell<Option<keyboard::PhysicalKeyboard>>,
 }
 impl Driver {
     fn run_command(&self, program: &str, args: &[&str]) -> Result<String> {
@@ -342,10 +345,7 @@ impl Driver {
         self.ipc_json("filesStatus", &[])
     }
     fn key(&self, args: &[&str]) -> Result<()> {
-        let mut words = vec!["-s", "150"];
-        words.extend_from_slice(args);
-        self.run_command("wtype", &words)?;
-        Ok(())
+        self.keyboard.borrow_mut().as_mut().ok_or("Persistent keyboard unavailable")?.key(args)
     }
     fn capture(&self, name: &str) -> Result<()> {
         self.run_command(
@@ -680,6 +680,7 @@ fn setup(opt: Options) -> Result<Driver> {
         assets,
         vars,
         processes: Vec::new(),
+        keyboard: RefCell::new(None),
     })
 }
 impl Driver {
@@ -767,6 +768,9 @@ impl Driver {
             .ok_or("Non-UTF8 shell path")?
             .to_owned();
         self.launch(Path::new("quickshell"), &["-p", &assets], "shell")?;
+        self.keyboard.replace(Some(keyboard::PhysicalKeyboard::start(
+            Path::new(env!("LUMEN_SMOKE_KEYBOARD")), &self.vars, &self.run.join("keyboard.log"),
+        )?));
         if let Err(error) =
             self.wait_for("shell status", || Ok(self.ipc_json("status", &[]).is_ok()))
         {
