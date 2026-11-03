@@ -2,7 +2,7 @@
  IpcHandler {target:"fullscreenMenuAudit"
   function state():string {
   function exitStatus(bar) {
-   function walk(item){return [item].concat(Array.from(item.children || []).flatMap(walk));}
+   function walk(item){let found=[item];for(const child of item.children || [])found=found.concat(walk(child));return found;}
    const button=walk(bar.contentItem).find(item=>item.objectName==="fullscreen-exit");
    if(!button)return null;
    const point=button.mapToItem(bar.contentItem,button.width/2,button.height/2);

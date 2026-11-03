@@ -294,9 +294,13 @@ fn run(options: Options) -> Result<()> {
     values.insert("WLR_BACKENDS".into(), "headless".into());
     values.insert("WLR_RENDERER".into(), "pixman".into());
     if options.corner_preview {
-        for (key,value) in [("WLR_RENDERER","gles2"),("WLR_RENDERER_ALLOW_SOFTWARE","1"),("WLR_RENDERER_FORCE_SOFTWARE","1"),("LIBGL_ALWAYS_SOFTWARE","1")] {
+        for (key,value) in [("WLR_RENDERER","gles2"),("WLR_RENDERER_ALLOW_SOFTWARE","1"),("WLR_RENDERER_FORCE_SOFTWARE","1"),("MESA_LOADER_DRIVER_OVERRIDE","llvmpipe")] {
             values.insert(key.into(),value.into());
         }
+        values.remove("LIBGL_ALWAYS_SOFTWARE");
+        let mesa=Path::new(env!("LUMEN_TEST_MESA"));
+        values.insert("LIBGL_DRIVERS_PATH".into(),mesa.join("lib/dri").display().to_string());
+        values.insert("__EGL_VENDOR_LIBRARY_FILENAMES".into(),mesa.join("share/glvnd/egl_vendor.d/50_mesa.json").display().to_string());
     }
     values.insert("DBUS_SYSTEM_BUS_ADDRESS".into(),format!("unix:path={}/absent-system-bus",values["XDG_RUNTIME_DIR"]));
     values.insert("WLR_LIBINPUT_NO_DEVICES".into(), "1".into());
@@ -319,6 +323,16 @@ fn run(options: Options) -> Result<()> {
         &compositor_log,
     )?;
     values.insert("WAYLAND_DISPLAY".into(), display);
+    let until=Instant::now()+Duration::from_secs(5);
+    loop {
+        if let Some(socket)=fs::read_dir(&values["XDG_RUNTIME_DIR"])?
+            .filter_map(|entry|entry.ok().map(|entry|entry.path()))
+            .find(|path|path.file_name().is_some_and(|name|name.to_string_lossy().starts_with("sway-ipc.") && name.to_string_lossy().ends_with(".sock"))) {
+            values.insert("SWAYSOCK".into(),socket.display().to_string());break;
+        }
+        require(Instant::now()<until,"Private compositor IPC unavailable")?;
+        thread::sleep(Duration::from_millis(25));
+    }
     values.insert("QT_QPA_PLATFORM".into(), "wayland".into());
     let assets = fs::canonicalize(env::current_dir()?.join("res/lumen-desktop/shell"))?;
     let scene_source = env::current_exe()?
