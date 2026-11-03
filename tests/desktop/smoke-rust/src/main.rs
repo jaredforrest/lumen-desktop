@@ -953,6 +953,9 @@ impl Driver {
         self.wait_for("Text Tools visible", || {
             Ok(self.ipc_json("textToolsStatus", &[])?["visible"] == true)
         })?;
+        self.wait_for("Text Tools native keyboard focus", || {
+            Ok(self.window("Text Tools")?["focused"] == true)
+        })?;
         for page in [
             "Speech",
             "Replacements",

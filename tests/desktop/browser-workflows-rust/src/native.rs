@@ -618,7 +618,7 @@ impl Native {
             self.profile.display().to_string(),
             format!("{origin}/page"),
             "normal".into(),
-            if matches!(self.opt.workflow, Workflow::Permissions | Workflow::Library) {
+            if matches!(self.opt.workflow, Workflow::Permissions | Workflow::Library) || self.opt.gtk_theme_directory.is_some() {
                 "true"
             } else {
                 "false"
@@ -1202,6 +1202,7 @@ impl Native {
         if self.opt.gtk_theme_directory.is_some() {
             let target = wait("themed chooser Save control", Duration::from_secs(15), || {
                 let rows = self.a11y.as_mut().ok_or("Private accessibility observer")?.snapshot()?;
+                save(&self.out.join("themed-chooser-accessibility.json"), &json!({"chooser":chooser,"controls":rows}))?;
                 let targets = rows.into_iter().filter(|row| row["pid"] == chooser["pid"]
                     && row["name"] == "Save" && matches!(row["role"].as_str(), Some("button" | "push button"))
                     && row["states"]["showing"] == true && row["states"]["sensitive"] == true).collect::<Vec<_>>();

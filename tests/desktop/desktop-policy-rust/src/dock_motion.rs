@@ -175,6 +175,9 @@ pub fn run(ctx: &mut Context) -> Result<()> {
     wait("Dock keyboard focus",||Ok((state(ctx)?["keyboardMode"]==true).then_some(())))?;
     keyboard.key("End")?;
     wait("Keyboard magnification follows selection",|| {let row=state(ctx)?;Ok((row["hovered"]==row["pointerSlot"] && row["keyboardIndex"].as_u64()==Some(all.len() as u64-1)).then_some(()))})?;
+    ctx.ipc("refreshDock",&[])?;
+    pause(200);
+    need(state(ctx)?["keyboardMode"]==true && state(ctx)?["keyboardIndex"].as_u64()==Some(all.len() as u64-1), "Ordinary Dock model refresh cancelled the selected keyboard item")?;
     keyboard.key("Escape")?;
     wait("Dock Escape dismisses keyboard mode",|| {let row=state(ctx)?;Ok((row["keyboardMode"]==false && row["hovered"]==-1 && row["pointerSlot"]==-1 && row["popupOwner"]=="").then_some(()))})?;
     ctx.ipc("focusDock",&[])?;

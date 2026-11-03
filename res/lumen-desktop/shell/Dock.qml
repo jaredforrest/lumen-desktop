@@ -26,6 +26,8 @@ PanelWindow {
     property int hovered: -1
     property bool keyboardMode:false
     property int keyboardIndex:0
+    property string keyboardKey:""
+    onKeyboardIndexChanged:if(keyboardMode)keyboardKey=String((shell.referenceDock[keyboardIndex] || {}).key || "")
     function leaveKeyboard(){keyboardMode=false;hovered=-1;pointerSlot=-1;if(shell.popupOwner==="dock:"+outputName)shell.claimPopup("");}
     Connections {target:shell;function onRequestDockFocus(name){if(dock.displayAllowed && shell.referenceDock.length && (shell.displaySpaces?shell.displaySpaces.dockOutput(name):name)===dock.outputName){shell.claimPopup("dock:"+dock.outputName);dock.keyboardIndex=Math.max(0,Math.min(dock.keyboardIndex,shell.referenceDock.length-1));dock.keyboardMode=true;dock.hovered=dock.keyboardIndex;dock.pointerSlot=dock.keyboardIndex;keyboard.forceActiveFocus();}}}
     property real pointerSlot: -1
@@ -36,7 +38,14 @@ PanelWindow {
     function cancelDrag(){pressedKey="";pressIntent=null;dragging=false;dragCompleted=true;}
     function removableDrag(){const item=dragIntentValid()?pressIntent.item:null;return item && (["file","folder"].includes(item.action) || (item.action!=="minimized-window" && item.entry && shell.canConfigureDockEntry(item.entry) && shell.isDockPinned(item.entry)));}
     function dragIntentValid(){return pressIntent && pressIntent.items===shell.referenceDock && !shell.dockPreferencesBusy && shell.referenceDock.includes(pressIntent.item);}
-    Connections {target:shell;function onDockPreferencesBusyChanged(){if(shell.dockPreferencesBusy && dock.pressIntent)dock.cancelDrag();}function onReferenceDockChanged(){if(dock.pressIntent && !dock.dragIntentValid())dock.cancelDrag();if(dock.keyboardMode)dock.leaveKeyboard();dock.hovered=-1;dock.pointerSlot=-1;}}
+    Connections {target:shell;function onDockPreferencesBusyChanged(){if(shell.dockPreferencesBusy && dock.pressIntent)dock.cancelDrag();}function onReferenceDockChanged(){
+        if(dock.pressIntent && !dock.dragIntentValid())dock.cancelDrag();
+        if(dock.keyboardMode){
+            const index=shell.referenceDock.findIndex(item=>String(item.key)===dock.keyboardKey);
+            if(index<0)dock.leaveKeyboard();
+            else {dock.keyboardIndex=index;dock.hovered=index;dock.pointerSlot=index;}
+        }else {dock.hovered=-1;dock.pointerSlot=-1;}
+    }}
     property bool dragging:false
     property bool dragCompleted:false
     property string dropError:""
@@ -133,7 +142,7 @@ PanelWindow {
     exclusiveZone: autoHide?0:shelfThickness+7
     Timer {id:hideTimer;interval:500;onTriggered:if(dock.autoHide && !dock.keyboardMode && !dock.contextEntry && !dock.contextAlias && !dock.dragging)dock.revealed=false}
     onAutoHideChanged:{revealed=true;if(autoHide)hideTimer.restart();}
-    onKeyboardModeChanged:if(keyboardMode){revealed=true;hideTimer.stop();}
+    onKeyboardModeChanged:if(keyboardMode){keyboardKey=String((shell.referenceDock[keyboardIndex] || {}).key || "");revealed=true;hideTimer.stop();}else keyboardKey=""
     color: "transparent"
     WlrLayershell.namespace: "lumen-dock"
     WlrLayershell.keyboardFocus:(keyboardMode || dragging)?WlrKeyboardFocus.Exclusive:WlrKeyboardFocus.None

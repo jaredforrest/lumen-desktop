@@ -56,6 +56,7 @@ ShellRoot {
         function dismissDock():string {stub.claimPopup("fixture-other");return "dismissed";}
         function focusDock():string {stub.requestDockFocus(dock.outputName);return "requested";}
         function emptyDock(value:bool):string {stub.emptyModel=value;return "updated";}
+        function refreshDock():string {stub.reference=stub.reference.map(item=>Object.assign({},item));return "updated";}
         function status(): string {
             return JSON.stringify({keys:stub.referenceDock.map(x=>x.key),separators:stub.referenceDock.map(x=>x.separatorBefore),
                 width:dock.width,height:dock.height,slot:dock.slot,shelf:dock.shelfThickness,
