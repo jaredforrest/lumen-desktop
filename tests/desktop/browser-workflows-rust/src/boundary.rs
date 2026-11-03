@@ -56,6 +56,7 @@ pub struct Options {
     pub at_spi_prefix: PathBuf,
     pub software_driver: PathBuf,
     pub portal_tools: Option<PathBuf>,
+    pub gtk_theme_directory: Option<PathBuf>,
     pub output: PathBuf,
     pub effects: bool,
     pub trace_wayland: bool,
@@ -96,7 +97,7 @@ impl Options {
                 }
                 "--browser" | "--launcher" | "--sway" | "--pointer-tool" | "--keyboard-tool"
                 | "--font-directory" | "--at-spi-prefix" | "--software-driver"
-                | "--portal-tools" | "--output" => {
+                | "--portal-tools" | "--gtk-theme-directory" | "--output" => {
                     values.insert(key, iter.next().ok_or("option value")?);
                 }
                 _ => return Err(fail(format!("Unknown browser option: {key}"))),
@@ -120,6 +121,15 @@ impl Options {
             .remove("--portal-tools")
             .map(|v| immutable(Path::new(&v), false))
             .transpose()?;
+        let gtk_theme_directory = values.remove("--gtk-theme-directory")
+            .map(|v| immutable(Path::new(&v), true)).transpose()?;
+        if let Some(directory) = &gtk_theme_directory {
+            let name = directory.file_name().and_then(|v| v.to_str()).ok_or("GTK theme name")?;
+            if name.len() > 80 || !name.bytes().all(|v| v.is_ascii_alphanumeric() || matches!(v, b'-' | b'_'))
+                || !directory.join("gtk-3.0/gtk.css").is_file() {
+                return Err(fail("Provide a named immutable GTK 3 theme directory"));
+            }
+        }
         if matches!(workflow, Workflow::Overwrite | Workflow::KeyboardSave)
             && portal_tools.is_none()
         {
@@ -143,6 +153,7 @@ impl Options {
             at_spi_prefix,
             software_driver,
             portal_tools,
+            gtk_theme_directory,
             output,
             effects,
             trace_wayland,
@@ -151,7 +162,7 @@ impl Options {
         })
     }
     pub fn dependency_manifest(&self) -> Value {
-        json!({"browser":self.browser,"launcher":self.launcher,"sway":self.sway,"pointer_tool":self.pointer_tool,"keyboard_tool":self.keyboard_tool,"font_directory":self.font_directory,"at_spi_prefix":self.at_spi_prefix,"software_driver":self.software_driver})
+        json!({"browser":self.browser,"launcher":self.launcher,"sway":self.sway,"pointer_tool":self.pointer_tool,"keyboard_tool":self.keyboard_tool,"font_directory":self.font_directory,"at_spi_prefix":self.at_spi_prefix,"software_driver":self.software_driver,"gtk_theme_directory":self.gtk_theme_directory})
     }
     pub fn child_args(&self) -> Vec<String> {
         let mut args = vec!["--inside".into()];
@@ -176,6 +187,9 @@ impl Options {
         ]);
         if let Some(path) = &self.portal_tools {
             args.extend(["--portal-tools".into(), path.display().to_string()]);
+        }
+        if let Some(path) = &self.gtk_theme_directory {
+            args.extend(["--gtk-theme-directory".into(), path.display().to_string()]);
         }
         if self.effects {
             args.push("--effects".into());

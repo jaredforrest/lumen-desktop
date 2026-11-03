@@ -802,6 +802,16 @@ impl Native {
         Ok(())
     }
     fn setup_environment(&mut self) -> Result<()> {
+        if let Some(directory) = &self.opt.gtk_theme_directory {
+            let name = directory.file_name().and_then(|v| v.to_str()).ok_or("GTK theme name")?;
+            let themes = Path::new(self.env.get("XDG_DATA_HOME").ok_or("data home")?).join("themes");
+            fs::create_dir_all(&themes)?;
+            std::os::unix::fs::symlink(directory, themes.join(name))?;
+            let settings = Path::new(self.env.get("XDG_CONFIG_HOME").ok_or("config home")?).join("gtk-3.0");
+            fs::create_dir_all(&settings)?;
+            fs::write(settings.join("settings.ini"), format!("[Settings]\ngtk-theme-name={name}\ngtk-font-name=Interlude Variable 10\ngtk-decoration-layout=close,minimize,maximize:\n"))?;
+            self.env.insert("GTK_THEME".into(), name.into());
+        }
         let fontconfig = self.runtime.join("fonts.conf");
         fs::write(
             &fontconfig,

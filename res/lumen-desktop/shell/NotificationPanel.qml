@@ -30,7 +30,12 @@ Column {
     PanelSurface {
         width:Math.min(root.width,editMetrics.advanceWidth+32);height:Math.max(32,editMetrics.height+14);radius:height/2
         anchors.horizontalCenter:parent.horizontalCenter
-        ControlRow {id:widgetEdit;anchors.fill:parent;text:root.editingWidgets?"Done":"Edit Widgets";onClicked:root.editingWidgets=!root.editingWidgets}
+        AbstractButton {
+            id:widgetEdit;anchors.fill:parent;text:root.editingWidgets?"Done":"Edit Widgets";Accessible.name:text
+            contentItem:PanelLabel {text:widgetEdit.text;horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter}
+            background:Rectangle {radius:height/2;color:widgetEdit.hovered || widgetEdit.activeFocus?Theme.colors.hover:"transparent"}
+            onClicked:root.editingWidgets=!root.editingWidgets
+        }
     }
     PanelSurface {
         visible:root.editingWidgets;width:parent.width;implicitHeight:editor.height+28;radius:18

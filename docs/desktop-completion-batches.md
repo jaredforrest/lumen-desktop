@@ -62,7 +62,7 @@ Related fixes are assembled before the package build and focused regression chec
 One combined visual pass reviews the changed surfaces. Activation uses the clean,
 committed consuming configuration, and unrelated pending work is restored exactly.
 
-## Candidate receipt
+## Earlier activation receipt
 
 Runtime changes are in `f95d0540`; persistent-keyboard fixture correction is in
 `f3da557b`, and the application-preservation flake check is in `d7e74c19`.
@@ -75,7 +75,7 @@ is active with no failed user units. All 204 unrelated pending configuration pat
 and their staged/unstaged patches were restored byte-for-byte. Disposable test
 windows were closed and temporary input devices were released and removed.
 
-The installed visual review still shows a wrapped Appearance tile label at the
+That installed visual review showed a wrapped Appearance tile label at the
 current control-centre width. Calendar data loading is not certified by a surface
 review. These remain open; the installed receipt is not a complete parity claim.
 

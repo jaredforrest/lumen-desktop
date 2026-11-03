@@ -71,6 +71,9 @@ pub fn run(ctx: &mut Context) -> Result<()> {
                 wait("physical overlay query", || Ok((state(ctx)?["query"] == "First").then_some(())))?;
             }
         }
+        if family == "overview" {
+            wait("Overview populated ordinary window", || Ok((state(ctx)?["overview"]["count"] == 1).then_some(())))?;
+        }
         let initial = state(ctx)?;
         let identity = if family == "overview" {
             Some(wait("native Overview window", || Ok(find_node(&ctx.tree()?, |node| node["name"] == "Window Overview" && node["visible"] == true)
