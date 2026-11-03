@@ -293,6 +293,12 @@ fn run(options: Options) -> Result<()> {
     fs::write(&sway_config, "output * resolution 800x600\n")?;
     values.insert("WLR_BACKENDS".into(), "headless".into());
     values.insert("WLR_RENDERER".into(), "pixman".into());
+    if options.corner_preview {
+        for (key,value) in [("WLR_RENDERER","gles2"),("WLR_RENDERER_ALLOW_SOFTWARE","1"),("WLR_RENDERER_FORCE_SOFTWARE","1"),("LIBGL_ALWAYS_SOFTWARE","1")] {
+            values.insert(key.into(),value.into());
+        }
+    }
+    values.insert("DBUS_SYSTEM_BUS_ADDRESS".into(),format!("unix:path={}/absent-system-bus",values["XDG_RUNTIME_DIR"]));
     values.insert("WLR_LIBINPUT_NO_DEVICES".into(), "1".into());
     let compositor_log = output.join("compositor.log");
     let log = File::create(&compositor_log)?;
