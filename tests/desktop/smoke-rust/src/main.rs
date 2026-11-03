@@ -364,7 +364,11 @@ impl Driver {
         Ok(())
     }
     fn wait_for(&self, label: &str, mut predicate: impl FnMut() -> Result<bool>) -> Result<()> {
-        wait(label, || predicate().map(truthy))?;
+        if let Err(error) = wait(label, || predicate().map(truthy)) {
+            self.save_failure();
+            let _ = self.capture("failure.png");
+            return Err(error);
+        }
         Ok(())
     }
 }
@@ -511,7 +515,7 @@ impl Driver {
     }
     fn save_failure(&self) {
         let mut value = serde_json::Map::new();
-        for key in ["status", "filesStatus", "layout"] {
+        for key in ["status", "filesStatus", "textToolsStatus", "layout"] {
             match self.ipc_json(key, &[]) {
                 Ok(row) => {
                     value.insert(key.into(), row);
