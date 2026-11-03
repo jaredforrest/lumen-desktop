@@ -27,6 +27,7 @@ struct Options {
     sway: PathBuf,
     output: PathBuf,
     corner_preview: bool,
+    hardware_preview: bool,
 }
 
 fn options() -> Result<Options> {
@@ -34,6 +35,7 @@ fn options() -> Result<Options> {
     let mut sway = None;
     let mut output = None;
     let mut corner_preview = false;
+    let mut hardware_preview = false;
     let mut args = env::args_os().skip(1);
     while let Some(arg) = args.next() {
         match arg.to_str() {
@@ -43,6 +45,7 @@ fn options() -> Result<Options> {
             Some("--sway") => sway = Some(PathBuf::from(args.next().ok_or("Missing compositor")?)),
             Some("--output") => output = Some(PathBuf::from(args.next().ok_or("Missing output")?)),
             Some("--corner-preview") => corner_preview = true,
+            Some("--hardware-preview") => hardware_preview = true,
             _ => return Err(fail("Unknown layout-menu fixture option")),
         }
     }
@@ -51,6 +54,7 @@ fn options() -> Result<Options> {
         sway: sway.ok_or("--sway required")?,
         output: output.ok_or("--output required")?,
         corner_preview,
+        hardware_preview,
     })
 }
 
@@ -295,7 +299,7 @@ fn run(options: Options) -> Result<()> {
     } else {"output * resolution 800x600\n"})?;
     values.insert("WLR_BACKENDS".into(), "headless".into());
     values.insert("WLR_RENDERER".into(), "pixman".into());
-    if options.corner_preview {
+    if options.corner_preview && !options.hardware_preview {
         for (key,value) in [("WLR_RENDERER","gles2"),("WLR_RENDERER_ALLOW_SOFTWARE","1"),("WLR_RENDERER_FORCE_SOFTWARE","1"),("MESA_LOADER_DRIVER_OVERRIDE","llvmpipe")] {
             values.insert(key.into(),value.into());
         }
@@ -304,13 +308,18 @@ fn run(options: Options) -> Result<()> {
         values.insert("LIBGL_DRIVERS_PATH".into(),mesa.join("lib/dri").display().to_string());
         values.insert("__EGL_VENDOR_LIBRARY_FILENAMES".into(),mesa.join("share/glvnd/egl_vendor.d/50_mesa.json").display().to_string());
     }
+    if options.hardware_preview {
+        require(options.corner_preview,"Hardware preview requires a corner capture")?;
+        values.insert("WLR_RENDERER".into(),"gles2".into());
+        for key in ["WLR_RENDERER_FORCE_SOFTWARE","LIBGL_ALWAYS_SOFTWARE","LIBGL_DRIVERS_PATH","__EGL_VENDOR_LIBRARY_FILENAMES","MESA_LOADER_DRIVER_OVERRIDE"] {values.remove(key);}
+    }
     values.insert("DBUS_SYSTEM_BUS_ADDRESS".into(),format!("unix:path={}/absent-system-bus",values["XDG_RUNTIME_DIR"]));
     values.insert("WLR_LIBINPUT_NO_DEVICES".into(), "1".into());
     let compositor_log = output.join("compositor.log");
     let log = File::create(&compositor_log)?;
     let mut sway = Managed(
         Command::new(sway_binary)
-            .args(["--unsupported-gpu", "-c"])
+            .args(["--unsupported-gpu", "-d", "-c"])
             .arg(&sway_config)
             .env_clear()
             .envs(&values)

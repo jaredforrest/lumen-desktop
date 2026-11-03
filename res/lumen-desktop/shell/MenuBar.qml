@@ -182,19 +182,19 @@ PanelWindow {
             id:fullscreenExitButton
             objectName:"fullscreen-exit"
             visible:bar.outputFullscreen
-            property double pressedWindow:0
+            property string pressedOutput:""
             implicitWidth:exitLabel.implicitWidth+40
             implicitHeight:24
             Accessible.name:"Exit Full Screen"
             Accessible.description:bar.shortcutHint({action:"fullscreen"})
-            function exitWindow(id) {
-                if(!bar.outputFullscreen || !Number.isSafeInteger(id) || id<=0 || id!==exported.state.windowId)return;
-                Quickshell.execDetached(["swaymsg","[con_id="+id+"] fullscreen disable"]);
+            function exitOutput(name) {
+                if(!bar.outputFullscreen || name!==bar.outputName)return;
+                Quickshell.execDetached(["lumen-focus-window","--exit-fullscreen",name]);
             }
-            onPressed:pressedWindow=exported.state.windowId || 0
-            onCanceled:pressedWindow=0
-            onClicked:{const id=pressedWindow;pressedWindow=0;exitWindow(id);}
-            Accessible.onPressAction:exitWindow(exported.state.windowId || 0)
+            onPressed:pressedOutput=bar.outputName
+            onCanceled:pressedOutput=""
+            onClicked:{const name=pressedOutput;pressedOutput="";exitOutput(name);}
+            Accessible.onPressAction:exitOutput(bar.outputName)
             background:Rectangle {radius:6;color:parent.hovered || parent.down?Theme.colors.hover:"transparent";border.width:parent.activeFocus?1:0;border.color:Theme.colors.accent}
             contentItem:Item {
                 Rectangle {x:8;anchors.verticalCenter:parent.verticalCenter;width:12;height:12;radius:6;color:"#28c840"

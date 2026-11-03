@@ -118,6 +118,16 @@ fn validate_options(args: &[String]) -> Result<()> {
     Ok(())
 }
 fn run(args: &[String]) -> Result<()> {
+    if args.first().is_some_and(|arg|arg=="--exit-fullscreen") {
+        if args.len()!=2 || args[1].is_empty() || args[1].len()>256 {return Err("An output name is required".into());}
+        let tree=swaymsg(&["-r","-t","get_tree"])?;
+        let outputs=swaymsg(&["-r","-t","get_outputs"])?;
+        if let Some(command)=fullscreen_exit_command(&tree,&outputs,&args[1])? {
+            let reply=swaymsg(&["-r",&command])?;
+            if !reply.as_array().is_some_and(|rows|rows.len()==1 && rows[0]["success"]==true) {return Err("Fullscreen exit rejected".into());}
+        }
+        return Ok(());
+    }
     if args.first().is_some_and(|arg| arg == "--capture" || arg == "--captured") {
         return captured_request(args);
     }
@@ -175,6 +185,22 @@ fn run(args: &[String]) -> Result<()> {
         }
     }
     Ok(())
+}
+fn fullscreen_exit_command(tree:&Value,outputs:&Value,output:&str)->Result<Option<String>> {
+    let mut nodes=Vec::new();native_nodes(tree,&mut nodes,0)?;
+    let valid=|node:&&Value,mode:u64|node["fullscreen_mode"].as_u64()==Some(mode) && node["pid"].as_u64().is_some_and(|pid|pid>0);
+    let mut candidates=nodes.iter().copied().filter(|node|valid(node,2)).collect::<Vec<_>>();
+    if candidates.is_empty() {
+        let current=outputs.as_array().ok_or("Invalid outputs")?.iter().find(|row|row["name"]==output && row["active"]==true)
+            .and_then(|row|row["current_workspace"].as_str()).ok_or("Output unavailable")?;
+        let workspace=nodes.iter().find(|node|node["type"]=="workspace" && node["name"]==current).ok_or("Workspace unavailable")?;
+        let mut visible=Vec::new();native_nodes(workspace,&mut visible,0)?;
+        candidates=visible.into_iter().filter(|node|valid(node,1)).collect();
+    }
+    if candidates.is_empty(){return Ok(None);}
+    if candidates.len()!=1{return Err("Fullscreen window is ambiguous".into());}
+    let id=candidates[0]["id"].as_u64().filter(|id|*id>0 && *id<=9_007_199_254_740_991).ok_or("Invalid fullscreen window")?;
+    Ok(Some(format!("[con_id={id}] fullscreen disable")))
 }
 fn native_nodes<'a>(node: &'a Value, out: &mut Vec<&'a Value>, depth: usize) -> Result<()> {
     if depth > 64 || out.len() > 8192 { return Err("Window inventory exceeds its bound".into()); }
@@ -264,6 +290,15 @@ fn main() {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn fullscreen_exit_uses_the_outputs_visible_window_without_menu_export() {
+        let mut shown=window(17,"Visible");shown["fullscreen_mode"]=json!(1);
+        let mut hidden=window(18,"Hidden");hidden["fullscreen_mode"]=json!(1);
+        let value=json!({"type":"root","nodes":[{"type":"workspace","name":"1","nodes":[shown]},{"type":"workspace","name":"2","nodes":[hidden]}]});
+        let outputs=json!([{"name":"display","active":true,"current_workspace":"1"}]);
+        assert_eq!(fullscreen_exit_command(&value,&outputs,"display").unwrap().as_deref(),Some("[con_id=17] fullscreen disable"));
+        assert!(fullscreen_exit_command(&value,&outputs,"missing").is_err());
+    }
     #[test]
     fn captured_controls_refuse_replacement_without_title_retargeting() {
         let mut original=window(17,"Document");
