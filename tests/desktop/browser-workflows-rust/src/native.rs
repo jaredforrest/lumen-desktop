@@ -1201,8 +1201,8 @@ impl Native {
         self.capture("chooser-accept.png")?;
         if self.opt.gtk_theme_directory.is_some() {
             ensure(self.windows()?.iter().any(|row| row["id"] == chooser["id"] && row["focused"] == true), "Themed chooser lost keyboard focus")?;
-            save(&self.out.join("chooser-accept-bounds.json"), &json!({"native":chooser,"route":"physical Return in captured themed chooser; pointer target appearance is not inferred"}))?;
-            return self.key(&["-k", "Return"]);
+            save(&self.out.join("chooser-accept-bounds.json"), &json!({"native":chooser,"route":"physical Alt+S in captured English themed chooser; pointer target appearance is not inferred"}))?;
+            return self.key(&["-M", "alt", "-k", "s", "-m", "alt"]);
         }
         let image = Image::load_png(&self.out.join("chooser-accept.png"))?;
         let rect = &chooser["rect"];

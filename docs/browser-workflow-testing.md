@@ -14,7 +14,7 @@ disposable data home and records it in the dependency receipt; it never reads
 the user's GTK configuration or browser profile. Without this input, chooser
 captures establish the default toolkit presentation only. A successful save
 alone does not certify the consuming desktop's configured appearance.
-The optional themed capture uses physical Return in the captured focused chooser
+The optional themed capture uses physical Alt+S in the captured English focused chooser
 to accept a new file, then checks the actual saved content and completed download
 record. It does not infer a pointer target from toolkit button fill colors.
 
