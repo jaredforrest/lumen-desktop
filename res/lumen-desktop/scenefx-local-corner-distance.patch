@@ -1,0 +1,34 @@
+--- a/render/fx_renderer/shaders/corner_alpha.frag
++++ b/render/fx_renderer/shaders/corner_alpha.frag
+@@ -46,12 +46,22 @@
+-	vec2 top_left = abs(relative_pos - size) - size + radius_tl;
+-	vec2 top_right = abs(relative_pos - vec2(0, size.y)) - size + radius_tr;
+-	vec2 bottom_left = abs(relative_pos - vec2(size.x, 0)) - size + radius_bl;
+-	vec2 bottom_right = abs(relative_pos) - size + radius_br;
+-
+-	float dist = max(
+-		max(get_dist(top_left, radius_tl), get_dist(top_right, radius_tr)),
+-		max(get_dist(bottom_left, radius_bl), get_dist(bottom_right, radius_br))
+-	);
++	// Evaluate only the containing corner, in its local coordinate system.
++	// Subtracting a full window extent twice loses small pixel distances
++	// on wide surfaces when fragment arithmetic uses reduced precision.
++	vec2 local_pos;
++	float radius;
++	if (is_top_left) {
++		local_pos = relative_pos;
++		radius = radius_tl;
++	} else if (is_top_right) {
++		local_pos = vec2(size.x - relative_pos.x, relative_pos.y);
++		radius = radius_tr;
++	} else if (is_bottom_left) {
++		local_pos = vec2(relative_pos.x, size.y - relative_pos.y);
++		radius = radius_bl;
++	} else {
++		local_pos = size - relative_pos;
++		radius = radius_br;
++	}
++	float dist = length(local_pos - vec2(radius)) - radius;
+ 
+ 	float result = smoothstep(0.0, 1.0, dist);
+ 	return is_cutout ? result : 1.0 - result;

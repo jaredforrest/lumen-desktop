@@ -957,6 +957,17 @@ fn run(mut f: Fixture) -> Result<()> {
         f.row("HEADLESS-2")?["zone"] == 28,
         "Remaining desktop work area missing",
     )?;
+    f.fullscreen(id, &["enable"])?;
+    f.move_to(rx + 300.0, ry)?;
+    wait_true("visible fullscreen exit", || {
+        let row=f.row("HEADLESS-2")?;
+        Ok(row["visible"]==true && row["exit"]["visible"]==true)
+    })?;
+    let exit=f.row("HEADLESS-2")?["exit"].clone();
+    f.screenshot("fullscreen-exit-visible.png",Some("HEADLESS-2"))?;
+    f.click(exit["x"].as_f64().ok_or("Exit x missing")?,exit["y"].as_f64().ok_or("Exit y missing")?)?;
+    wait_true("pointer exits fullscreen", || Ok(f.native()?["fullscreen_mode"]==0 && f.row("HEADLESS-2")?["exit"]["visible"]==false))?;
+    checks.push("Revealed menu bar offers a labelled pointer exit that returns the same fullscreen client to its desktop");
     let log = fs::read_to_string(f.options.output.join("shell.log"))?;
     for marker in [
         "WARN scene:",

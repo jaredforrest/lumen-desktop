@@ -11,12 +11,12 @@ PanelSurface {
     property string accessibleLabel: label || symbol
     implicitHeight:Math.max(62,labels.implicitHeight+24)
     radius:Math.min(31,height/2)
-    Row {id:tileBody;width:tile.width-24;x:parent.label?12:(parent.width-width)/2;anchors.verticalCenter:parent.verticalCenter;spacing:10;opacity:parent.unavailable?0.55:1
+    Row {id:tileBody;width:tile.width-16;x:parent.label?8:(parent.width-width)/2;anchors.verticalCenter:parent.verticalCenter;spacing:6;opacity:parent.unavailable?0.55:1
         Rectangle {width:30;height:30;radius:15;color:tile.active?Theme.colors.accent:parent.parent.label?Theme.colors.surface:"transparent"
             SystemGlyph {anchors.centerIn:parent;name:parent.parent.parent.symbol;ink:tile.active?Theme.colors.selectedText:Theme.colors.text}
         }
-        Column {id:labels;width:Math.max(0,tileBody.width-40);visible:parent.parent.label!=="";anchors.verticalCenter:parent.verticalCenter;spacing:1
-            PanelLabel {width:parent.width;text:parent.parent.parent.label;wrapMode:Text.Wrap;elide:Text.ElideNone;font.pixelSize:Theme.textSize(12);font.weight:Font.DemiBold}
+        Column {id:labels;width:Math.max(0,tileBody.width-36);visible:parent.parent.label!=="";anchors.verticalCenter:parent.verticalCenter;spacing:1
+            PanelLabel {width:parent.width;text:parent.parent.parent.label;wrapMode:Text.WordWrap;elide:Text.ElideNone;font.pixelSize:Theme.textSize(12);font.weight:Font.DemiBold}
             PanelLabel {width:parent.width;visible:text!=="";text:parent.parent.parent.subtitle;wrapMode:Text.Wrap;elide:Text.ElideNone;font.pixelSize:Theme.textSize(10);color:Theme.colors.muted}
         }
     }

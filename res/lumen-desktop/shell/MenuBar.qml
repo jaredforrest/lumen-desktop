@@ -44,7 +44,7 @@ PanelWindow {
     readonly property var hiddenStatus:statusIcons.layout.overflow.map(id=>({label:statusIcons.labels[id],action:id==="search"?"apps":"status:"+(id==="sound"?"Sound":"Controls")}))
     SettingsState {id:barSettings}
     readonly property real menuBudget:Math.max(0,(captureIndicator.visible?captureIndicator.x:statusIcons.x)-28)
-    readonly property int visibleHeadingCount:MenuLayout.fit(menuHeadings.map(n=>headingMetrics.advanceWidth(n.label)+20),menuBudget-brandButton.width-applicationButton.width,38,hiddenStatus.length>0)
+    readonly property int visibleHeadingCount:MenuLayout.fit(menuHeadings.map(n=>headingMetrics.advanceWidth(n.label)+20),menuBudget-brandButton.width-applicationButton.width-(fullscreenExitButton.visible?fullscreenExitButton.width:0),38,hiddenStatus.length>0)
     readonly property var overflowItems:menuHeadings.slice(visibleHeadingCount).map(n=>({label:n.label,exportId:n.exportId,action:n.enabled?(n.heading?"heading:"+n.heading:"export-menu"):undefined})).concat(hiddenStatus)
     function menuLayoutStatus(){return {width:width,menuEnd:headings.x+headings.width,statusStart:captureIndicator.visible?captureIndicator.x:statusIcons.x,clockWidth:clockButton.width,visible:visibleHeadingCount,headings:menuHeadings.length,overflow:overflowItems.length,overflowLabels:overflowItems.map(n=>n.label)};}
     function shortcutHint(row){return row && row.enabled!==false && shell.shortcuts?shell.shortcuts.menuHint(row.action || ""):"";}
@@ -178,6 +178,31 @@ PanelWindow {
     Row {
         id:headings;x:16;anchors.verticalCenter:parent.verticalCenter;spacing:0
         MenuButton {id:brandButton;text:"";iconName:"lumen";strong:true;selected:bar.menu==="Desktop";onClicked:bar.toggle("Desktop",mapToItem(bar.contentItem,0,0).x)}
+        AbstractButton {
+            id:fullscreenExitButton
+            objectName:"fullscreen-exit"
+            visible:bar.outputFullscreen
+            property double pressedWindow:0
+            implicitWidth:exitLabel.implicitWidth+40
+            implicitHeight:24
+            Accessible.name:"Exit Full Screen"
+            Accessible.description:bar.shortcutHint({action:"fullscreen"})
+            function exitWindow(id) {
+                if(!bar.outputFullscreen || !Number.isSafeInteger(id) || id<=0 || id!==exported.state.windowId)return;
+                Quickshell.execDetached(["swaymsg","[con_id="+id+"] fullscreen disable"]);
+            }
+            onPressed:pressedWindow=exported.state.windowId || 0
+            onCanceled:pressedWindow=0
+            onClicked:{const id=pressedWindow;pressedWindow=0;exitWindow(id);}
+            Accessible.onPressAction:exitWindow(exported.state.windowId || 0)
+            background:Rectangle {radius:6;color:parent.hovered || parent.down?Theme.colors.hover:"transparent";border.width:parent.activeFocus?1:0;border.color:Theme.colors.accent}
+            contentItem:Item {
+                Rectangle {x:8;anchors.verticalCenter:parent.verticalCenter;width:12;height:12;radius:6;color:"#28c840"
+                    Text {anchors.centerIn:parent;text:"↙";color:"#17321d";font.pixelSize:10}
+                }
+                Text {id:exitLabel;x:26;anchors.verticalCenter:parent.verticalCenter;text:"Exit Full Screen";color:Theme.colors.text;font.family:Theme.font;font.pixelSize:13}
+            }
+        }
         MenuButton {id:applicationButton;width:Math.min(implicitWidth,Math.max(60,Math.min(160,bar.menuBudget*0.4)));text:bar.menu!==""?bar.menuAppName:bar.displayName;strong:true;selected:bar.menu==="Application";onClicked:{bar.selectedWindow=shell.active;bar.toggle("Application",mapToItem(bar.contentItem,0,0).x);}}
         Repeater {
             id:exportedHeadings;model:bar.menuHeadings.slice(0,bar.visibleHeadingCount)
