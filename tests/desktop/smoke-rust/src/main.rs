@@ -1141,7 +1141,7 @@ context.objects = [
     }
 
     fn release_capture(&self, checks: Vec<String>) -> Result<()> {
-        let studio = self.run.join("Studio");
+        let studio = self.run.join("Documents/Review/Studio");
         fs::create_dir_all(&studio)?;
         for name in ["Projects", "Documents", "Images", "Notes"] { fs::create_dir_all(studio.join(name))?; }
         write(&studio.join("Release Notes.txt"), "Lumen Desktop\n\nA shared desktop experience.\n\nReview the shell, Files, Calendar and Settings.\n")?;
