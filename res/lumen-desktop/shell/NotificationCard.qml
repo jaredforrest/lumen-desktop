@@ -46,7 +46,7 @@ PanelSurface {
             Image {
                 id:appIcon
                 width:28;height:28;sourceSize.width:56;sourceSize.height:56
-                source:{const icon=root.notification.icon;if(icon.startsWith("file:"))return icon;const entry=root.appEntry();return Quickshell.iconPath(icon || (entry?entry.icon:""),true) || Qt.resolvedUrl("icons/application.svg");}
+                source:{const icon=root.notification.icon || "";if(icon.startsWith("file:"))return icon;const owned={calendar:"calendar",files:"files"}[(root.notification.app || "").toLowerCase()];if(owned)return Qt.resolvedUrl("reference-icons/"+owned+".svg");const entry=root.appEntry();return Quickshell.iconPath(icon || (entry?entry.icon:""),true) || Qt.resolvedUrl("icons/application.svg");}
                 asynchronous:true;fillMode:Image.PreserveAspectFit
                 Image {anchors.fill:parent;visible:appIcon.status===Image.Error;source:Qt.resolvedUrl("icons/application.svg");sourceSize.width:56;sourceSize.height:56}
             }

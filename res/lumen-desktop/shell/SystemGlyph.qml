@@ -1,12 +1,13 @@
 import QtQuick
+import QtQuick.Effects
 Canvas {
     id: root
     property string name
     property color ink:Theme.colors.text
     property url imageSource:""
-    onImageSourceChanged:{if(imageSource.toString())loadImage(imageSource);requestPaint();}
-    Component.onCompleted:if(imageSource.toString())loadImage(imageSource)
-    onImageLoaded:requestPaint()
+    readonly property url vectorSource:imageSource.toString()?imageSource:name==="wifi"?Qt.resolvedUrl("icons/wifi.svg"):""
+    Image {id:vectorIcon;anchors.fill:parent;visible:source.toString()!=="" && status===Image.Ready;source:root.vectorSource;sourceSize:Qt.size(root.width*3,root.height*3);fillMode:Image.PreserveAspectFit;smooth:true;mipmap:true;onStatusChanged:root.requestPaint();layer.enabled:true;layer.effect:MultiEffect {colorization:1;colorizationColor:root.ink}}
+    onImageSourceChanged:requestPaint()
     width:22;height:22
     onWidthChanged:requestPaint()
     onHeightChanged:requestPaint()
@@ -14,7 +15,7 @@ Canvas {
     onInkChanged:requestPaint()
     onPaint: {
         const c=getContext("2d");c.reset();
-        if(imageSource.toString() && isImageLoaded(imageSource)){c.drawImage(imageSource,0,0,width,height);c.globalCompositeOperation="source-in";c.fillStyle=ink;c.fillRect(0,0,width,height);return;}
+        if(vectorSource.toString() && vectorIcon.status===Image.Ready)return;
         c.scale(width/24,height/24);
         c.strokeStyle=ink;c.fillStyle=ink;c.lineWidth=1.7;c.lineCap="round";c.lineJoin="round";
         function line(points){c.beginPath();c.moveTo(points[0][0],points[0][1]);for(let i=1;i<points.length;i++)c.lineTo(points[i][0],points[i][1]);c.stroke();}
@@ -24,8 +25,8 @@ Canvas {
         } else if(name==="controls") {
             for(const y of [7,17]){line([[5,y-3],[19,y-3]]);arc(19,y,3,-Math.PI/2,Math.PI/2);line([[19,y+3],[5,y+3]]);arc(5,y,3,Math.PI/2,Math.PI*1.5);c.beginPath();c.arc(y===7?8:16,y,2,0,Math.PI*2);c.fill();}
         } else if(name==="wifi") {
-            for(const r of [5,9,13])arc(12,21,r,Math.PI*1.25,Math.PI*1.75);
-            c.beginPath();c.arc(12,20,1.1,0,Math.PI*2);c.fill();
+            for(const r of [3.5,7,10.5])arc(12,16.5,r,Math.PI*1.25,Math.PI*1.75);
+            c.beginPath();c.arc(12,18,1.1,0,Math.PI*2);c.fill();
         } else if(name==="bluetooth") {
             line([[12,2],[12,22],[18,16],[6,6]]);line([[12,2],[18,8],[6,18]]);
         } else if(name==="share") {

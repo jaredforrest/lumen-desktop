@@ -3,6 +3,7 @@ import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
 import "CalendarLogic.js" as CalendarLogic
+import "ClockFormat.js" as ClockFormat
 PanelSurface {
     id: root
     required property date today
@@ -55,7 +56,7 @@ PanelSurface {
         // Provider values are calendar-zone wall times, not host-zone instants.
         // A neutral date avoids normalising an event through a host DST gap.
         const d=new Date(2000,0,15,Number(parts[1]),Number(parts[2]));
-        return Qt.formatTime(d,Qt.locale().timeFormat(Locale.ShortFormat));
+        return Qt.formatTime(d,ClockFormat.timePattern(Qt.locale(),Object.assign({},Theme.menuBarPreferences,{showSeconds:false})));
     }
     property bool optionsOpen:false
     property bool active:visible

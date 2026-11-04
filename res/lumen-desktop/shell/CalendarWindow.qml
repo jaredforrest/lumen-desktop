@@ -4,6 +4,7 @@ import QtQuick.Window
 import QtQuick.Effects
 import Quickshell
 import "CalendarLogic.js" as CalendarLogic
+import "ClockFormat.js" as ClockFormat
 import "ScrollGeometry.js" as ScrollGeometry
 
 FloatingWindow {
@@ -29,7 +30,7 @@ FloatingWindow {
     readonly property int viewStart:stackedNavigation?navigationY+Math.max(28,Theme.textRole("label")+10)+15:54
     FontMetrics {id:timeTextMetrics;font.family:Theme.font;font.pixelSize:Theme.textRole("metadata")}
     readonly property int timeHourHeight:Math.max(52,Math.ceil(timeTextMetrics.height)*3+14)
-    readonly property var hourLabels:Array.from({length:24},(_,hour)=>Qt.formatTime(new Date(2026,0,1,hour),Qt.locale().timeFormat(Locale.ShortFormat)))
+    readonly property var hourLabels:Array.from({length:24},(_,hour)=>Qt.formatTime(new Date(2026,0,1,hour),ClockFormat.timePattern(Qt.locale(),Object.assign({},Theme.menuBarPreferences,{showSeconds:false}))))
     Item {id:hourLabelMeasures;visible:false
         Repeater {model:root.hourLabels;PanelLabel {required property string modelData;text:modelData;font.pixelSize:Theme.textRole("caption")}}
     }
@@ -194,7 +195,7 @@ FloatingWindow {
                                 Repeater {model:cell.items.slice(0,Math.max(0,Math.floor((cell.height-root.dayMarkerSize-27)/(root.eventRowHeight+1))))
                                     delegate:AbstractButton {id:eventButton;required property var modelData;width:parent.width;height:root.eventRowHeight;Accessible.name:modelData.title
                                         background:Rectangle {radius:3;color:eventButton.modelData.allDay?Qt.alpha(root.tint(eventButton.modelData),Theme.dark?.35:.18):"transparent"}
-                                        contentItem:PanelLabel {text:(eventButton.modelData.allDay?"":eventButton.modelData.startTime+" ")+eventButton.modelData.title;textFormat:Text.PlainText;elide:Text.ElideRight;font.pixelSize:Theme.textRole("metadata");color:root.tint(eventButton.modelData);leftPadding:4}
+                                        contentItem:PanelLabel {text:(eventButton.modelData.allDay?"":calendar.timeLabel(eventButton.modelData)+" ")+eventButton.modelData.title;textFormat:Text.PlainText;elide:Text.ElideRight;verticalAlignment:Text.AlignVCenter;font.pixelSize:Theme.textRole("metadata");color:eventButton.modelData.allDay?Theme.colors.text:root.tint(eventButton.modelData);leftPadding:5;rightPadding:5}
                                         onClicked:root.eventDetails(modelData,cell.day)
                                     }
                                 }
@@ -259,7 +260,7 @@ FloatingWindow {
                                             width:dayColumn.width/modelData.columns-4;height:Math.max(Math.ceil(timeTextMetrics.height)+2,(modelData.hi-modelData.lo)/60*root.timeHourHeight-1)
                                             Accessible.name:modelData.event.title;Accessible.description:modelData.event.startTime+"–"+modelData.event.endTime
                                             background:Rectangle {radius:4;color:Qt.alpha(root.tint(appointment.modelData.event),Theme.dark?.3:.16);Rectangle {width:3;height:parent.height;radius:2;color:root.tint(appointment.modelData.event)}}
-                                            contentItem:PanelLabel {padding:Math.max(1,Math.min(5,(appointment.height-timeTextMetrics.height)/2));maximumLineCount:Math.max(1,Math.floor((appointment.height-2*padding)/timeTextMetrics.height));elide:Text.ElideRight;text:appointment.modelData.event.title+"\n"+appointment.modelData.event.startTime;textFormat:Text.PlainText;wrapMode:Text.WordWrap;clip:true;font.pixelSize:Theme.textRole("metadata");color:root.tint(appointment.modelData.event)}
+                                            contentItem:PanelLabel {padding:Math.max(1,Math.min(5,(appointment.height-timeTextMetrics.height)/2));maximumLineCount:Math.max(1,Math.floor((appointment.height-2*padding)/timeTextMetrics.height));elide:Text.ElideRight;text:appointment.modelData.event.title+"\n"+calendar.timeLabel(appointment.modelData.event);textFormat:Text.PlainText;wrapMode:Text.WordWrap;clip:true;font.pixelSize:Theme.textRole("metadata");color:Theme.colors.text}
                                             onClicked:root.eventDetails(modelData.event,dayColumn.day)
                                         }
                                     }

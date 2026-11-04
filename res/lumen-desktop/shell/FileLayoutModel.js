@@ -7,5 +7,5 @@ function previewLimits(available,scale){
     return {minimum:minimum,maximum:Math.max(minimum,maximum),enabled:maximum>=minimum,leadingMinimum:leadingMinimum};
 }
 function previewWidth(requested,available,scale){const limits=previewLimits(available,scale);return limits.enabled?Math.max(limits.minimum,Math.min(limits.maximum,Number.isInteger(requested)?requested:240)):0;}
-function columnWidth(requested,viewport,scale){const minimum=Math.ceil(200*Math.max(1,Math.min(1.5,Number.isFinite(scale)?scale:1)));return Math.max(minimum,Math.min(Math.max(minimum,Math.min(600,Math.floor(viewport))),Number.isInteger(requested)?requested:240));}
+function columnWidth(requested,viewport,scale){const minimum=Math.ceil(200*Math.max(1,Math.min(1.5,Number.isFinite(scale)?scale:1)));const initial=Math.min(240,Math.floor(viewport/3));return Math.max(minimum,Math.min(Math.max(minimum,Math.min(600,Math.floor(viewport))),Number.isInteger(requested)?requested:initial));}
 if(typeof module!=="undefined")module.exports={sidebarMaximum,sidebarWidth,previewLimits,previewWidth,columnWidth};

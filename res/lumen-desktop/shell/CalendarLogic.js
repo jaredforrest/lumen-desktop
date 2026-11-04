@@ -4,7 +4,7 @@ function offset(month, firstDay) { return (month.getDay()-(firstDay%7)+7)%7; }
 function tint(event, dark) {
     // Keep valid provider colours; generate stable identities for older caches.
     if (/^#[0-9a-fA-F]{6}$/.test(event.color || "")) return event.color;
-    const colors=dark?["#bf7af8","#ffb340","#70b7ff","#65ce94","#ff7ba0"]:["#9253c7","#a86100","#1265b0","#23834b","#b82d58"];
+    const colors=dark?["#ba8ce0","#e8b968","#76ace0","#70c68a","#e995b0"]:["#8256a7","#986900","#2868a8","#2d7a42","#a8476a"];
     let hash=0;for(const c of (event.provider || "")+" / "+(event.calendar || ""))hash=(hash*31+c.charCodeAt(0))>>>0;
     return colors[hash%colors.length];
 }

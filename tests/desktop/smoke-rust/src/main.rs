@@ -485,9 +485,13 @@ impl Driver {
         .ok_or_else(|| fail(format!("Window {name} unavailable")))
     }
     fn window_capture(&self, title: &str, filename: &str) -> Result<()> {
+        self.review_window(title)?;
         self.wait_for(&format!("painted {title}"), || {
             let node = self.window(title)?;
-            if !boolean(&node, "visible")? || node["scratchpad_state"] != "none" {
+            if !boolean(&node, "visible")?
+                || (node["scratchpad_state"] != "none"
+                    && !self.run.join("review-qhd.json").is_file())
+            {
                 return Ok(false);
             }
             let rect = &node["rect"];
@@ -693,6 +697,7 @@ impl Driver {
         let mut defaults:Value=serde_json::from_str(&self.run_command("lumen-nix-settings", &["read"])?)?;
         defaults["notifications"]["preview"]=json!("always");
         defaults["appearance"]["mode"]=json!(self.opt.theme);
+        defaults["menuBar"]["hourCycle"]=json!("12");
         let settings=self.run.join("review-settings.json");save_json(&settings,&defaults)?;
         self.vars.insert("LUMEN_REVIEW_SETTINGS".into(),settings.display().to_string());
         let helper=resolve_command(Path::new("lumen-fixture-settings"),self.vars.get("PATH").ok_or("PATH missing")?)?;
@@ -701,11 +706,17 @@ impl Driver {
         symlink(&helper,self.run.join("bin/lumen-display-settings"))?;
         symlink(&helper,self.run.join("bin/lumen-nearby-sharing"))?;
         symlink(&helper,self.run.join("bin/desktop-network-diagnose"))?;
+        symlink(&helper,self.run.join("bin/lumen-privacy-status"))?;
+        symlink(&helper,self.run.join("bin/lumen-portal-permissions"))?;
         self.vars.insert("LUMEN_NEARBY_SHARING_PROVIDER".into(),helper.display().to_string());
         self.vars.insert("LUMEN_NIX_SETTINGS_BIN".into(),helper.display().to_string());
         self.vars.insert("LUMEN_REVIEW_POPULATED".into(),"1".into());
         self.vars.insert("LUMEN_NEARBY_SHARING_ICON".into(),env::var("LUMEN_REVIEW_SHARING_ICON").unwrap_or_default());
         self.vars.insert("LUMEN_SEARCH_ROOTS".into(),json!([self.run.join("Documents").display().to_string(),self.run.join("Studio").display().to_string()]).to_string());
+        if let Some(binary)=env::var_os("LUMEN_REVIEW_GSETTINGS_BIN") {
+            let binary=PathBuf::from(binary);require(binary.starts_with("/nix/store") && binary.is_file(),"Immutable settings backend required")?;
+            symlink(binary,self.run.join("bin/gsettings"))?;
+        }
         let appearance=PathBuf::from(env::var_os("LUMEN_REVIEW_APPEARANCE_BIN").ok_or("Pinned review appearance runtime missing")?);
         require(appearance.starts_with("/nix/store") && appearance.is_file(),"Immutable appearance runtime required")?;
         symlink(appearance,self.run.join("bin/lumen-appearance"))?;
@@ -822,7 +833,7 @@ context.objects = [
         fs::create_dir_all(appearance.parent().ok_or("Appearance parent missing")?)?;
         save_json(
             &appearance,
-            &json!({"font":palettes["font"],"palette":palettes[&self.opt.theme],"preferences":{"mode":self.opt.theme,"reduceMotion":true}}),
+            &json!({"font":palettes["font"],"palette":palettes[&self.opt.theme],"preferences":{"mode":self.opt.theme,"reduceMotion":true},"menuBarPreferences":if env::var_os("LUMEN_RELEASE_CAPTURE").is_some(){read_json(&self.run.join("review-settings.json"))?["menuBar"].clone()}else{Value::Null}}),
         )?;
         self.vars.insert(
             "LUMEN_APPEARANCE_STATE".into(),
@@ -1140,7 +1151,64 @@ context.objects = [
         Ok(())
     }
 
-    fn release_capture(&self, checks: Vec<String>) -> Result<()> {
+    fn review_window(&self,title:&str) -> Result<()> {
+        if !self.run.join("review-qhd.json").is_file(){return Ok(());}
+        let Ok(scale)=env::var("LUMEN_RELEASE_SCALE") else{return Ok(());};let scale:f64=scale.parse()?;
+        let node=self.window(title)?;let desired:(f64,f64)=match title {"Calendar"=>(1500.0,980.0),"System Settings"=>(1100.0,950.0),"Files — Studio"=>(1400.0,900.0),_=>(1000.0,740.0)};
+        let width=desired.0.min(2560.0/scale-100.0) as i64;let height=desired.1.min(1440.0/scale-180.0) as i64;
+        for _ in 0..20 {
+            let tree=self.tree()?;
+            let other=find_node(&tree,&|n|n["app_id"]=="org.quickshell" && n["id"]!=node["id"] && n["visible"]==true);
+            let Some(other)=other else{break;};
+            self.run_command("swaymsg",&[&format!("[con_id={}] move scratchpad",other["id"])])?;
+        }
+        self.run_command("swaymsg",&[&format!("[con_id={}] move container to workspace number 1, floating enable, resize set width {width} px height {height} px, move position center, focus",node["id"])])?;
+        thread::sleep(Duration::from_millis(350));
+        if let Some(pointer)=env::var_os("LUMEN_REVIEW_POINTER_BIN") {
+            let pointer=PathBuf::from(pointer);require(pointer.starts_with("/nix/store") && pointer.is_file(),"Immutable pointer required")?;
+            let rect=self.window(title)?["rect"].clone();
+            self.run_command("swaymsg",&[&format!("seat seat0 cursor set {} {}",integer(&rect,"x")?+180,integer(&rect,"y")?+18)])?;
+            self.run_command(pointer.to_str().ok_or("Pointer path")?,&["pointer","click","left"])?;
+            thread::sleep(Duration::from_millis(200));
+        }
+        Ok(())
+    }
+    fn review_application_capture(&mut self,kind:&str,variable:&str) -> Result<()> {
+        let Some(binary)=env::var_os(variable) else{return Ok(());};
+        let binary=PathBuf::from(binary);require(binary.starts_with("/nix/store") && binary.is_file(),"Immutable review application required")?;
+        self.run_command("swaymsg",&["[app_id=\"org.quickshell\"] move scratchpad"])?;
+        let before=self.tree()?;let profile=self.run.join("data").join(format!("review-{kind}"));fs::create_dir_all(&profile)?;
+        let previous_vars=self.vars.clone();self.vars.retain(|key,_|!key.starts_with("CODEX_") && !key.starts_with("OPENAI_"));
+        self.vars.insert("CODEX_HOME".into(),profile.join("codex-home").display().to_string());
+        self.vars.insert("CODEX_MULTI_LAUNCH".into(),"1".into());
+        self.vars.insert("CODEX_LINUX_DISABLE_USAGE_REPORTING".into(),"1".into());
+        let process_count=self.processes.len();let profile_arg=format!("--user-data-dir={}",profile.display());let class_arg=format!("--class=org.lumen.review-{kind}");
+        let mut args=vec!["--ozone-platform=wayland","--no-first-run","--no-default-browser-check",profile_arg.as_str(),class_arg.as_str()];
+        if self.opt.theme=="dark" {args.push("--force-dark-mode");}
+        if kind=="chatgpt" {args.push("--app=https://chatgpt.com");}
+        self.launch(&binary,&args,&format!("review-{kind}"))?;
+        let mut observed=Value::Null;
+        self.wait_for("Disposable application window",||{let tree=self.tree()?;if let Some(node)=find_node(&tree,&|n|n["app_id"].as_str().is_some_and(|id|!id.is_empty() && id!="org.quickshell") && find_node(&before,&|old|old["id"]==n["id"]).is_none()){observed=node.clone();Ok(true)}else{Ok(false)}})?;
+        let scale=env::var("LUMEN_RELEASE_SCALE").unwrap_or("1".into()).parse::<f64>()?;
+        let width=(2560.0/scale-100.0).min(1500.0) as i64;let height=(1440.0/scale-160.0).min(1000.0) as i64;
+        self.run_command("swaymsg",&[&format!("[con_id={}] floating enable, resize set width {width} px height {height} px, move position center, focus",observed["id"])])?;
+        thread::sleep(Duration::from_secs(5));
+        let settled=self.tree()?;
+        if let Some(node)=find_node(&settled,&|n|n["focused"]==true && n["app_id"].as_str().is_some_and(|id|!id.is_empty() && id!="org.quickshell")) {observed=node.clone();}
+        self.run_command("swaymsg",&[&format!("[con_id={}] floating enable, resize set width {width} px height {height} px, move position center, focus",observed["id"])])?;
+        thread::sleep(Duration::from_millis(700));self.capture(&format!("{kind}-app.png"))?;
+        save_json(&self.run.join(format!("{kind}-tree.json")),&self.tree()?)?;
+        save_json(&self.run.join(format!("{kind}-capture.json")),&json!({"window":observed["name"],"profile":"disposable","credentialsProvided":false}))?;
+        self.processes.truncate(process_count);self.vars=previous_vars;Ok(())
+    }
+    fn release_capture(&mut self, checks: Vec<String>) -> Result<()> {
+        if let Ok(scale)=env::var("LUMEN_RELEASE_SCALE") {
+            let scale_number: f64=scale.parse()?;require([1.0,1.25,1.5].contains(&scale_number),"Unsupported review scale")?;
+            self.run_command("swaymsg",&[&format!("output HEADLESS-1 resolution 2560x1440 scale {scale}")])?;
+            let expected=(2560.0/scale_number) as i64;
+            self.wait_for("QHD review output geometry",||Ok(self.ipc_json("status",&[])?["screens"].as_array().is_some_and(|rows|rows.iter().any(|r|r["name"]=="HEADLESS-1" && r["width"].as_i64()==Some(expected)))))?;
+            save_json(&self.run.join("review-qhd.json"),&json!({"width":2560,"height":1440,"scale":scale_number}))?;
+        }
         let studio = self.run.join("Documents/Review/Studio");
         fs::create_dir_all(&studio)?;
         for name in ["Projects", "Documents", "Images", "Notes"] { fs::create_dir_all(studio.join(name))?; }
@@ -1155,6 +1223,7 @@ context.objects = [
         self.ipc("files", &[studio.to_str().ok_or("Studio path")?])?;
         self.wait_for("Studio content", || Ok(self.state()?["busy"] == false && self.state()?["count"] == 14))?;
         self.wait_for("Studio focus", || Ok(self.ipc_json("status", &[])?["windows"].as_array().is_some_and(|rows| rows.iter().any(|r| r["title"].as_str().unwrap_or("").contains("Studio") && r["active"] == true))))?;
+        self.review_window("Files — Studio")?;
         for (number, view) in [("1","grid"),("2","list"),("3","columns"),("4","gallery")] {
             self.key(&["-M","ctrl","-k",number,"-m","ctrl"])?;
             self.wait_for("Studio view", || Ok(self.state()?["view"] == view))?;
@@ -1187,6 +1256,7 @@ context.objects = [
         for (method, title, filename) in [("calendar","Calendar","calendar-app.png"),("remoteDesktop","Remote Desktop","remote-app.png"),("textTools","Text Tools","text-tools-app.png")] {
             self.ipc(method, &[])?;
             thread::sleep(Duration::from_millis(600));
+            if method=="calendar" {self.review_window(title)?;self.key(&["-M","ctrl","-k","3","-m","ctrl"])?;thread::sleep(Duration::from_millis(350));}
             self.window_capture(title, filename)?;
             if method=="calendar" {
                 self.key(&["-M","ctrl","-k","1","-m","ctrl"])?;
@@ -1200,6 +1270,7 @@ context.objects = [
             thread::sleep(Duration::from_millis(400));
             self.window_capture("System Settings", filename)?;
         }
+        if env::var_os("LUMEN_RELEASE_SCALE").is_some(){self.review_window("Calendar")?;}
         self.ipc("menu", &["Controls"])?;
         thread::sleep(Duration::from_millis(500));
         self.capture("controls.png")?;
@@ -1250,6 +1321,7 @@ context.objects = [
         let mut preference_checks=Vec::new();
         for (key,label,control_id) in [("reduceTransparency","Reduce transparency","reduce-transparency"),("reduceMotion","Reduce motion","reduce-motion"),("increaseContrast","Increase contrast","increase-contrast")] {
             self.ipc("settings", &["Accessibility"])?;
+            self.review_window("System Settings")?;
             self.key(&["-M","ctrl","-k","f","-m","ctrl"])?;
             self.key(&["-M","ctrl","-k","a","-m","ctrl"])?;
             self.key(&[label])?;self.key(&["-k","Return"])?;
@@ -1263,13 +1335,15 @@ context.objects = [
         }
         save_json(&self.run.join("accessibility-preference-checks.json"),&json!({"scope":"Physical keyboard through Settings search, actual switch activation, private persistence and published appearance state", "checks":preference_checks}))?;
         self.ipc("settings", &["Displays"])?;
-        for scale in ["1.25","1.5"] {
+        for scale in if env::var_os("LUMEN_RELEASE_SCALE").is_some(){vec![]}else{vec!["1.25","1.5"]} {
             self.run_command("swaymsg",&[&format!("output HEADLESS-1 scale {scale}")])?;
             let expected=(1440.0/scale.parse::<f64>()?).round() as i64;
             self.wait_for("Output scale observed by the shell",||Ok(self.ipc_json("status",&[])?["screens"].as_array().is_some_and(|rows|rows.iter().any(|row|row["name"]=="HEADLESS-1" && row["width"].as_i64()==Some(expected)))))?;
             thread::sleep(Duration::from_millis(600));self.capture(&format!("displays-scale-{scale}.png"))?;
         }
-        self.run_command("swaymsg",&["output HEADLESS-1 scale 1"])?;
+        if env::var_os("LUMEN_RELEASE_SCALE").is_none(){self.run_command("swaymsg",&["output HEADLESS-1 scale 1"])?;}
+        self.review_application_capture("codex","LUMEN_REVIEW_CODEX_BIN")?;
+        self.review_application_capture("chatgpt","LUMEN_REVIEW_BROWSER_BIN")?;
         save_json(&self.run.join("release-capture.json"), &json!({"purpose":"Release presentation screenshots of prepared desktop in an isolated session", "priorWorkflowChecks":checks,"accountData":"Synthetic; no personal accounts or devices available"}))?;
         Ok(())
     }

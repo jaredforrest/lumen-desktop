@@ -279,7 +279,7 @@ FloatingWindow {
             else if(ctrl && !shift && event.key===Qt.Key_N)root.shell.newFilesWindow(root.service.path);
             else if(ctrl && event.key===Qt.Key_Tab)root.switchTab((root.activeTab+(shift?-1:1)+root.tabs.length)%root.tabs.length);
             else if(ctrl && event.key===Qt.Key_A)root.selectAll();
-            else if((event.key===Qt.Key_Menu || (shift && event.key===Qt.Key_F10)) && root.current){actions.x=Math.max(8,root.width-actions.width-16);actions.y=80;actions.open();}
+            else if((event.key===Qt.Key_Menu || (shift && event.key===Qt.Key_F10)) && root.current){actions.x=root.width-72;actions.y=80;actions.open();}
             else if(ctrl && event.key===Qt.Key_Z)root.service.undo();
             else if(ctrl && event.key===Qt.Key_I && root.current)root.service.send("info",{path:root.current.path});
             else if(ctrl && event.key===Qt.Key_K)networkPopup.open();
@@ -526,7 +526,7 @@ FloatingWindow {
                 delegate:Rectangle {
                     required property var modelData;required property int index
                     width:Math.max(0,list.width-root.selectionGutter-(listScrollBar.visible?listScrollBar.width:0));height:root.labelRowHeight;radius:5;color:root.isSelected(index)?root.selectionFill:index%2?Theme.colors.background:"transparent"
-                    SystemGlyph {x:8;anchors.verticalCenter:parent.verticalCenter;name:modelData.directory?"folder":"document";width:18;height:18;ink:root.isSelected(index)?root.selectionText:Theme.colors.accent}
+                    FileIcon {x:8;anchors.verticalCenter:parent.verticalCenter;entry:modelData;width:18;height:18}
                     PanelLabel {x:34;anchors.verticalCenter:parent.verticalCenter;width:parent.width*(root.compactMetadata?1:.55)-40;text:FileLinks.markedLabel(modelData);textFormat:Text.PlainText;color:root.isSelected(index)?root.selectionText:Theme.colors.text;font.pixelSize:Theme.textRole("label")}
                     PanelLabel {visible:!root.compactMetadata;x:parent.width*.55+8;anchors.verticalCenter:parent.verticalCenter;width:parent.width*.27-10;text:Qt.formatDateTime(new Date(modelData.mtime*1000),"dd MMM yyyy");font.pixelSize:Theme.textRole("metadata");color:root.isSelected(index)?root.selectionText:Theme.colors.muted}
                     PanelLabel {visible:!root.compactMetadata;x:parent.width*.82+8;anchors.verticalCenter:parent.verticalCenter;width:parent.width*.18-12;text:root.sizeText(modelData);font.pixelSize:Theme.textRole("metadata");color:root.isSelected(index)?root.selectionText:Theme.colors.muted}
@@ -534,7 +534,7 @@ FloatingWindow {
                     MouseArea {anchors.fill:parent;acceptedButtons:Qt.LeftButton|Qt.RightButton;drag.target:dragGhost
                         onPressed:event=>{if(event.button===Qt.LeftButton && !event.modifiers && !root.isSelected(index))root.choose(index,event.modifiers);}
                         onPositionChanged:if(drag.active && !root.dragging){root.dragUris=root.selectedUris();Qt.callLater(root.beginDrag);}
-                        onClicked:event=>{if(event.button!==Qt.RightButton || !root.isSelected(index))root.choose(index,event.modifiers);if(event.button===Qt.RightButton){actions.x=Math.min(root.width-actions.width-8,mapToItem(content,event.x,event.y).x);actions.y=Math.min(root.height-actions.height-8,mapToItem(content,event.x,event.y).y);actions.open();}} onDoubleClicked:root.openCurrent()}
+                        onClicked:event=>{if(event.button!==Qt.RightButton || !root.isSelected(index))root.choose(index,event.modifiers);if(event.button===Qt.RightButton){actions.x=mapToItem(content,event.x,event.y).x;actions.y=mapToItem(content,event.x,event.y).y;actions.open();}} onDoubleClicked:root.openCurrent()}
                     Accessible.name:FileLinks.accessible(modelData);Accessible.role:Accessible.ListItem;Accessible.selected:root.isSelected(index);Accessible.onPressAction:root.choose(index,0)
                 }
             }
@@ -545,10 +545,8 @@ FloatingWindow {
                     required property var modelData;required property int index
                     width:Math.max(1,grid.cellWidth-root.selectionGutter-(gridScrollBar.visible?gridScrollBar.width:0));height:grid.cellHeight
                     Accessible.name:FileLinks.accessible(modelData);Accessible.role:Accessible.ListItem;Accessible.selected:root.isSelected(index);Accessible.onPressAction:root.choose(index,0)
-                    Rectangle {x:(parent.width-68)/2;y:4;width:68;height:62;radius:8;color:root.isSelected(index)?Theme.selection:"transparent"}
-                    Image {visible:modelData.directory;x:(parent.width-58)/2;y:9;width:58;height:48;source:"icons/folder.svg";sourceSize:Qt.size(116,96)}
-                    Image {id:thumbnail;property bool failed:false;onStatusChanged:if(status===Image.Error)failed=true;visible:!modelData.directory && ["image/png","image/jpeg","image/webp","image/gif","image/bmp"].includes(modelData.kind) && modelData.size<=33554432 && !failed;x:(parent.width-60)/2;y:8;width:60;height:54;source:visible?modelData.uri:"";sourceSize:Qt.size(120,108);fillMode:Image.PreserveAspectFit;asynchronous:true}
-                    SystemGlyph {visible:!modelData.directory && !thumbnail.visible;x:(parent.width-36)/2;y:14;width:36;height:40;name:"document";ink:Theme.colors.muted}
+                    Rectangle {x:(parent.width-gridArtwork.visualWidth)/2-5;y:gridArtwork.y+(gridArtwork.height-gridArtwork.visualHeight)/2-4;width:gridArtwork.visualWidth+10;height:gridArtwork.visualHeight+8;radius:8;color:root.isSelected(index)?Theme.selection:"transparent"}
+                    FileIcon {id:gridArtwork;entry:modelData;x:(parent.width-width)/2;y:8;width:60;height:54}
                     PanelLabel {visible:modelData.link;x:22;y:45;text:FileLinks.badge(modelData);font.pixelSize:16}
                     Rectangle {x:3;y:70;width:parent.width-6;height:30+(Theme.textRole("label")-12)*3;radius:4;color:root.isSelected(index)?root.selectionFill:"transparent"}
                     PanelLabel {x:5;y:70;width:parent.width-10;height:30+(Theme.textRole("label")-12)*3;text:FileLinks.label(modelData);textFormat:Text.PlainText;horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter;wrapMode:Text.Wrap;maximumLineCount:2;font.pixelSize:Theme.textRole("label");color:root.isSelected(index)?root.selectionText:Theme.colors.text}
@@ -556,7 +554,7 @@ FloatingWindow {
                     MouseArea {anchors.fill:parent;acceptedButtons:Qt.LeftButton|Qt.RightButton;drag.target:dragGhost
                         onPressed:event=>{if(event.button===Qt.LeftButton && !event.modifiers && !root.isSelected(index))root.choose(index,event.modifiers);}
                         onPositionChanged:if(drag.active && !root.dragging){root.dragUris=root.selectedUris();Qt.callLater(root.beginDrag);}
-                        onClicked:event=>{if(event.button!==Qt.RightButton || !root.isSelected(index))root.choose(index,event.modifiers);if(event.button===Qt.RightButton){actions.x=Math.min(root.width-actions.width-8,mapToItem(content,event.x,event.y).x);actions.y=Math.min(root.height-actions.height-8,mapToItem(content,event.x,event.y).y);actions.open();}} onDoubleClicked:root.openCurrent()}
+                        onClicked:event=>{if(event.button!==Qt.RightButton || !root.isSelected(index))root.choose(index,event.modifiers);if(event.button===Qt.RightButton){actions.x=mapToItem(content,event.x,event.y).x;actions.y=mapToItem(content,event.x,event.y).y;actions.open();}} onDoubleClicked:root.openCurrent()}
                 }
             }
             FilesBandSelection {objectName:"files-list-band-selection";parent:list;anchors.fill:parent;view:list;rows:root.service.rows;selectedPaths:root.selectedPaths;currentIndex:root.selected;anchorIndex:root.selectionAnchor;contextKey:root.bandContext;permitted:root.bandPermitted && list.visible;rightInset:listScrollBar.visible?listScrollBar.width:0;onBegan:root.cancelPendingPresentation();onPreviewed:paths=>root.bandPreviewPaths=paths;onCommitted:value=>root.commitBand(value);onCanceled:reason=>root.cancelBand(reason)}
@@ -571,8 +569,7 @@ FloatingWindow {
 Accessible.name:FileLinks.accessible(modelData);Accessible.selected:root.isSelected(index);onClicked:root.choose(index,0);onDoubleClicked:root.openCurrent()
                         background:Rectangle {radius:7;color:root.isSelected(index)?Theme.selection:parent.hovered?Theme.colors.hover:"transparent";border.color:parent.activeFocus?Theme.colors.accent:"transparent"}
                         contentItem:Item {
-                            Image {id:galleryThumb;anchors.horizontalCenter:parent.horizontalCenter;y:4;width:72;height:46;source:modelData.directory?"icons/folder.svg":(["image/png","image/jpeg","image/webp","image/gif","image/bmp"].includes(modelData.kind) && modelData.size<=33554432?modelData.uri:"");sourceSize:Qt.size(144,92);fillMode:Image.PreserveAspectFit;asynchronous:true}
-                            SystemGlyph {visible:!galleryThumb.source || galleryThumb.status===Image.Error;anchors.horizontalCenter:parent.horizontalCenter;y:5;width:36;height:42;name:"document";ink:Theme.colors.muted}
+                            FileIcon {entry:modelData;anchors.horizontalCenter:parent.horizontalCenter;y:4;width:72;height:46}
                             PanelLabel {y:52;width:parent.width;height:Math.max(0,parent.height-52);text:FileLinks.markedLabel(modelData);textFormat:Text.PlainText;wrapMode:Text.Wrap;maximumLineCount:2;horizontalAlignment:Text.AlignHCenter;font.pixelSize:Theme.textRole("metadata")}}
                     }
                 }
@@ -619,6 +616,7 @@ Accessible.name:FileLinks.accessible(modelData);Accessible.selected:root.isSelec
         Connections {target:trashActions;function onErrorChanged(){if(trashActions.error)trashResults.open();}function onBusyChanged(){if(trashActions.busy)trashResults.open();}}
         Popup {
             id:actions
+            popupType:Popup.Window
             objectName:"files-actions-menu"
             property var sharingIntent:null
             onOpened:{sharingIntent=FileShareIntent.capture({path:root.service.path,tab:root.activeTabId},root.selectedPaths,root.service.rows);}

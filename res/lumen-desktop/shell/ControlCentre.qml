@@ -18,6 +18,9 @@ Column {
     property var preferences:Theme.controlCentrePreferences
     property var pending:({})
     property string error:""
+    readonly property var connectionControls:preferences.order.filter(id=>["wifi","bluetooth","sharing"].includes(id) && !preferences.hidden.includes(id))
+    readonly property var visibleControls:{let grouped=false;return preferences.order.filter(id=>!preferences.hidden.includes(id)).map(id=>{if(!["wifi","bluetooth","sharing"].includes(id))return id;if(grouped)return "";grouped=true;return "connections";}).filter(id=>id!=="");}
+    readonly property int connectionsHeight:connectionControls.length*48+16
     readonly property bool saving:writer.running
     readonly property var names:({wifi:"Wi-Fi",bluetooth:"Bluetooth",sharing:root.sharingLabel,media:"Now Playing",displays:"Displays",appearance:"Appearance",focus:"Focus",brightness:"Brightness",sound:"Sound"})
     readonly property string sharingLabel:NearbySharingState.label
@@ -40,9 +43,9 @@ Column {
         }
     }
     GridLayout {visible:!root.editing;width:parent.width;columns:root.singleColumn?1:2;columnSpacing:10;rowSpacing:10
-        Repeater {model:root.preferences.order.filter(id=>!root.preferences.hidden.includes(id))
-            delegate:Loader {required property string modelData;Layout.fillWidth:true;Layout.columnSpan:root.singleColumn || ["brightness","sound"].includes(modelData)?1+(root.singleColumn?0:1):1;Layout.rowSpan:!root.singleColumn && modelData==="media"?2:1;Layout.preferredWidth:root.singleColumn || ["brightness","sound"].includes(modelData)?root.width:(root.width-10)/2;Layout.preferredHeight:Math.max(modelData==="media"?134:62,item?item.implicitHeight:0);Layout.alignment:Qt.AlignTop
-                sourceComponent:({wifi:componentWifi,bluetooth:componentBluetooth,sharing:componentSharing,media:componentMedia,displays:componentDisplays,appearance:componentAppearance,focus:componentFocus,brightness:componentBrightness,sound:componentSound})[modelData]
+        Repeater {model:root.visibleControls
+            delegate:Loader {required property string modelData;Layout.fillWidth:true;Layout.columnSpan:root.singleColumn || ["focus","brightness","sound"].includes(modelData)?1+(root.singleColumn?0:1):1;Layout.preferredWidth:root.singleColumn || ["focus","brightness","sound"].includes(modelData)?root.width:(root.width-10)/2;Layout.preferredHeight:Math.max(["connections","media"].includes(modelData)?Math.max(134,root.connectionsHeight):62,item?item.implicitHeight:0);Layout.alignment:Qt.AlignTop
+                sourceComponent:({connections:componentConnections,media:componentMedia,displays:componentDisplays,appearance:componentAppearance,focus:componentFocus,brightness:componentBrightness,sound:componentSound})[modelData]
             }
         }
     }
@@ -68,6 +71,13 @@ Column {
     }
     PanelLabel {visible:root.error!=="";width:parent.width;wrapMode:Text.WordWrap;text:root.error;color:Theme.colors.muted}
     Item {width:1;height:6}
+    Component {id:componentConnections;PanelSurface {radius:18;color:Theme.colors.surface;border.width:0;layer.enabled:false
+        Column {x:6;y:8;width:parent.width-12
+            Repeater {model:root.connectionControls
+                Loader {required property string modelData;width:parent.width;height:48;sourceComponent:({wifi:componentWifi,bluetooth:componentBluetooth,sharing:componentSharing})[modelData];onLoaded:item.grouped=true}
+            }
+        }
+    }}
     Component {id:componentWifi;ControlTile {label:"Wi-Fi";symbol:"wifi";unavailable:NetworkState.state(root.shell.systemState.wifi).unavailable;active:NetworkState.state(root.shell.systemState.wifi).active;subtitle:NetworkState.state(root.shell.systemState.wifi).label;onClicked:root.panelRequested("Wi-Fi")}}
     Component {id:componentBluetooth;ControlTile {label:"Bluetooth";symbol:"bluetooth";unavailable:!Bluetooth.defaultAdapter;active:!!Bluetooth.defaultAdapter && Bluetooth.defaultAdapter.enabled;subtitle:active?"On":"Off";onClicked:root.panelRequested("Bluetooth")}}
     Component {id:componentSharing;ControlTile {label:root.sharingLabel;subtitle:root.sharingSubtitle;symbol:"nearby";iconSource:NearbySharingState.iconSource;active:root.sharingActive;unavailable:!root.sharingAvailable;accessibleLabel:root.sharingLabel+" receiving controls";onClicked:{root.shell.claimPopup("");AppLaunch.run(["lumen-nearby-sharing","open"]);}}}

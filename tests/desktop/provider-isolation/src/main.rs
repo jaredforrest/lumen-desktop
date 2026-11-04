@@ -230,6 +230,14 @@ fn main() -> Result<()> {
         print!("{}",review_settings(&path,&env::args().skip(1).collect::<Vec<_>>())?);
         return Ok(());
     }
+    if env::var("LUMEN_REVIEW_POPULATED").as_deref()==Ok("1") && name=="lumen-privacy-status" {
+        println!("{}",json!({"encryption":{"value":"On","detail":"Synthetic encrypted test disk."},"secureBoot":{"value":"On","detail":"Synthetic verified boot state."},"biometrics":{"value":"Not configured","detail":"No fingerprint reader is connected to this test session."}}));return Ok(());
+    }
+    if env::var("LUMEN_REVIEW_POPULATED").as_deref()==Ok("1") && name=="lumen-portal-permissions" {
+        let mut line=String::new();io::stdin().lock().read_line(&mut line)?;let request:Value=serde_json::from_str(&line)?;
+        if request["action"]!="list" {return Err("Review permissions reject mutations".into());}
+        println!("{}",json!({"available":true,"rows":[],"coverage":[{"capability":"screen capture","state":"available"}]}));return Ok(());
+    }
     if env::var("LUMEN_REVIEW_POPULATED").as_deref()==Ok("1") && name=="lumen-system-controls" {
         let output=invoked.parent().and_then(Path::parent).ok_or("Missing review output")?;
         print!("{}",serve("system",output,env::args().nth(1).as_deref(),"")?);return Ok(());

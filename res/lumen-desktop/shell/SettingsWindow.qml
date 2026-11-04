@@ -216,7 +216,7 @@ FloatingWindow {
             onContentHeightChanged:Qt.callLater(root.revealFocus)
             ScrollBar.vertical:DesktopScrollBar {}
             Rectangle {
-                visible:root.revealedControl!==null && root.controlId!==""
+                visible:root.revealedControl!==null && root.controlId!=="" && root.revealedControl.ownsSearchHighlight!==true
                 x:{if(!root.revealedControl)return 0;const dependency=root.revealedControl.x;return root.revealedControl.mapToItem(scroller.contentItem,0,0).x-3;}
                 y:{if(!root.revealedControl)return 0;const dependency=root.revealedControl.y;return root.revealedControl.mapToItem(scroller.contentItem,0,0).y-3;}
                 width:root.revealedControl?root.revealedControl.width+6:0

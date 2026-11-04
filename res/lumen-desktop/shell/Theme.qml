@@ -45,8 +45,8 @@ Singleton {
     readonly property int barHeight: 28
     readonly property int sidebarIconSize: preferences.sidebarIconSize === "small" ? 14 : preferences.sidebarIconSize === "large" ? 24 : 18
     readonly property bool increaseContrast: !!preferences.increaseContrast
-    readonly property color outline: increaseContrast ? colors.border : dark ? "#505054" : "#ccccd0"
-    readonly property color hairline: increaseContrast ? colors.border : dark ? "#404044" : "#dedee2"
+    readonly property color outline: increaseContrast ? (dark?"#ffffff":"#000000") : dark ? "#505054" : "#ccccd0"
+    readonly property color hairline: increaseContrast ? (dark?"#ffffff":"#000000") : dark ? "#404044" : "#dedee2"
     readonly property color sidebar: dark ? "#242426" : "#e8e8ec"
     readonly property color content: dark ? "#222224" : "#ffffff"
     readonly property color sidebarMaterial: compositorEffects && !preferences.reduceTransparency && !increaseContrast ? Qt.rgba(sidebar.r,sidebar.g,sidebar.b,0.86) : sidebar

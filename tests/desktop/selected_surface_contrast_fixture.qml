@@ -8,6 +8,7 @@ ShellRoot {
  D.CalendarCard {id:calendar;today:new Date(2000,0,21);selected:new Date(2000,0,20);active:false}
  D.AppPreview {id:preview;kind:"Files";listMode:true;selectedFile:0;files:[{name:"Selected fixture",directory:false}]}
  D.DesktopTextField {id:field;width:180;text:"Selected text"}
+ D.FileIcon {id:fileIcon;width:48;height:54}
  function find(node,text) {
   if(node.objectName===text)return node;
   if(node.text===text && node.color!==undefined)return node;
@@ -18,6 +19,11 @@ ShellRoot {
  Timer {interval:30;running:true;repeat:true;onTriggered:{try {
   if(root.index>=root.cases.length){console.log("SELECTED_CONTRAST_PASS "+root.cases.length);Qt.quit();return;}
   const entry=root.cases[root.index];D.Theme.colors=entry.colors;
+  for(const [name,category] of [["drawing.svg","image"],["data.csv","table"],["song.wav","audio"],["bundle.zip","archive"],["config.json","source"],["notes.txt","document"]]){fileIcon.entry={name:name,size:0};if(fileIcon.category!==category || fileIcon.visualWidth<=0 || fileIcon.visualHeight<=0)throw Error("Missing file-type presentation: "+name);}
+  D.Theme.menuBarPreferences={hourCycle:"12",showSeconds:false};
+  if(calendar.timeLabel({startTime:"00:05"})!=="12:05 AM" || calendar.timeLabel({startTime:"14:30"})!=="2:30 PM")throw Error("Calendar ignores 12-hour preference");
+  D.Theme.menuBarPreferences={hourCycle:"24",showSeconds:false};
+  if(calendar.timeLabel({startTime:"14:30"})!=="14:30")throw Error("Calendar ignores 24-hour preference");
   preview.files=[{name:"Selected fixture",directory:false}];preview.selectedFile=0;
   const targets=[[preview,"Selected fixture"],[preview,"Document"]];
   for(const target of targets){const item=root.find(target[0],target[1]);if(!item)throw Error("Missing actual control: "+target[1]);if(String(item.color)!==String(Qt.color(entry.colors.selectedText)))throw Error(entry.mode+"/"+entry.accent+" "+target[1]+" foreground "+item.color+" expected "+entry.colors.selectedText);}
