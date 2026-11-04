@@ -10,14 +10,19 @@ ShellRoot {
  QtObject {id:exported;property var state:({menu:null})}
  QtObject {id:stub;property var notifications:notifications;property var audioState:audioState;property var exportedMenu:exported;property var entries:[];property var search:search;property date currentDate:new Date();function appLabel(e){return e.name;}function appIcon(e){return "";}function preferredOutput(){return "fixture";}}
  Item {width:1000;height:900;D.AppLauncher {id:launcher;visible:false;shell:stub}}
- Item {width:344;D.NotificationCard {id:card;width:344;service:notifications;notification:({id:1,app:"Fixture",summary:"First",body:"",timestamp:Date.now()-600000,actions:[],desktop:"",icon:"",image:""})}}
+ Item {width:344;D.NotificationCard {id:card;width:344;service:notifications;notification:({id:1,app:"Calendar",summary:"First",body:"",timestamp:Date.now()-600000,actions:[],desktop:"",icon:"",image:""})}}
  D.SearchState {id:search;helper:"LUMEN_SEARCH_PEER"}
  D.BrightnessControl {id:brightness;visible:false}
  Item {width:300;D.AudioDeviceControl {id:audio;visible:false;node:null}}
  QtObject {id:first;property int id:10;property string name:"First";property QtObject audio:QtObject {property real volume:0.4;property bool muted:false}}
  QtObject {id:second;property int id:20;property string name:"Second";property QtObject audio:QtObject {property real volume:0.7;property bool muted:false}}
  function check(value,message){if(!value)throw new Error(message);}
+ function findIcon(node){if(node.objectName==="notification-application-icon")return node;for(const child of node.children || []){const value=findIcon(child);if(value)return value;}return null;}
  Component.onCompleted: {
+  const calendarIcon=findIcon(card);
+  check(calendarIcon && calendarIcon.variantName==="calendar","Notification lost its complete calendar icon");
+  const dateLabel=Array.from(calendarIcon.children).find(child=>child.text===Qt.formatDate(calendarIcon.calendarDate,"d") && child.visible);
+  check(!!dateLabel,"Notification shows only the calendar background, without its date");
   search.active=true;search.search("first");search.searchId=10;
   search.requestPreview("/fixture/first");search.previewId=11;
   search.requestPreview("/fixture/first");check(search.previewId===11,"Identical selection refresh retired pending preview");

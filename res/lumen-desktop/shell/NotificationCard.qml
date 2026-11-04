@@ -37,18 +37,17 @@ PanelSurface {
     radius: 18
     function stamp(){const age=Math.max(0,(Date.now()-notification.timestamp)/60000);return age<1?"now":age<60?Math.floor(age)+"m ago":age<1440?Math.floor(age/60)+"h ago":Qt.formatDateTime(new Date(notification.timestamp),"d MMM");}
     property string timeLabel: stamp()
-    Timer {interval:60000;running:root.visible;repeat:true;onTriggered:root.timeLabel=root.stamp()}
+    Timer {interval:60000;running:root.visible;repeat:true;onTriggered:{root.timeLabel=root.stamp();appIcon.calendarDate=new Date();}}
     MouseArea {anchors.fill:parent;hoverEnabled:true;onEntered:root.service.command({action:"hold",id:root.notification.id,enabled:true});onExited:root.service.command({action:"hold",id:root.notification.id,enabled:false});onClicked:root.activate()}
     Column {
         id:content;x:14;y:14;width:parent.width-28;spacing:6
         Row {
             width:parent.width;spacing:8
-            Image {
-                id:appIcon
+            AppIcon {
+                id:appIcon;objectName:"notification-application-icon"
                 width:28;height:28;sourceSize.width:56;sourceSize.height:56
-                source:{const icon=root.notification.icon || "";if(icon.startsWith("file:"))return icon;const owned={calendar:"calendar",files:"files"}[(root.notification.app || "").toLowerCase()];if(owned)return Qt.resolvedUrl("reference-icons/"+owned+".svg");const entry=root.appEntry();return Quickshell.iconPath(icon || (entry?entry.icon:""),true) || Qt.resolvedUrl("icons/application.svg");}
+                iconSource:{const icon=root.notification.icon || "";if(icon.startsWith("file:"))return icon;const owned={calendar:"calendar",files:"files"}[(root.notification.app || "").toLowerCase()];if(owned)return Qt.resolvedUrl("reference-icons/"+owned+".svg");const entry=root.appEntry();return Quickshell.iconPath(icon || (entry?entry.icon:""),true) || Qt.resolvedUrl("icons/application.svg");}
                 asynchronous:true;fillMode:Image.PreserveAspectFit
-                Image {anchors.fill:parent;visible:appIcon.status===Image.Error;source:Qt.resolvedUrl("icons/application.svg");sourceSize.width:56;sourceSize.height:56}
             }
             PanelLabel {width:parent.width-(optionsButton.visible?121:89);anchors.verticalCenter:parent.verticalCenter;text:root.notification.app+(root.expandStack?" · "+root.stackCount:"");elide:Text.ElideRight;textFormat:Text.PlainText;font.pixelSize:11;font.weight:Font.DemiBold}
             PanelLabel {width:45;anchors.verticalCenter:parent.verticalCenter;horizontalAlignment:Text.AlignRight;text:root.timeLabel;font.pixelSize:10;color:Theme.colors.muted}
