@@ -23,7 +23,10 @@ PanelSurface {
     function sourceChoices(){return root.players.map(player=>{const identity=String(player.identity || "");return {player:player,label:identity.trim().length?identity:"Media player"};});}
     readonly property var liveSourceChoices:root.sourceChoices()
     onLiveSourceChoicesChanged:if(sourceSelector && !sourceSelector.popup.visible)sourceSelector.choices=root.liveSourceChoices
-    DialogButton {visible:!root.expanded;x:parent.width-34;y:8;width:26;height:22;text:"•••";Accessible.name:"Expand Now Playing";onClicked:root.expandRequested()}
+    AbstractButton {visible:!root.expanded;x:parent.width-34;y:8;width:26;height:26;Accessible.name:"Expand Now Playing";onClicked:root.expandRequested()
+        background:Rectangle {radius:7;color:parent.hovered || parent.activeFocus?Theme.colors.hover:"transparent"}
+        contentItem:SystemGlyph {name:"chevron-right";ink:Theme.colors.muted}
+    }
     Timer {interval:1000;repeat:true;running:root.visible && root.expanded && !!root.player && root.player.isPlaying;onTriggered:root.player.positionChanged()}
     Column {
         id:mediaContents

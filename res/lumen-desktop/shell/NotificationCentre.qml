@@ -35,8 +35,29 @@ Column {
                 Item {
                     id:stack;required property var modelData
                     width:group.width;height:card.height+(!group.expanded && group.modelData.rows.length>1?8:0)
-                    Rectangle {visible:!group.expanded && group.modelData.rows.length>2;x:8;y:8;width:parent.width-16;height:card.height;radius:18;color:Theme.colors.field;border.color:Theme.hairline}
-                    Rectangle {visible:!group.expanded && group.modelData.rows.length>1;x:4;y:4;width:parent.width-8;height:card.height;radius:18;color:Theme.colors.background;border.color:Theme.hairline}
+                    Canvas {
+                        id:backplates;anchors.fill:parent;visible:!group.expanded && group.modelData.rows.length>1
+                        property color farFill:Theme.colors.field
+                        property color nearFill:Theme.colors.background
+                        property color outline:Theme.hairline
+                        property real frontHeight:card.height
+                        onFarFillChanged:requestPaint()
+                        onNearFillChanged:requestPaint()
+                        onOutlineChanged:requestPaint()
+                        onFrontHeightChanged:requestPaint()
+                        onWidthChanged:requestPaint()
+                        onHeightChanged:requestPaint()
+                        onVisibleChanged:if(visible)requestPaint()
+                        function rounded(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);ctx.closePath();}
+                        onPaint:{
+                            const ctx=getContext("2d");ctx.reset();ctx.clearRect(0,0,width,height);ctx.lineWidth=1;ctx.strokeStyle=outline;
+                            if(group.modelData.rows.length>2){rounded(ctx,8,8,width-16,frontHeight,18);ctx.fillStyle=farFill;ctx.fill();ctx.stroke();}
+                            rounded(ctx,4,4,width-8,frontHeight,18);ctx.fillStyle=nearFill;ctx.fill();ctx.stroke();
+                            // Backplates exist only outside the front silhouette: the
+                            // translucent card samples the desktop, not another card.
+                            ctx.globalCompositeOperation="destination-out";rounded(ctx,0,0,width,frontHeight,18);ctx.fill();
+                        }
+                    }
                     NotificationCard {id:card;width:parent.width;notification:stack.modelData;service:root.service;stackCount:group.modelData.rows.length;expandStack:!group.expanded && stackCount>1;reduceTransparency:root.reduceTransparency;onExpandRequested:group.toggle()}
                 }
             }

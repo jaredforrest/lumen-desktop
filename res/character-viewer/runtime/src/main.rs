@@ -66,6 +66,7 @@ impl Viewer {
         let outer=gtk::Box::new(gtk::Orientation::Vertical,6);
         outer.set_widget_name("panel");window.add(&outer);
         let header=gtk::Box::new(gtk::Orientation::Horizontal,8);
+        header.set_margin_start(12);header.set_margin_end(12);
         let search=gtk::SearchEntry::new();search.set_placeholder_text(Some("Search"));
         header.pack_start(&search,true,true,0);
         let expand=gtk::Button::new();
@@ -601,10 +602,10 @@ fn main() {
     if daemon_mode {
         let server=daemon::start().expect("Cannot start character viewer daemon");
         gtk::init().expect("GTK display is unavailable");
+        appearance::register_font();
         if let (Some(theme),Some(path))=(gtk::IconTheme::default(),std::env::var_os("CHARACTER_VIEWER_ICONS")) {
             theme.append_search_path(&PathBuf::from(path));
         }
-        appearance::register_font();
         appearance::install();
         let bridge=match Bridge::load() {Ok(bridge)=>Some(bridge),Err(error)=>{eprintln!("Input method unavailable: {error}");None}};
         let slot:Rc<RefCell<Option<Rc<Viewer>>>>=Rc::new(RefCell::new(None));
@@ -653,10 +654,10 @@ fn main() {
         let Some(_lock)=daemon::standalone_lock().expect("Cannot lock standalone character viewer") else {return};
         let target=target::capture();
         gtk::init().expect("GTK display is unavailable");
+        appearance::register_font();
         if let (Some(theme),Some(path))=(gtk::IconTheme::default(),std::env::var_os("CHARACTER_VIEWER_ICONS")) {
             theme.append_search_path(&PathBuf::from(path));
         }
-        appearance::register_font();
         appearance::install();
         let _viewer=Viewer::new(data,state_path,target,None,None,false);
         gtk::main();

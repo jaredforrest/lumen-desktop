@@ -56,3 +56,15 @@ has been visually matched.
 ## Consumer file artwork
 
 `LUMEN_FILE_ICON_OVERRIDES` accepts a JSON object mapping an extension (for example `.csv`), a MIME type, or a category (`folder`, `image`, `table`, `audio`, `archive`, `source`, `document`) to an image URL. Extensions take precedence over MIME types, then categories. Consumers supply and own these assets; none are bundled by this interface. Missing or unreadable overrides fall back to the built-in artwork. An empty or malformed object leaves defaults intact. Supply the environment value through the consumer session configuration.
+
+The character viewer similarly accepts a consumer font file and family. Its
+process-local Fontconfig rule and refreshed Pango font map keep emoji requests on
+that configured family; they do not alter system font settings or ordinary text
+families. Consumers remain responsible for artwork/font provenance and version.
+
+Files context menus use a native popup with a point-sized parent anchor. Keyboard
+invocation locates the selected item, and pointer invocation retains its click
+position. The menu can extend beyond the owner while the window system keeps it
+on the output. Anchoring to the entire content item can make Qt place a native
+popup beside the whole window instead. The release fixture checks keyboard
+placement and a real right-click that crosses the owner's edge.

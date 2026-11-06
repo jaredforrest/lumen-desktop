@@ -87,7 +87,7 @@ Column {
     Component {id:componentSharing;ControlTile {label:root.sharingLabel;subtitle:root.sharingSubtitle;symbol:"nearby";iconSource:NearbySharingState.iconSource;active:root.sharingActive;unavailable:!root.sharingAvailable;accessibleLabel:root.sharingLabel+" receiving controls";onClicked:{root.shell.claimPopup("");AppLaunch.run(["lumen-nearby-sharing","open"]);}}}
     Component {id:componentMedia;MediaControl {onExpandRequested:root.panelRequested("Now Playing")}}
     Component {id:componentDisplays;ControlTile {label:"Displays";subtitle:"";symbol:"screen";unavailable:false;onClicked:root.shell.openSettings("Displays")}}
-    Component {id:componentAppearance;ControlTile {label:"Appearance";subtitle:Theme.dark?"Dark":"Light";symbol:"contrast";unavailable:false;onClicked:root.shell.openSettings("Appearance")}}
+    Component {id:componentAppearance;ControlTile {label:"Appearance";compactLabel:"Theme";subtitle:Theme.dark?"Dark":"Light";symbol:"contrast";unavailable:false;onClicked:root.shell.openSettings("Appearance")}}
     Component {id:componentFocus;ControlTile {label:"Focus";toggle:true;symbol:"moon";unavailable:!root.shell.notifications.available;active:root.shell.notifications.dnd;subtitle:active?root.shell.notifications.focusState.name:"Off";onClicked:root.panelRequested("Focus")}}
     Component {id:componentBrightness;PanelSurface {radius:24;implicitHeight:brightnessContent.implicitHeight+24;BrightnessControl {id:brightnessContent;x:16;y:12;width:parent.width-32}}}
     Component {id:componentSound;PanelSurface {radius:24;implicitHeight:soundContent.implicitHeight+24;SoundControl {id:soundContent;x:16;y:12;width:parent.width-32;shell:root.shell;compact:true}}}

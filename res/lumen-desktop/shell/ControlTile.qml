@@ -10,6 +10,7 @@ PanelSurface {
     property url iconSource:""
     property bool grouped:false
     property bool vertical:false
+    property string compactLabel:label
     property bool unavailable: true
     property string accessibleLabel: label || symbol
     implicitHeight:Math.max(vertical?92:grouped?48:62,labels.implicitHeight+(vertical?54:grouped?16:24))
@@ -22,7 +23,7 @@ PanelSurface {
             SystemGlyph {anchors.centerIn:parent;width:18;height:18;name:parent.parent.parent.symbol;imageSource:tile.iconSource;ink:tile.active?Theme.colors.selectedText:Theme.colors.text}
         }
         Column {id:labels;x:tile.vertical?0:36;y:tile.vertical?36:(tileBody.height-height)/2;width:Math.max(0,tileBody.width-(tile.vertical?0:36));visible:tile.label!=="";spacing:2
-            PanelLabel {width:parent.width;text:tile.label;wrapMode:Text.WordWrap;horizontalAlignment:tile.vertical?Text.AlignHCenter:Text.AlignLeft;elide:Text.ElideNone;font.pixelSize:Theme.textSize(12);font.weight:Font.DemiBold}
+            PanelLabel {width:parent.width;text:tile.vertical?tile.compactLabel:tile.label;wrapMode:Text.WordWrap;horizontalAlignment:tile.vertical?Text.AlignHCenter:Text.AlignLeft;elide:Text.ElideNone;font.pixelSize:Theme.textSize(12);font.weight:Font.DemiBold}
             PanelLabel {width:parent.width;visible:text!=="";text:tile.subtitle;wrapMode:Text.Wrap;horizontalAlignment:tile.vertical?Text.AlignHCenter:Text.AlignLeft;elide:Text.ElideNone;font.pixelSize:Theme.textSize(10);color:Theme.colors.muted}
         }
     }

@@ -1225,8 +1225,8 @@ context.objects = [
         self.wait_for("Studio content", || Ok(self.state()?["busy"] == false && self.state()?["count"] == 14))?;
         self.wait_for("Studio focus", || Ok(self.ipc_json("status", &[])?["windows"].as_array().is_some_and(|rows| rows.iter().any(|r| r["title"].as_str().unwrap_or("").contains("Studio") && r["active"] == true))))?;
         self.review_window("Files — Studio")?;
-        for (number, view) in [("1","grid"),("2","list"),("3","columns"),("4","gallery")] {
-            self.key(&["-M","ctrl","-k",number,"-m","ctrl"])?;
+        for (view_key, view) in [("1","grid"),("2","list"),("3","columns"),("4","gallery")] {
+            self.key(&["-M","ctrl","-k",view_key,"-m","ctrl"])?;
             self.wait_for("Studio view", || Ok(self.state()?["view"] == view))?;
             thread::sleep(Duration::from_millis(450));
             self.capture(&format!("files-{view}.png"))?;
@@ -1238,8 +1238,26 @@ context.objects = [
             self.wait_for("Selected file actions",||Ok(self.state()?["contextMenu"]==true))?;
             thread::sleep(Duration::from_millis(250));
             self.capture(&format!("files-{view}-actions.png"))?;
+            let placement=self.state()?["contextMenuRect"].clone();
+            require(number(&placement,"x")?>=0. && number(&placement,"x")?<number(&placement,"windowWidth")? && number(&placement,"y")?>=0. && number(&placement,"y")?<number(&placement,"windowHeight")?,"Keyboard context menu starts outside its owner")?;
+            save_json(&self.run.join(format!("files-{view}-actions-placement.json")),&placement)?;
             self.key(&["-k","Escape"])?;
             self.wait_for("File actions dismissed",||Ok(self.state()?["contextMenu"]==false))?;
+            if view=="list" {
+                if let Some(pointer)=env::var_os("LUMEN_REVIEW_POINTER_BIN") {
+                    let node=self.window("Files — Studio")?;let rect=&node["rect"];
+                    self.run_command("swaymsg",&[&format!("seat seat0 cursor set {} {}",integer(rect,"x")?+integer(rect,"width")?-24,integer(rect,"y")?+number(&placement,"y")? as i64)])?;
+                    self.run_command(Path::new(&pointer).to_str().ok_or("Pointer path")?,&["pointer","click","right"])?;
+                    self.wait_for("Pointer context menu",||Ok(self.state()?["contextMenu"]==true))?;
+                    thread::sleep(Duration::from_millis(250));
+                    let edge=self.state()?["contextMenuRect"].clone();
+                    if env::var("LUMEN_RELEASE_SCALE").unwrap_or("1".into())=="1" {require(number(&edge,"x")?+number(&edge,"width")?>number(&edge,"windowWidth")?,"Pointer context menu remained constrained to its owner")?;}
+                    save_json(&self.run.join("files-context-overflow-placement.json"),&edge)?;
+                    self.capture("files-context-overflow.png")?;
+                    self.key(&["-k","Escape"])?;
+                    self.wait_for("Pointer actions dismissed",||Ok(self.state()?["contextMenu"]==false))?;
+                }
+            }
             self.key(&["-k","Escape"])?;
         }
         self.key(&["-M","ctrl","-k","2","-m","ctrl"])?;

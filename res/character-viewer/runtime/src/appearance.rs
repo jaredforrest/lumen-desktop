@@ -126,10 +126,32 @@ pub fn register_font() {
         if handle.is_null(){eprintln!("Character viewer fontconfig library is unavailable");return;}
         let current=dlsym(handle,c"FcConfigGetCurrent".as_ptr());
         let add=dlsym(handle,c"FcConfigAppFontAddFile".as_ptr());
+        let parse=dlsym(handle,c"FcConfigParseAndLoadFromMemory".as_ptr());
         if !current.is_null() && !add.is_null() {
             let current:unsafe extern "C" fn()->*mut c_void=std::mem::transmute(current);
             let add:unsafe extern "C" fn(*mut c_void,*const u8)->c_int=std::mem::transmute(add);
-            if add(current(),font.as_ptr().cast())==0 {eprintln!("Character viewer emoji font could not be registered");}
+            let config=current();
+            if add(config,font.as_ptr().cast())==0 {eprintln!("Character viewer emoji font could not be registered");}
+            // Pango itemizes emoji using the generic family, independently of
+            // the label's CSS family. Bind that request within this process.
+            if !parse.is_null() {
+                let parse:unsafe extern "C" fn(*mut c_void,*const u8,c_int)->c_int=std::mem::transmute(parse);
+                let family=safe_font(std::env::var("LUMEN_EMOJI_FONT_FAMILY").ok().as_deref(),"Noto Color Emoji");
+                let rule=CString::new(format!("<fontconfig><match target=\"pattern\"><test name=\"family\" qual=\"any\"><string>emoji</string></test><edit name=\"family\" mode=\"assign_replace\" binding=\"strong\"><string>{family}</string></edit></match><match target=\"pattern\"><test name=\"family\" qual=\"any\"><string>Noto Color Emoji</string></test><edit name=\"family\" mode=\"assign_replace\" binding=\"strong\"><string>{family}</string></edit></match></fontconfig>")).expect("Validated font family");
+                if parse(config,rule.as_ptr().cast(),1)==0 {eprintln!("Character viewer emoji family could not be selected");}
+            }
+            let get_map=dlsym(std::ptr::null_mut(),c"pango_cairo_font_map_get_default".as_ptr());
+            if !get_map.is_null() {
+                let get_map:unsafe extern "C" fn()->*mut c_void=std::mem::transmute(get_map);
+                let map=get_map();
+                let set_config=dlsym(std::ptr::null_mut(),c"pango_fc_font_map_set_config".as_ptr());
+                let changed=dlsym(std::ptr::null_mut(),c"pango_fc_font_map_config_changed".as_ptr());
+                if !map.is_null() && !set_config.is_null() && !changed.is_null() {
+                    let set_config:unsafe extern "C" fn(*mut c_void,*mut c_void)=std::mem::transmute(set_config);
+                    let changed:unsafe extern "C" fn(*mut c_void)=std::mem::transmute(changed);
+                    set_config(map,config);changed(map);
+                }
+            }
         }
         dlclose(handle);
     }

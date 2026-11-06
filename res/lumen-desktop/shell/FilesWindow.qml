@@ -145,6 +145,14 @@ FloatingWindow {
     readonly property int previewWidth:LayoutModel.previewWidth(previewDragWidth>=0?previewDragWidth:service.previewWidth,width-sidebarWidth-24,Theme.textScale)
     readonly property var current:service.rows[selected] || null
     readonly property bool contextMenuOpen:actions.visible
+    readonly property var contextMenuRect:({x:actionsAnchor.x+actions.x,y:actionsAnchor.y+actions.y,width:actions.width,height:actions.height,windowWidth:width,windowHeight:height})
+    function openActionsAt(x,y){actionsAnchor.x=x;actionsAnchor.y=y;actions.x=0;actions.y=0;actions.open();}
+    function openSelectionActions(){
+        const view=service.viewMode==="list"?list:root.galleryMode?galleryStrip:grid;
+        const item=root.columnsMode?columnView.currentItem():view.itemAtIndex(selected);
+        const point=item?item.mapToItem(content,Math.min(100,item.width/2),Math.min(18,item.height/2)):Qt.point(sidebarWidth+40,100);
+        openActionsAt(Math.max(8,Math.min(content.width-12,point.x)),Math.max(8,Math.min(content.height-12,point.y)));
+    }
     property int sidebarDragWidth:-1
     readonly property int sidebarMaximum:LayoutModel.sidebarMaximum(width)
     readonly property int sidebarWidth:LayoutModel.sidebarWidth(sidebarDragWidth>=0?sidebarDragWidth:service.sidebarWidth,width)
@@ -279,7 +287,7 @@ FloatingWindow {
             else if(ctrl && !shift && event.key===Qt.Key_N)root.shell.newFilesWindow(root.service.path);
             else if(ctrl && event.key===Qt.Key_Tab)root.switchTab((root.activeTab+(shift?-1:1)+root.tabs.length)%root.tabs.length);
             else if(ctrl && event.key===Qt.Key_A)root.selectAll();
-            else if((event.key===Qt.Key_Menu || (shift && event.key===Qt.Key_F10)) && root.current){actions.x=root.width-72;actions.y=80;actions.open();}
+            else if((event.key===Qt.Key_Menu || (shift && event.key===Qt.Key_F10)) && root.current){root.openSelectionActions();}
             else if(ctrl && event.key===Qt.Key_Z)root.service.undo();
             else if(ctrl && event.key===Qt.Key_I && root.current)root.service.send("info",{path:root.current.path});
             else if(ctrl && event.key===Qt.Key_K)networkPopup.open();
@@ -394,7 +402,7 @@ FloatingWindow {
                     Accessible.name:modelData.label
                     Accessible.description:modelData.action==="preview" && !root.previewLimits.enabled?"Widen this window to show the preview pane":""
                     OwnedToolTip {target:actionButton;suppressed:actionButton.modelData.action!=="preview" || root.previewLimits.enabled;text:"Widen this window to show the preview pane"}
-                    onClicked:{if(modelData.action==="grid")root.service.viewMode="grid";else if(modelData.action==="list")root.service.viewMode="list";else if(modelData.action==="preview")root.previewOpen=!root.previewOpen;else {actions.x=root.width-230;actions.y=48;actions.open();}}
+                    onClicked:{if(modelData.action==="grid")root.service.viewMode="grid";else if(modelData.action==="list")root.service.viewMode="list";else if(modelData.action==="preview")root.previewOpen=!root.previewOpen;else root.openActionsAt(root.width-230,48);}
                     background:Rectangle {radius:7;color:parent.hovered || parent.activeFocus || (parent.modelData.action==="list" && root.listMode) || (parent.modelData.action==="grid" && !root.listMode) || (parent.modelData.action==="preview" && root.previewOpen)?Theme.selection:"transparent"}
                     contentItem:Item {SystemGlyph {anchors.centerIn:parent;width:17;height:17;name:modelData.icon}}
                 }
@@ -536,7 +544,7 @@ FloatingWindow {
                     MouseArea {anchors.fill:parent;acceptedButtons:Qt.LeftButton|Qt.RightButton;drag.target:dragGhost
                         onPressed:event=>{if(event.button===Qt.LeftButton && !event.modifiers && !root.isSelected(index))root.choose(index,event.modifiers);}
                         onPositionChanged:if(drag.active && !root.dragging){root.dragUris=root.selectedUris();Qt.callLater(root.beginDrag);}
-                        onClicked:event=>{if(event.button!==Qt.RightButton || !root.isSelected(index))root.choose(index,event.modifiers);if(event.button===Qt.RightButton){actions.x=mapToItem(content,event.x,event.y).x;actions.y=mapToItem(content,event.x,event.y).y;actions.open();}} onDoubleClicked:root.openCurrent()}
+                        onClicked:event=>{if(event.button!==Qt.RightButton || !root.isSelected(index))root.choose(index,event.modifiers);if(event.button===Qt.RightButton){const point=mapToItem(content,event.x,event.y);root.openActionsAt(point.x,point.y);}} onDoubleClicked:root.openCurrent()}
                     Accessible.name:FileLinks.accessible(modelData);Accessible.role:Accessible.ListItem;Accessible.selected:root.isSelected(index);Accessible.onPressAction:root.choose(index,0)
                 }
             }
@@ -556,7 +564,7 @@ FloatingWindow {
                     MouseArea {anchors.fill:parent;acceptedButtons:Qt.LeftButton|Qt.RightButton;drag.target:dragGhost
                         onPressed:event=>{if(event.button===Qt.LeftButton && !event.modifiers && !root.isSelected(index))root.choose(index,event.modifiers);}
                         onPositionChanged:if(drag.active && !root.dragging){root.dragUris=root.selectedUris();Qt.callLater(root.beginDrag);}
-                        onClicked:event=>{if(event.button!==Qt.RightButton || !root.isSelected(index))root.choose(index,event.modifiers);if(event.button===Qt.RightButton){actions.x=mapToItem(content,event.x,event.y).x;actions.y=mapToItem(content,event.x,event.y).y;actions.open();}} onDoubleClicked:root.openCurrent()}
+                        onClicked:event=>{if(event.button!==Qt.RightButton || !root.isSelected(index))root.choose(index,event.modifiers);if(event.button===Qt.RightButton){const point=mapToItem(content,event.x,event.y);root.openActionsAt(point.x,point.y);}} onDoubleClicked:root.openCurrent()}
                 }
             }
             FilesBandSelection {objectName:"files-list-band-selection";parent:list;anchors.fill:parent;view:list;rows:root.service.rows;selectedPaths:root.selectedPaths;currentIndex:root.selected;anchorIndex:root.selectionAnchor;contextKey:root.bandContext;permitted:root.bandPermitted && list.visible;rightInset:listScrollBar.visible?listScrollBar.width:0;onBegan:root.cancelPendingPresentation();onPreviewed:paths=>root.bandPreviewPaths=paths;onCommitted:value=>root.commitBand(value);onCanceled:reason=>root.cancelBand(reason)}
@@ -616,8 +624,10 @@ Accessible.name:FileLinks.accessible(modelData);Accessible.selected:root.isSelec
         TrashConfirmation {state:trashActions}
         TrashResults {id:trashResults;state:trashActions}
         Connections {target:trashActions;function onErrorChanged(){if(trashActions.error)trashResults.open();}function onBusyChanged(){if(trashActions.busy)trashResults.open();}}
+        Item {id:actionsAnchor;width:1;height:1}
         Popup {
             id:actions
+            parent:actionsAnchor
             popupType:Popup.Window
             objectName:"files-actions-menu"
             property var sharingIntent:null

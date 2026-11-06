@@ -33,6 +33,7 @@ Flickable {
     property real resizeOriginX:0
     readonly property string columnPathKey:columns.map(column=>column.path).join("\u0000")
     function clampOffset(value){return Math.max(0,Math.min(value,Math.max(0,contentWidth-width)));}
+    function currentItem(){for(let i=0;i<columns.length;i++){const row=columns[i].rows.findIndex(value=>value.path===currentPath),pane=columnRepeater.itemAt(i);if(row>=0 && pane)return pane.listView.itemAtIndex(row);}return null;}
     property var pendingSnapshot:null
     property bool revealPending:false
     function snapshot(){return {x:contentX,columns:columns.map((column,index)=>{const item=columnRepeater.itemAt(index);if(!item)return {path:column.path,offset:0};const list=item.listView;const row=list.indexAt(1,list.contentY+1);const delegate=row>=0?list.itemAtIndex(row):null;return {path:column.path,offset:list.contentY,anchor:HistoryModel.ref(column.rows[row]),delta:delegate?Math.max(0,list.contentY-delegate.y):0};})};}
