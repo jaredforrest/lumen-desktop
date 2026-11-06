@@ -6,7 +6,7 @@ let
   compositor = if effects then pkgs.swayfx-unwrapped.override {
     wlroots_0_20 = alignedWlroots;
     scenefx = (pkgs.scenefx.override { wlroots_0_20 = alignedWlroots; }).overrideAttrs (old: {
-      patches = (old.patches or [ ]) ++ [ ../res/lumen-desktop/scenefx-local-corner-distance.patch ];
+      patches = (old.patches or [ ]) ++ [ ../res/lumen-desktop/scenefx-local-corner-distance.patch ../res/lumen-desktop/scenefx-transparent-blur-mask.patch ];
     });
   } else pkgs.sway-unwrapped.override { wlroots_0_20 = alignedWlroots; };
   expectedVersion = if effects then "0.6" else "1.12";

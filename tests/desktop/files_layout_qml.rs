@@ -38,6 +38,7 @@ fn files_layout() {
             .env("XDG_RUNTIME_DIR", runtime)
             .env("QT_QPA_PLATFORM", "offscreen")
             .env("LUMEN_FILE_SERVICE", "0")
+            .env("LUMEN_FILE_ICON_OVERRIDES", format!(r#"{{".fixture":"file:{}/icons/folder.svg",".broken":"file:{}/missing-icon.svg"}}"#,shell.display(),root.display()))
             .env("LUMEN_LAUNCH_SCOPES", "0")
             .env("XDG_STATE_HOME", root.join("state"))
             .env("QT_QPA_PLATFORMTHEME", "")

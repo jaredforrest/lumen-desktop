@@ -1184,18 +1184,19 @@ context.objects = [
         self.vars.insert("CODEX_LINUX_DISABLE_USAGE_REPORTING".into(),"1".into());
         let process_count=self.processes.len();let profile_arg=format!("--user-data-dir={}",profile.display());let class_arg=format!("--class=org.lumen.review-{kind}");
         let mut args=vec!["--ozone-platform=wayland","--no-first-run","--no-default-browser-check",profile_arg.as_str(),class_arg.as_str()];
-        if self.opt.theme=="dark" {args.push("--force-dark-mode");}
+        if kind=="emoji" {args=vec!["--standalone"];}else if self.opt.theme=="dark" {args.push("--force-dark-mode");}
         if kind=="chatgpt" {args.push("--app=https://chatgpt.com");}
         self.launch(&binary,&args,&format!("review-{kind}"))?;
         let mut observed=Value::Null;
         self.wait_for("Disposable application window",||{let tree=self.tree()?;if let Some(node)=find_node(&tree,&|n|n["app_id"].as_str().is_some_and(|id|!id.is_empty() && id!="org.quickshell") && find_node(&before,&|old|old["id"]==n["id"]).is_none()){observed=node.clone();Ok(true)}else{Ok(false)}})?;
         let scale=env::var("LUMEN_RELEASE_SCALE").unwrap_or("1".into()).parse::<f64>()?;
         let width=(2560.0/scale-100.0).min(1500.0) as i64;let height=(1440.0/scale-160.0).min(1000.0) as i64;
-        self.run_command("swaymsg",&[&format!("[con_id={}] floating enable, resize set width {width} px height {height} px, move position center, focus",observed["id"])])?;
+        let placement=if kind=="emoji" {"floating enable, move position center, focus".to_owned()} else {format!("floating enable, resize set width {width} px height {height} px, move position center, focus")};
+        self.run_command("swaymsg",&[&format!("[con_id={}] {placement}",observed["id"])])?;
         thread::sleep(Duration::from_secs(5));
         let settled=self.tree()?;
         if let Some(node)=find_node(&settled,&|n|n["focused"]==true && n["app_id"].as_str().is_some_and(|id|!id.is_empty() && id!="org.quickshell")) {observed=node.clone();}
-        self.run_command("swaymsg",&[&format!("[con_id={}] floating enable, resize set width {width} px height {height} px, move position center, focus",observed["id"])])?;
+        self.run_command("swaymsg",&[&format!("[con_id={}] {placement}",observed["id"])])?;
         thread::sleep(Duration::from_millis(700));self.capture(&format!("{kind}-app.png"))?;
         save_json(&self.run.join(format!("{kind}-tree.json")),&self.tree()?)?;
         save_json(&self.run.join(format!("{kind}-capture.json")),&json!({"window":observed["name"],"profile":"disposable","credentialsProvided":false}))?;
@@ -1258,6 +1259,13 @@ context.objects = [
             thread::sleep(Duration::from_millis(600));
             if method=="calendar" {self.review_window(title)?;self.key(&["-M","ctrl","-k","3","-m","ctrl"])?;thread::sleep(Duration::from_millis(350));}
             self.window_capture(title, filename)?;
+            if method=="textTools" {
+                for page in ["Dictionary","Speech","Replacements","Shortcuts","Spelling","Dictation","Services","Fonts","Colours"] {
+                    self.key(&["-M","ctrl","-k","Tab","-m","ctrl"])?;
+                    self.wait_for("Review utility page",||Ok(self.ipc_json("textToolsStatus",&[])?["page"]==page))?;
+                    thread::sleep(Duration::from_millis(200));self.window_capture("Text Tools",&format!("text-tools-{}.png",page.to_lowercase()))?;
+                }
+            }
             if method=="calendar" {
                 self.key(&["-M","ctrl","-k","1","-m","ctrl"])?;
                 thread::sleep(Duration::from_millis(350));self.window_capture("Calendar","calendar-day.png")?;
@@ -1296,6 +1304,12 @@ context.objects = [
         self.review_notify("Calendar","Design review in 10 minutes","Studio - bring the latest layout sketches.")?;
         self.wait_for("One notification", || Ok(self.ipc_json("notificationStatus",&[])?["count"]==1))?;
         thread::sleep(Duration::from_millis(300));self.capture("notifications-single.png")?;
+        if env::var_os("LUMEN_REVIEW_CORNER_DIAGNOSTICS").is_some(){
+            self.run_command("swaymsg",&["layer_effects \"lumen-menu-popup\" \"blur disable\""])?;
+            thread::sleep(Duration::from_millis(250));self.capture("notification-no-blur.png")?;
+            self.run_command("swaymsg",&["layer_effects \"lumen-menu-popup\" \"blur enable; blur_ignore_transparent enable\""])?;
+            thread::sleep(Duration::from_millis(250));
+        }
         self.review_notify("Calendar","Lunch with Sam","Today at 12:30.")?;
         self.review_notify("Calendar","Release planning","Today at 14:00.")?;
         self.wait_for("Calendar stack", || Ok(self.ipc_json("notificationStatus",&[])?["count"]==3))?;
@@ -1344,6 +1358,7 @@ context.objects = [
         if env::var_os("LUMEN_RELEASE_SCALE").is_none(){self.run_command("swaymsg",&["output HEADLESS-1 scale 1"])?;}
         self.review_application_capture("codex","LUMEN_REVIEW_CODEX_BIN")?;
         self.review_application_capture("chatgpt","LUMEN_REVIEW_BROWSER_BIN")?;
+        self.review_application_capture("emoji","LUMEN_REVIEW_EMOJI_BIN")?;
         save_json(&self.run.join("release-capture.json"), &json!({"purpose":"Release presentation screenshots of prepared desktop in an isolated session", "priorWorkflowChecks":checks,"accountData":"Synthetic; no personal accounts or devices available"}))?;
         Ok(())
     }

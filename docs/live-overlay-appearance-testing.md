@@ -31,3 +31,21 @@ activation, third-party application, or real consumer configuration persistence
 claim. Existing calendar, Dock, notification-card, generic popover and utility
 window proofs retain their separate scopes. No production defect was found in
 the added five-family corpus.
+
+## Transparent blur edges
+
+The effects renderer previously used a binary stencil for a client's alpha mask.
+A partly covered edge pixel could therefore receive full-strength backdrop blur,
+leaving a dark fringe around otherwise antialiased cards. The local SceneFX patch
+samples the mask's fractional alpha when compositing blur from ordinary 2D
+textures. It retains the original source rectangle and transform, uses premultiplied
+blending, and leaves external-texture masks on the existing stencil path.
+It also sends the shader's boolean discard setting with the integer uniform API.
+Window shadow geometry and colours are unchanged.
+
+The isolated release fixture can capture the same notification with blur enabled
+and disabled using `LUMEN_REVIEW_CORNER_DIAGNOSTICS=1`. A smooth wallpaper tests
+the fringe; a high-contrast patterned wallpaper separately checks that the material
+still blurs the background. Inspect both before claiming the edge fix works.
+Light, dark and fractional-scale captures cover the native shell composition;
+they do not establish every graphics driver or external-texture mask path.

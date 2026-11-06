@@ -1,0 +1,150 @@
+--- a/include/scenefx/render/pass.h
++++ b/include/scenefx/render/pass.h
+@@ -46,6 +46,7 @@
+ 	const struct wlr_box *clip_box; // Used to clip csd. Ignored if NULL
+ 	struct fx_corner_fradii corners;
+ 	bool discard_transparent;
++	const struct wlr_render_texture_options *alpha_mask;
+ 	struct clipped_fregion clipped_region;
+ };
+ 
+--- a/include/render/fx_renderer/shaders.h
++++ b/include/render/fx_renderer/shaders.h
+@@ -116,6 +116,7 @@
+ 	GLint pos_attrib;
+ 
+ 	GLint discard_transparent;
++	GLint has_alpha_mask, alpha_mask, mask_proj, mask_box;
+ 
+ 	// Only used for the effects shader
+ 	struct {
+--- a/render/fx_renderer/shaders.c
++++ b/render/fx_renderer/shaders.c
+@@ -262,6 +262,10 @@
+ 	shader->tex_proj = glGetUniformLocation(prog, "tex_proj");
+ 
+ 	shader->discard_transparent = glGetUniformLocation(prog, "discard_transparent");
++	shader->has_alpha_mask = glGetUniformLocation(prog, "has_alpha_mask");
++	shader->alpha_mask = glGetUniformLocation(prog, "alpha_mask");
++	shader->mask_proj = glGetUniformLocation(prog, "mask_proj");
++	shader->mask_box = glGetUniformLocation(prog, "mask_box");
+ 
+ 	if (!effects) {
+ 		return true;
+--- a/render/fx_renderer/shaders/tex.frag
++++ b/render/fx_renderer/shaders/tex.frag
+@@ -46,6 +46,10 @@
+ #endif
+ 
+ uniform bool discard_transparent;
++uniform bool has_alpha_mask;
++uniform sampler2D alpha_mask;
++uniform mat3 mask_proj;
++uniform vec4 mask_box;
+ 
+ vec4 sample_texture() {
+ #if SOURCE == SOURCE_TEXTURE_RGBA || SOURCE == SOURCE_TEXTURE_EXTERNAL
+@@ -88,6 +92,15 @@
+ 	gl_FragColor = sample_texture() * alpha;
+ #endif
+ 
++	if (has_alpha_mask) {
++		vec2 point = gl_FragCoord.xy;
++		vec2 local = (point - mask_box.xy) / mask_box.zw;
++		if (any(lessThan(local, vec2(0.0))) || any(greaterThan(local, vec2(1.0)))) {
++			discard;
++		}
++		vec2 uv = (vec3(local, 1.0) * mask_proj).xy;
++		gl_FragColor *= texture2D(alpha_mask, uv).a;
++	}
+ 	if (discard_transparent && gl_FragColor.a == 0.0) {
+ 		discard;
+ 	}
+--- a/render/fx_renderer/fx_pass.c
++++ b/render/fx_renderer/fx_pass.c
+@@ -441,7 +441,7 @@
+ 		}
+ 	}
+ 
+-	bool has_alpha = texture->has_alpha || alpha < 1.0 || use_effects;
++	bool has_alpha = texture->has_alpha || alpha < 1.0 || use_effects || fx_options->alpha_mask;
+ 	TRACY_ZONE_TEXT_f("Has Alpha: %d", has_alpha);
+ 	setup_blending(!has_alpha ? WLR_RENDER_BLEND_MODE_NONE : options->blend_mode);
+ 
+@@ -475,7 +475,28 @@
+ 	glUniform1i(shader->tex, 0);
+ 	glUniform1f(shader->alpha, alpha);
+ 
+-	glUniform1f(shader->discard_transparent, fx_options->discard_transparent);
++	glUniform1i(shader->discard_transparent, fx_options->discard_transparent);
++	glUniform1i(shader->has_alpha_mask, fx_options->alpha_mask != NULL);
++	glUniform1i(shader->alpha_mask, 1);
++	if (fx_options->alpha_mask) {
++		const struct wlr_render_texture_options *mask = fx_options->alpha_mask;
++		struct fx_texture *mask_texture = fx_get_texture(mask->texture);
++		struct wlr_fbox mask_src;
++		struct wlr_box mask_dst;
++		wlr_render_texture_options_get_src_box(mask, &mask_src);
++		wlr_render_texture_options_get_dst_box(mask, &mask_dst);
++		mask_src.x /= mask->texture->width;
++		mask_src.y /= mask->texture->height;
++		mask_src.width /= mask->texture->width;
++		mask_src.height /= mask->texture->height;
++		glActiveTexture(GL_TEXTURE1);
++		glBindTexture(GL_TEXTURE_2D, mask_texture->tex);
++		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
++		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
++		set_tex_matrix(shader->mask_proj, mask->transform, &mask_src);
++		glUniform4f(shader->mask_box, mask_dst.x, mask_dst.y, mask_dst.width, mask_dst.height);
++		glActiveTexture(GL_TEXTURE0);
++	}
+ 
+ 	if (use_effects) {
+ 		struct fx_corner_fradii corners = fx_options->corners;
+@@ -496,6 +517,11 @@
+ 	pixman_region32_fini(&clip_region);
+ 
+ 	glBindTexture(texture->target, 0);
++	if (fx_options->alpha_mask) {
++		glActiveTexture(GL_TEXTURE1);
++		glBindTexture(GL_TEXTURE_2D, 0);
++		glActiveTexture(GL_TEXTURE0);
++	}
+ 
+ 	pop_fx_debug(renderer);
+ 	TRACY_BOTH_ZONES_END;
+@@ -1135,8 +1161,13 @@
+ 		fx_texture_from_buffer(&renderer->wlr_renderer, buffer->buffer);
+ 	struct fx_texture *blur_texture = fx_get_texture(wlr_texture);
+ 
+-	// Get a stencil of the window ignoring transparent regions
+-	if (fx_options->ignore_transparent && fx_options->tex_options.base.texture) {
++	// Preserve fractional coverage at client-drawn rounded edges. A binary
++	// stencil replaces even nearly transparent edge pixels with full blur.
++	struct wlr_render_texture_options mask_options = tex_options->base;
++	bool smooth_mask = fx_options->ignore_transparent && mask_options.texture
++		&& fx_get_texture(mask_options.texture)->target == GL_TEXTURE_2D;
++	// External textures retain the existing stencil path.
++	if (!smooth_mask && fx_options->ignore_transparent && mask_options.texture) {
+ 		stencil_mask_init();
+ 
+ 		struct fx_render_texture_options tex_options = fx_options->tex_options;
+@@ -1164,12 +1195,17 @@
+ 	// since we're capturing from the fbo, transform will always be normal
+ 	tex_options->base.transform = WL_OUTPUT_TRANSFORM_NORMAL;
+ 	tex_options->clipped_region = fx_options->clipped_region;
++	tex_options->alpha_mask = smooth_mask ? &mask_options : NULL;
++	if (smooth_mask) {
++		tex_options->base.blend_mode = WLR_RENDER_BLEND_MODE_PREMULTIPLIED;
++	}
+ 	fx_render_pass_add_texture(pass, tex_options);
++	tex_options->alpha_mask = NULL;
+ 
+ 	wlr_texture_destroy(&blur_texture->wlr_texture);
+ 
+ 	// Finish stenciling
+-	if (fx_options->ignore_transparent && fx_options->tex_options.base.texture) {
++	if (!smooth_mask && fx_options->ignore_transparent && fx_options->tex_options.base.texture) {
+ 		stencil_mask_fini();
+ 	}
+ 

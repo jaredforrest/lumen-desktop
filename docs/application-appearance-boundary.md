@@ -51,3 +51,8 @@ tests check retained state and non-mutating inspection commands. Real applicatio
 and portal acceptance must additionally inspect their rendered window trees;
 this document is an ownership rule, not evidence that every retained interior
 has been visually matched.
+
+
+## Consumer file artwork
+
+`LUMEN_FILE_ICON_OVERRIDES` accepts a JSON object mapping an extension (for example `.csv`), a MIME type, or a category (`folder`, `image`, `table`, `audio`, `archive`, `source`, `document`) to an image URL. Extensions take precedence over MIME types, then categories. Consumers supply and own these assets; none are bundled by this interface. Missing or unreadable overrides fall back to the built-in artwork. An empty or malformed object leaves defaults intact. Supply the environment value through the consumer session configuration.

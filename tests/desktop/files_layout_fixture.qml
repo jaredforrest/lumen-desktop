@@ -16,6 +16,8 @@ ShellRoot {
  QtObject {id:stub;property int focusEpoch:0;property var windows:[];property var exportedMenu:exported;function activeFiles(window){}function focusWindow(window){}}
  D.FilesState {id:service;persistViewPreferences:false;path:fixture.base+"/First"}
  D.FilesWindow {id:files;shell:stub;service:service;visible:true}
+ D.FileIcon {id:customIcon;entry:({name:"test.fixture"});width:48;height:54}
+ D.FileIcon {id:brokenIcon;entry:({name:"test.broken"});width:48;height:54}
  function check(value,message){if(!value)throw Error(message+" phase="+phase);}
  function select(){files.choose(0,0);check(files.selectedPaths.length===1,"Selection missing");}
  function walk(item){let result=[item];for(const child of item.children || [])result=result.concat(walk(child));return result;}
@@ -24,7 +26,13 @@ ShellRoot {
  Timer {interval:60;running:true;repeat:true;onTriggered:{try {
   if(++ticks>240)throw Error("Files layout timeout phase="+phase+" busy="+service.busy+" error="+service.error);
   if(!service.ready || service.busy)return;
-  if(phase===0){service.navigate(base+"/First");phase=1;return;}
+  if(phase===0){
+   if(!customIcon.hasPreview || !brokenIcon.overrideFailed)return;
+   check(customIcon.activeOverride.endsWith("/icons/folder.svg"),"Private file artwork was not used");
+   check(brokenIcon.activeOverride==="" && !brokenIcon.hasPreview && brokenIcon.visualWidth>0,"Missing private artwork did not restore built-in icon");
+   check(files.isSelected(-1)===false && files.isSelected(service.rows.length)===false,"Selection boundary is not a boolean");
+   service.navigate(base+"/First");phase=1;return;
+  }
   if(!service.rows.length)return;
   if(phase===1){select();firstId=files.activeTabId;files.newTab();secondId=files.activeTabId;phase=2;return;}
   if(phase===2){service.navigate(base+"/Second");phase=3;return;}

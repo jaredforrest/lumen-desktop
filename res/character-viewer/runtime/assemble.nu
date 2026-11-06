@@ -1,4 +1,4 @@
-def main [binary: path, icons: path, catalogue: path, license: path, bridge: path, palette: path, fontconfig: path, font: path, font_family: string, nu_binary: path, runtime_path: string] {
+def main [binary: path, icons: path, catalogue: path, license: path, bridge: path, palette: path, fontconfig: path, font: path, font_family: string, nu_binary: path, runtime_path: string, pixbuf_loaders: path] {
     let shared = ($env.out | path join share character-viewer)
     let bin = ($env.out | path join bin)
     mkdir $shared
@@ -14,6 +14,7 @@ def main [binary: path, icons: path, catalogue: path, license: path, bridge: pat
 def --wrapped main [...args] {
   ($path_line)
   $env.GDK_BACKEND = "wayland"
+  $env.GDK_PIXBUF_MODULE_FILE = "($pixbuf_loaders)"
   $env.CHARACTER_VIEWER_BRIDGE = "($bridge)"
   $env.CHARACTER_VIEWER_ICONS = "($shared | path join icons)"
   $env.CHARACTER_VIEWER_PALETTE = "($palette)"

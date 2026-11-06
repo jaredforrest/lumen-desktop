@@ -6,6 +6,7 @@ import Quickshell
 import Quickshell.Io
 Singleton {
     id: root
+    readonly property var fileIconOverrides:{try{const value=JSON.parse(Quickshell.env("LUMEN_FILE_ICON_OVERRIDES") || "{}");return value && typeof value==="object" && !Array.isArray(value)?value:({});}catch(error){return ({});}}
     property var preferences: ({mode:"auto",accent:"blue",iconAppearance:"auto",switchToAppSpace:true,dockMagnification:true,reduceMotion:false})
     property var desktopPreferences: ({showFiles:false,fileSort:"name",fileDescending:false})
     property var windowsPreferences: ({rememberOwnedGeometry:false,groupWindowMode:"all_together",tileMargins:true,tileGap:8,titlebarDoubleClick:"fill",edgeTiling:true,optionTiling:true,topEdgeFill:true,topEdgeOverview:true})

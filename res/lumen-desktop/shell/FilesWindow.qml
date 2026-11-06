@@ -128,7 +128,7 @@ FloatingWindow {
     function closeTab(){closeTabId(activeTabId);}
     function duplicateSelected(){if(service.writable && service.path!=="trash:" && selectedPaths.length && !service.working)service.startJob("copy",selectedPaths,service.path,"keep-both");}
     function selectedUris(){return selectedPaths.map(p=>"file://"+p.split("/").map(encodeURIComponent).join("/"));}
-    function isSelected(index){const paths=bandPreviewPaths===null?selectedPaths:bandPreviewPaths;return service.rows[index] && paths.includes(service.rows[index].path);}
+    function isSelected(index){const paths=bandPreviewPaths===null?selectedPaths:bandPreviewPaths;return !!(service.rows[index] && paths.includes(service.rows[index].path));}
     function selectAll(){cancelPendingPresentation();selectedPaths=service.rows.map(r=>r.path);selected=service.rows.length?0:-1;}
     onVisibleChanged:{service.active=visible;if(!visible){previewDelay.stop();service.requestPreview("");}else if(previewOpen || galleryMode)schedulePreview();if(!visible && shell.ownedContext)shell.ownedContext.close(root)}
 
@@ -526,6 +526,8 @@ FloatingWindow {
                 delegate:Rectangle {
                     required property var modelData;required property int index
                     width:Math.max(0,list.width-root.selectionGutter-(listScrollBar.visible?listScrollBar.width:0));height:root.labelRowHeight;radius:5;color:root.isSelected(index)?root.selectionFill:index%2?Theme.colors.background:"transparent"
+                    Rectangle {visible:root.isSelected(index) && root.isSelected(index-1);width:parent.width;height:6;color:root.selectionFill}
+                    Rectangle {visible:root.isSelected(index) && root.isSelected(index+1);y:parent.height-height;width:parent.width;height:6;color:root.selectionFill}
                     FileIcon {x:8;anchors.verticalCenter:parent.verticalCenter;entry:modelData;width:18;height:18}
                     PanelLabel {x:34;anchors.verticalCenter:parent.verticalCenter;width:parent.width*(root.compactMetadata?1:.55)-40;text:FileLinks.markedLabel(modelData);textFormat:Text.PlainText;color:root.isSelected(index)?root.selectionText:Theme.colors.text;font.pixelSize:Theme.textRole("label")}
                     PanelLabel {visible:!root.compactMetadata;x:parent.width*.55+8;anchors.verticalCenter:parent.verticalCenter;width:parent.width*.27-10;text:Qt.formatDateTime(new Date(modelData.mtime*1000),"dd MMM yyyy");font.pixelSize:Theme.textRole("metadata");color:root.isSelected(index)?root.selectionText:Theme.colors.muted}

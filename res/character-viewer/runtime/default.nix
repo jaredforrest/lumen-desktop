@@ -47,6 +47,7 @@ in builtins.derivation {
     fontFamily
     "${pkgs.nushell}/bin/nu"
     "${pkgs.lib.makeBinPath [ pkgs.sway pkgs.wtype pkgs.wl-clipboard pkgs.libnotify ]}"
+    "${pkgs.librsvg}/lib/gdk-pixbuf-2.0/2.10.0/loaders.cache"
   ];
   PATH = pkgs.lib.makeBinPath [ pkgs.coreutils ];
 }

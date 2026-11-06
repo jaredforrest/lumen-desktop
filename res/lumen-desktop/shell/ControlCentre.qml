@@ -19,7 +19,8 @@ Column {
     property var pending:({})
     property string error:""
     readonly property var connectionControls:preferences.order.filter(id=>["wifi","bluetooth","sharing"].includes(id) && !preferences.hidden.includes(id))
-    readonly property var visibleControls:{let grouped=false;return preferences.order.filter(id=>!preferences.hidden.includes(id)).map(id=>{if(!["wifi","bluetooth","sharing"].includes(id))return id;if(grouped)return "";grouped=true;return "connections";}).filter(id=>id!=="");}
+    readonly property var compactControls:preferences.order.filter(id=>["displays","appearance","focus"].includes(id) && !preferences.hidden.includes(id))
+    readonly property var visibleControls:{let grouped=false,compact=false;return preferences.order.filter(id=>!preferences.hidden.includes(id)).map(id=>{if(["displays","appearance","focus"].includes(id)){if(compact)return "";compact=true;return "compact";}if(!["wifi","bluetooth","sharing"].includes(id))return id;if(grouped)return "";grouped=true;return "connections";}).filter(id=>id!=="");}
     readonly property int connectionsHeight:connectionControls.length*48+16
     readonly property bool saving:writer.running
     readonly property var names:({wifi:"Wi-Fi",bluetooth:"Bluetooth",sharing:root.sharingLabel,media:"Now Playing",displays:"Displays",appearance:"Appearance",focus:"Focus",brightness:"Brightness",sound:"Sound"})
@@ -44,8 +45,8 @@ Column {
     }
     GridLayout {visible:!root.editing;width:parent.width;columns:root.singleColumn?1:2;columnSpacing:10;rowSpacing:10
         Repeater {model:root.visibleControls
-            delegate:Loader {required property string modelData;Layout.fillWidth:true;Layout.columnSpan:root.singleColumn || ["focus","brightness","sound"].includes(modelData)?1+(root.singleColumn?0:1):1;Layout.preferredWidth:root.singleColumn || ["focus","brightness","sound"].includes(modelData)?root.width:(root.width-10)/2;Layout.preferredHeight:Math.max(["connections","media"].includes(modelData)?Math.max(134,root.connectionsHeight):62,item?item.implicitHeight:0);Layout.alignment:Qt.AlignTop
-                sourceComponent:({connections:componentConnections,media:componentMedia,displays:componentDisplays,appearance:componentAppearance,focus:componentFocus,brightness:componentBrightness,sound:componentSound})[modelData]
+            delegate:Loader {required property string modelData;Layout.fillWidth:true;Layout.columnSpan:root.singleColumn || ["compact","brightness","sound"].includes(modelData)?1+(root.singleColumn?0:1):1;Layout.preferredWidth:root.singleColumn || ["compact","brightness","sound"].includes(modelData)?root.width:(root.width-10)/2;Layout.preferredHeight:Math.max(["connections","media"].includes(modelData)?Math.max(134,root.connectionsHeight):62,item?item.implicitHeight:0);Layout.alignment:Qt.AlignTop
+                sourceComponent:({connections:componentConnections,compact:componentCompact,media:componentMedia,displays:componentDisplays,appearance:componentAppearance,focus:componentFocus,brightness:componentBrightness,sound:componentSound})[modelData]
             }
         }
     }
@@ -71,6 +72,9 @@ Column {
     }
     PanelLabel {visible:root.error!=="";width:parent.width;wrapMode:Text.WordWrap;text:root.error;color:Theme.colors.muted}
     Item {width:1;height:6}
+    Component {id:componentCompact;GridLayout {columns:root.singleColumn?1:Math.max(1,root.compactControls.length);columnSpacing:8;rowSpacing:8
+        Repeater {model:root.compactControls;Loader {required property string modelData;Layout.fillWidth:true;Layout.preferredHeight:item?item.implicitHeight:92;sourceComponent:({displays:componentDisplays,appearance:componentAppearance,focus:componentFocus})[modelData];onLoaded:item.vertical=true}}
+    }}
     Component {id:componentConnections;PanelSurface {radius:18;color:Theme.colors.surface;border.width:0;layer.enabled:false
         Column {x:6;y:8;width:parent.width-12
             Repeater {model:root.connectionControls
@@ -82,8 +86,8 @@ Column {
     Component {id:componentBluetooth;ControlTile {label:"Bluetooth";symbol:"bluetooth";unavailable:!Bluetooth.defaultAdapter;active:!!Bluetooth.defaultAdapter && Bluetooth.defaultAdapter.enabled;subtitle:active?"On":"Off";onClicked:root.panelRequested("Bluetooth")}}
     Component {id:componentSharing;ControlTile {label:root.sharingLabel;subtitle:root.sharingSubtitle;symbol:"nearby";iconSource:NearbySharingState.iconSource;active:root.sharingActive;unavailable:!root.sharingAvailable;accessibleLabel:root.sharingLabel+" receiving controls";onClicked:{root.shell.claimPopup("");AppLaunch.run(["lumen-nearby-sharing","open"]);}}}
     Component {id:componentMedia;MediaControl {onExpandRequested:root.panelRequested("Now Playing")}}
-    Component {id:componentDisplays;ControlTile {label:"Displays";subtitle:"Settings";symbol:"screen";unavailable:false;onClicked:root.shell.openSettings("Displays")}}
-    Component {id:componentAppearance;ControlTile {label:"Appearance";subtitle:"Settings";symbol:"contrast";unavailable:false;onClicked:root.shell.openSettings("Appearance")}}
+    Component {id:componentDisplays;ControlTile {label:"Displays";subtitle:"";symbol:"screen";unavailable:false;onClicked:root.shell.openSettings("Displays")}}
+    Component {id:componentAppearance;ControlTile {label:"Appearance";subtitle:Theme.dark?"Dark":"Light";symbol:"contrast";unavailable:false;onClicked:root.shell.openSettings("Appearance")}}
     Component {id:componentFocus;ControlTile {label:"Focus";toggle:true;symbol:"moon";unavailable:!root.shell.notifications.available;active:root.shell.notifications.dnd;subtitle:active?root.shell.notifications.focusState.name:"Off";onClicked:root.panelRequested("Focus")}}
     Component {id:componentBrightness;PanelSurface {radius:24;implicitHeight:brightnessContent.implicitHeight+24;BrightnessControl {id:brightnessContent;x:16;y:12;width:parent.width-32}}}
     Component {id:componentSound;PanelSurface {radius:24;implicitHeight:soundContent.implicitHeight+24;SoundControl {id:soundContent;x:16;y:12;width:parent.width-32;shell:root.shell;compact:true}}}

@@ -7,8 +7,8 @@ PanelSurface {
     Accessible.role:Accessible.Pane
     Accessible.name:"Now Playing"
     Accessible.description:root.player?"Media controls for "+root.player.identity:"No media player available"
-    radius: 26
-    implicitHeight:mediaContents.implicitHeight+26
+    radius: 18
+    implicitHeight:mediaContents.implicitHeight+transport.height+38
     property bool expanded:false
     property string selectedPlayer:""
     signal expandRequested()
@@ -27,7 +27,7 @@ PanelSurface {
     Timer {interval:1000;repeat:true;running:root.visible && root.expanded && !!root.player && root.player.isPlaying;onTriggered:root.player.positionChanged()}
     Column {
         id:mediaContents
-        x: 16; y: 13; width: parent.width - 32; spacing: 5
+        x: 12; y: 12; width: parent.width - 24; spacing: 6
         DesktopComboBox {id:sourceSelector;objectName:"media-source";property var choices:[];visible:root.expanded && root.players.length>1;width:parent.width;model:choices.map(row=>row.label);Accessible.name:"Media source";currentIndex:choices.findIndex(row=>row.player===root.player);onActivated:index=>{const chosen=choices[index]?choices[index].player:null;if(chosen && root.players.includes(chosen))root.selectedPlayer=chosen.dbusName;}Component.onCompleted:choices=root.liveSourceChoices
             Connections {target:sourceSelector.popup;function onAboutToShow(){sourceSelector.choices=root.liveSourceChoices;}function onClosed(){Qt.callLater(()=>{if(!sourceSelector.popup.visible)sourceSelector.choices=root.liveSourceChoices;});}}
         }
@@ -42,8 +42,11 @@ PanelSurface {
         PanelLabel {visible:root.expanded && !!root.player && root.player.lengthSupported;width:parent.width;text:root.player?root.duration(root.player.position)+" / "+root.duration(root.player.length):"";font.pixelSize:Theme.textSize(10);color:Theme.colors.muted}
         PanelLabel {visible:root.expanded && !!root.player;width:parent.width;text:root.player && root.player.volumeSupported?"Player volume":"Player volume unavailable";font.pixelSize:Theme.textSize(10);color:Theme.colors.muted}
         SystemSlider {objectName:"media-volume";property var heldPlayer:null;visible:root.expanded && !!root.player;width:parent.width;from:0;to:1;value:root.player && root.player.volumeSupported?root.player.volume:0;enabled:!!root.player && root.player.canControl && root.player.volumeSupported;Accessible.name:"Player volume";onPressedChanged:if(pressed)heldPlayer=root.player;onMoved:root.setPlayerVolume(pressed?heldPlayer:root.player,value)}
+    }
         Row {
-            width: parent.width; spacing: 9
+            id:transport
+            x:(root.width-width)/2;y:root.expanded?mediaContents.y+mediaContents.implicitHeight+8:root.height-height-14
+            width:102;height:24;spacing:9
             Repeater {
                 model: ["previous", "play", "next"]
                 AbstractButton {
@@ -64,5 +67,4 @@ PanelSurface {
                 }
             }
         }
-    }
 }
