@@ -1286,10 +1286,14 @@ context.objects = [
             self.wait_for("Keyboard Up after pointer",||Ok(self.ipc_json("windowLayoutStatus",&[])?["selected"]==5))?;
             self.key(&["-k","Down"])?;
             self.wait_for("Keyboard Down after pointer",||Ok(self.ipc_json("windowLayoutStatus",&[])?["selected"]==6))?;
+            let state=self.ipc_json("windowLayoutStatus",&[])?;let row=&state["rows"][1];
+            let x=number(row,"x")?+number(row,"width")?/2.;let y=number(row,"y")?+number(row,"height")?/2.;
+            self.run_command("swaymsg",&[&format!("seat seat0 cursor set {x} {y}")])?;move_pointer()?;
+            self.wait_for("Pointer returns to Fill after keyboard navigation",||Ok(self.ipc_json("windowLayoutStatus",&[])?["selected"]==1))?;
             self.key(&["-k","Return"])?;
             self.wait_for("Hovered layout activates the captured window",||{
                 let tree=self.tree()?;let Some(after)=find_node(&tree,&|n|n["id"]==*id) else{return Ok(false);};
-                Ok(after["fullscreen_mode"]==0 && integer(&after["rect"],"width")?<integer(&node["rect"],"width")?)
+                Ok(after["fullscreen_mode"]==0 && integer(&after["rect"],"width")?>integer(&node["rect"],"width")?)
             })?;
             self.capture("window-menu-activated.png")?;
         } else {self.key(&["-k","Escape"])?;}

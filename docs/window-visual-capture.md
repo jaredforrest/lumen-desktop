@@ -49,8 +49,10 @@ personal application contents, proprietary artwork or authenticated profiles.
 ## Regression and hardware modes
 
 Add `--verify-window-hover` to require the highlight to follow both pointer
-samples. The fixture then checks Up/Down after pointer input and presses Return
-on Top Left. Its captured application must tile rather than enter fullscreen.
+samples. The fixture then checks Up/Down after pointer input, returns the pointer
+to Fill and presses Return. Its captured application must fill rather than enter
+fullscreen. Fill avoids requiring a large external application's minimum size
+to fit a quarter of a fractionally scaled output.
 The ordinary evidence-only mode still permits recording an unfixed baseline.
 
 Window specimens span most of the output width so the right-hand curve is
