@@ -1,0 +1,13 @@
+--- a/render/fx_renderer/shaders.c
++++ b/render/fx_renderer/shaders.c
+@@ -24,6 +24,9 @@
+ GLuint compile_shader(GLuint type, const GLchar *src) {
+ 	GLuint shader = glCreateShader(type);
+-	glShaderSource(shader, 1, &src, NULL);
++	// Select GLSL ES explicitly. An implicit version can leave the fragment
++	// high-precision feature macro unset on otherwise capable drivers.
++	const GLchar *sources[] = { "#version 100\n", src };
++	glShaderSource(shader, 2, sources, NULL);
+ 	glCompileShader(shader);
+ 
+ 	GLint ok;

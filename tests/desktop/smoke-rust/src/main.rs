@@ -60,6 +60,9 @@ struct Options {
     desktop_widgets: bool,
     menu_only: bool,
     window_visuals: bool,
+    hardware_renderer: bool,
+    verify_window_hover: bool,
+    corner_reference: Option<PathBuf>,
     theme: String,
     inside: bool,
 }
@@ -96,6 +99,9 @@ fn options() -> Result<Options> {
             "--desktop-widgets" => result.desktop_widgets = true,
             "--menu-only" => result.menu_only = true,
             "--window-visuals" => result.window_visuals = true,
+            "--hardware-renderer" => result.hardware_renderer = true,
+            "--verify-window-hover" => result.verify_window_hover = true,
+            "--corner-reference" => result.corner_reference=Some(PathBuf::from(args.next().ok_or("--corner-reference needs capture directory")?)),
             "--theme" => {
                 result.theme = args
                     .next()
@@ -108,6 +114,9 @@ fn options() -> Result<Options> {
         }
     }
     require(!result.output.as_os_str().is_empty(), "--output required")?;
+    require(!result.hardware_renderer || (result.window_visuals && result.effects),"Hardware rendering is limited to the explicit effects window-visual capture")?;
+    require(!result.verify_window_hover || result.window_visuals,"Hover verification requires window visuals")?;
+    require(result.corner_reference.is_none() || result.window_visuals,"Corner comparison requires window visuals")?;
     require(
         ["light", "dark"].contains(&result.theme.as_str()),
         "--theme must be light or dark",
@@ -601,10 +610,10 @@ fn setup(opt: Options) -> Result<Driver> {
         ),
         (
             "WLR_RENDERER_FORCE_SOFTWARE",
-            if opt.effects { "1" } else { "0" }.into(),
+            if opt.effects && !opt.hardware_renderer { "1" } else { "0" }.into(),
         ),
         ("WLR_RENDERER_ALLOW_SOFTWARE", "1".into()),
-        ("LIBGL_ALWAYS_SOFTWARE", "1".into()),
+        ("LIBGL_ALWAYS_SOFTWARE", if opt.hardware_renderer {"0"} else {"1"}.into()),
         ("WLR_LIBINPUT_NO_DEVICES", "1".into()),
         ("QT_QPA_PLATFORM", "wayland".into()),
         ("GDK_BACKEND", "wayland".into()),
@@ -1198,7 +1207,7 @@ context.objects = [
         let mut observed=Value::Null;
         self.wait_for("Disposable application window",||{let tree=self.tree()?;if let Some(node)=find_node(&tree,&|n|n["app_id"].as_str().is_some_and(|id|!id.is_empty() && id!="org.quickshell") && find_node(&before,&|old|old["id"]==n["id"]).is_none()){observed=node.clone();Ok(true)}else{Ok(false)}})?;
         let scale=env::var("LUMEN_RELEASE_SCALE").unwrap_or("1".into()).parse::<f64>()?;
-        let width=(2560.0/scale-100.0).min(1500.0) as i64;let height=(1440.0/scale-160.0).min(1000.0) as i64;
+        let width=(2560.0/scale-100.0).min(if self.opt.window_visuals {2500.0} else {1500.0}) as i64;let height=(1440.0/scale-160.0).min(1000.0) as i64;
         let placement=if kind=="emoji" {"floating enable, move position center, focus".to_owned()} else {format!("floating enable, resize set width {width} px height {height} px, move position center, focus")};
         self.run_command("swaymsg",&[&format!("[con_id={}] {placement}",observed["id"])])?;
         thread::sleep(Duration::from_secs(5));
@@ -1230,6 +1239,27 @@ context.objects = [
         let node=find_node(&tree,&|n|n["id"]==*id).ok_or("Visual specimen disappeared")?;
         save_json(&self.run.join("window-visual-specimen.json"),node)?;
         self.capture("window-corners.png")?;
+        if let Some(reference)=&self.opt.corner_reference {
+            require(env::var("LUMEN_RELEASE_SCALE").unwrap_or("1".into())=="1","Corner reference comparison currently requires 100 percent scale")?;
+            let other=read_json(&reference.join("window-visual-specimen.json"))?;
+            let actual=RgbImage::open(&self.run.join("window-corners.png"))?;
+            let expected=RgbImage::open(&reference.join("window-corners.png"))?;
+            let mut errors=Vec::new();
+            for right in [false,true] {
+                let origin=|n:&Value| -> Result<(usize,usize)> {
+                    let x=integer(&n["rect"],"x")?+if right {integer(&n["rect"],"width")?-12} else {0};
+                    let y=integer(&n["rect"],"y")?-integer(&n["deco_rect"],"height")?;
+                    require(x>=0 && y>=0,"Corner outside capture")?;Ok((x as usize,y as usize))
+                };
+                let (ax,ay)=origin(node)?;let (bx,by)=origin(&other)?;
+                require(ax+12<=actual.width && ay+12<=actual.height && bx+12<=expected.width && by+12<=expected.height,"Corner comparison outside image")?;
+                let mut sum=0u64;
+                for y in 0..12 {for x in 0..12 {for channel in 0..3 {sum+=actual.pixel(ax+x,ay+y)[channel].abs_diff(expected.pixel(bx+x,by+y)[channel]) as u64;}}}
+                errors.push(sum as f64/(12.*12.*3.));
+            }
+            save_json(&self.run.join("corner-comparison.json"),&json!({"meanChannelErrors":errors,"threshold":2.0,"reference":reference,"regionSize":12}))?;
+            require(errors.iter().all(|error|*error<=2.0),format!("Corner pixels diverged from matched renderer reference: {errors:?}"))?;
+        }
         let x=integer(&node["rect"],"x")?+60;
         let y=integer(&node["rect"],"y")?-integer(&node["deco_rect"],"height")?+16;
         self.run_command("swaymsg",&[&format!("seat seat0 cursor set {x} {y}")])?;
@@ -1250,8 +1280,20 @@ context.objects = [
             self.run_command("grim",&["-c",self.run.join(&filename).to_str().ok_or("Capture path")?])?;
             samples.push(json!({"pointerRow":index,"pointer":{"x":x+1.,"y":y},"highlightFollowsPointer":state["selected"].as_u64()==Some(index as u64),"state":state,"image":filename}));
         }
-        self.key(&["-k","Escape"])?;
-        save_json(&self.run.join("window-visuals.json"),&json!({"purpose":"Repeatable issue evidence, not a claim that the reported defects pass","samples":samples,"scale":env::var("LUMEN_RELEASE_SCALE").unwrap_or("1".into()),"applicationProfile":"disposable; no credentials"}))
+        if self.opt.verify_window_hover {
+            require(samples.iter().all(|row|row["highlightFollowsPointer"]==true),"Menu highlight did not follow actual pointer rows")?;
+            self.key(&["-k","Up"])?;
+            self.wait_for("Keyboard Up after pointer",||Ok(self.ipc_json("windowLayoutStatus",&[])?["selected"]==5))?;
+            self.key(&["-k","Down"])?;
+            self.wait_for("Keyboard Down after pointer",||Ok(self.ipc_json("windowLayoutStatus",&[])?["selected"]==6))?;
+            self.key(&["-k","Return"])?;
+            self.wait_for("Hovered layout activates the captured window",||{
+                let tree=self.tree()?;let Some(after)=find_node(&tree,&|n|n["id"]==*id) else{return Ok(false);};
+                Ok(after["fullscreen_mode"]==0 && integer(&after["rect"],"width")?<integer(&node["rect"],"width")?)
+            })?;
+            self.capture("window-menu-activated.png")?;
+        } else {self.key(&["-k","Escape"])?;}
+        save_json(&self.run.join("window-visuals.json"),&json!({"purpose":"Repeatable issue evidence; corner quality remains a visual check","hoverVerified":self.opt.verify_window_hover,"hardwareRendererRequested":self.opt.hardware_renderer,"samples":samples,"scale":env::var("LUMEN_RELEASE_SCALE").unwrap_or("1".into()),"applicationProfile":"disposable; no credentials"}))
     }
     fn release_capture(&mut self, checks: Vec<String>) -> Result<()> {
         if let Ok(scale)=env::var("LUMEN_RELEASE_SCALE") {

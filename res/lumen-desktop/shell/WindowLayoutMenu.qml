@@ -131,6 +131,7 @@ PanelWindow {
                     required property var modelData
                     required property int index
                     width:column.width;height:28
+                    hoverEnabled:true
                     enabled:root.supported
                     Accessible.name:modelData.label
                     text:modelData.label

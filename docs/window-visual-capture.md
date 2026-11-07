@@ -37,11 +37,42 @@ and `window-visuals.json` with pointer positions, menu geometry and selected row
 The read-only `desktop.windowLayoutStatus` IPC method supplies production bounds;
 the fixture does not set selection or substitute a fake menu.
 
-Exit success means evidence collection completed, not that either visual defect
-is fixed. Inspect `highlightFollowsPointer` and the original pixels. On the
+Without verification flags, exit success means evidence collection completed,
+not that either visual defect is fixed. Inspect `highlightFollowsPointer` and the original pixels. On the
 initial dark baseline, both pointer samples reproduced the selection staying on
 row zero. Corner quality remains a visual check: the fixture does not pretend
 that a screenshot's existence establishes correct antialiasing or GPU parity.
 
 Live issue captures belong to the consumer's private collection. Do not commit
 personal application contents, proprietary artwork or authenticated profiles.
+
+## Regression and hardware modes
+
+Add `--verify-window-hover` to require the highlight to follow both pointer
+samples. The fixture then checks Up/Down after pointer input and presses Return
+on Top Left. Its captured application must tile rather than enter fullscreen.
+The ordinary evidence-only mode still permits recording an unfixed baseline.
+
+Window specimens span most of the output width so the right-hand curve is
+tested beyond 2048 physical pixels. Software rendering remains the default.
+`--hardware-renderer` is accepted only with `--window-visuals --effects`; select
+the consumer's EGL vendor after entering the development shell when needed.
+Keep `sway.log`, whose EGL/GL renderer lines identify the actual device. A
+hardware request alone is not proof that the driver used acceleration.
+
+At 100% scale, `--corner-reference /path/to/matched/software-capture` compares
+both 12×12 title-bar corner regions with that capture's original PNG and native
+window geometry. It retains per-corner mean channel errors and requires each to
+stay within two byte values. Match wallpaper, application and styling between
+the two runs. This is a renderer regression comparison, not a general aesthetic
+score. The original wide NVIDIA case exceeds four values on the right corner
+while the left stays below one.
+
+The renderer now prefixes its vertex and fragment sources with `#version 100`,
+the language version their syntax targets. On the tested NVIDIA GLES context,
+the implicit source version left `GL_FRAGMENT_PRECISION_HIGH` undefined despite
+23-bit high-float support; an explicit version restores the precision branch.
+With matched 2462-pixel-wide specimens, the old right corner's mean byte error
+was 4.546 against software and the corrected result was 0.012. The reference
+test rejects the old renderer and accepts the corrected renderer. This evidence
+is scoped to the tested driver and capture; it does not claim all GPUs are exact.
