@@ -23,6 +23,11 @@ PanelWindow {
     property real anchorX: 0
     property real anchorY: 0
     property int selected: 0
+    function captureStatus() {
+        return {visible:visible,supported:supported,target:target,selected:selected,
+            card:{x:card.x+(screen?screen.x:0),y:card.y+(screen?screen.y:0),width:card.width,height:card.height},
+            rows:choices.map((choice,index)=>({label:choice.label,x:card.x+(screen?screen.x:0)+6,y:card.y+(screen?screen.y:0)+6+index*28,width:column.width,height:28}))};
+    }
     readonly property bool overTrigger: background.containsMouse && Math.abs(background.mouseX-(anchorX-(screen?screen.x:0)))<=14 && Math.abs(background.mouseY-(anchorY-(screen?screen.y:0)))<=14
     readonly property var choices: [
         {label:"Enter Full Screen",action:"fullscreen"},

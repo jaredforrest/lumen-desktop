@@ -7,6 +7,7 @@ use std::env;
 use std::error::Error;
 use std::ffi::OsString;
 use std::fs::{self, File};
+use std::io::Write;
 use std::os::unix::fs::{PermissionsExt, symlink};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
@@ -58,6 +59,7 @@ struct Options {
     effects: bool,
     desktop_widgets: bool,
     menu_only: bool,
+    window_visuals: bool,
     theme: String,
     inside: bool,
 }
@@ -93,6 +95,7 @@ fn options() -> Result<Options> {
             "--effects" => result.effects = true,
             "--desktop-widgets" => result.desktop_widgets = true,
             "--menu-only" => result.menu_only = true,
+            "--window-visuals" => result.window_visuals = true,
             "--theme" => {
                 result.theme = args
                     .next()
@@ -778,6 +781,9 @@ context.objects = [
         if self.opt.effects {
             config.push_str("corner_radius 12\nshadows enable\nshadow_blur_radius 28\nanimation_duration_ms 0\nblur enable\nblur_xray disable\nlayer_effects \"lumen-dock\" \"blur enable; blur_ignore_transparent enable; corner_radius 0\"\nlayer_effects \"lumen-menu-popup\" \"blur enable; blur_ignore_transparent enable\"\n");
         }
+        if self.opt.window_visuals {
+            config.push_str("default_floating_border normal 1\n");
+        }
         let conf = self.run.join("sway.conf");
         write(&conf, config)?;
         let sway = resolve_command(&self.opt.sway, self.vars.get("PATH").ok_or("PATH missing")?)?;
@@ -1176,7 +1182,9 @@ context.objects = [
     fn review_application_capture(&mut self,kind:&str,variable:&str) -> Result<()> {
         let Some(binary)=env::var_os(variable) else{return Ok(());};
         let binary=PathBuf::from(binary);require(binary.starts_with("/nix/store") && binary.is_file(),"Immutable review application required")?;
-        self.run_command("swaymsg",&["[app_id=\"org.quickshell\"] move scratchpad"])?;
+        if find_node(&self.tree()?,&|n|n["app_id"]=="org.quickshell").is_some() {
+            self.run_command("swaymsg",&["[app_id=\"org.quickshell\"] move scratchpad"])?;
+        }
         let before=self.tree()?;let profile=self.run.join("data").join(format!("review-{kind}"));fs::create_dir_all(&profile)?;
         let previous_vars=self.vars.clone();self.vars.retain(|key,_|!key.starts_with("CODEX_") && !key.starts_with("OPENAI_"));
         self.vars.insert("CODEX_HOME".into(),profile.join("codex-home").display().to_string());
@@ -1200,7 +1208,50 @@ context.objects = [
         thread::sleep(Duration::from_millis(700));self.capture(&format!("{kind}-app.png"))?;
         save_json(&self.run.join(format!("{kind}-tree.json")),&self.tree()?)?;
         save_json(&self.run.join(format!("{kind}-capture.json")),&json!({"window":observed["name"],"profile":"disposable","credentialsProvided":false}))?;
+        if self.opt.window_visuals {self.window_visual_capture(&observed)?;}
         self.processes.truncate(process_count);self.vars=previous_vars;Ok(())
+    }
+    fn window_visual_capture(&self, observed:&Value) -> Result<()> {
+        let log=File::create(self.run.join("window-visual-pointer.log"))?;
+        let mut pointer=Managed(Command::new(env!("LUMEN_SMOKE_POINTER"))
+            .args(["pointer","move","0","0"]).env_clear().envs(&self.vars)
+            .stdin(Stdio::piped()).stdout(Stdio::from(log.try_clone()?)).stderr(Stdio::from(log))
+            .process_group(0).spawn()?);
+        let mut move_pointer=|| -> Result<()> {
+            let input=pointer.0.stdin.as_mut().ok_or("Persistent pointer input missing")?;
+            input.write_all(b"m 1 0\n")?;input.flush()?;
+            thread::sleep(Duration::from_millis(100));Ok(())
+        };
+        move_pointer()?;
+        let id=&observed["id"];
+        self.run_command("swaymsg",&[&format!("[con_id={id}] border normal 1, focus")])?;
+        thread::sleep(Duration::from_millis(350));
+        let tree=self.tree()?;
+        let node=find_node(&tree,&|n|n["id"]==*id).ok_or("Visual specimen disappeared")?;
+        save_json(&self.run.join("window-visual-specimen.json"),node)?;
+        self.capture("window-corners.png")?;
+        let x=integer(&node["rect"],"x")?+60;
+        let y=integer(&node["rect"],"y")?-integer(&node["deco_rect"],"height")?+16;
+        self.run_command("swaymsg",&[&format!("seat seat0 cursor set {x} {y}")])?;
+        move_pointer()?;
+        self.wait_for("Native green-button menu",||Ok(self.ipc_json("windowLayoutStatus",&[])?["visible"]==true))?;
+        let mut samples=Vec::new();
+        for index in [1usize,6usize] {
+            let before=self.ipc_json("windowLayoutStatus",&[])?;
+            let row=&before["rows"][index];
+            let x=number(row,"x")?+number(row,"width")?/2.;
+            let y=number(row,"y")?+number(row,"height")?/2.;
+            self.run_command("swaymsg",&[&format!("seat seat0 cursor set {x} {y}")])?;
+            move_pointer()?;
+            thread::sleep(Duration::from_millis(350));
+            let state=self.ipc_json("windowLayoutStatus",&[])?;
+            require(state["visible"]==true,"Layout menu closed before capture")?;
+            let filename=format!("window-menu-hover-{index}.png");
+            self.run_command("grim",&["-c",self.run.join(&filename).to_str().ok_or("Capture path")?])?;
+            samples.push(json!({"pointerRow":index,"pointer":{"x":x+1.,"y":y},"highlightFollowsPointer":state["selected"].as_u64()==Some(index as u64),"state":state,"image":filename}));
+        }
+        self.key(&["-k","Escape"])?;
+        save_json(&self.run.join("window-visuals.json"),&json!({"purpose":"Repeatable issue evidence, not a claim that the reported defects pass","samples":samples,"scale":env::var("LUMEN_RELEASE_SCALE").unwrap_or("1".into()),"applicationProfile":"disposable; no credentials"}))
     }
     fn release_capture(&mut self, checks: Vec<String>) -> Result<()> {
         if let Ok(scale)=env::var("LUMEN_RELEASE_SCALE") {
@@ -1530,6 +1581,14 @@ context.objects = [
     fn execute(mut self) -> Result<()> {
         if env::var_os("LUMEN_RELEASE_CAPTURE").is_some() {self.review_providers()?;}
         let capabilities = self.compositor()?;
+        if self.opt.window_visuals {
+            require(env::var_os("LUMEN_REVIEW_CODEX_BIN").is_some(),"Window visuals require an explicit immutable application binary")?;
+            let scale=env::var("LUMEN_RELEASE_SCALE").unwrap_or("1".into());
+            require(["1","1.25","1.5"].contains(&scale.as_str()),"Unsupported visual scale")?;
+            self.run_command("swaymsg",&[&format!("output HEADLESS-1 resolution 2560x1440 scale {scale}")])?;
+            save_json(&self.run.join("review-qhd.json"),&json!({"width":2560,"height":1440,"scale":scale}))?;
+            return self.review_application_capture("codex","LUMEN_REVIEW_CODEX_BIN");
+        }
         if env::var_os("LUMEN_RELEASE_CAPTURE").is_some() {
             let notification=PathBuf::from(self.vars.get("LUMEN_NOTIFICATION_HELPER").ok_or("Pinned notification service missing")?);
             self.launch(&notification,&["serve"],"review-notifications")?;

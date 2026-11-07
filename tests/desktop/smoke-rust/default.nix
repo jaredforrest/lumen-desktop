@@ -8,4 +8,5 @@
     cp ${../browser-workflows-rust/src/keyboard.rs} src/keyboard.rs
   '';
   LUMEN_SMOKE_KEYBOARD = "${import ../physical_keyboard_driver.nix { inherit pkgs; }}/bin/lumen-test-physical-keyboard";
+  LUMEN_SMOKE_POINTER = "${import ../pointer_driver.nix { inherit pkgs; }}/bin/wlrctl";
 }

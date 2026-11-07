@@ -383,6 +383,7 @@ ShellRoot {
         function menuOn(name:string, outputName:string):void {root.showMenu(name,outputName);}
         function audioKey(action:string):void {root.audioKey(action);}
         function controlsStatus():string {return JSON.stringify({audio:{available:audio.available,level:audio.level,muted:audio.muted,outputs:audio.outputs.map(n=>n.description)},wifiAvailable:controls.wifi.available,focus:{available:notificationState.available,enabled:notificationState.dnd}});}
+        function windowLayoutStatus():string {return JSON.stringify(windowLayoutMenu.captureStatus());}
         function notificationCentre(action:string):void {
             if(!["open","close","toggle"].includes(action))return;
             const name=root.preferredOutput(),bar=root.bars[name];if(!bar)return;
