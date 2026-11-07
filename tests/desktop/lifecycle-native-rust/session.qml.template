@@ -12,14 +12,12 @@ ShellRoot {
  Connections {target:lifecycle.observer.stderr;function onStreamFinished(){audit.record("provider-stderr",lifecycle.observer.stderr.text.slice(0,1024));}}
  D.SessionOptions {id:options;lifecycle:lifecycle}
  IpcHandler {target:"sessionAudit"
-  function begin():void{options.show("reboot");options.confirm();}
+  function begin():void{options.show("reboot");}
   function confirm():void{options.confirm();}
-  function showPoweroff():void{options.show("poweroff");options.confirm();}
-  function confirmAfterSaving():void{options.confirmAfterSaving();}
-  function acknowledgeSaved():void{options.savedWorkConfirmed=true;}
+  function showPoweroff():void{options.show("poweroff");}
   function cancel():void{options.dismiss();}
   function retireObserver():void{lifecycle.observer.running=false;}
   function authorize(token:string):void{lifecycle.sessionCommand("session_authorize",token);}
-  function status():string{return JSON.stringify({available:lifecycle.available,session:lifecycle.session,applications:lifecycle.applications,visible:options.visible,error:options.error,manualConfirmation:options.manualConfirmation,savedWorkConfirmed:options.savedWorkConfirmed,transitions:audit.transitions,authorizationCount:audit.authorizationCount});}
+  function status():string{return JSON.stringify({available:lifecycle.available,session:lifecycle.session,applications:lifecycle.applications,visible:options.visible,error:options.error,height:options.height,implicitHeight:options.implicitHeight,transitions:audit.transitions,authorizationCount:audit.authorizationCount});}
  }
 }

@@ -5,61 +5,43 @@ import Quickshell
 import Quickshell.Io
 FloatingWindow {
  id:root;title:"Session Options";visible:false;color:"transparent"
- implicitWidth:420;implicitHeight:300;minimumSize:Qt.size(320,280)
+ implicitWidth:420
+ implicitHeight:confirmationContents.height+(Theme.nativeWindowFrame?18:62)+20
+ minimumSize:Qt.size(implicitWidth,Math.ceil(implicitHeight))
+ maximumSize:minimumSize
  property string action:""
  readonly property var labels:({suspend:"Sleep",reboot:"Restart",poweroff:"Shut Down",logout:"Log Out"})
  readonly property var commands:({suspend:["systemctl","suspend"],reboot:["systemctl","reboot"],poweroff:["systemctl","poweroff"],logout:["swaymsg","exit"]})
  property string error:""
- signal confirmed(string action)
  property bool executeActions:true
+ // Kept as a consumer-compatible property; normal session actions do not
+ // require every open application to implement the native Quit protocol.
  property var lifecycle:null
- property bool preflighting:false
- property bool authorizing:false
- property string authorizationToken:""
- property bool manualConfirmation:false
- property bool savedWorkConfirmed:false
- readonly property bool canConfirmAfterSaving:action!=="suspend" && !worker.running && !authorizing && preflight.phase!=="waiting" && preflight.phase!=="checking" && (!!error || preflight.phase==="blocked")
- readonly property var preflight:lifecycle && preflighting?lifecycle.session:({phase:"idle",token:"",error:""})
- function dismiss(){if(worker.running)return;manualConfirmation=false;savedWorkConfirmed=false;authorizing=false;authorizationToken="";preflighting=false;if(lifecycle)lifecycle.sessionCommand("session_cancel","");visible=false;}
- function show(value){if(!labels[value] || worker.running)return;dismiss();action=value;error="";visible=true;Qt.callLater(()=>{cancel.forceActiveFocus();if(body.Window.window)body.Window.window.requestActivate();});}
- function confirmAfterSaving(){if(!canConfirmAfterSaving)return;if(lifecycle)lifecycle.sessionCommand("session_cancel","");preflighting=false;manualConfirmation=true;savedWorkConfirmed=false;error="";}
- function execute(){confirmed(action);if(!executeActions){visible=false;return;}worker.command=commands[action];worker.running=true;}
+ signal confirmed(string action)
+ function dismiss(){if(worker.running)return;visible=false;}
+ function show(value){if(!labels[value] || worker.running)return;action=value;error="";visible=true;Qt.callLater(()=>{cancel.forceActiveFocus();if(body.Window.window)body.Window.window.requestActivate();});}
  function confirm(){
-  if(manualConfirmation){if(savedWorkConfirmed && !worker.running)execute();return;}
-  if(!commands[action] || worker.running || authorizing || (preflighting && preflight.phase==="idle"))return;
-  if(action==="suspend"){execute();return;}
-  if(!lifecycle || !lifecycle.available){error="Application observation is unavailable. The session remains open.";return;}
-  if(preflight.phase==="waiting" || preflight.phase==="checking")return;
-  if(preflight.phase==="ready"){
-   authorizationToken=preflight.token;authorizing=true;lifecycle.sessionCommand("session_authorize",authorizationToken);
-  }else{error="";preflighting=true;lifecycle.sessionCommand("session_begin",action);}
+  if(!visible || !commands[action] || worker.running)return;
+  confirmed(action);
+  if(!executeActions){visible=false;return;}
+  error="";worker.command=commands[action];worker.running=true;
  }
- Connections {target:root.lifecycle;ignoreUnknownSignals:true
-  function onSessionChanged(){if(root.lifecycle.session.phase==="blocked")root.authorizing=false;}
-  function onAvailableChanged(){if(!root.lifecycle.available){root.authorizing=false;root.preflighting=false;root.error="Application observation was lost. The session remains open.";}}
-  function onSessionAuthorized(authorization){
-   if(!root.visible || !root.authorizing || authorization.token!==root.authorizationToken || authorization.action!==root.action)return;
-   root.authorizing=false;root.authorizationToken="";root.preflighting=false;root.execute();
-  }
- }
- onVisibleChanged:if(!visible && !worker.running){authorizing=false;authorizationToken="";preflighting=false;if(lifecycle)lifecycle.sessionCommand("session_cancel","");}
- Rectangle {id:body;Accessible.role:Accessible.Dialog;Accessible.name:(root.labels[root.action] || "Session")+" confirmation";Accessible.description:root.preflight.phase==="waiting"?"Waiting for "+root.preflight.waiting+" to finish. Cancel keeps the session open.":root.preflight.phase==="ready"?"Applications have quit. Final confirmation is required.":"Session actions require explicit confirmation.";anchors.fill:parent;color:Theme.colors.background;radius:Theme.nativeWindowFrame?0:12
+ Rectangle {id:body;Accessible.role:Accessible.Dialog;Accessible.name:(root.labels[root.action] || "Session")+" confirmation";Accessible.description:"Confirm or cancel this session action.";anchors.fill:parent;color:Theme.colors.background;radius:Theme.nativeWindowFrame?0:12
   MouseArea {width:parent.width;height:48;onPressed:body.Window.window.startSystemMove()}
   WindowControls {windowActive:body.Window.window?body.Window.window.active:false;windowName:"Session Options";canMinimize:false;canFullscreen:false;onTriggered:root.dismiss()}
-  FocusFlickable {objectName:"session-confirmation-viewport";x:24;y:Theme.nativeWindowFrame?18:62;width:parent.width-48;height:parent.height-y-20;contentWidth:width;contentHeight:confirmationContents.height;clip:true;boundsBehavior:Flickable.StopAtBounds;ScrollBar.vertical:DesktopScrollBar {}
-  Column {id:confirmationContents;width:parent.width;spacing:14
+  Column {id:confirmationContents;x:24;y:Theme.nativeWindowFrame?18:62;width:parent.width-48;spacing:14
    PanelLabel {width:parent.width;text:(root.labels[root.action] || "Session")+"?";font.pixelSize:Theme.textSize(20);font.weight:Font.DemiBold}
-   PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:root.manualConfirmation?"Save your work in all applications before continuing. Unsaved changes may be lost.":root.action==="suspend"?"Your session will be available when this computer wakes.":root.preflight.phase==="waiting"?"Waiting for "+root.preflight.waiting+". Resolve its own Save, Discard or Cancel prompt. You can cancel this session action at any time.":root.preflight.phase==="ready"?"Applications have quit. Confirm once more to complete this session action.":"Applications will be asked to quit using their own Save and Cancel controls. Unsupported applications keep the session open."}
-   CheckBox {objectName:"session-saved-work-confirmation";visible:root.manualConfirmation;text:"I have saved my work";checked:root.savedWorkConfirmed;onToggled:root.savedWorkConfirmed=checked}
-   DialogButton {visible:root.canConfirmAfterSaving && !root.manualConfirmation;text:(root.labels[root.action] || "Continue")+" After Saving…";onClicked:root.confirmAfterSaving()}
-   StatusMessage {width:parent.width;text:root.error || root.preflight.error;severity:"error"}
+   PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:root.action==="suspend"?"Your session will be available when this computer wakes.":"Save your work before continuing. Your open applications will close."}
+   StatusMessage {width:parent.width;text:root.error;severity:"error"}
    Row {anchors.right:parent.right;spacing:10
     DialogButton {id:cancel;text:"Cancel";enabled:!worker.running;onClicked:root.dismiss()}
-    DialogButton {text:root.preflight.phase==="waiting"?"Waiting…":(root.manualConfirmation || root.preflight.phase==="ready")?(root.labels[root.action] || "Continue"):root.action==="suspend"?"Sleep":"Continue";primary:root.action==="suspend";defaultAction:false;destructive:root.action!=="suspend";enabled:!worker.running && !root.authorizing && (root.manualConfirmation?root.savedWorkConfirmed:root.preflight.phase!=="waiting" && root.preflight.phase!=="checking");onClicked:root.confirm()}
+    DialogButton {text:root.labels[root.action] || "Continue";primary:root.action==="suspend";defaultAction:false;destructive:root.action!=="suspend";enabled:!worker.running;onClicked:root.confirm()}
    }
-  }
   }
   Shortcut {sequence:"Escape";onActivated:root.dismiss()}
  }
- Process {id:worker;stderr:StdioCollector {onStreamFinished:if(text.trim())root.error="The session action could not be completed. Check your system permissions."}onExited:(code,status)=>{if(code===0)root.visible=false;else root.error="The session action could not be completed. Try again after saving your work."}}
+ Process {id:worker
+  stderr:StdioCollector {id:failureOutput;onStreamFinished:if(text.trim())root.error=text.trim()}
+  onExited:(code,status)=>{if(code===0)root.visible=false;else root.error=failureOutput.text.trim() || "The system did not accept the request."}
+ }
 }

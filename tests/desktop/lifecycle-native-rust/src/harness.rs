@@ -445,7 +445,7 @@ impl Fixture {
         fs::write(
             &config,
             format!(
-                "output HEADLESS-1 resolution {size}\nxwayland disable\nseat seat0 fallback true\nfocus_follows_mouse no\n"
+                "output HEADLESS-1 resolution {size}\nxwayland disable\nseat seat0 fallback true\nfocus_follows_mouse no\nfor_window [title=\"^Session Options$\"] floating enable, border none\n"
             ),
         )?;
         let sway = self.options.sway.clone();
