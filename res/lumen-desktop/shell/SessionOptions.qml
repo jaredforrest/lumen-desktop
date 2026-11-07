@@ -16,11 +16,16 @@ FloatingWindow {
  property bool preflighting:false
  property bool authorizing:false
  property string authorizationToken:""
+ property bool manualConfirmation:false
+ property bool savedWorkConfirmed:false
+ readonly property bool canConfirmAfterSaving:action!=="suspend" && !worker.running && !authorizing && preflight.phase!=="waiting" && preflight.phase!=="checking" && (!!error || preflight.phase==="blocked")
  readonly property var preflight:lifecycle && preflighting?lifecycle.session:({phase:"idle",token:"",error:""})
- function dismiss(){if(worker.running)return;authorizing=false;authorizationToken="";preflighting=false;if(lifecycle)lifecycle.sessionCommand("session_cancel","");visible=false;}
+ function dismiss(){if(worker.running)return;manualConfirmation=false;savedWorkConfirmed=false;authorizing=false;authorizationToken="";preflighting=false;if(lifecycle)lifecycle.sessionCommand("session_cancel","");visible=false;}
  function show(value){if(!labels[value] || worker.running)return;dismiss();action=value;error="";visible=true;Qt.callLater(()=>{cancel.forceActiveFocus();if(body.Window.window)body.Window.window.requestActivate();});}
+ function confirmAfterSaving(){if(!canConfirmAfterSaving)return;if(lifecycle)lifecycle.sessionCommand("session_cancel","");preflighting=false;manualConfirmation=true;savedWorkConfirmed=false;error="";}
  function execute(){confirmed(action);if(!executeActions){visible=false;return;}worker.command=commands[action];worker.running=true;}
  function confirm(){
+  if(manualConfirmation){if(savedWorkConfirmed && !worker.running)execute();return;}
   if(!commands[action] || worker.running || authorizing || (preflighting && preflight.phase==="idle"))return;
   if(action==="suspend"){execute();return;}
   if(!lifecycle || !lifecycle.available){error="Application observation is unavailable. The session remains open.";return;}
@@ -44,11 +49,13 @@ FloatingWindow {
   FocusFlickable {objectName:"session-confirmation-viewport";x:24;y:Theme.nativeWindowFrame?18:62;width:parent.width-48;height:parent.height-y-20;contentWidth:width;contentHeight:confirmationContents.height;clip:true;boundsBehavior:Flickable.StopAtBounds;ScrollBar.vertical:DesktopScrollBar {}
   Column {id:confirmationContents;width:parent.width;spacing:14
    PanelLabel {width:parent.width;text:(root.labels[root.action] || "Session")+"?";font.pixelSize:Theme.textSize(20);font.weight:Font.DemiBold}
-   PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:root.action==="suspend"?"Your session will be available when this computer wakes.":root.preflight.phase==="waiting"?"Waiting for "+root.preflight.waiting+". Resolve its own Save, Discard or Cancel prompt. You can cancel this session action at any time.":root.preflight.phase==="ready"?"Applications have quit. Confirm once more to complete this session action.":"Applications will be asked to quit using their own Save and Cancel controls. Unsupported applications keep the session open."}
+   PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:root.manualConfirmation?"Save your work in all applications before continuing. Unsaved changes may be lost.":root.action==="suspend"?"Your session will be available when this computer wakes.":root.preflight.phase==="waiting"?"Waiting for "+root.preflight.waiting+". Resolve its own Save, Discard or Cancel prompt. You can cancel this session action at any time.":root.preflight.phase==="ready"?"Applications have quit. Confirm once more to complete this session action.":"Applications will be asked to quit using their own Save and Cancel controls. Unsupported applications keep the session open."}
+   CheckBox {objectName:"session-saved-work-confirmation";visible:root.manualConfirmation;text:"I have saved my work";checked:root.savedWorkConfirmed;onToggled:root.savedWorkConfirmed=checked}
+   DialogButton {visible:root.canConfirmAfterSaving && !root.manualConfirmation;text:(root.labels[root.action] || "Continue")+" After Saving…";onClicked:root.confirmAfterSaving()}
    StatusMessage {width:parent.width;text:root.error || root.preflight.error;severity:"error"}
    Row {anchors.right:parent.right;spacing:10
     DialogButton {id:cancel;text:"Cancel";enabled:!worker.running;onClicked:root.dismiss()}
-    DialogButton {text:root.preflight.phase==="waiting"?"Waiting…":root.preflight.phase==="ready"?(root.labels[root.action] || "Continue"):root.action==="suspend"?"Sleep":"Continue";primary:root.action==="suspend";defaultAction:false;destructive:root.action!=="suspend";enabled:!worker.running && !root.authorizing && root.preflight.phase!=="waiting" && root.preflight.phase!=="checking";onClicked:root.confirm()}
+    DialogButton {text:root.preflight.phase==="waiting"?"Waiting…":(root.manualConfirmation || root.preflight.phase==="ready")?(root.labels[root.action] || "Continue"):root.action==="suspend"?"Sleep":"Continue";primary:root.action==="suspend";defaultAction:false;destructive:root.action!=="suspend";enabled:!worker.running && !root.authorizing && (root.manualConfirmation?root.savedWorkConfirmed:root.preflight.phase!=="waiting" && root.preflight.phase!=="checking");onClicked:root.confirm()}
    }
   }
   }

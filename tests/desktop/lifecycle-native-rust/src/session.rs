@@ -189,6 +189,30 @@ pub fn run(options: Options) -> Result<()> {
         fs::read_to_string(&marker)?.lines().collect::<Vec<_>>() == vec!["reboot"],
         "Host stub repeated asynchronously",
     )?;
+    // The host command is a disposable stub: never power off the test host.
+    fs::remove_file(f.options.output.join("client-state.json"))?;
+    let third = f.launch(&client, &[&output], "client-manual.log")?;
+    wait_true("manual-route client tracked", || application(&f))?;
+    f.ipc("sessionAudit", "retireObserver", &[])?;
+    wait_true("manual-route observer unavailable", || Ok(state(&f)?["available"] == false))?;
+    f.ipc("sessionAudit", "showPoweroff", &[])?;
+    f.ipc("sessionAudit", "confirmAfterSaving", &[])?;
+    require(state(&f)?["manualConfirmation"] == true, "Explicit save-first route unavailable")?;
+    f.ipc("sessionAudit", "confirm", &[])?;
+    pause(200);
+    require(fs::read_to_string(&marker)?.lines().count() == 1, "Poweroff occurred without saved-work acknowledgement")?;
+    f.ipc("sessionAudit", "cancel", &[])?;
+    require(state(&f)?["savedWorkConfirmed"] == false, "Cancel retained acknowledgement")?;
+    // Repeat the explicit save-first route after cancellation.
+    f.ipc("sessionAudit", "showPoweroff", &[])?;
+    wait_true("manual route reports blocked or missing observer", || {
+        let s=state(&f)?;Ok(s["session"]["phase"] == "blocked" || s["error"].as_str().is_some_and(|e|!e.is_empty()))
+    })?;
+    f.ipc("sessionAudit", "confirmAfterSaving", &[])?;
+    f.ipc("sessionAudit", "acknowledgeSaved", &[])?;
+    f.ipc("sessionAudit", "confirm", &[])?;
+    wait_true("explicit saved-work poweroff stub", || Ok(fs::read_to_string(&marker)?.lines().collect::<Vec<_>>() == vec!["reboot","poweroff"]))?;
+    require(f.processes[third].alive()?, "Manual confirmation directly killed an application")?;
     save(
         &f.options.output.join("result.json"),
         &json!({"passed":true,"checks":[
@@ -197,7 +221,8 @@ pub fn run(options: Options) -> Result<()> {
             "owned observer loss cancels authorization; reconnect refuses retired token and requires fresh user preflight",
             "save persists document",
             "no implicit final action after ready or cancellation",
-            "explicit fresh confirmation invokes injected final-action stub once"
+            "explicit fresh confirmation invokes injected final-action stub once",
+            "manual route requires saved-work acknowledgement; cancellation clears it; only injected poweroff stub executes"
         ]}),
     )?;
     Ok(())

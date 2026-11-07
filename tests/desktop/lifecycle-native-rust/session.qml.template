@@ -14,9 +14,12 @@ ShellRoot {
  IpcHandler {target:"sessionAudit"
   function begin():void{options.show("reboot");options.confirm();}
   function confirm():void{options.confirm();}
+  function showPoweroff():void{options.show("poweroff");options.confirm();}
+  function confirmAfterSaving():void{options.confirmAfterSaving();}
+  function acknowledgeSaved():void{options.savedWorkConfirmed=true;}
   function cancel():void{options.dismiss();}
   function retireObserver():void{lifecycle.observer.running=false;}
   function authorize(token:string):void{lifecycle.sessionCommand("session_authorize",token);}
-  function status():string{return JSON.stringify({available:lifecycle.available,session:lifecycle.session,applications:lifecycle.applications,visible:options.visible,error:options.error,transitions:audit.transitions,authorizationCount:audit.authorizationCount});}
+  function status():string{return JSON.stringify({available:lifecycle.available,session:lifecycle.session,applications:lifecycle.applications,visible:options.visible,error:options.error,manualConfirmation:options.manualConfirmation,savedWorkConfirmed:options.savedWorkConfirmed,transitions:audit.transitions,authorizationCount:audit.authorizationCount});}
  }
 }
