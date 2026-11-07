@@ -13,7 +13,7 @@ in pkgs.writeTextFile {
   text = ''
     #!${pkgs.nushell}/bin/nu
     def --wrapped main [...args] {
-      $env.PATH = ((${builtins.toJSON (pkgs.lib.makeBinPath [ pkgs.coreutils pkgs.systemd pkgs.sway pkgs.ddcutil bluetoothPower powerStatus networkConnectivity ])} | split row ':') ++ $env.PATH)
+      $env.PATH = ((${builtins.toJSON (pkgs.lib.makeBinPath [ pkgs.coreutils pkgs.systemd pkgs.sway pkgs.brightnessctl pkgs.ddcutil bluetoothPower powerStatus networkConnectivity ])} | split row ':') ++ $env.PATH)
       exec ${binary}/bin/lumen-system-controls ...$args
     }
   '';

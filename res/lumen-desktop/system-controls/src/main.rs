@@ -144,12 +144,28 @@ fn vcp_level(output:&str) -> Option<(f64,u32)> {
     let current=values.next()?.parse::<u32>().ok()?;let maximum=values.next()?.parse::<u32>().ok()?;
     (maximum>0).then_some((current as f64/maximum as f64,maximum))
 }
+fn backlight_name(bus:&str) -> Option<&str> {
+    bus.strip_prefix("backlight:").filter(|name|!name.is_empty() && name.bytes().all(|b|b.is_ascii_alphanumeric() || b==b'_' || b==b'-'))
+}
+fn backlight_device(root:&Path, name:&str) -> Option<Value> {
+    let directory=root.join(name);
+    let maximum=fs::read_to_string(directory.join("max_brightness")).ok()?.trim().parse::<u32>().ok()?;
+    if maximum==0 {return None;}
+    let current=fs::read_to_string(directory.join("brightness")).ok()?.trim().parse::<u32>().ok()?;
+    Some(json!({"bus":format!("backlight:{name}"),"name":format!("Built-in display ({name})"),"level":current.min(maximum) as f64/maximum as f64,"maximum":maximum}))
+}
+fn backlight_displays() -> Vec<Value> {
+    let root=Path::new("/sys/class/backlight");
+    let mut names=fs::read_dir(root).into_iter().flatten().filter_map(|entry|entry.ok()?.file_name().into_string().ok()).collect::<Vec<_>>();
+    names.sort();
+    names.iter().filter_map(|name|backlight_device(root,name)).collect()
+}
 fn displays() -> Result<Value> {
     let file=cache_path();locked(&file,|| {
         let mut state=fs::read(&file).ok().and_then(|raw|serde_json::from_slice::<Value>(&raw).ok()).filter(valid_cache).unwrap_or_else(||json!({}));
         let identity=topology_identity();let now=boottime();
         if state["identity"]!=identity || now-state["detected"].as_f64().unwrap_or(0.)>300. {
-            let detected=run(&["ddcutil","detect","--brief"],12)?;
+            let detected=run(&["ddcutil","detect","--brief"],12).unwrap_or_default();
             state=json!({"identity":identity,"detected":now,"devices":detect_devices(&detected),"read":0});
         }
         if now-state["read"].as_f64().unwrap_or(0.)>2. {
@@ -167,10 +183,20 @@ fn displays() -> Result<Value> {
             fs::write(&file,state.to_string()).map_err(|e|e.to_string())?;
             fs::set_permissions(&file,fs::Permissions::from_mode(0o600)).map_err(|e|e.to_string())?;
         }
-        Ok(json!({"displays":state["displays"].as_array().cloned().unwrap_or_default()}))
+        let mut values=backlight_displays();
+        values.extend(state["displays"].as_array().cloned().unwrap_or_default());
+        Ok(json!({"displays":values}))
     })
 }
 fn brightness(bus:&str, value:&str) -> Result<Value> {
+    if let Some(name)=backlight_name(bus) {
+        let device=backlight_device(Path::new("/sys/class/backlight"),name).ok_or("Backlight is unavailable")?;
+        let level=value.parse::<u32>().map_err(|_|"Invalid brightness request")?;
+        if level as u64>device["maximum"].as_u64().unwrap_or(0) {return Err("Brightness exceeds the device maximum".into());}
+        // Keep the built-in panel visible even at the slider's minimum.
+        run(&["brightnessctl","--class=backlight","--device",name,"set",&level.max(1).to_string()],4)?;
+        return Ok(json!({"ok":true}));
+    }
     if bus.is_empty() || !bus.bytes().all(|b|b.is_ascii_digit()) || value.parse::<u16>().is_err() {return Err("Invalid brightness request".into());}
     run(&["ddcutil","--bus",bus,"setvcp","10",value],12)?;
     let file=cache_path();let _=locked(&file,||{
@@ -215,6 +241,19 @@ fn main() {
         assert_eq!(detect_devices("Display 1\n I2C bus: /dev/i2c-9\n Monitor: Test\n")[0]["bus"],"9");
         assert_eq!(vcp_level("VCP 10 C 30 80"),Some((0.375,80)));
         assert_eq!(vcp_level("VCP 10 ERR"),None);
+    }
+    #[test] fn internal_backlights_are_detected_and_names_are_restricted() {
+        assert_eq!(backlight_name("backlight:intel_backlight"),Some("intel_backlight"));
+        for invalid in ["backlight:","backlight:../intel_backlight","backlight:a/b","9"] {assert_eq!(backlight_name(invalid),None);}
+        let root=env::temp_dir().join(format!("lumen-backlight-test-{}",std::process::id()));
+        fs::create_dir_all(root.join("intel_backlight")).unwrap();
+        fs::write(root.join("intel_backlight/max_brightness"),"7500\n").unwrap();
+        fs::write(root.join("intel_backlight/brightness"),"3750\n").unwrap();
+        let device=backlight_device(&root,"intel_backlight").unwrap();
+        assert_eq!(device["level"],0.5);assert_eq!(device["maximum"],7500);
+        fs::write(root.join("intel_backlight/max_brightness"),"0").unwrap();
+        assert!(backlight_device(&root,"intel_backlight").is_none());
+        fs::remove_dir_all(root).unwrap();
     }
     #[test] fn bluetooth_paths_are_restricted() {
         assert!(adapter_path("/org/bluez/hci0"));
