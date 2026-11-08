@@ -29,6 +29,8 @@ Item {
                 const result=JSON.parse(text);
                 if(result.error){root.error=result.error;return;}
                 root.mullvad=result.mullvad;root.tailscale=result.tailscale;root.error="";
+                if(result.authUrl && !Qt.openUrlExternally(result.authUrl))
+                    root.error="Could not open the browser. Check your default browser and try Sign In again.";
             } catch(e) {root.error="Could not read VPN status";}
         }}
         onExited:(code,status)=>{if(code!==0 && !root.error)root.error="VPN service did not respond";}

@@ -5,6 +5,7 @@ Column {
     id: root
     required property var service
     property bool compact: false
+    readonly property bool needsTailscaleLogin: service.tailscale.state === "NeedsLogin" || service.tailscale.state === "NoState"
     signal backRequested()
     signal settingsRequested()
     width: compact ? 300 : parent.width
@@ -39,10 +40,10 @@ Column {
                         enabled: !root.service.busy && (parent.isMullvad
                             ? root.service.mullvad.installed && root.service.mullvad.account
                             : root.service.tailscale.installed)
-                        Accessible.name: parent.label + ", " + stateLabel.text + ", " + (parent.connected ? "disconnect" : "connect")
+                        Accessible.name: parent.label + ", " + stateLabel.text + ", " + (!parent.isMullvad && root.needsTailscaleLogin ? "sign in" : parent.connected ? "disconnect" : "connect")
                         onClicked: root.service.run(parent.isMullvad
                             ? (parent.connected ? "mullvad-disconnect" : "mullvad-connect")
-                            : (parent.connected ? "tailscale-disconnect" : "tailscale-connect"))
+                            : (parent.connected ? "tailscale-disconnect" : root.needsTailscaleLogin ? "tailscale-login" : "tailscale-connect"))
                         background: Rectangle { color: toggle.hovered || toggle.activeFocus ? Theme.colors.hover : "transparent" }
                         contentItem: Item {
                             Rectangle {
@@ -52,7 +53,7 @@ Column {
                                 SystemGlyph { anchors.centerIn: parent; name: "network"; width: 18; height: 18; ink: "white" }
                             }
                             Column {
-                                x: 52; width: parent.width - x - 66
+                                x: 52; width: parent.width - x - (!toggle.parent.isMullvad && root.needsTailscaleLogin ? 108 : 66)
                                 anchors.verticalCenter: parent.verticalCenter; spacing: 2
                                 PanelLabel { width: parent.width; text: toggle.parent.label; font.weight: Font.Medium; elide: Text.ElideRight }
                                 PanelLabel {
@@ -70,10 +71,18 @@ Column {
                                            : root.service.tailscale.state === "Stopped" ? "Disconnected" : root.service.tailscale.state)
                                 }
                             }
+                            DialogButton {
+                                objectName: toggle.parent.isMullvad ? "" : "tailscaleSignIn"
+                                visible: !toggle.parent.isMullvad && root.needsTailscaleLogin
+                                anchors.right: parent.right; anchors.rightMargin: 12; anchors.verticalCenter: parent.verticalCenter
+                                text: "Sign In…"; enabled: !root.service.busy
+                                onClicked: root.service.run("tailscale-login")
+                            }
                             Rectangle {
                                 anchors.right: parent.right; anchors.rightMargin: 14; anchors.verticalCenter: parent.verticalCenter
                                 width: 34; height: 21; radius: 11
                                 color: toggle.parent.connected ? Theme.colors.accent : Theme.colors.field
+                                visible: toggle.parent.isMullvad || !root.needsTailscaleLogin
                                 opacity: toggle.enabled ? 1 : 0.55
                                 Rectangle {
                                     x: toggle.parent.connected ? 15 : 2; y: 2

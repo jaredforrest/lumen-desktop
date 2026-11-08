@@ -13,6 +13,18 @@ fn client(name: &str) {
     let mut recorded = vec![name.to_owned()];
     recorded.extend(args.iter().cloned());
     writeln!(log, "{}", json!(recorded)).unwrap();
+    let root=std::path::PathBuf::from(env::var("VPN_FIXTURE_LOG").unwrap()).parent().unwrap().to_owned();
+    let scenario=fs::read_to_string(root.join("scenario")).unwrap_or_default();
+    if name=="tailscale" && args==["up","--timeout=2s"] {
+        fs::write(root.join("login-started"), "yes").unwrap();
+        eprintln!("{}", if scenario=="denied" {"Access denied"} else {"context deadline exceeded"});
+        process::exit(1);
+    }
+    if name=="tailscale" && args==["status","--json"] && !scenario.is_empty(){
+        let url=if scenario=="unsafe" {"https://evil.example/a/token"} else if scenario=="denied" {""} else {"https://login.tailscale.com/a/fixture_token"};
+        println!("{}",json!({"BackendState":"NeedsLogin","AuthURL":url,"Self":{"Online":false}}));
+        return;
+    }
     match (name, args.as_slice()) {
         ("mullvad", [status, flag]) if status == "status" && flag == "--json" =>
             println!("{}", json!({"state":"connected","details":{"location":{"city":"London","country":"United Kingdom","ipv4":"private"}}})),
@@ -95,5 +107,16 @@ fn main() {
     let secret = "1234567890123456";
     let answer = call(&root, json!({"action":"mullvad-login","account":secret}));
     assert!(answer.get("error").is_some() && !answer.to_string().contains(secret));
+    fs::write(root.join("scenario"), "login").unwrap();
+    let login=call(&root,json!({"action":"tailscale-login"}));
+    assert_eq!(login["authUrl"],"https://login.tailscale.com/a/fixture_token");
+    assert!(root.join("login-started").exists());
+    assert!(call(&root,json!({"action":"status"})).get("authUrl").is_none(), "Polling must not reopen the browser");
+    assert!(!records(&log).iter().any(|row|row[0]=="pkexec"));
+    fs::write(root.join("scenario"), "unsafe").unwrap();
+    let unsafe_result=call(&root,json!({"action":"tailscale-login"}));
+    assert!(unsafe_result.get("error").is_some() && unsafe_result.get("authUrl").is_none());
+    fs::write(root.join("scenario"), "denied").unwrap();
+    assert_eq!(call(&root,json!({"action":"tailscale-login"}))["error"],"Access denied");
     fs::remove_dir_all(root).unwrap();
 }

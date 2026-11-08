@@ -123,6 +123,22 @@ fn tailscale_action(args:&[&str])->Result<()> {
         command(&elevated,None,90).map(|_|())
     }}
 }
+// Only open the first-party HTTPS authentication endpoint, never arbitrary daemon text.
+fn valid_auth_url(url:&str)->bool {
+    url.strip_prefix("https://login.tailscale.com/a/").is_some_and(|token|
+        !token.is_empty() && token.len()<=256 && token.bytes().all(|c|c.is_ascii_alphanumeric() || c==b'-' || c==b'_'))
+}
+fn tailscale_login()->Result<Value>{
+    let started=command(&["tailscale","up","--timeout=2s"],None,5);
+    let data:Value=serde_json::from_str(&command(&["tailscale","status","--json"],None,8)?).map_err(|e|e.to_string())?;
+    let mut result=status();
+    if data["BackendState"]=="Running" {return Ok(result);}
+    let url=text(&data,"AuthURL");
+    if valid_auth_url(url){result["authUrl"]=json!(url);return Ok(result);}
+    if !url.is_empty(){return Err("Tailscale returned an unsupported sign-in address".into());}
+    started?;
+    Err("Tailscale has not provided a sign-in page. Try again.".into())
+}
 fn perform(request:&Value)->Result<Value>{
     let action=request["action"].as_str().unwrap_or("status");
     match action{
@@ -142,6 +158,7 @@ fn perform(request:&Value)->Result<Value>{
             }
             command(&["mullvad","relay","set","location",country],None,8)?;
         }
+        "tailscale-login"=>return tailscale_login(),
         "tailscale-connect"=>tailscale_action(&["up"] )?,
         "tailscale-disconnect"=>tailscale_action(&["down"] )?,
         "tailscale-exit"=>{
@@ -165,6 +182,10 @@ fn main(){
 }
 #[cfg(test)] mod tests{
     use super::*;
+    #[test]fn authentication_urls_are_first_party_https_only(){
+        assert!(valid_auth_url("https://login.tailscale.com/a/example_123"));
+        for url in ["http://login.tailscale.com/a/abc","https://login.tailscale.com.evil/a/abc","file:///etc/passwd","https://login.tailscale.com/a/","https://login.tailscale.com/a/abc?redirect=evil","https://login.tailscale.com/a/abc\n"]{assert!(!valid_auth_url(url));}
+    }
     #[test]fn rejects_invalid_actions_before_side_effects(){
         for request in [json!({"action":"mullvad-login","account":"123"}),json!({"action":"mullvad-location","country":"gb;rm"}),
             json!({"action":"unknown"})]{assert!(perform(&request).is_err());}
