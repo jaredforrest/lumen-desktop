@@ -13,7 +13,8 @@ Column {
     property int seconds:0
     property string error:""
     property var request:({})
-    function send(data){if(worker.running)return;error="";request=data;worker.running=true;}
+    readonly property bool saving:worker.running && request.action==="confirm"
+    function send(data){if(worker.running)return;if(data.action!=="status")error="";request=data;worker.running=true;}
     function refresh(){send({action:"status"});}
     Component.onCompleted:refresh()
     function layoutBounds(){let left=0,top=0,right=1,bottom=1;for(const o of outputs){const parts=o.mode.split("@")[0].split("x"),w=Number(parts[0])/o.scale,h=Number(parts[1])/o.scale;left=Math.min(left,o.x);top=Math.min(top,o.y);right=Math.max(right,o.x+w);bottom=Math.max(bottom,o.y+h);}return {x:left,y:top,width:right-left,height:bottom-top};}
@@ -55,8 +56,8 @@ Column {
         id:position
     }
     DialogButton {width:parent.width;text:"Apply Display Settings";primary:true;enabled:!!root.output && !root.pending && !worker.running && mode.currentIndex>=0;onClicked:root.send({action:"apply",name:root.output.name,mode:mode.currentText,scale:[1,1.25,1.5,1.75,2,2.5,3][scaling.currentIndex],x:position.children.find(c=>c.objectName==="displayX").text,y:position.children.find(c=>c.objectName==="displayY").text})}
-    PanelLabel {visible:!!root.pending;width:parent.width;wrapMode:Text.WordWrap;text:"Keep these display settings? Reverting in "+root.seconds+" seconds.";Accessible.name:text}
-    Row {visible:!!root.pending;spacing:8;width:parent.width
+    PanelLabel {visible:!!root.pending;width:parent.width;wrapMode:Text.WordWrap;text:root.saving?"Saving display settings… This may take a few minutes.":"Keep these display settings? Reverting in "+root.seconds+" seconds.";Accessible.name:text}
+    Row {visible:!!root.pending && !root.saving;spacing:8;width:parent.width
         DialogButton {width:(parent.width-8)/2;text:"Revert";onClicked:root.send({action:"revert",token:root.pending})}
         DialogButton {width:(parent.width-8)/2;text:"Keep Changes";primary:true;onClicked:root.send({action:"confirm",token:root.pending})}
     }
@@ -70,5 +71,5 @@ Column {
         stdout:StdioCollector {onStreamFinished:{try{const data=JSON.parse(text);if(data.error){root.error=data.error;return;}if(data.outputs)root.outputs=data.outputs;root.pending=data.pending || "";root.seconds=data.seconds || 0;}catch(e){root.error="Unable to read display settings";}}}
         onExited:{if(root.request.action!=="status")Qt.callLater(root.refresh);}
     }
-    Timer {interval:1000;running:!!root.pending;repeat:true;onTriggered:root.refresh()}
+    Timer {interval:1000;running:!!root.pending && !root.saving;repeat:true;onTriggered:root.refresh()}
 }

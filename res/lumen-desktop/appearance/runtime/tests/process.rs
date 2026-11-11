@@ -2,7 +2,7 @@
 use serde_json::{Value, json};
 use std::env;
 use std::fs;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::os::unix::fs::symlink;
 use std::path::{Path, PathBuf};
 use std::process::{self, Command};
@@ -69,10 +69,37 @@ impl Fixture {
 impl Drop for Fixture { fn drop(&mut self) { let _ = fs::remove_dir_all(&self.root); } }
 
 fn main() {
+    let command = env::args().next().unwrap();
+    let name = Path::new(&command).file_name().unwrap().to_str().unwrap();
+    if ["gsettings", "swaymsg"].contains(&name) {
+        let mut log = fs::OpenOptions::new().create(true).append(true)
+            .open(env::var_os("FAKE_DESKTOP_LOG").unwrap()).unwrap();
+        writeln!(log, "{name}").unwrap();
+        if name == "swaymsg" { println!("{{}}"); }
+        return;
+    }
     let program = env::args().next().unwrap();
     if let Some(name) = Path::new(&program).file_name().and_then(|name| name.to_str()) {
         match name { "lumen-nix-settings" => settings(), "lumen-search-history" => history(), _ => {} }
     }
+    let refresh = Fixture::new();
+    for name in ["gsettings", "swaymsg"] {
+        symlink(env::current_exe().unwrap(), refresh.root.join(name)).unwrap();
+    }
+    let log = refresh.root.join("desktop.log");
+    let run_refresh = || Command::new(env!("CARGO_BIN_EXE_lumen-appearance"))
+        .args(["--state-dir", refresh.state.to_str().unwrap(), "--at", "2026-03-31T12:00:00Z"])
+        .env("FAKE_SETTINGS", &refresh.settings)
+        .env("LUMEN_NIX_SETTINGS_BIN", refresh.root.join("lumen-nix-settings"))
+        .env("LUMEN_APPEARANCE_DIR", &refresh.state)
+        .env("FAKE_DESKTOP_LOG", &log)
+        .env("PATH", format!("{}:{}", refresh.root.display(), env::var("PATH").unwrap()))
+        .env_remove("SWAYSOCK").output().unwrap();
+    assert!(run_refresh().status.success());
+    let first = fs::read(&log).unwrap();
+    assert!(!first.is_empty());
+    assert!(run_refresh().status.success());
+    assert_eq!(fs::read(&log).unwrap(), first, "Unchanged refresh sent compositor or theme commands");
     let fixture = Fixture::new();
     let (success, reply) = fixture.appearance(&["--set", "accent", "\"green\""]);
     assert!(success, "{reply}");

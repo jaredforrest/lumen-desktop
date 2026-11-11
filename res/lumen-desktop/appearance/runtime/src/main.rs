@@ -341,7 +341,19 @@ fn execute() -> Result<(), String> {
     atomic_write(&state.join("launcher.rasi"), &launcher)?;
     atomic_write(&state.join("appearance.json"), &format!("{}\n", serde_json::to_string_pretty(&data).map_err(|e| e.to_string())?))?;
     let mut warnings = Vec::new();
-    if !args.no_desktop {
+    // The scheduler must not reapply borders, effects and window rules when
+    // the effective preferences have not changed. A new compositor socket
+    // invalidates the receipt even when the user's preferences are identical.
+    let socket = env::var("SWAYSOCK").unwrap_or_default();
+    let socket_epoch = fs::metadata(&socket).ok().map(|info| {
+        use std::os::unix::fs::MetadataExt;
+        json!([info.dev(),info.ino(),info.ctime(),info.ctime_nsec()])
+    });
+    let applied_path = state.join("desktop-applied.json");
+    let applied = json!({"appearance":data,"socket":socket,"epoch":socket_epoch});
+    let last_applied: Value = fs::read(&applied_path).ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok()).unwrap_or(Value::Null);
+    if !args.no_desktop && last_applied != applied {
         let capabilities: Value = if env::var_os("SWAYSOCK").is_some() {
             Command::new("timeout").args(["3s","swaymsg","-t","get_version","-r"]).output().ok()
                 .filter(|result| result.status.success())
@@ -417,6 +429,9 @@ fn execute() -> Result<(), String> {
                 warnings.push(format!("Could not update application {key}"));
             }
         }
+    }
+    if !args.no_desktop && warnings.is_empty() {
+        atomic_write(&applied_path, &applied.to_string())?;
     }
     if editing {
         println!("{}", output(&prefs,&search,&notifications,&control,&menu,&windows,&desktop,&data,Some(warnings.join("; "))));

@@ -16,9 +16,15 @@ confirmation capability.
 
 This is not automatic hung-application detection or an application save-dialog
 test. A synthetic dirty flag does not represent another provider's save protocol.
-The existing broker's conservative native-client policy and rejection of shared
-unselected windows remain unchanged. Return is not treated as implicit destructive
+The broker still rejects shared unselected windows and changed process identities. Return is not treated as implicit destructive
 confirmation; Space activates the explicitly focused button. Each confirmation
 is consumed before revalidation/signalling and never retried against a new target.
 
 Both native renderer variants run this fixture in CI.
+
+XWayland selections resolve the window's local connection PID through the XRes
+extension and require it to match the compositor PID at both prepare and
+confirmation. The untrusted `_NET_WM_PID` property alone never authorizes a
+signal. The same process start time, executable identity, pidfd and one-use
+confirmation checks apply to native and verified XWayland applications.
+A missing XRes identity fails with an explanation rather than guessing a PID.

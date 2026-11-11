@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import Quickshell
 import Quickshell.Io
+import "ConfigValues.js" as ConfigValues
 Column {
     id: root
     property var displays:[]
@@ -41,7 +42,7 @@ Column {
     Process {
         id:reader;property int requestRevision:0
         command:[root.helper,"displays"]
-        stdout:StdioCollector {onStreamFinished:{try{const s=JSON.parse(text);if(reader.requestRevision!==root.revision || root.editing || writer.running || root.pending>=0)return;root.displays=s.displays || [];if(root.display)root.level=root.display.level;}catch(e){root.displays=[];}}}
+        stdout:StdioCollector {onStreamFinished:{try{const s=JSON.parse(text);if(reader.requestRevision!==root.revision || root.editing || writer.running || root.pending>=0)return;const displays=s.displays || [];if(!ConfigValues.equivalent(root.displays,displays))root.displays=displays;if(root.display)root.level=root.display.level;}catch(e){root.displays=[];}}}
     }
     // Hidden panels do not poll hardware. Detection/read caches are shared by all controls.
     Timer {id:refresh;interval:30000;running:root.visible;repeat:true;triggeredOnStart:true;onTriggered:{if(!reader.running && !writer.running && !root.editing && root.pending<0){reader.requestRevision=root.revision;reader.running=true;}}}

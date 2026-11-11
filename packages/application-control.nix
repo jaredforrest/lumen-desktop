@@ -4,5 +4,6 @@
   version = "0.1.0";
   src = ../res/lumen-desktop/application-control;
   cargoLock.lockFile = ../res/lumen-desktop/application-control/Cargo.lock;
+  buildInputs = [ pkgs.libxcb ];
   nativeCheckInputs = [ pkgs.sway pkgs.coreutils ];
 }

@@ -1,3 +1,4 @@
+mod x11;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
@@ -51,6 +52,24 @@ fn tree() -> Result<(String,Vec<Value>)> {
     let value:Value=serde_json::from_slice(&output.stdout).map_err(|_|"Invalid compositor tree")?;
     if epoch(&path)?!=first{return Err("Compositor changed; select the application again".into());}
     Ok((first,window_nodes(&value)?))
+}
+fn application_id(node:&Value)->Option<&str> {
+    node["app_id"].as_str().or_else(||node["window_properties"]["class"].as_str())
+}
+fn verified_window_pid(node:&Value)->Result<u64> {
+    let pid=node["pid"].as_u64().filter(|pid|*pid>=2).ok_or("Application process identity is unavailable")?;
+    match node["shell"].as_str() {
+        Some("xdg_shell")=>Ok(pid),
+        Some("xwayland")=>{
+            let window=node["window"].as_u64().and_then(|id|u32::try_from(id).ok()).filter(|id|*id>0).ok_or("Invalid X11 window")?;
+            let child=Command::new("timeout").arg("5s").arg(std::env::current_exe().map_err(|error|error.to_string())?)
+                .args(["--x11-peer",&window.to_string()]).output().map_err(|error|error.to_string())?;
+            let trusted=String::from_utf8_lossy(&child.stdout).trim().parse::<u64>().ok();
+            if !child.status.success() || trusted!=Some(pid){return Err("The X server could not verify the selected application's process; nothing was terminated".into());}
+            Ok(pid)
+        }
+        _=>Err("The selected window has no supported process identity".into())
+    }
 }
 fn identity(pid:u64) -> Result<Value> {
     if pid<2||pid>i32::MAX as u64{return Err("Invalid application process".into());}
@@ -134,17 +153,17 @@ impl Control {
         Ok(receipt)
     }
     fn prepare(&self,descriptors:&Value) -> Result<Value> {
-        let descriptors=descriptors.as_array().filter(|rows|!rows.is_empty()&&rows.len()<=MAX_WINDOWS).ok_or("Select a running application with native windows")?;
+        let descriptors=descriptors.as_array().filter(|rows|!rows.is_empty()&&rows.len()<=MAX_WINDOWS).ok_or("Select a running application with windows")?;
         let (epoch,nodes)=tree()?;let mut selected=Vec::new();let mut app_ids=HashSet::new();let mut selected_ids=HashSet::new();let mut pids=HashSet::new();
         for descriptor in descriptors {
             let row=descriptor.as_object().filter(|row|row.len()==2&&row.contains_key("appId")&&row.contains_key("title")).ok_or("Invalid selected window")?;
             let app=row["appId"].as_str().filter(|app|!app.is_empty()&&app.len()<=256).ok_or("Invalid selected window")?;
             let title=row["title"].as_str().filter(|title|title.len()<=8192).ok_or("Invalid selected window")?;
-            let matches=nodes.iter().filter(|node|node["app_id"]==app&&node["name"]==title).collect::<Vec<_>>();
+            let matches=nodes.iter().filter(|node|application_id(node)==Some(app)&&node["name"]==title).collect::<Vec<_>>();
             if matches.len()!=1{return Err("The selected window changed or is ambiguous; select it again".into());}
             let node=matches[0];
-            if node["shell"]!="xdg_shell"||app=="org.quickshell"{return Err("Force Quit is available only for external native applications".into());}
-            let pid=node["pid"].as_u64().filter(|pid|*pid>=2).ok_or("Application process identity is unavailable")?;
+            if app=="org.quickshell"{return Err("Force Quit is available only for external native applications".into());}
+            let pid=verified_window_pid(node)?;
             let id=node["id"].as_u64().filter(|id|*id>0).ok_or("Invalid compositor identity")?;
             if !selected_ids.insert(id){return Err("A window was selected more than once".into());}
             selected.push(json!({"id":id,"pid":pid,"app_id":app}));app_ids.insert(app);pids.insert(pid);
@@ -182,7 +201,7 @@ impl Control {
             let by_id=nodes.iter().filter_map(|node|node["id"].as_u64().map(|id|(id,node))).collect::<HashMap<_,_>>();
             for window in windows {
                 let node=window["id"].as_u64().and_then(|id|by_id.get(&id)).ok_or("The selected application windows changed; select them again")?;
-                if node["pid"]!=window["pid"]||node["app_id"]!=window["app_id"]||node["shell"]!="xdg_shell"{return Err("The selected application windows changed; select them again".into());}
+                if verified_window_pid(node)?!=window["pid"].as_u64().unwrap_or(0)||application_id(node)!=window["app_id"].as_str(){return Err("The selected application windows changed; select them again".into());}
             }
             if nodes.iter().any(|node|node["pid"].as_u64().is_some_and(|pid|selected_pids.contains(&pid))&&!node["id"].as_u64().is_some_and(|id|selected_ids.contains(&id))){return Err("The application process now owns other windows; review the selection again".into());}
             let mut handles=Vec::new();
@@ -199,6 +218,14 @@ impl Control {
 }
 fn main() {
     let args=std::env::args().skip(1).collect::<Vec<_>>();
+    if let [mode,window]=args.as_slice() {
+        if mode=="--x11-peer" {
+            match window.parse::<u32>().map_err(|error|error.to_string()).and_then(x11::peer) {
+                Ok(pid)=>println!("{pid}"),Err(error)=>{eprintln!("{error}");std::process::exit(1);}
+            }
+            return;
+        }
+    }
     let (request_id,action,value)=match args.as_slice(){[flag,id,action,value] if flag=="--request-id"=>(id.as_str(),action.as_str(),value.as_str()),[action,value]=>("",action.as_str(),value.as_str()),_=>("","","")};
     let result=(||->Result<Value>{
         let root=PathBuf::from(std::env::var_os("XDG_RUNTIME_DIR").ok_or("No private desktop runtime directory")?);
@@ -211,6 +238,13 @@ fn main() {
 #[cfg(test)]
 mod tests{
     use super::*;
+    #[test]
+    fn xwayland_application_identity_uses_class_without_trusting_a_pid(){
+        let node=json!({"shell":"xwayland","window_properties":{"class":"codex-desktop"},"pid":12});
+        assert_eq!(application_id(&node),Some("codex-desktop"));
+        assert!(verified_window_pid(&node).is_err());
+        assert!(verified_window_pid(&json!({"shell":"unknown","pid":12})).is_err());
+    }
     #[test]
     fn invalid_tokens_and_tree_facts_fail_closed(){
         for value in ["", "../../etc/passwd", "1234", "g".repeat(32).as_str()] {assert!(!valid_token(value));}

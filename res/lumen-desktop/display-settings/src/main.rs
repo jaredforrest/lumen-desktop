@@ -16,7 +16,11 @@ type DisplayResult<T> = Result<T, String>;
 fn output(program: &str, args: &[&str], seconds: u64) -> DisplayResult<Vec<u8>> {
     let result = Command::new("timeout").arg(format!("{seconds}s")).arg(program).args(args)
         .output().map_err(|error| error.to_string())?;
-    if !result.status.success() { return Err(format!("{program} failed")); }
+    if !result.status.success() {
+        let detail = serde_json::from_slice::<Value>(&result.stdout).ok()
+            .and_then(|value| value["error"].as_str().map(str::to_owned));
+        return Err(detail.unwrap_or_else(|| format!("{program} failed")));
+    }
     Ok(result.stdout)
 }
 

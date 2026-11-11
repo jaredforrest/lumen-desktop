@@ -39,6 +39,12 @@ fn main() {
                 "scale":1,"rect":{"x":0,"y":0}
             }]));
         }
+        else { println!("[{{\"success\":true}}]"); }
+        return;
+    }
+    if Path::new(&env::args().next().unwrap()).file_name().is_some_and(|name| name == "lumen-nix-settings") {
+        if env::args().any(|arg| arg == "read") { println!("{{\"displays\":{{}}}}"); }
+        else { println!("{{\"error\":\"Fixture activation failed\"}}"); process::exit(1); }
         return;
     }
     let unique = SystemTime::now()
@@ -54,5 +60,14 @@ fn main() {
     fs::write(root.join("lumen-display-change.json"), r#"{"token":"expired","deadline":0}"#).unwrap();
     let expired = run_display(json!({"action":"confirm","token":"expired"}), &root);
     assert_eq!(expired["error"], "The confirmation period has expired");
+    symlink(env::current_exe().unwrap(), root.join("lumen-nix-settings")).unwrap();
+    fs::write(root.join("lumen-display-change.json"), json!({
+        "token":"live", "deadline":SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64()+20.,
+        "candidate":{"name":"DP-1","identity":["DP-1","Fixture","Monitor","1"]},
+        "previous":[]
+    }).to_string()).unwrap();
+    let failed = run_display(json!({"action":"confirm","token":"live"}), &root);
+    assert_eq!(failed["error"], "Fixture activation failed");
+    assert!(!root.join("lumen-display-change.json").exists(), "Failed confirmation was left pending");
     fs::remove_dir_all(root).unwrap();
 }
