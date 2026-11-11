@@ -13,7 +13,8 @@ Column {
     property int seconds:0
     property string error:""
     property var request:({})
-    readonly property bool saving:worker.running && request.action==="confirm"
+    property bool backendSaving:false
+    readonly property bool saving:backendSaving || (worker.running && request.action==="confirm")
     function send(data){if(worker.running)return;if(data.action!=="status")error="";request=data;worker.running=true;}
     function refresh(){send({action:"status"});}
     Component.onCompleted:refresh()
@@ -68,8 +69,8 @@ Column {
         id:worker;stdinEnabled:true
         command:["lumen-display-settings"]
         onStarted:write(JSON.stringify(root.request)+"\n")
-        stdout:StdioCollector {onStreamFinished:{try{const data=JSON.parse(text);if(data.error){root.error=data.error;return;}if(data.outputs)root.outputs=data.outputs;root.pending=data.pending || "";root.seconds=data.seconds || 0;}catch(e){root.error="Unable to read display settings";}}}
+        stdout:StdioCollector {onStreamFinished:{try{const data=JSON.parse(text);if(data.error){root.error=data.error;return;}if(data.outputs)root.outputs=data.outputs;root.pending=data.pending || "";root.seconds=data.seconds || 0;root.backendSaving=data.saving===true;}catch(e){root.error="Unable to read display settings";}}}
         onExited:{if(root.request.action!=="status")Qt.callLater(root.refresh);}
     }
-    Timer {interval:1000;running:!!root.pending && !root.saving;repeat:true;onTriggered:root.refresh()}
+    Timer {interval:1000;running:!!root.pending && !(worker.running && root.request.action==="confirm");repeat:true;onTriggered:root.refresh()}
 }

@@ -69,5 +69,14 @@ fn main() {
     let failed = run_display(json!({"action":"confirm","token":"live"}), &root);
     assert_eq!(failed["error"], "Fixture activation failed");
     assert!(!root.join("lumen-display-change.json").exists(), "Failed confirmation was left pending");
+    fs::write(root.join("lumen-display-change.json"), json!({
+        "token":"saving", "confirmed":true, "deadline":0
+    }).to_string()).unwrap();
+    let saving = run_display(json!({"action":"status"}), &root);
+    assert_eq!(saving["saving"], true, "A restarted pane must show saving instead of an expired countdown");
+    fs::remove_file(root.join("lumen-display-change.json")).unwrap();
+    let completed = run_display(json!({"action":"status"}), &root);
+    assert_eq!(completed["saving"], false);
+    assert_eq!(completed["pending"], "");
     fs::remove_dir_all(root).unwrap();
 }

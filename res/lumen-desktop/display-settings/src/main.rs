@@ -189,7 +189,7 @@ fn handle(data: &Value) -> DisplayResult<Value> {
         }
         let state = read(&pending);
         let seconds = (state["deadline"].as_f64().unwrap_or(0.0) - now()?).max(0.0) as i64;
-        return Ok(json!({"outputs":outputs,"pending":state["token"].as_str().unwrap_or(""),"seconds":seconds}));
+        return Ok(json!({"outputs":outputs,"pending":state["token"].as_str().unwrap_or(""),"seconds":seconds,"saving":state["confirmed"] == true}));
     }
     let _guard = lock(&pending)?;
     match action {
@@ -239,8 +239,20 @@ fn guard(token: &str) -> DisplayResult<()> {
     std::io::stdout().flush().map_err(|error| error.to_string())?;
     loop {
         let state = read(&pending);
-        if state["token"] != token || state["confirmed"] == true { return Ok(()); }
-        if now()? >= state["deadline"].as_f64().unwrap_or(0.0) {
+        if state["token"] != token { return Ok(()); }
+        if state["confirmed"] == true {
+            // Activation may restart the requesting shell. This independent
+            // guard retires its confirmation once the new generation is live.
+            let candidate=&state["candidate"];
+            let active=read(Path::new("/etc/nix/desktop-settings.json"));
+            if candidate["name"].as_str().is_some_and(|name| active["displays"][name] == *candidate) {
+                let _lock=lock(&pending)?;
+                if read(&pending)["token"] == token { fs::remove_file(&pending).map_err(|error|error.to_string())?; }
+                return Ok(());
+            }
+        }
+        let extra=if state["confirmed"] == true {7200.0} else {0.0};
+        if now()? >= state["deadline"].as_f64().unwrap_or(0.0)+extra {
             let _lock = lock(&pending)?;
             return revert(&pending, Some(token));
         }
