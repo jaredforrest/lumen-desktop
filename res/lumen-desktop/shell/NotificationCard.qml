@@ -10,7 +10,7 @@ PanelSurface {
     property int stackCount:1
     property bool expandStack:false
     property bool reduceTransparency:false
-    readonly property bool opaqueMaterial:reduceTransparency || !!Theme.preferences.reduceTransparency || Theme.increaseContrast
+    readonly property bool opaqueMaterial:Theme.black || reduceTransparency || !!Theme.preferences.reduceTransparency || Theme.increaseContrast
     signal expandRequested()
     activeFocusOnTab:true
     Accessible.role:Accessible.Button

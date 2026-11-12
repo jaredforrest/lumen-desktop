@@ -8,7 +8,7 @@ import "DockInteraction.js" as DockInteraction
 
 PanelWindow {
     id: dock
-    WallpaperSettingsState {id:wallpaperState;active:GraphicsInfo.api !== GraphicsInfo.Software && !Theme.compositorEffects && !Theme.preferences.reduceTransparency}
+    WallpaperSettingsState {id:wallpaperState;active:GraphicsInfo.api !== GraphicsInfo.Software && !Theme.compositorEffects && !Theme.black && !Theme.preferences.reduceTransparency}
     readonly property string position:Theme.preferences.dockPosition || "bottom"
     readonly property bool vertical:position!=="bottom"
     readonly property bool autoHide:Theme.preferences.dockAutoHide===true
@@ -184,7 +184,7 @@ PanelWindow {
     // the shelf. This is wallpaper-only blur, not blur of other applications.
     Item {
         anchors.bottom: parent.bottom; width:parent.width; height:dock.shelfThickness
-        visible: GraphicsInfo.api !== GraphicsInfo.Software && !dock.vertical && !Theme.preferences.reduceTransparency && !Theme.compositorEffects
+        visible: GraphicsInfo.api !== GraphicsInfo.Software && !dock.vertical && !Theme.black && !Theme.preferences.reduceTransparency && !Theme.compositorEffects
         Image { id:backdrop; width:(dock.screen?dock.screen.width:1440); height:(dock.screen?dock.screen.height:1000); source:{const row=wallpaperState.outputs.find(item=>dock.screen && item.name===dock.screen.name);return row && row.image && !row.fallback?"file://"+encodeURI(row.image).replace(/#/g,"%23").replace(/\?/g,"%3F"):Qt.resolvedUrl("wallpaper.png");} fillMode:Image.PreserveAspectCrop; visible:false }
         ShaderEffectSource { id:slice; sourceItem:backdrop; sourceRect:Qt.rect(((dock.screen?dock.screen.width:1440)-dock.width)/2,(dock.screen?dock.screen.height:1000)-dock.shelfThickness-7,surface.width,dock.shelfThickness); width:surface.width; height:dock.shelfThickness; visible:false }
         Rectangle { id:roundedMask; width:surface.width; height:dock.shelfThickness; radius:22; layer.enabled:GraphicsInfo.api !== GraphicsInfo.Software; visible:false }
@@ -192,7 +192,7 @@ PanelWindow {
     }
     Rectangle {
         anchors.bottom:parent.bottom; width:parent.width; height:dock.shelfThickness; radius:22
-        color:Theme.preferences.reduceTransparency?Theme.colors.background:Theme.compositorEffects ? (Theme.dark?"#b8323236":"#c8dedee3") : (Theme.dark?"#e6323236":"#e6dedee3")
+        color:Theme.black || Theme.preferences.reduceTransparency?Theme.colors.background:Theme.compositorEffects ? (Theme.dark?"#b8323236":"#c8dedee3") : (Theme.dark?"#e6323236":"#e6dedee3")
         border.color:Theme.outline; border.width:1
     }
     Item {

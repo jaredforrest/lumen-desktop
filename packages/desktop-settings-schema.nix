@@ -35,7 +35,7 @@ let
       appearance = mkOption {
         type = types.submodule {
           options = {
-            mode = mkOption { type = types.enum [ "auto" "light" "dark" ]; default = "auto"; };
+            mode = mkOption { type = types.enum [ "auto" "light" "dark" "black" ]; default = "auto"; };
             accent = mkOption { type = types.enum [ "blue" "purple" "pink" "red" "orange" "yellow" "green" "graphite" ]; default = "blue"; };
             iconAppearance = mkOption { type = types.enum [ "default" "auto" "dark" ]; default = "auto"; };
             switchToAppSpace = mkOption { type = types.bool; default = true; };

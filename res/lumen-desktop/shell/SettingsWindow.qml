@@ -39,7 +39,7 @@ FloatingWindow {
         {name:"VPN",icon:"network",color:"#007aff",terms:"mullvad tailscale private network exit node"},
         {name:"General",icon:"gear",color:"#8e8e93",terms:"about system version operating"},
         {name:"Privacy & Security",icon:"gear",color:"#8e8e93",terms:"passwords bitwarden encryption secure boot"},
-        {name:"Appearance",icon:"contrast",color:"#56565b",terms:"light dark auto theme accent colour sunset icons"},
+        {name:"Appearance",icon:"contrast",color:"#56565b",terms:"light dark black pitch black auto theme accent colour sunset icons"},
         {name:"Screen Saver",icon:"screen",color:"#56565b",terms:"idle decoration preview animation"},
         {name:"Wallpaper",icon:"screen",color:"#56565b",terms:"image picture background displays"},
         {name:"Input Devices",icon:"controls",color:"#56565b",terms:"keyboard mouse trackpad pointer tap scroll repeat"},
@@ -239,25 +239,25 @@ FloatingWindow {
                         Row {
                             x:14;y:14;width:parent.width-28;spacing:12
                             Repeater {
-                                model:["light","dark","auto"]
+                                model:["light","dark","black","auto"]
                                 AbstractButton {
                                     required property string modelData
-                                    width:(parent.width-24)/3;height:116;enabled:root.service.available && !root.service.busy
+                                    width:(parent.width-36)/4;height:116;enabled:root.service.available && !root.service.busy
                                     objectName:"settings-appearance-"+modelData
                                     Accessible.name:modelData==="auto"?"Automatic appearance":modelData+" appearance"
                                     onClicked:root.service.setPreference("mode",modelData)
                                     contentItem:Column {
                                         spacing:9
                                         Rectangle {
-                                            width:parent.width;height:82;radius:8;clip:true;color:modelData==="dark"?"#27272a":"#f1f1f4"
+                                            width:parent.width;height:82;radius:8;clip:true;color:modelData==="black"?"#000000":modelData==="dark"?"#27272a":"#f1f1f4"
                                             Rectangle {visible:modelData==="auto";x:parent.width/2;width:parent.width/2;height:parent.height;color:"#27272a"}
-                                            Rectangle {x:8;y:10;width:parent.width-16;height:8;radius:3;color:modelData==="dark"?"#636368":"#c6c6cd"}
-                                            Rectangle {x:8;y:26;width:parent.width*.27;height:45;radius:4;color:modelData==="dark"?"#424248":"#d8d8df"}
+                                            Rectangle {x:8;y:10;width:parent.width-16;height:8;radius:3;color:["dark","black"].includes(modelData)?"#636368":"#c6c6cd"}
+                                            Rectangle {x:8;y:26;width:parent.width*.27;height:45;radius:4;color:["dark","black"].includes(modelData)?"#424248":"#d8d8df"}
                                             Rectangle {x:parent.width*.4;y:28;width:parent.width*.5;height:6;radius:2;color:"#b1b1b9"}
                                             Rectangle {x:parent.width*.4;y:40;width:parent.width*.4;height:6;radius:2;color:"#b1b1b9"}
                                             Rectangle {anchors.fill:parent;radius:8;color:"transparent";border.width:root.service.preferences.mode===modelData?3:1;border.color:root.service.preferences.mode===modelData?Theme.colors.accent:Theme.outline}
                                         }
-                                        PanelLabel {width:parent.width;text:modelData==="auto"?"Auto":modelData==="dark"?"Dark":"Light";horizontalAlignment:Text.AlignHCenter;font.pixelSize:Theme.textSize(12)}
+                                        PanelLabel {width:parent.width;text:modelData==="auto"?"Auto":modelData==="dark"?"Dark":modelData==="black"?"Black":"Light";horizontalAlignment:Text.AlignHCenter;font.pixelSize:Theme.textSize(12)}
                                     }
                                     background:Rectangle {color:"transparent";border.color:parent.activeFocus?Theme.colors.accent:"transparent";radius:8}
                                 }

@@ -74,7 +74,7 @@ fn main() {
     if ["gsettings", "swaymsg"].contains(&name) {
         let mut log = fs::OpenOptions::new().create(true).append(true)
             .open(env::var_os("FAKE_DESKTOP_LOG").unwrap()).unwrap();
-        writeln!(log, "{name}").unwrap();
+        writeln!(log, "{name} {}", env::args().skip(1).collect::<Vec<_>>().join(" ")).unwrap();
         if name == "swaymsg" { println!("{{}}"); }
         return;
     }
@@ -100,6 +100,25 @@ fn main() {
     assert!(!first.is_empty());
     assert!(run_refresh().status.success());
     assert_eq!(fs::read(&log).unwrap(), first, "Unchanged refresh sent compositor or theme commands");
+    let black = Fixture::new();
+    let (success, reply) = black.appearance(&["--set", "mode", "\"black\""]);
+    assert!(success, "{reply}");
+    assert_eq!(reply["appearance"]["mode"], "black");
+    assert_eq!(reply["appearance"]["palette"]["background"], "#000000");
+    let (success, reopened) = black.appearance(&["--settings"]);
+    assert!(success, "{reopened}");
+    assert_eq!(reopened["preferences"]["mode"], "black");
+    let (success, reply) = black.appearance(&["--set", "mode", "\"light\""]);
+    assert!(success, "{reply}");
+    assert_eq!(reply["appearance"]["mode"], "light");
+    let mut prefs: Value = serde_json::from_slice(&fs::read(&refresh.settings).unwrap()).unwrap();
+    prefs["appearance"]["mode"] = json!("black");
+    fs::write(&refresh.settings, prefs.to_string()).unwrap();
+    assert!(run_refresh().status.success());
+    let calls = fs::read_to_string(&log).unwrap();
+    assert!(calls.contains("color-scheme prefer-dark"));
+    assert!(calls.contains("gtk-theme WhiteSur-Dark"));
+    assert!(!calls.contains("prefer-black"));
     let fixture = Fixture::new();
     let (success, reply) = fixture.appearance(&["--set", "accent", "\"green\""]);
     assert!(success, "{reply}");

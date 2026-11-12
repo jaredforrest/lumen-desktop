@@ -15,7 +15,7 @@ PanelSurface {
     property bool compact:false
     property bool agendaOnly:false
     property bool reduceTransparency:false
-    readonly property bool opaqueMaterial:reduceTransparency || !!Theme.preferences.reduceTransparency || Theme.increaseContrast
+    readonly property bool opaqueMaterial:Theme.black || reduceTransparency || !!Theme.preferences.reduceTransparency || Theme.increaseContrast
     property bool monochrome:false
     function textSize(base){return Theme.textSize(base);}
     readonly property int dayDiameter:Math.max(26,textSize(12)+12)

@@ -172,7 +172,7 @@ PanelWindow {
     exclusiveZone:bar.outputFullscreen || bar.automaticHide?0:Theme.barHeight
     WlrLayershell.layer:bar.outputFullscreen || bar.automaticHide?WlrLayer.Overlay:WlrLayer.Top
     WlrLayershell.keyboardFocus:WlrKeyboardFocus.None
-    color: Theme.compositorEffects && !Theme.preferences.reduceTransparency ? (Theme.dark ? "#d028282b" : "#d8f2f2f4") : Theme.colors.background
+    color: !Theme.black && Theme.compositorEffects && !Theme.preferences.reduceTransparency ? (Theme.dark ? "#d028282b" : "#d8f2f2f4") : Theme.colors.background
     WlrLayershell.namespace: "lumen-menu"
     Rectangle { anchors.fill: parent; color: "transparent" }
     Row {

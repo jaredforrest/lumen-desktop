@@ -43,7 +43,7 @@ fn arguments() -> Result<Args, String> {
             _ => return Err(format!("Unknown option: {arg}")),
         }
     }
-    if parsed.mode.as_deref().is_some_and(|mode| !["auto", "light", "dark"].contains(&mode)) {
+    if parsed.mode.as_deref().is_some_and(|mode| !["auto", "light", "dark", "black"].contains(&mode)) {
         return Err("Unsupported appearance mode".into());
     }
     Ok(parsed)
@@ -52,7 +52,7 @@ fn arguments() -> Result<Args, String> {
 fn valid(key: &str, value: &Value) -> bool {
     match key {
         "textScale" => value.as_f64().is_some_and(|v| [1.0, 1.15, 1.3, 1.5].contains(&v)),
-        "mode" => value.as_str().is_some_and(|v| ["auto", "light", "dark"].contains(&v)),
+        "mode" => value.as_str().is_some_and(|v| ["auto", "light", "dark", "black"].contains(&v)),
         "iconAppearance" => value.as_str().is_some_and(|v| ["default", "auto", "dark"].contains(&v)),
         "accent" => value.as_str().is_some_and(|v| ACCENTS.iter().any(|(name, _, _)| *name == v)),
         "switchToAppSpace" | "dockMagnification" | "reduceMotion" | "reduceTransparency" |
@@ -155,22 +155,23 @@ fn contrast(first: &str, second: &str) -> f64 {
 }
 
 fn resolve_palette(palettes: &Value, mode: &str, prefs: &Value) -> Result<Value, String> {
+    let dark_mode = matches!(mode, "dark" | "black");
     let mut colors = palettes[mode].clone();
     let accent = prefs["accent"].as_str().ok_or("Invalid accent")?;
     let (_, light, dark) = ACCENTS.iter().find(|(name, _, _)| *name == accent).ok_or("Invalid accent")?;
-    colors["accent"] = json!(if mode == "dark" { dark } else { light });
-    colors["error"] = json!(if mode == "dark" { "#ffaba5" } else { "#b42318" });
-    colors["success"] = json!(if mode == "dark" { "#55d788" } else { "#196633" });
-    colors["warning"] = json!(if mode == "dark" { "#e0b85a" } else { "#775000" });
+    colors["accent"] = json!(if dark_mode { dark } else { light });
+    colors["error"] = json!(if dark_mode { "#ffaba5" } else { "#b42318" });
+    colors["success"] = json!(if dark_mode { "#55d788" } else { "#196633" });
+    colors["warning"] = json!(if dark_mode { "#e0b85a" } else { "#775000" });
     colors["destructiveFill"] = json!("#b42318");
     colors["destructiveText"] = json!("#ffffff");
-    if mode == "dark" && ["orange", "yellow", "green", "graphite"].contains(&accent) {
+    if dark_mode && ["orange", "yellow", "green", "graphite"].contains(&accent) {
         colors["selectedText"] = json!("#161618");
     }
     if prefs["increaseContrast"] == true {
-        colors["text"] = json!(if mode == "dark" { "#ffffff" } else { "#000000" });
-        colors["muted"] = json!(if mode == "dark" { "#e0e0e0" } else { "#393939" });
-        colors["border"] = json!(if mode == "dark" { "#a8a8ac" } else { "#626266" });
+        colors["text"] = json!(if dark_mode { "#ffffff" } else { "#000000" });
+        colors["muted"] = json!(if dark_mode { "#e0e0e0" } else { "#393939" });
+        colors["border"] = json!(if dark_mode { "#a8a8ac" } else { "#626266" });
     }
     let selected = colors["selectedText"].as_str().ok_or("Invalid selected text")?;
     let fill = colors["accent"].as_str().ok_or("Invalid accent colour")?;
@@ -423,8 +424,8 @@ fn execute() -> Result<(), String> {
                 }
             }
         }
-        for (key, value) in [("color-scheme", format!("prefer-{mode}")),
-            ("gtk-theme", if mode == "dark" { "WhiteSur-Dark".into() } else { "WhiteSur-Light".into() })] {
+        for (key, value) in [("color-scheme", format!("prefer-{}", if mode == "black" { "dark" } else { mode })),
+            ("gtk-theme", if matches!(mode, "dark" | "black") { "WhiteSur-Dark".into() } else { "WhiteSur-Light".into() })] {
             if !run("gsettings", &["set", "org.gnome.desktop.interface", key, &value]) {
                 warnings.push(format!("Could not update application {key}"));
             }
@@ -507,7 +508,7 @@ mod tests {
     #[test]
     fn semantic_palette_keeps_text_readable() {
         let palettes: Value = serde_json::from_str(PALETTE).unwrap();
-        for mode in ["light","dark"] {
+        for mode in ["light","dark","black"] {
             for (accent,_,_) in ACCENTS {
                 for increased in [false,true] {
                     let colors = resolve_palette(&palettes,mode,&json!({"accent":accent,"increaseContrast":increased})).unwrap();
