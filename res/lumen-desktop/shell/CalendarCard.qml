@@ -31,7 +31,7 @@ PanelSurface {
             const changed=month.getFullYear()!==today.getFullYear() || month.getMonth()!==today.getMonth();
             selected=new Date(today.getFullYear(),today.getMonth(),today.getDate());month=new Date(today.getFullYear(),today.getMonth(),1);detail=null;
             if(changed)clearMonth();else updateSelection();
-            if(active)refresh();
+            refresh();
         }
     }
     function goToday(){selectDate(new Date(today));}
@@ -122,13 +122,15 @@ PanelSurface {
     function apply(data) {
         monthEvents=data.monthEvents || data.events || [];events=data.events || [];markedDays=data.days || [];total=data.total || 0;
         if(detail)detail=monthEvents.find(e=>e.id===detail.id) || null;
+        CalendarHealth.report(data.syncError || "");
         loaded=true;configured=data.configured;providers=data.providers || [];calendarTimeZone=data.timezone || calendarTimeZone;lastSuccess=data.lastSuccess || "";syncError=data.syncError || "";warning=data.warning || "";
     }
     function clearMonth(){monthEvents=[];events=[];markedDays=[];total=0;loaded=false;}
     function selectDate(d) {followingToday=iso(d)===iso(today);const changed=month.getFullYear()!==d.getFullYear() || month.getMonth()!==d.getMonth();month=new Date(d.getFullYear(),d.getMonth(),1);selected=d;detail=null;if(changed)clearMonth();if(changed || !loaded){send({action:"list"});}else updateSelection();}
     function changeMonth(delta) {selectDate(CalendarLogic.monthShift(selected,delta));}
-    onActiveChanged:if(active)refresh()
-    Component.onCompleted:if(active)refresh()
+    onActiveChanged:if(active && !loaded && !busy)refresh()
+    // Read the saved calendar at session startup, even while the panel is hidden.
+    Component.onCompleted:refresh()
     Column {
         id:content;visible:!root.editing;x:18;y:18;width:parent.width-36;spacing:10
         Row {
@@ -192,7 +194,7 @@ PanelSurface {
             PanelLabel {objectName:"calendar-selected-date";width:parent.width-58;text:Qt.formatDateTime(root.selected,Qt.locale().dateFormat(root.compact?Locale.LongFormat:Locale.ShortFormat));font.pixelSize:root.textSize(root.compact?15:13);font.weight:Font.DemiBold;wrapMode:Text.WordWrap;elide:Text.ElideNone;verticalAlignment:Text.AlignVCenter;height:Math.max(24,implicitHeight)}
             AbstractButton {width:58;height:Math.max(24,root.textSize(15)+8);enabled:!root.busy;text:"Today";Accessible.name:"Go to today";contentItem:PanelLabel {text:parent.text;color:(root.monochrome?Theme.colors.muted:Theme.colors.accent);horizontalAlignment:Text.AlignRight;verticalAlignment:Text.AlignVCenter} onClicked:root.goToday()}
         }
-        PanelLabel {visible:root.events.length===0;width:parent.width;wrapMode:Text.WordWrap;color:Theme.colors.muted;text:!root.loaded?(root.busy?"Loading calendar…":"Calendar unavailable"):!root.configured?"Connect a calendar to see your appointments here.":!root.lastSuccess?"Calendars are configured, but no successful sync has completed.":"No events on this day"}
+        PanelLabel {visible:root.loaded && root.events.length===0;width:parent.width;wrapMode:Text.WordWrap;color:Theme.colors.muted;text:!root.configured?"Connect a calendar to see your appointments here.":!root.lastSuccess?"Calendars are configured, but no successful sync has completed.":"No events on this day"}
         ScrollView {
             visible:root.events.length>0;width:parent.width;height:root.compact?eventRows.height:Math.min(220,eventRows.height);clip:true
             ScrollBar.horizontal.policy:ScrollBar.AlwaysOff
@@ -299,7 +301,8 @@ PanelSurface {
         }}
         onExited:(code,status)=>{
             if(!received || code!==0){if(!root.error)root.error="Calendar did not respond";}
-            if(root.refreshPending){root.refreshPending=false;Qt.callLater(root.refresh);}else if(success && root.request.action==="list")Qt.callLater(root.refreshBackground);
+            if(root.error)CalendarHealth.report(root.error);
+            if(root.refreshPending){root.refreshPending=false;Qt.callLater(root.refresh);}else if(success && root.request.action==="list" && root.active)Qt.callLater(root.refreshBackground);
         }
     }
     Process {
@@ -308,11 +311,11 @@ PanelSurface {
         property string requestMonth;property string requestDate
         onStarted:write(JSON.stringify({action:"load",selectedDate:requestDate,month:requestMonth})+"\n")
         stdout:StdioCollector {onStreamFinished:{
-            try {const data=JSON.parse(text);if(data.error){root.backgroundError=data.error;return;}
+            try {const data=JSON.parse(text);if(data.error){root.backgroundError=data.error;CalendarHealth.report(data.error);return;}
                 if(background.epoch===root.mutationEpoch && background.requestMonth===root.iso(root.month) && !root.editing && !root.busy){root.apply(data);root.updateSelection();root.backgroundError="";}
-            }catch(e){root.backgroundError="Calendar refresh is unavailable. Saved events are still displayed.";}
+            }catch(e){root.backgroundError="Calendar refresh is unavailable. Saved events are still displayed.";CalendarHealth.report(root.backgroundError);}
         }}
-        onExited:if(requestMonth!==root.iso(root.month) && root.active)Qt.callLater(root.refreshBackground)
+        onExited:(code,status)=>{if(code!==0){root.backgroundError="Calendar refresh failed. Saved events are still displayed.";CalendarHealth.report(root.backgroundError);}if(requestMonth!==root.iso(root.month) && root.active)Qt.callLater(root.refreshBackground)}
     }
-    Timer {interval:60000;repeat:true;running:root.active && !root.editing;onTriggered:root.refresh()}
+    Timer {interval:60000;repeat:true;running:!root.editing;onTriggered:root.refresh()}
 }

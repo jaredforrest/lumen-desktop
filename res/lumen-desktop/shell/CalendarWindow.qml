@@ -87,7 +87,7 @@ FloatingWindow {
     onScreenChanged:Qt.callLater(root.fitScreen)
     Connections {target:root.screen;function onWidthChanged(){Qt.callLater(root.fitScreen);}function onHeightChanged(){Qt.callLater(root.fitScreen);}}
     function openAt(day,event){open();calendar.selectDate(day);if(event){calendar.detail=event;calendar.editing=false;inspector=true;}}
-    function open(){shell.claimPopup("");if(minimized && Quickshell.env("SWAYSOCK")){Quickshell.execDetached(["swaymsg",'[app_id="org.quickshell" title="^Calendar$"] move workspace current, focus']);minimized=false;}visible=true;calendar.refresh();Qt.callLater(root.fitScreen);Qt.callLater(()=>{content.forceActiveFocus();if(content.Window.window)content.Window.window.requestActivate();});shell.focusOwnedWindow("Calendar");}
+    function open(){shell.claimPopup("");if(minimized && Quickshell.env("SWAYSOCK")){Quickshell.execDetached(["swaymsg",'[app_id="org.quickshell" title="^Calendar$"] move workspace current, focus']);minimized=false;}visible=true;if(!calendar.loaded && !calendar.busy)calendar.refresh();Qt.callLater(root.fitScreen);Qt.callLater(()=>{content.forceActiveFocus();if(content.Window.window)content.Window.window.requestActivate();});shell.focusOwnedWindow("Calendar");}
     function eventDetails(event,day){if(day)choose(day);calendar.editing=false;calendar.detail=event;inspector=true;}
     function create(d,hour){choose(d);calendar.startEdit(null);if(hour!==undefined){calendar.setStartHour(hour);}inspector=true;}
     component Tool: AbstractButton {
