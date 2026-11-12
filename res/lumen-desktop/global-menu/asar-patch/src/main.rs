@@ -48,6 +48,34 @@ fn replace(data: &[u8], needle: &[u8], replacement: &[u8]) -> Vec<u8> {
 
 fn digest(data: &[u8]) -> String { format!("{:x}", Sha256::digest(data)) }
 
+fn native_window_frames(data: &[u8]) -> Result<Option<Vec<u8>>, String> {
+    let variants: [(&[u8], &[u8], &[u8], &[u8], &[u8], &[u8]); 2] = [
+        (b"titleBarStyle:`hidden`,titleBarOverlay:j9(r)",
+         b"n.setTitleBarOverlay(j9(t))",
+         b"if(process.platform!==`win32`&&process.platform!==`linux`||t!==`primary`",
+         b"titleBarStyle:`default`,titleBarOverlay:!1",
+         b"(process.platform!==`linux`&&n.setTitleBarOverlay(j9(t)))",
+         b"if(process.platform!==`win32`||t!==`primary`"),
+        (b"titleBarStyle:\"hidden\",titleBarOverlay:eAy(n)",
+         b"r.setTitleBarOverlay(eAy(t))",
+         b"if(\"win32\"!==process.platform&&\"linux\"!==process.platform||\"primary\"!==t&&\"detached\"!==t)",
+         b"titleBarStyle:\"default\",titleBarOverlay:!1",
+         b"(process.platform!==\"linux\"&&r.setTitleBarOverlay(eAy(t)))",
+         b"if(\"win32\"!==process.platform||\"primary\"!==t&&\"detached\"!==t)"),
+    ];
+    let mut result = None;
+    for (overlay, zoom, sync, overlay_out, zoom_out, sync_out) in variants {
+        if count(data, overlay) == 0 { continue; }
+        if result.is_some() || count(data, overlay) != 2 || count(data, zoom) != 1 || count(data, sync) != 1 {
+            return Err("Unsupported Codex window-overlay implementation".into());
+        }
+        let output = replace(data, overlay, overlay_out);
+        let output = replace(&output, zoom, zoom_out);
+        result = Some(replace(&output, sync, sync_out));
+    }
+    Ok(result)
+}
+
 fn patch(raw: &[u8], native_frames: bool) -> Result<Vec<u8>, String> {
     let header_len = word(raw, 12)?;
     let body_start = 8usize.checked_add(word(raw, 4)?).ok_or("Invalid ASAR size")?;
@@ -75,18 +103,11 @@ fn patch(raw: &[u8], native_frames: bool) -> Result<Vec<u8>, String> {
             bootstrap_count += 1;
             data.splice(0..0, BOOTSTRAP.iter().copied());
         }
-        if native_frames && path.starts_with(".vite/build/main-") && path.ends_with(".js") {
-            let overlay = b"titleBarStyle:`hidden`,titleBarOverlay:j9(r)";
-            let zoom = b"n.setTitleBarOverlay(j9(t))";
-            let sync = b"if(process.platform!==`win32`&&process.platform!==`linux`||t!==`primary`";
-            if count(&data, overlay) > 0 {
-                if count(&data, overlay) != 2 || count(&data, zoom) != 1 || count(&data, sync) != 1 {
-                    return Err("Unsupported Codex window-overlay implementation".into());
-                }
+        if native_frames && path.ends_with(".js") &&
+            (path.starts_with(".vite/build/main-") || path.starts_with(".vite/build/early-bootstrap-")) {
+            if let Some(output) = native_window_frames(&data)? {
                 frame_count += 1;
-                data = replace(&data, overlay, b"titleBarStyle:`default`,titleBarOverlay:!1");
-                data = replace(&data, zoom, b"(process.platform!==`linux`&&n.setTitleBarOverlay(j9(t)))");
-                data = replace(&data, sync, b"if(process.platform!==`win32`||t!==`primary`");
+                data = output;
             }
         }
         if data != original && node.get("integrity").is_some() {
@@ -133,6 +154,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn supports_both_frame_layouts_and_rejects_partial_matches() {
+        for (overlay, zoom, sync) in [
+            ("titleBarStyle:`hidden`,titleBarOverlay:j9(r)", "n.setTitleBarOverlay(j9(t))", "if(process.platform!==`win32`&&process.platform!==`linux`||t!==`primary`"),
+            ("titleBarStyle:\"hidden\",titleBarOverlay:eAy(n)", "r.setTitleBarOverlay(eAy(t))", "if(\"win32\"!==process.platform&&\"linux\"!==process.platform||\"primary\"!==t&&\"detached\"!==t)"),
+        ] {
+            let source = format!("{overlay};{overlay};{zoom};{sync}");
+            let patched = native_window_frames(source.as_bytes()).unwrap().unwrap();
+            assert_eq!(count(&patched, overlay.as_bytes()), 0);
+            assert_eq!(count(&patched, b"titleBarOverlay:!1"), 2);
+            assert!(native_window_frames(format!("{overlay};{zoom};{sync}").as_bytes()).is_err());
+            assert!(native_window_frames(format!("{overlay};{overlay};{sync}").as_bytes()).is_err());
+        }
+        assert!(native_window_frames(b"unrelated source").unwrap().is_none());
+    }
     #[test]
     fn replacement_counts_are_exact() {
         assert_eq!(count(b"ababa", b"aba"), 1);
