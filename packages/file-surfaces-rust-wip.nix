@@ -9,7 +9,7 @@ in
   src = ../res/lumen-desktop/file-surfaces;
   cargoLock.lockFile = ../res/lumen-desktop/file-surfaces/Cargo.lock;
   nativeBuildInputs = [ pkgs.pkg-config ];
-  buildInputs = [ pkgs.glib ];
+  buildInputs = [ pkgs.glib pkgs.sqlite ];
   nativeCheckInputs = [ pkgs.coreutils ];
   LUMEN_TEST_FILE_TAGS = "${fileTags}/bin/lumen-file-tags";
   LUMEN_TEST_FILE_PREVIEW = "${filePreview}/bin/lumen-file-preview";
