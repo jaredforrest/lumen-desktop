@@ -28,5 +28,11 @@ in pkgs.quickshell.overrideAttrs (old: {
     "-DSCREENCOPY_HYPRLAND_TOPLEVEL=OFF"
     "-DLUMEN_TOPLEVEL_IDENTITY_TESTS=ON"
   ];
-  patches = (old.patches or [ ]) ++ [ ./quickshell-accessibility-lifecycle.patch ./quickshell-compiler-corrections.patch ./quickshell-cmake-registry-policy.patch ./quickshell-toplevel-identity.patch ];
+  patches = (old.patches or [ ]) ++ [
+    ./quickshell-accessibility-lifecycle.patch
+    ./quickshell-compiler-corrections.patch
+    ./quickshell-cmake-registry-policy.patch
+    ./quickshell-toplevel-identity.patch
+  ] ++ pkgs.lib.optional (pkgs.lib.versionOlder old.version "0.3.2")
+    ./quickshell-peak-moc-0.3.1.patch;
 })

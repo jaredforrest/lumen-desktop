@@ -1,0 +1,17 @@
+--- a/src/services/pipewire/peak.hpp
++++ b/src/services/pipewire/peak.hpp
+@@ -1,4 +1,6 @@
+ #pragma once
++
++Q_MOC_INCLUDE("services/pipewire/qml.hpp")
+ 
+ #include <qobject.h>
+ #include <qqmlintegration.h>
+@@ -16,7 +18,6 @@
+ 
+ } // namespace qs::service::pipewire
+ 
+-Q_DECLARE_OPAQUE_POINTER(qs::service::pipewire::PwNodeIface*);
+ 
+ namespace qs::service::pipewire {
+ 
