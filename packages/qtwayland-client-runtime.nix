@@ -4,7 +4,12 @@ in pkgs.stdenv.mkDerivation {
   dontWrapQtApps = true;
   pname = "lumen-qt-wayland-client-runtime";
   inherit (qt) version src;
-  patches = (qt.patches or [ ]) ++ [ ./qtwayland-destroyed-focus-release.patch ./qtwayland-empty-preedit-composition.patch ];
+  patches = (qt.patches or [ ]) ++ [
+    (if pkgs.lib.versionAtLeast qt.version "6.12"
+     then ./qtwayland-destroyed-focus-release-6.12.patch
+     else ./qtwayland-destroyed-focus-release.patch)
+    ./qtwayland-empty-preedit-composition.patch
+  ];
   nativeBuildInputs = (qt.nativeBuildInputs or [ ]) ++ [ pkgs.cmake pkgs.ninja pkgs.pkg-config pkgs.wayland-scanner pkgs.patchelf pkgs.binutils qt ];
   buildInputs = (qt.buildInputs or [ ]) ++ (qt.propagatedBuildInputs or [ ]) ++ [ qt pkgs.wayland pkgs.wayland-protocols pkgs.libxkbcommon ];
   NIX_CFLAGS_COMPILE = qt.NIX_CFLAGS_COMPILE or "";
@@ -18,11 +23,11 @@ in pkgs.stdenv.mkDerivation {
     cat > CMakeLists.txt <<'EOF'
 cmake_minimum_required(VERSION 3.22)
 include(.cmake.conf)
-project(QtWaylandClientRuntime VERSION 6.11.2 LANGUAGES C CXX)
-find_package(Qt6 6.11.2 EXACT CONFIG REQUIRED COMPONENTS BuildInternals Core CorePrivate Gui GuiPrivate Network DBus OpenGL)
+project(QtWaylandClientRuntime VERSION ${qt.version} LANGUAGES C CXX)
+find_package(Qt6 ${qt.version} EXACT CONFIG REQUIRED COMPONENTS BuildInternals Core CorePrivate Gui GuiPrivate Network DBus OpenGL)
 find_package(Wayland REQUIRED COMPONENTS Client Cursor)
 find_package(WaylandScanner REQUIRED)
-find_package(Qt6WaylandScannerTools 6.11.2 EXACT CONFIG REQUIRED)
+find_package(Qt6WaylandScannerTools ${qt.version} EXACT CONFIG REQUIRED)
 qt_internal_project_setup()
 qt_build_repo_begin()
 add_subdirectory(src/plugins/platforms/wayland)
