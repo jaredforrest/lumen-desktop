@@ -446,7 +446,7 @@ fn main() {
     let probe: Vec<String> = env::args().skip(1).collect();
     if probe.first().is_some_and(|item| item == "--resolve-palette") {
         let result = (|| {
-            if probe.len() != 4 || !["light","dark"].contains(&probe[1].as_str()) || !["true","false"].contains(&probe[3].as_str()) {
+            if probe.len() != 4 || !["light","dark","black"].contains(&probe[1].as_str()) || !["true","false"].contains(&probe[3].as_str()) {
                 return Err("Expected mode, accent and contrast flag".to_string());
             }
             let palettes: Value = serde_json::from_str(PALETTE).map_err(|e| e.to_string())?;
