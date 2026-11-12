@@ -5,8 +5,10 @@ A consumer can opt into saved-first transactions by setting
 The runtime still validates the complete candidate with the Nix settings schema,
 checks concurrent edits and commits the source before acknowledging the save.
 A private projection at `$XDG_STATE_HOME/lumen-desktop/settings/current.json`
-contains the validated values and exact source bytes. Readers use it only while
-those bytes still match the authoritative source. It is a regenerable projection,
+contains the validated values, committed revision and exact source bytes. Readers
+use it only while that revision and those bytes still match the authoritative
+source. Background workers must require the recorded save revision too, so a
+manual configuration commit does not become an implicit deployment request. It is a regenerable projection,
 not a second source of configuration policy; consumers with ephemeral homes must
 persist this directory or recreate the projection from the committed source.
 

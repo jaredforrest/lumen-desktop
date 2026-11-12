@@ -283,16 +283,18 @@ fn desired_settings() -> Option<Value> {
     let source=env::var("LUMEN_NIX_SETTINGS_SOURCE").ok()?;
     let saved=json_file(&desired_path().ok()?).ok()?;
     if saved["sourcePath"].as_str()!=Some(&source) || saved["source"].as_str()!=Some(&fs::read_to_string(&source).ok()?) {return None;}
+    let repo=env::var("LUMEN_NIX_SETTINGS_BUILD_SOURCE").ok()?;
+    if saved["revision"].as_str()!=Some(git(Path::new(&repo),&["rev-parse","HEAD"]).ok()?.as_str()) {return None;}
     normalize_settings(saved["settings"].clone()).ok()
 }
-fn save_desired(source:&Path, values:&Value) -> SettingsResult<()> {
+fn save_desired(source:&Path, values:&Value, revision:&str) -> SettingsResult<()> {
     let path=desired_path()?;
     let parent=path.parent().ok_or("No settings state parent")?;
     fs::DirBuilder::new().recursive(true).mode(0o700).create(parent).map_err(|error|error.to_string())?;
     let temporary=path.with_extension(format!("tmp-{}",std::process::id()));
     let result=(|| {
         let mut file=OpenOptions::new().write(true).create_new(true).mode(0o600).open(&temporary).map_err(|error|error.to_string())?;
-        serde_json::to_writer(&mut file,&json!({"sourcePath":source,"source":fs::read_to_string(source).map_err(|error|error.to_string())?,"settings":values})).map_err(|error|error.to_string())?;
+        serde_json::to_writer(&mut file,&json!({"revision":revision,"sourcePath":source,"source":fs::read_to_string(source).map_err(|error|error.to_string())?,"settings":values})).map_err(|error|error.to_string())?;
         file.sync_all().map_err(|error|error.to_string())?;
         fs::rename(&temporary,&path).map_err(|error|error.to_string())?;
         File::open(parent).and_then(|file|file.sync_all()).map_err(|error|error.to_string())
@@ -380,7 +382,7 @@ fn git_transaction(section: &str, value: Value, application: Option<&str>, merge
         git(&repo,&["commit","--only","-m",&format!("Update desktop setting: {section}"),"--","settings/desktop.nix"])?;
         committed = Some(git(&repo,&["rev-parse","HEAD"])?);
         if asynchronous() {
-            save_desired(&source,&result)?;
+            save_desired(&source,&result,committed.as_deref().ok_or("Missing committed settings revision")?)?;
             let deploy=required_env("LUMEN_NIX_SETTINGS_DEPLOY")?;
             // The committed preference remains authoritative if propagation
             // fails. The worker reports the failure separately and can retry.
