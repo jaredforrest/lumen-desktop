@@ -12,7 +12,7 @@ FloatingWindow {
     required property var shell
     title:"Calendar";visible:false;implicitWidth:1060;implicitHeight:720
     minimumSize:Qt.size(480,320);color:"transparent";surfaceFormat.opaque:false
-    readonly property color canvasColor:Theme.dark?"#202022":"#ffffff"
+    readonly property color canvasColor:Theme.black?"#000000":Theme.dark?"#202022":"#ffffff"
     property alias calendarState:calendar
     property string view:"Month"
     property bool sidebar:true
@@ -115,8 +115,8 @@ FloatingWindow {
                 else if(event.key===Qt.Key_W){root.visible=false;event.accepted=true;}
             }
         }
-        Rectangle {width:root.sidebarWidth;height:parent.height;color:Theme.dark?"#2b2b2e":"#f0f0f2"}
-        Rectangle {x:root.sidebarWidth;width:parent.width-x;height:root.toolbarHeight;color:Theme.dark?"#29292c":"#f7f7f8"}
+        Rectangle {width:root.sidebarWidth;height:parent.height;color:Theme.black?"#08080a":Theme.dark?"#2b2b2e":"#f0f0f2"}
+        Rectangle {x:root.sidebarWidth;width:parent.width-x;height:root.toolbarHeight;color:Theme.black?"#000000":Theme.dark?"#29292c":"#f7f7f8"}
         MouseArea {x:0;y:0;width:parent.width;height:root.toolbarHeight;onPressed:if(content.Window.window)content.Window.window.startSystemMove()}
         WindowControls {windowName:"Calendar";windowActive:content.Window.window?content.Window.window.active:false;onTriggered:action=>{const w=content.Window.window;if(action===0)root.visible=false;else if(w && action===1){if(Quickshell.env("SWAYSOCK")){root.minimized=true;Quickshell.execDetached(["swaymsg",'[app_id="org.quickshell" title="^Calendar$"] move scratchpad']);}else w.showMinimized();}else if(w){if(w.visibility===Window.FullScreen)w.showNormal();else w.showFullScreen();}}}
         Tool {x:94;y:12;label:"☷";Accessible.name:"Show or hide calendars";onClicked:root.sidebar=!root.sidebar}
