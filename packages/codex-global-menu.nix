@@ -9,5 +9,11 @@ in base.overrideAttrs (old: {
     wrapProgram "$out/bin/codex-desktop" \
       --set CODEX_MENU_ADAPTER_ROOT ${runtime}/share/global-menu \
       --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.bash pkgs.coreutils pkgs.diffutils pkgs.findutils ]}
+    mv "$out/bin/codex-desktop" "$out/bin/.codex-desktop-session"
+    substitute ${../res/codex-session/launch.nu} "$out/bin/codex-desktop" \
+      --replace-fail '@NU@' '${pkgs.nushell}/bin/nu' \
+      --replace-fail '@SYSTEMCTL@' '${pkgs.systemd}/bin/systemctl' \
+      --replace-fail '@WRAPPED@' "$out/bin/.codex-desktop-session"
+    chmod +x "$out/bin/codex-desktop"
   '';
 })

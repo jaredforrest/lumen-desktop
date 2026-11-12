@@ -23,6 +23,7 @@ FloatingWindow {
     SearchHistoryState {id:settingsHistory;active:root.visible && root.page==="Search"}
     ClipboardState {id:settingsClipboard;active:root.visible && root.page==="Search";listWhenActive:false}
     property bool minimized:false
+    property bool deploymentDetails:false
     property string page:"Appearance"
     property string controlId:""
     property var history:[{page:"Appearance",control:""}]
@@ -225,7 +226,11 @@ FloatingWindow {
             }
             Column {
                 id:body;width:scroller.width;spacing:16
-                PanelLabel {width:parent.width;wrapMode:Text.WordWrap;visible:root.service.busy;text:root.service.applying===true?"Applying your preferences…":"Loading your preferences…";font.pixelSize:Theme.textSize(11);color:Theme.colors.muted}
+                PanelLabel {width:parent.width;wrapMode:Text.WordWrap;visible:root.service.busy;text:root.service.applying===true?"Saving your preferences…":"Loading your preferences…";font.pixelSize:Theme.textSize(11);color:Theme.colors.muted}
+                PanelLabel {width:parent.width;visible:root.service.deploymentMessage!=="";text:root.service.deploymentMessage;wrapMode:Text.WordWrap;color:Theme.colors.muted}
+                PanelLabel {width:parent.width;visible:root.deploymentDetails && root.service.deployment.state==="failed";text:root.service.deployment.message || "";wrapMode:Text.WordWrap;color:Theme.colors.muted}
+                ControlRow {width:parent.width;visible:root.service.deployment.state==="failed";text:root.deploymentDetails?"Hide Update Details":"Show Update Details";onClicked:root.deploymentDetails=!root.deploymentDetails}
+                ControlRow {width:parent.width;visible:root.service.deployment.state==="failed";text:"Retry System Update";onClicked:root.service.retryDeployment()}
                 PanelLabel {visible:root.service.error!=="" || root.service.warning!=="";text:root.service.error || root.service.warning;wrapMode:Text.WordWrap;width:parent.width;color:Theme.colors.muted}
                 Column {
                     visible:root.page==="Appearance";width:parent.width;spacing:14

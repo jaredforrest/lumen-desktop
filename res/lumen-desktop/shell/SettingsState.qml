@@ -12,6 +12,13 @@ Item {
     property var pending:[]
     property string error:""
     property string warning:""
+    property var deployment:({state:"idle"})
+    readonly property string deploymentMessage:deployment.state==="building"?"Saved. Updating the system in the background…":deployment.state==="authorizing"?"Saved. Waiting for permission to finish the system update…":deployment.state==="pending"?"Saved. System update queued.":deployment.state==="syncing"?"Saved and applied. Syncing to GitHub…":deployment.state==="sync-pending"?"Saved and applied. GitHub sync will retry.":deployment.state==="failed"?"Saved locally. The system update couldn’t finish.":""
+    function refreshDeployment(){if(!deploymentReader.running)deploymentReader.running=true;}
+    function retryDeployment(){if(!deploymentRetry.running)deploymentRetry.running=true;}
+    Process {id:deploymentReader;command:["lumen-nix-settings","deployment-status"];stdout:StdioCollector {onStreamFinished:{try{const result=JSON.parse(text);if(typeof result.state==="string")root.deployment=result;}catch(e){}}}}
+    Process {id:deploymentRetry;command:["lumen-nix-settings","retry-deployment"];onExited:root.refreshDeployment()}
+    Timer {interval:2000;running:root.active;repeat:true;triggeredOnStart:true;onTriggered:root.refreshDeployment()}
     property var menuBarPreferences:Theme.menuBarPreferences
     property var preferences:Theme.preferences
     property var desktopPreferences:Theme.desktopPreferences

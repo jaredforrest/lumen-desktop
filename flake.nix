@@ -446,6 +446,13 @@
         };
         font-configuration = import ./tests/project/font-configuration.nix { inherit pkgs; };
         consumer-boundary = assert import ./tests/project/boundary.nix { inherit nixpkgs system; }; pkgs.writeText "lumen-consumer-boundary" "passed";
+        codex-session = pkgs.runCommand "lumen-codex-session-check" {
+          nativeBuildInputs = [ pkgs.rustc pkgs.stdenv.cc ];
+        } ''
+          rustc --edition=2024 -Dwarnings ${./tests/project/codex_session.rs} -o fixture
+          ./fixture ${pkgs.nushell}/bin/nu ${./res/codex-session/launch.nu}
+          touch "$out"
+        '';
         source-contracts = builtins.derivation {
           name = "lumen-source-contracts";
           inherit system;

@@ -263,6 +263,7 @@ fn sync() -> SettingsResult<Value> {
         .ok()
         .filter(|value| !value.is_empty())
     {
+        if let Some(desired)=desired_settings(){return Ok(desired);}
         return normalize_settings(json_file(Path::new(&active))?);
     }
     let bundle = build(Path::new(&required_env("LUMEN_NIX_SETTINGS_SOURCE")?))?;
@@ -270,7 +271,38 @@ fn sync() -> SettingsResult<Value> {
     normalize_settings(json_file(&bundle.join("settings.json"))?)
 }
 
+fn asynchronous() -> bool { env::var("LUMEN_NIX_SETTINGS_ASYNC").as_deref() == Ok("1") }
+fn desired_path() -> SettingsResult<PathBuf> {
+    let base=env::var_os("XDG_STATE_HOME").map(PathBuf::from)
+        .or_else(||env::var_os("HOME").map(|home|PathBuf::from(home).join(".local/state")))
+        .ok_or("No settings state directory")?;
+    Ok(base.join("lumen-desktop/settings/current.json"))
+}
+fn desired_settings() -> Option<Value> {
+    if !asynchronous() { return None; }
+    let source=env::var("LUMEN_NIX_SETTINGS_SOURCE").ok()?;
+    let saved=json_file(&desired_path().ok()?).ok()?;
+    if saved["sourcePath"].as_str()!=Some(&source) || saved["source"].as_str()!=Some(&fs::read_to_string(&source).ok()?) {return None;}
+    normalize_settings(saved["settings"].clone()).ok()
+}
+fn save_desired(source:&Path, values:&Value) -> SettingsResult<()> {
+    let path=desired_path()?;
+    let parent=path.parent().ok_or("No settings state parent")?;
+    fs::DirBuilder::new().recursive(true).mode(0o700).create(parent).map_err(|error|error.to_string())?;
+    let temporary=path.with_extension(format!("tmp-{}",std::process::id()));
+    let result=(|| {
+        let mut file=OpenOptions::new().write(true).create_new(true).mode(0o600).open(&temporary).map_err(|error|error.to_string())?;
+        serde_json::to_writer(&mut file,&json!({"sourcePath":source,"source":fs::read_to_string(source).map_err(|error|error.to_string())?,"settings":values})).map_err(|error|error.to_string())?;
+        file.sync_all().map_err(|error|error.to_string())?;
+        fs::rename(&temporary,&path).map_err(|error|error.to_string())?;
+        File::open(parent).and_then(|file|file.sync_all()).map_err(|error|error.to_string())
+    })();
+    let _=fs::remove_file(temporary);
+    result
+}
+
 fn read_settings() -> SettingsResult<Value> {
+    if let Some(desired)=desired_settings(){return Ok(desired);}
     if let Some(active) = env::var("LUMEN_NIX_SETTINGS_ACTIVE")
         .ok()
         .filter(|value| !value.is_empty())
@@ -347,6 +379,14 @@ fn git_transaction(section: &str, value: Value, application: Option<&str>, merge
         git(&repo,&["add","--","settings/desktop.nix"])?;
         git(&repo,&["commit","--only","-m",&format!("Update desktop setting: {section}"),"--","settings/desktop.nix"])?;
         committed = Some(git(&repo,&["rev-parse","HEAD"])?);
+        if asynchronous() {
+            save_desired(&source,&result)?;
+            let deploy=required_env("LUMEN_NIX_SETTINGS_DEPLOY")?;
+            // The committed preference remains authoritative if propagation
+            // fails. The worker reports the failure separately and can retry.
+            let _=run_command(&deploy,&["queue"],10);
+            return Ok((result,false));
+        }
         system = Some(rebuild_system(&source)?);
         let system_path = system.as_ref().and_then(|path| path.to_str()).ok_or("Invalid system path")?;
         let previous_system = fs::canonicalize("/run/current-system").map_err(|e| e.to_string())?;
@@ -485,6 +525,12 @@ fn run() -> SettingsResult<Value> {
         [] => read_settings(),
         [command] if command == "read" => read_settings(),
         [command] if command == "sync" => sync(),
+        [command] if command == "deployment-status" || command == "retry-deployment" => {
+            let deploy=required_env("LUMEN_NIX_SETTINGS_DEPLOY")?;
+            let action=if command=="deployment-status" {"propagation-status"}else{"queue"};
+            let output=successful(&deploy,&[action],10)?;
+            serde_json::from_slice(&output.stdout).map_err(|error|error.to_string())
+        },
         [command, section, value] if command == "set" => set(
             section,
             serde_json::from_str(value).map_err(|error| error.to_string())?,

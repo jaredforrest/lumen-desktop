@@ -57,13 +57,13 @@ Column {
         id:position
     }
     DialogButton {width:parent.width;text:"Apply Display Settings";primary:true;enabled:!!root.output && !root.pending && !worker.running && mode.currentIndex>=0;onClicked:root.send({action:"apply",name:root.output.name,mode:mode.currentText,scale:[1,1.25,1.5,1.75,2,2.5,3][scaling.currentIndex],x:position.children.find(c=>c.objectName==="displayX").text,y:position.children.find(c=>c.objectName==="displayY").text})}
-    PanelLabel {visible:!!root.pending;width:parent.width;wrapMode:Text.WordWrap;text:root.saving?"Saving display settings… This may take a few minutes.":"Keep these display settings? Reverting in "+root.seconds+" seconds.";Accessible.name:text}
+    PanelLabel {visible:!!root.pending;width:parent.width;wrapMode:Text.WordWrap;text:root.saving?"Saving display settings…":"Keep these display settings? Reverting in "+root.seconds+" seconds.";Accessible.name:text}
     Row {visible:!!root.pending && !root.saving;spacing:8;width:parent.width
         DialogButton {width:(parent.width-8)/2;text:"Revert";onClicked:root.send({action:"revert",token:root.pending})}
         DialogButton {width:(parent.width-8)/2;text:"Keep Changes";primary:true;onClicked:root.send({action:"confirm",token:root.pending})}
     }
     StatusMessage {width:parent.width;text:root.error;severity:"error"}
-    PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:"Confirmed settings update your Nix configuration and are applied on login or reconnect.";textRole:"metadata";color:Theme.colors.muted}
+    PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:"Changes are saved locally. System and GitHub updates continue in the background.";textRole:"metadata";color:Theme.colors.muted}
     ControlRow {width:parent.width;text:"Forget Saved Display Layout";enabled:!root.pending;onClicked:root.send({action:"forget"})}
     Process {
         id:worker;stdinEnabled:true
