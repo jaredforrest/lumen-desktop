@@ -168,11 +168,13 @@ fn inline_image(hints:&HashMap<String,OwnedValue>, directory:&std::path::Path, i
     lumen_notifications::local_image(path.to_str()?) .into()
 }
 async fn emit(conn:&Connection, effects:Effects, state:Option<String>) -> zbus::Result<()> {
-    for (id,reason) in effects.closed {
-        conn.emit_signal(None::<&str>,PATH,BUS,"NotificationClosed",&(id,reason)).await?;
-    }
+    // Clients may release their action handler as soon as the notification closes.
+    // Deliver the selected action before telling them to retire the notification.
     for (id,action) in effects.invoked {
         conn.emit_signal(None::<&str>,PATH,BUS,"ActionInvoked",&(id,action)).await?;
+    }
+    for (id,reason) in effects.closed {
+        conn.emit_signal(None::<&str>,PATH,BUS,"NotificationClosed",&(id,reason)).await?;
     }
     if effects.changed {
         conn.emit_signal(None::<&str>,PATH,UI,"Changed",&(state.unwrap_or_default(),)).await?;

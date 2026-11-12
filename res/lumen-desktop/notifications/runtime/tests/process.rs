@@ -1,5 +1,6 @@
 //! Private D-Bus, settings, compositor lock, and restart process fixture.
 use lumen_notifications::{BUS, PATH, UI};
+use futures_util::StreamExt;
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::env;
@@ -212,7 +213,14 @@ async fn private() {
             assert_ne!(first,current);
             command(&ui,json!({"action":"invoke","id":replacement,"key":"open","delivery":first})).await.unwrap();
             assert_eq!(snapshot(&ui).await["rows"][0]["active"],true);
+            let mut signals=standard.receive_all_signals().await.unwrap();
             command(&ui,json!({"action":"invoke","id":replacement,"key":"open","delivery":current})).await.unwrap();
+            let action=tokio::time::timeout(Duration::from_secs(2),signals.next()).await.unwrap().unwrap();
+            assert_eq!(action.header().member().unwrap().as_str(),"ActionInvoked", "Closing first discards Electron's click handler");
+            assert_eq!(action.body().deserialize::<(u32,String)>().unwrap(),(replacement,"open".into()));
+            let closed=tokio::time::timeout(Duration::from_secs(2),signals.next()).await.unwrap().unwrap();
+            assert_eq!(closed.header().member().unwrap().as_str(),"NotificationClosed");
+            assert_eq!(closed.body().deserialize::<(u32,u32)>().unwrap(),(replacement,2));
             assert!(!snapshot(&ui).await["rows"].as_array().unwrap().iter().any(|row| row["id"]==replacement));
             assert!(!fs::read_to_string(fixture.root.join("state/history.json")).unwrap().contains("delivery"));
             let authority=peer.as_ref().unwrap();
