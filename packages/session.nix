@@ -3,6 +3,7 @@ let
   lib = pkgs.lib;
   remoteClient = import ./remote-client.nix { inherit pkgs; };
   quickshell = import ./quickshell-runtime.nix { inherit pkgs; };
+  backgroundRemoval = import ./rembg-local.nix { inherit pkgs; };
   desktopTimeZone = timeZone;
   readerCommand = import ./reader-commands.nix { inherit pkgs assets; enabled = readerCommandsEnabled; };
   auth = import ./lumen-auth.nix { inherit pkgs user displayName assets; swayPackage = swayPackage; };
@@ -153,7 +154,7 @@ let
       name = "lumen-desktop-shell";
       # Desktop entries launched through Rofi inherit this service's PATH.
       # Entries such as ChatGPT use `env` from coreutils in their Exec command.
-      runtimeInputs = [ shortcutLayout shortcutSettings shareDestinations filePreviewRust fileSurfacesRust batchRenameRust contextTools nearbySharing desktopLayoutRust remoteDesktopRust windowPairRust captureObservationRust portalPermissionsRust remoteClient pkgs.fontconfig pkgs.hyprpicker personalServices pkgs.rembg pkgs.whisper-cpp pkgs.pipewire (pkgs.tesseract.override { enableLanguages = [ "eng" ]; }) (pkgs.aspellWithDicts (d: [ d.en ])) pkgs.wordnet pkgs.espeak-ng pkgs.wtype pkgs.poppler-utils pkgs.ffmpeg-headless pkgs.util-linux fileClipboard fileClipboardClient bluetoothPower bluetoothPair desktopFiles privacyStatus powerStatus networkConnectivity systemControls textTools searchHistory vpnControl pkgs.wl-clipboard pkgs.glib pkgs.udisks2 launchApp pkgs.ddcutil pkgs.blueman pkgs.coreutils pkgs.jq pkgs.sway focusWindow menuVisibility windowGeometry quickshell pkgs.foot pkgs.wireplumber pkgs.pavucontrol
+      runtimeInputs = [ shortcutLayout shortcutSettings shareDestinations filePreviewRust fileSurfacesRust batchRenameRust contextTools nearbySharing desktopLayoutRust remoteDesktopRust windowPairRust captureObservationRust portalPermissionsRust remoteClient pkgs.fontconfig pkgs.hyprpicker personalServices backgroundRemoval pkgs.whisper-cpp pkgs.pipewire (pkgs.tesseract.override { enableLanguages = [ "eng" ]; }) (pkgs.aspellWithDicts (d: [ d.en ])) pkgs.wordnet pkgs.espeak-ng pkgs.wtype pkgs.poppler-utils pkgs.ffmpeg-headless pkgs.util-linux fileClipboard fileClipboardClient bluetoothPower bluetoothPair desktopFiles privacyStatus powerStatus networkConnectivity systemControls textTools searchHistory vpnControl pkgs.wl-clipboard pkgs.glib pkgs.udisks2 launchApp pkgs.ddcutil pkgs.blueman pkgs.coreutils pkgs.jq pkgs.sway focusWindow menuVisibility windowGeometry quickshell pkgs.foot pkgs.wireplumber pkgs.pavucontrol
         hotCorners spaces windowOverview networkLocations trashActions fileTagsRust fileWatchRust clipboardHistory groupControlRust desktopState shellIpc dockDrop displaySettingsRust screenSaverRust inputSettingsRust wallpaperSettingsRust applicationControl applicationLifecycle fileAlias auth.lock pkgs.swaylock pkgs.xdg-utils pkgs.trash-cli appearance nixSettings rofiPackage ];
       body = ''
         # The systemd service does not inherit the interactive login PATH.
