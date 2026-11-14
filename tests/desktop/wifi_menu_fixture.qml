@@ -24,6 +24,8 @@ ShellRoot {
         try {
             const toggle=find(pane,"wifi-power");
             if(!toggle || !toggle.checked || !toggle.enabled)throw Error("Wi-Fi toggle is not usable");
+            const refresh=find(pane,"wifi-refresh");
+            if(!refresh || refresh.height!==30 || refresh.contentItem.horizontalAlignment!==Text.AlignHCenter || refresh.contentItem.verticalAlignment!==Text.AlignVCenter)throw Error("Refresh label is not centered");
             pane.connect({id:"11:22:33:44:55:66",name:"Open",secured:false});
             if(controls.calls.length!==1 || controls.calls[0][0]!=="wifi-connect")throw Error("Open network did not connect");
             pane.connect({id:"AA:BB:CC:DD:EE:FF",name:"Private",secured:true});

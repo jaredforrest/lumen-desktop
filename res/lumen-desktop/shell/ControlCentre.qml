@@ -82,7 +82,7 @@ Column {
             }
         }
     }}
-    Component {id:componentWifi;ControlTile {label:"Wi-Fi";symbol:"wifi";unavailable:NetworkState.state(root.shell.systemState.wifi).unavailable;active:NetworkState.state(root.shell.systemState.wifi).active;subtitle:NetworkState.state(root.shell.systemState.wifi).label;onClicked:root.panelRequested("Wi-Fi")}}
+    Component {id:componentWifi;ControlTile {label:"Wi-Fi";symbol:"wifi";unavailable:NetworkState.state(root.shell.systemState.wifi).unavailable;active:NetworkState.state(root.shell.systemState.wifi).active;subtitle:NetworkState.state(root.shell.systemState.wifi).summary;onClicked:root.panelRequested("Wi-Fi")}}
     Component {id:componentBluetooth;ControlTile {label:"Bluetooth";symbol:"bluetooth";unavailable:!Bluetooth.defaultAdapter;active:!!Bluetooth.defaultAdapter && Bluetooth.defaultAdapter.enabled;subtitle:active?"On":"Off";onClicked:root.panelRequested("Bluetooth")}}
     Component {id:componentSharing;ControlTile {label:root.sharingLabel;subtitle:root.sharingSubtitle;symbol:"nearby";iconSource:NearbySharingState.iconSource;active:root.sharingActive;unavailable:!root.sharingAvailable;accessibleLabel:root.sharingLabel+" receiving controls";onClicked:{root.shell.claimPopup("");AppLaunch.run(["lumen-nearby-sharing","open"]);}}}
     Component {id:componentMedia;MediaControl {onExpandRequested:root.panelRequested("Now Playing")}}

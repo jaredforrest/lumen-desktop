@@ -24,7 +24,7 @@ PanelSurface {
         }
         Column {id:labels;x:tile.vertical?0:36;y:tile.vertical?36:(tileBody.height-height)/2;width:Math.max(0,tileBody.width-(tile.vertical?0:36));visible:tile.label!=="";spacing:2
             PanelLabel {width:parent.width;text:tile.vertical?tile.compactLabel:tile.label;wrapMode:Text.WordWrap;horizontalAlignment:tile.vertical?Text.AlignHCenter:Text.AlignLeft;elide:Text.ElideNone;font.pixelSize:Theme.textSize(12);font.weight:Font.DemiBold}
-            PanelLabel {width:parent.width;visible:text!=="";text:tile.subtitle;wrapMode:Text.Wrap;horizontalAlignment:tile.vertical?Text.AlignHCenter:Text.AlignLeft;elide:Text.ElideNone;font.pixelSize:Theme.textSize(10);color:Theme.colors.muted}
+            PanelLabel {width:parent.width;visible:text!=="";text:tile.subtitle;wrapMode:Text.NoWrap;horizontalAlignment:tile.vertical?Text.AlignHCenter:Text.AlignLeft;elide:Text.ElideRight;font.pixelSize:Theme.textSize(10);color:Theme.colors.muted}
         }
     }
     MouseArea {anchors.fill:parent;enabled:!tile.unavailable;onClicked:tile.clicked()}

@@ -17,7 +17,7 @@ Column {
     }
     SettingsToggle {
         objectName:"wifi-power";width:parent.width;text:"Wi-Fi"
-        detail:root.state.phase==="connected"?root.wifi.name:root.state.label
+        detail:root.state.phase==="connected"?"On":root.state.label
         checked:root.wifi.enabled===true || (!root.managed && root.wifi.available)
         enabled:root.managed && !root.controls.busy
         onClicked:root.controls.act(checked?"wifi-on":"wifi-off")
@@ -32,10 +32,19 @@ Column {
             ControlRow {width:parent.width;text:"Disconnect";enabled:!root.controls.busy;onClicked:root.controls.act("wifi-disconnect")}
         }
     }
-    Row {
-        width:parent.width;visible:root.wifi.available && root.state.phase!=="disabled";spacing:4
-        PanelLabel {width:parent.width-92;height:30;verticalAlignment:Text.AlignVCenter;text:"Other Networks";font.weight:Font.DemiBold;font.pixelSize:11;color:Theme.colors.muted}
-        ControlRow {width:88;text:root.controls.busy && root.controls.pendingAction==="wifi-scan"?"Scanning…":"Refresh";enabled:root.managed && !root.controls.busy;onClicked:root.controls.act("wifi-scan")}
+    Item {
+        width:parent.width;height:32;visible:root.wifi.available && root.state.phase!=="disabled"
+        PanelLabel {anchors.left:parent.left;anchors.leftMargin:8;anchors.verticalCenter:parent.verticalCenter;text:"Other Networks";font.weight:Font.DemiBold;font.pixelSize:11;color:Theme.colors.muted}
+        AbstractButton {
+            objectName:"wifi-refresh";anchors.right:parent.right;anchors.rightMargin:4;anchors.verticalCenter:parent.verticalCenter
+            width:88;height:30;padding:6
+            text:root.controls.busy && root.controls.pendingAction==="wifi-scan"?"Scanning…":"Refresh"
+            enabled:root.managed && !root.controls.busy
+            Accessible.name:"Refresh nearby Wi-Fi networks"
+            contentItem:PanelLabel {text:parent.text;horizontalAlignment:Text.AlignHCenter;verticalAlignment:Text.AlignVCenter;font.pixelSize:11;opacity:parent.enabled?1:0.5}
+            background:Rectangle {radius:7;color:parent.hovered || parent.activeFocus?Theme.colors.hover:"transparent";border.width:parent.activeFocus?1:0;border.color:Theme.colors.accent}
+            onClicked:root.controls.act("wifi-scan")
+        }
     }
     Flickable {
         visible:root.wifi.available && root.state.phase!=="disabled"

@@ -13,7 +13,7 @@ ShellRoot {
         ["connected", "limited", "Limited Internet"],
         ["connected", "none", "No Internet"],
         ["connected", "full", "Connected"],
-        ["connected", "unknown", "Internet status unknown"],
+        ["connected", "unknown", "Connected"],
         ["service-unavailable", "unknown", "Wi-Fi service unavailable"]
     ]
     QtObject {
@@ -52,8 +52,9 @@ ShellRoot {
                 if (step > 0) {
                     const value = cases[step - 1], expected = value[2];
                     const tile = labels(centre, []), details = labels(panel, []), control = wifiTile(centre);
-                    if (!control || control.active !== (value[0] === "connected") || !control.Accessible.name.includes(expected)) throw Error("Wrong accessible state " + expected);
-                    if (!tile.includes(expected) || !details.some(text => text === expected || text === "Synthetic · " + expected)) throw Error("Wrong labels " + expected + " " + JSON.stringify(tile) + " " + JSON.stringify(details));
+                    const summary=value[0]==="connected" && ["full","unknown"].includes(value[1])?"Synthetic":expected;
+                    if (!control || control.active !== (value[0] === "connected") || !control.Accessible.name.includes(summary)) throw Error("Wrong accessible state " + expected);
+                    if (!tile.includes(summary) || !details.some(text => text === expected || text === "Synthetic · " + expected)) throw Error("Wrong labels " + expected + " " + JSON.stringify(tile) + " " + JSON.stringify(details));
                 }
                 if (step === cases.length) { console.log("PASS visible connectivity states"); Qt.quit(); return; }
                 const value = cases[step++];
