@@ -11,6 +11,7 @@ MenuBar 1.0 MenuBar.qml
 MenuButton 1.0 MenuButton.qml
 PanelSurface 1.0 PanelSurface.qml
 PanelLabel 1.0 PanelLabel.qml
+WifiPane 1.0 WifiPane.qml
 SoundControl 1.0 SoundControl.qml
 CalendarCard 1.0 CalendarCard.qml
 CalendarWindow 1.0 CalendarWindow.qml

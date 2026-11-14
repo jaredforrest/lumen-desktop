@@ -1,4 +1,5 @@
 use serde_json::{Value, json};
+mod wifi;
 use std::env;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -210,8 +211,16 @@ fn brightness(bus:&str, value:&str) -> Result<Value> {
 fn main_result(args:&[String]) -> Result<Value> {
     let action=args.first().map(String::as_str).unwrap_or("status");
     let path=wifi_path();
+    if action.starts_with("wifi-") && wifi::available() {
+        return wifi::control(action,args.get(1).map(String::as_str));
+    }
     match action {
         "status"=>{
+            if wifi::available() {
+                let wireless=wifi::status()?;
+                let interface=wireless["interface"].as_str().unwrap_or("").to_owned();
+                return Ok(json!({"wifi":network_status(wireless,Some(Path::new(&interface))),"bluetoothRadios":bluetooth_power("status",None).unwrap_or(json!({})),"power":power_status()}));
+            }
             let wireless=wifi_status(path.as_deref()).unwrap_or_else(|_|json!({"available":false,"networks":[]}));
             Ok(json!({"wifi":network_status(wireless,path.as_deref()),"bluetoothRadios":bluetooth_power("status",None)?,"power":power_status()}))
         },

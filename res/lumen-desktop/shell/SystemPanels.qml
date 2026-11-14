@@ -16,7 +16,7 @@ Item {
     signal settingsRequested()
     signal panelRequested(string name)
     property real maximumWidth:344
-    width: kind==="Date" ? Math.min(344,maximumWidth) : Math.min(300,maximumWidth)
+    width: ["Date","Wi-Fi"].includes(kind) ? Math.min(344,maximumWidth) : Math.min(300,maximumWidth)
     readonly property bool enclosingMaterial:["Controls","Date","Now Playing","VPN"].includes(kind)
     implicitHeight:panelContents.height+(enclosingMaterial?24:0)
     height:implicitHeight
@@ -95,7 +95,7 @@ Item {
     }
     CaptureReport {visible:root.kind==="Capture";width:parent.width;state:root.shell.capture || null}
     NotificationPanel {id:datePanel;visible:root.kind==="Date";width:parent.width;shell:root.shell;today:root.today}
-    ConnectivityPanel {visible:root.kind==="Wi-Fi" || root.kind==="Bluetooth";kind:root.kind;controls:root.shell.systemState;onBackRequested:root.panelRequested("Controls")}
+    ConnectivityPanel {width:parent.width;visible:root.kind==="Wi-Fi" || root.kind==="Bluetooth";kind:root.kind;controls:root.shell.systemState;onBackRequested:root.panelRequested("Controls")}
     VpnPanel {visible:root.kind==="VPN";width:parent.width;compact:true;service:root.shell.vpn;onBackRequested:root.panelRequested("Controls");onSettingsRequested:root.shell.openSettings("VPN")}
     CalendarCard {
         visible:root.kind==="Calendar"

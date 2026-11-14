@@ -20,7 +20,7 @@ PanelSurface {
     Component.onDestruction:stopDiscovery()
 
     signal backRequested()
-    width:300;height:content.height+28
+    width:kind==="Wi-Fi"?340:300;height:content.height+28
     radius:embedded?12:24
     layer.enabled:!embedded && GraphicsInfo.api !== GraphicsInfo.Software
     color:embedded?Theme.colors.surface:Theme.colors.background
@@ -29,17 +29,8 @@ PanelSurface {
     Column {
         id:content;x:14;y:14;width:parent.width-28;spacing:6
         ControlRow {visible:!root.embedded;width:parent.width;text:"‹  Control Centre";onClicked:root.backRequested()}
-        PanelLabel {text:root.kind;font.pixelSize:14;font.weight:Font.DemiBold}
-        Column {
-            visible:root.kind==="Wi-Fi";width:parent.width;spacing:4
-            PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:NetworkState.state(root.controls.wifi).detail;color:Theme.colors.muted}
-            Repeater {
-                model:root.controls.wifi.networks
-                ControlRow {required property var modelData;width:content.width;text:modelData.name;selected:modelData.connected;enabled:!root.controls.busy && !modelData.connected;onClicked:root.controls.act("wifi-connect",modelData.id)}
-            }
-            ControlRow {width:parent.width;visible:root.controls.wifi.available;text:root.controls.wifi.state==="DISCONNECTED"?"Reconnect":"Disconnect";enabled:!root.controls.busy;onClicked:root.controls.act(root.controls.wifi.state==="DISCONNECTED"?"wifi-reconnect":"wifi-disconnect")}
-            PanelLabel {width:parent.width;wrapMode:Text.WordWrap;text:root.controls.wifi.available?"Choose a saved network to connect.":"Wi-Fi controls are unavailable. Check network settings or use Ethernet.";font.pixelSize:11;color:Theme.colors.muted}
-        }
+        PanelLabel {visible:root.kind!=="Wi-Fi";text:root.kind;font.pixelSize:14;font.weight:Font.DemiBold}
+        WifiPane {visible:root.kind==="Wi-Fi";width:parent.width;controls:root.controls}
         Column {
             visible:root.kind==="Bluetooth";width:parent.width;spacing:4
             ControlRow {width:parent.width;text:!root.adapter?"Bluetooth unavailable":root.adapter.enabled?"Turn Bluetooth Off":"Turn Bluetooth On";enabled:!root.controls.busy && !!root.adapter && !root.radio.hard;onClicked:root.controls.act(root.adapter.enabled?"bluetooth-off":"bluetooth-on",root.adapter.dbusPath)}

@@ -11,16 +11,19 @@ Item {
     property string error: ""
     property int revision: 0
     readonly property bool busy: writer.running
-    readonly property string helper: "lumen-system-controls"
+    readonly property string helper: Quickshell.env("LUMEN_SYSTEM_CONTROLS_BIN") || "lumen-system-controls"
+    property string wifiPassword: ""
+    property string pendingAction: ""
     function refresh() { if(!reader.running && !writer.running){reader.requestRevision=revision;reader.running=true;} }
     function refreshInternet(force) {
         if(internetReader.running)return;
         internetReader.command=["desktop-network-diagnose",force?"--refresh":"--cached"];
         internetReader.running=true;
     }
-    function act(action, arg) {
+    function act(action, arg, password) {
         if(writer.running)return;
         error="";revision++;
+        pendingAction=action;wifiPassword=password || "";
         writer.command=[helper,action].concat(arg===undefined?[]:[String(arg)]);
         writer.running=true;
     }
@@ -33,8 +36,10 @@ Item {
     }
     Process {
         id: writer
+        stdinEnabled:true
+        onStarted:{if(root.pendingAction==="wifi-connect")write(JSON.stringify({password:root.wifiPassword})+"\n");root.wifiPassword="";}
         stdout: StdioCollector {onStreamFinished:{try{const s=JSON.parse(text);if(s.error)root.error=s.error;}catch(e){root.error="Unable to complete the request";}}}
-        onExited: (code,status)=>{if(code!==0 && !root.error)root.error="Unable to complete the request";Qt.callLater(root.refresh);}
+        onExited: (code,status)=>{root.wifiPassword="";root.pendingAction="";if(code!==0 && !root.error)root.error="Unable to complete the request";Qt.callLater(root.refresh);}
     }
     Process {
         id: internetReader

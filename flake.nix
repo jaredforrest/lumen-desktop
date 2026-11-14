@@ -38,6 +38,7 @@
         appearance-runtime = pkgs.callPackage ./packages/appearance-rust.nix { };
         network-locations = session.networkLocations;
         network-connectivity = pkgs.callPackage ./packages/network-connectivity.nix { };
+        system-controls = session.systemControls;
         desktop-action = session.desktopAction;
         reader-command = session.readerCommand;
         test-reader-command = import ./packages/reader-commands.nix { inherit pkgs; enabled = true; };

@@ -11,13 +11,22 @@ unsafe extern "C" { fn kill(pid: i32, signal: i32) -> i32; }
 
 #[test]
 fn network_state() {
+    run_fixture(include_str!("network_state_fixture.qml"), "PASS visible connectivity states");
+}
+
+#[test]
+fn wifi_menu() {
+    run_fixture(include_str!("wifi_menu_fixture.qml"), "PASS Wi-Fi connection and password interaction");
+}
+
+fn run_fixture(fixture: &str, expected: &str) {
     let root = private_qml_root::create().unwrap();
     let result = (|| {
         let source_path = std::path::Path::new(file!()).canonicalize()?;
         let shell = source_path.parent().unwrap().parent().unwrap().parent().unwrap().join("res/lumen-desktop/shell");
         fs::write(
             root.join("shell.qml"),
-            include_str!("network_state_fixture.qml").replace("LUMEN_ASSETS", &format!("file:{}", shell.display())),
+            fixture.replace("LUMEN_ASSETS", &format!("file:{}", shell.display())),
         )?;
         let runtime = root.join("runtime");
         fs::create_dir(&runtime)?;
@@ -60,7 +69,7 @@ fn network_state() {
         let combined = format!("{stdout}\n{stderr}");
         assert!(
             output.status.success()
-                && combined.contains("PASS visible connectivity states")
+                && combined.contains(expected)
                 && !combined.contains("FAIL "),
             "quickshell status: {}\n{combined}",
             output.status
