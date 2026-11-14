@@ -10,4 +10,8 @@ function datePattern(locale,prefs) {
     const day=order.indexOf("M")<order.indexOf("d")?"MMM d":"d MMM";
     return (prefs.showWeekday?"ddd":"")+(prefs.showDate?(prefs.showWeekday?" ":"")+day:"");
 }
-function text(date,locale,prefs) { const pattern=datePattern(locale,prefs);return (pattern?date.toLocaleString(locale,pattern)+"  ":"")+date.toLocaleTimeString(locale,timePattern(locale,prefs)); }
+function localDate(date,offsetSeconds) {
+    return typeof offsetSeconds==="number" && isFinite(offsetSeconds)
+        ? new Date(date.getTime()+offsetSeconds*1000+date.getTimezoneOffset()*60000) : date;
+}
+function text(date,locale,prefs,offsetSeconds) { date=localDate(date,offsetSeconds);const pattern=datePattern(locale,prefs);return (pattern?date.toLocaleString(locale,pattern)+"  ":"")+date.toLocaleTimeString(locale,timePattern(locale,prefs)); }

@@ -235,7 +235,7 @@ PanelWindow {
     MenuButton {
         anchors.right: parent.right; anchors.rightMargin: 12; anchors.verticalCenter: parent.verticalCenter
         id:clockButton;width:Math.min(implicitWidth,Math.max(80,bar.width*0.35)); textSize: 13; selected:bar.menu==="Date"
-        text:ClockFormat.text(bar.clockDate,Qt.locale(Theme.menuBarPreferences.locale || ""),Theme.menuBarPreferences)
+        text:ClockFormat.text(bar.clockDate,Qt.locale(Theme.menuBarPreferences.locale || ""),Theme.menuBarPreferences,Theme.utcOffsetSeconds)
         Accessible.name:text+", open notifications and calendar"
         onClicked: bar.toggle("Date", bar.width-370)
     }

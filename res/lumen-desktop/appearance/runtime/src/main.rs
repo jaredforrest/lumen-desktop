@@ -1,5 +1,5 @@
-//! London solar appearance and declarative desktop preferences.
-use chrono::{DateTime, Datelike, LocalResult, NaiveDateTime, TimeZone, Utc};
+//! Location-aware solar appearance and declarative desktop preferences.
+use chrono::{DateTime, Datelike, LocalResult, NaiveDateTime, Offset, TimeZone, Utc};
 use chrono_tz::Europe::London;
 use serde_json::{Value, json};
 use std::{env, fs, fs::OpenOptions, io::Write, os::fd::AsRawFd, path::{Path, PathBuf}, process::Command, time::{SystemTime, UNIX_EPOCH}};
@@ -192,19 +192,31 @@ fn settings(args: &[&str]) -> Result<Value, String> {
     serde_json::from_slice(&output.stdout).map_err(|e| e.to_string())
 }
 
-fn parsed_time(value: Option<&str>) -> Result<DateTime<chrono_tz::Tz>, String> {
-    let Some(value) = value else { return Ok(Utc::now().with_timezone(&London)); };
-    if let Ok(date) = DateTime::parse_from_rfc3339(value) { return Ok(date.with_timezone(&London)); }
+fn location() -> (chrono_tz::Tz, f64, f64, String) {
+    let path = env::var_os("LUMEN_LOCATION_FILE").map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("/var/lib/lumen-location/current.json"));
+    let value: Value = fs::read(path).ok().and_then(|bytes| serde_json::from_slice(&bytes).ok()).unwrap_or(Value::Null);
+    if let (Some(zone), Some(lat), Some(lon)) = (value["timezone"].as_str().and_then(|s|s.parse::<chrono_tz::Tz>().ok()), value["latitude"].as_f64(), value["longitude"].as_f64()) {
+        if lat.is_finite() && lon.is_finite() && (-90.0..=90.0).contains(&lat) && (-180.0..=180.0).contains(&lon) {
+            return (zone, lat, lon, value["city"].as_str().unwrap_or("Current location").to_owned());
+        }
+    }
+    (London, 51.5074, -0.1278, "London (fallback)".into())
+}
+
+fn parsed_time(value: Option<&str>, zone: chrono_tz::Tz) -> Result<DateTime<chrono_tz::Tz>, String> {
+    let Some(value) = value else { return Ok(Utc::now().with_timezone(&zone)); };
+    if let Ok(date) = DateTime::parse_from_rfc3339(value) { return Ok(date.with_timezone(&zone)); }
     let naive = NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S%.f")
         .or_else(|_| NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M"))
         .map_err(|e| format!("Invalid date: {e}"))?;
-    match London.from_local_datetime(&naive) {
+    match zone.from_local_datetime(&naive) {
         LocalResult::Single(date) | LocalResult::Ambiguous(date, _) => Ok(date),
-        LocalResult::None => Err("Date is outside London local time".into()),
+        LocalResult::None => Err("Date is outside local time".into()),
     }
 }
 
-fn solar_minutes(day: u32) -> (f64, f64) {
+fn solar_minutes(day: u32, latitude: f64, longitude: f64) -> (f64, f64, f64) {
     // NOAA equation of time and apparent solar altitude at 0.833 degrees.
     let gamma = 2.0 * std::f64::consts::PI / 365.0 * (day as f64 - 1.0);
     let eqtime = 229.18 * (0.000075 + 0.001868 * gamma.cos() - 0.032077 * gamma.sin()
@@ -212,21 +224,22 @@ fn solar_minutes(day: u32) -> (f64, f64) {
     let decl = 0.006918 - 0.399912 * gamma.cos() + 0.070257 * gamma.sin()
         - 0.006758 * (2.0 * gamma).cos() + 0.000907 * (2.0 * gamma).sin()
         - 0.002697 * (3.0 * gamma).cos() + 0.00148 * (3.0 * gamma).sin();
-    let latitude = 51.5074_f64.to_radians();
-    let hour_angle = ((90.833_f64.to_radians().cos() / (latitude.cos() * decl.cos()))
-        - latitude.tan() * decl.tan()).acos().to_degrees();
-    let noon = 720.0 - 4.0 * -0.1278 - eqtime;
-    (noon - 4.0 * hour_angle, noon + 4.0 * hour_angle)
+    let latitude = latitude.to_radians();
+    let cosine = (90.833_f64.to_radians().cos() / (latitude.cos() * decl.cos())) - latitude.tan() * decl.tan();
+    let hour_angle = cosine.clamp(-1.0,1.0).acos().to_degrees();
+    let noon = 720.0 - 4.0 * longitude - eqtime;
+    (noon - 4.0 * hour_angle, noon + 4.0 * hour_angle, cosine)
 }
 
-fn solar(now: DateTime<chrono_tz::Tz>) -> (String, String, String) {
+fn solar(now: DateTime<chrono_tz::Tz>, latitude: f64, longitude: f64) -> (String, String, String) {
     let date = now.date_naive();
     let midnight = date.and_hms_opt(0, 0, 0).unwrap().and_utc();
-    let (rise_min, set_min) = solar_minutes(date.ordinal());
+    let (rise_min, set_min, cosine) = solar_minutes(date.ordinal(), latitude, longitude);
+    if !(-1.0..=1.0).contains(&cosine) { return (if cosine < -1.0 {"light"} else {"dark"}.into(), String::new(), String::new()); }
     let rise = midnight + chrono::Duration::seconds((rise_min * 60.0).round() as i64);
     let set = midnight + chrono::Duration::seconds((set_min * 60.0).round() as i64);
     let mode = if now.with_timezone(&Utc) >= rise && now.with_timezone(&Utc) < set { "light" } else { "dark" };
-    (mode.into(), rise.with_timezone(&London).to_rfc3339(), set.with_timezone(&London).to_rfc3339())
+    (mode.into(), rise.with_timezone(&now.timezone()).to_rfc3339(), set.with_timezone(&now.timezone()).to_rfc3339())
 }
 
 fn system_info() -> Value {
@@ -314,13 +327,14 @@ fn execute() -> Result<(), String> {
         if !child.wait().map_err(|e| e.to_string())?.success() { return Err("Could not clear search history".into()); }
     }
     update("appearance", &args.set, &mut prefs, "Unsupported preference or value")?;
-    let now = parsed_time(args.at.as_deref())?;
-    let (solar_mode, sunrise, sunset) = solar(now);
+    let (zone, latitude, longitude, city) = location();
+    let now = parsed_time(args.at.as_deref(), zone)?;
+    let (solar_mode, sunrise, sunset) = solar(now, latitude, longitude);
     let source = args.mode.as_deref().or_else(|| prefs["mode"].as_str()).unwrap_or("auto");
     let mode = if source == "auto" { solar_mode.as_str() } else { source };
     let palettes: Value = serde_json::from_str(PALETTE).map_err(|e| e.to_string())?;
     let colors = resolve_palette(&palettes, mode, &prefs)?;
-    let data = json!({"mode":mode,"source":source,"location":"London","timezone":"Europe/London",
+    let data = json!({"mode":mode,"source":source,"location":city,"timezone":zone.name(),"utcOffsetSeconds":now.offset().fix().local_minus_utc(),
         "font":palettes["font"],"palette":colors,"preferences":prefs,"searchPreferences":search,
         "notificationsPreferences":notifications,"controlCentrePreferences":control,
         "menuBarPreferences":menu,"windowsPreferences":windows,"desktopPreferences":desktop,
@@ -437,7 +451,7 @@ fn execute() -> Result<(), String> {
     if editing {
         println!("{}", output(&prefs,&search,&notifications,&control,&menu,&windows,&desktop,&data,Some(warnings.join("; "))));
     } else if previous["mode"] != mode {
-        println!("Appearance: {mode} London sunset: {sunset}");
+        println!("Appearance: {mode} local sunset: {sunset}");
     }
     Ok(())
 }
@@ -468,15 +482,28 @@ fn main() {
 mod tests {
     use super::*;
     #[test]
+    fn toronto_and_polar_appearance() {
+        let zone=chrono_tz::America::Toronto;
+        let day=parsed_time(Some("2026-11-14T12:00:00-05:00"),zone).unwrap();
+        let night=parsed_time(Some("2026-11-14T20:00:00-05:00"),zone).unwrap();
+        assert_eq!(solar(day,43.7,-79.4).0,"light");
+        assert_eq!(solar(night,43.7,-79.4).0,"dark");
+        assert!(solar(day,43.7,-79.4).2.ends_with("-05:00"));
+        let summer=parsed_time(Some("2026-06-21T12:00:00Z"),chrono_tz::UTC).unwrap();
+        let winter=parsed_time(Some("2026-12-21T12:00:00Z"),chrono_tz::UTC).unwrap();
+        assert_eq!(solar(summer,80.0,0.0).0,"light");
+        assert_eq!(solar(winter,80.0,0.0).0,"dark");
+    }
+    #[test]
     fn london_solar_day_and_night() {
-        let noon = parsed_time(Some("2026-06-21T12:00:00+01:00")).unwrap();
-        let midnight = parsed_time(Some("2026-06-21T00:00:00+01:00")).unwrap();
-        assert_eq!(solar(noon).0, "light");
-        assert_eq!(solar(midnight).0, "dark");
-        assert!(solar(noon).1.contains("+01:00"));
+        let noon = parsed_time(Some("2026-06-21T12:00:00+01:00"), London).unwrap();
+        let midnight = parsed_time(Some("2026-06-21T00:00:00+01:00"), London).unwrap();
+        assert_eq!(solar(noon,51.5074,-0.1278).0, "light");
+        assert_eq!(solar(midnight,51.5074,-0.1278).0, "dark");
+        assert!(solar(noon,51.5074,-0.1278).1.contains("+01:00"));
         // Astral's London 2026 solstice times are 04:43:27 and 21:21:12.
-        let rise = DateTime::parse_from_rfc3339(&solar(noon).1).unwrap();
-        let set = DateTime::parse_from_rfc3339(&solar(noon).2).unwrap();
+        let rise = DateTime::parse_from_rfc3339(&solar(noon,51.5074,-0.1278).1).unwrap();
+        let set = DateTime::parse_from_rfc3339(&solar(noon,51.5074,-0.1278).2).unwrap();
         assert!((rise.timestamp() - 1_782_013_407).abs() < 90);
         assert!((set.timestamp() - 1_782_073_272).abs() < 90);
     }

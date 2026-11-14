@@ -34,6 +34,8 @@ ShellRoot {
                 const instants = ["2026-03-29T00:30:00Z", "2026-03-29T01:30:00Z", "2026-10-25T00:30:00Z", "2026-10-25T01:30:00Z"];
                 const expected = EXPECTED_CLOCK_VALUES;
                 const timePrefs = {hourCycle: "24", showDate: false, showWeekday: false, showSeconds: true};
+                if (Clock.text(new Date("2026-11-14T22:00:00Z"),Qt.locale("en_GB"),timePrefs,-18000)!=="17:00:00") throw Error("Live Toronto timezone");
+                if (Clock.text(new Date("2026-11-14T22:00:00Z"),Qt.locale("en_GB"),timePrefs,32400)!=="07:00:00") throw Error("Live Tokyo timezone");
                 for (let i = 0; i < instants.length; i++) {
                     const actual = Clock.text(new Date(instants[i]), Qt.locale("en_GB"), timePrefs);
                     if (actual !== expected[i]) throw Error("Timezone/DST " + instants[i] + " " + actual);
