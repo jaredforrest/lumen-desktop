@@ -252,8 +252,14 @@ in {
       Service = { Type = "oneshot"; ExecStart = "${session.systemControls}/bin/lumen-system-controls wifi-vault-retry"; UMask = "0077"; TimeoutStartSec = "5min"; StandardOutput = "null"; };
     };
     # Adopt the same owned unit names after a live, per-user installation.
-    xdg.configFile."systemd/user/lumen-wifi-vault-sync.service".force = lib.mkIf cfg.integrations.wifiVault.enable true;
-    xdg.configFile."systemd/user/lumen-wifi-vault-sync.timer".force = lib.mkIf cfg.integrations.wifiVault.enable true;
+    xdg.configFile = {
+      "foot/foot.ini".source = "${assets}/foot.ini";
+      "lumen-desktop/shortcuts.json".source = shortcutRegistry;
+      "lumen-desktop/shortcut-editor.json".source = shortcutEditor;
+    } // lib.optionalAttrs cfg.integrations.wifiVault.enable {
+      "systemd/user/lumen-wifi-vault-sync.service".force = true;
+      "systemd/user/lumen-wifi-vault-sync.timer".force = true;
+    };
     systemd.user.timers.lumen-wifi-vault-sync = lib.mkIf cfg.integrations.wifiVault.enable {
       Unit.Description = "Retry Wi-Fi password sync when Bitwarden is unlocked";
       Timer = { OnBootSec = "2min"; OnUnitInactiveSec = "5min"; RandomizedDelaySec = "15s"; };
@@ -306,12 +312,9 @@ in {
       categories = [ "Office" "Calendar" ];
       terminal = false;
     };
-    xdg.configFile."foot/foot.ini".source = "${assets}/foot.ini";
     wayland.windowManager.sway.config.keybindings = lib.mkOptionDefault (desktopKeybindings // {
       "Mod4+n" = lib.mkForce desktopKeybindings."Mod4+n";
     });
-    xdg.configFile."lumen-desktop/shortcuts.json".source = shortcutRegistry;
-    xdg.configFile."lumen-desktop/shortcut-editor.json".source = shortcutEditor;
 
     # Use HM's Qt plugin discovery, but let the patched adapter choose its style
     # dynamically. HM's gnome preset requires a static QT_STYLE_OVERRIDE.
