@@ -52,7 +52,7 @@ pub fn status() -> Result<Value> {
         s if s.starts_with("connecting") => "associating", s if s.starts_with("disconnecting") => "disconnecting", _ => "unknown",
     }};
     Ok(json!({"available":true,"controlAvailable":true,"backend":"network-manager","enabled":enabled,"interface":interface,
-        "state":if phase=="connected"{"COMPLETED"}else{"DISCONNECTED"},"phase":phase,"name":name,"networks":networks,"connectivity":"unknown"}))
+        "state":if phase=="connected"{"COMPLETED"}else{"DISCONNECTED"},"phase":phase,"name":name,"networks":networks,"connectivity":"unknown","vault":super::wifi_vault::status()}))
 }
 pub fn available() -> bool { nm(&["--fields", "RUNNING", "general"]).is_ok_and(|s| s == "running") }
 fn action(args: &[&str], password: Option<&str>) -> Result<Value> {
@@ -83,13 +83,22 @@ pub fn control(action_name: &str, id: Option<&str>) -> Result<Value> {
             BufReader::new(std::io::stdin().take(4097)).read_line(&mut input).map_err(|_| "Unable to read password")?;
             if input.len()>4096 { return Err("Password is too long".into()); }
             let request:Value = serde_json::from_str(&input).unwrap_or(json!({}));
-            let password = request["password"].as_str().unwrap_or("");
+            let entered = request["password"].as_str().unwrap_or("");
+            let stored=super::wifi_vault::credential(network["name"].as_str().unwrap_or(""),network["security"].as_str().unwrap_or(""))?;
+            if stored.as_deref().is_some_and(|password| !entered.is_empty() && entered!=password) {
+                return Err("Bitwarden has a different password for this network. Update it in Bitwarden and sync, or leave the password blank to use the vault value.".into());
+            }
+            let password = stored.as_deref().unwrap_or(entered);
             if password.contains(['\n','\r','\0']) { return Err("Invalid Wi-Fi password".into()); }
-            if password.is_empty() {
+            let result=if password.is_empty() {
                 action(&["device", "wifi", "connect", id, "ifname", &interface], None)
             } else {
                 action(&["--ask", "device", "wifi", "connect", id, "ifname", &interface], Some(password))
-            }
+            }?;
+            // A successful connection stays successful when the vault is locked/offline.
+            // Its NetworkManager profile is the retry queue; no extra plaintext copy.
+            super::wifi_vault::schedule();
+            Ok(result)
         },
         _ => Err("Unknown Wi-Fi control".into()),
     }

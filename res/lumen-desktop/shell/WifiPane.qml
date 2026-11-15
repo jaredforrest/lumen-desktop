@@ -9,6 +9,7 @@ Column {
     readonly property var state:NetworkState.state(wifi)
     readonly property bool managed:wifi.backend==="network-manager"
     readonly property var networks:wifi.networks || []
+    readonly property var vault:wifi.vault || ({state:"unavailable",message:"Wi-Fi passwords are cached on this device"})
     property var joining:({})
     function connect(network) {
         if(network.connected || controls.busy)return;
@@ -68,6 +69,14 @@ Column {
         }
     }
     PanelLabel {visible:root.controls.busy;width:parent.width;text:root.controls.pendingAction==="wifi-connect"?"Connecting…":root.controls.pendingAction==="wifi-scan"?"Looking for nearby networks…":"Updating Wi-Fi…";color:Theme.colors.muted;font.pixelSize:11}
+    Rectangle {
+        width:parent.width;height:vaultContent.implicitHeight+16;radius:10;color:Theme.colors.surface;border.color:Theme.hairline
+        Column {id:vaultContent;x:8;y:8;width:parent.width-16;spacing:3
+            PanelLabel {width:parent.width;text:"Wi-Fi Passwords";font.weight:Font.DemiBold;font.pixelSize:11}
+            PanelLabel {width:parent.width;text:root.vault.message || "Saved in Bitwarden; available offline";wrapMode:Text.WordWrap;font.pixelSize:11;color:root.vault.state==="error"?Theme.errorText:Theme.colors.muted}
+            ControlRow {objectName:"wifi-vault-sync";width:parent.width;text:root.vault.state==="locked"?"Unlock Bitwarden & Sync…":"Sync with Bitwarden";enabled:!root.controls.busy;onClicked:root.controls.act(root.vault.state==="locked"?"wifi-vault-unlock":"wifi-vault-sync")}
+        }
+    }
     ControlRow {width:parent.width;text:"Advanced Wi-Fi Settings…";detail:"Saved networks and enterprise sign-in";onClicked:AppLaunch.run(["foot","--app-id=lumen-network-settings","--title=Wi-Fi Settings","nmtui","connect"])}
     Popup {
         id:joinDialog;modal:true;focus:true;width:root.width;x:0;y:40;padding:14
@@ -76,7 +85,7 @@ Column {
         background:Rectangle {radius:12;color:Theme.colors.background;border.color:Theme.outline}
         contentItem:Column {spacing:12;width:joinDialog.width-28
             PanelLabel {width:parent.width;text:"Join “"+(root.joining.name || "")+"”";wrapMode:Text.WordWrap;font.weight:Font.DemiBold}
-            PanelLabel {width:parent.width;text:root.joining.enterprise?"Configure this network in Advanced Wi-Fi Settings.":"Enter the network password, or leave blank to use its saved password.";wrapMode:Text.WordWrap;color:Theme.colors.muted;font.pixelSize:11}
+            PanelLabel {width:parent.width;text:root.joining.enterprise?"Configure this network in Advanced Wi-Fi Settings.":"Leave blank to use the saved password. New passwords sync to Bitwarden when unlocked; Wi-Fi stays available offline.";wrapMode:Text.WordWrap;color:Theme.colors.muted;font.pixelSize:11}
             DesktopTextField {id:password;objectName:"wifi-password";width:parent.width;visible:!root.joining.enterprise;echoMode:TextInput.Password;placeholderText:"Password";Accessible.name:"Wi-Fi password";onAccepted:join.clicked()}
             Row {spacing:8
                 DialogButton {width:96;text:"Cancel";onClicked:joinDialog.close()}

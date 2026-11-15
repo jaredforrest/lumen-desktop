@@ -58,6 +58,7 @@ in {
       emojiFamily = lib.mkOption { type = lib.types.str; default = "Noto Color Emoji"; };
     };
     integrations = {
+      wifiVault.enable = lib.mkEnableOption "Bitwarden-authoritative Wi-Fi passwords with a NetworkManager offline cache";
       greeter = {
         enable = lib.mkEnableOption "Lumen greetd greeter";
         greeterExtraConfig = lib.mkOption { type = lib.types.lines; default = ""; };
@@ -244,6 +245,18 @@ in {
     systemd.user.timers.lumen-appearance = {
       Unit.PartOf = [ "graphical-session.target" ];
       Timer = { OnActiveSec = "2s"; OnUnitActiveSec = "60s"; AccuracySec = "1s"; };
+      Install.WantedBy = [ "graphical-session.target" ];
+    };
+    systemd.user.services.lumen-wifi-vault-sync = lib.mkIf cfg.integrations.wifiVault.enable {
+      Unit = { Description = "Sync Bitwarden Wi-Fi passwords to the offline network cache"; After = [ "graphical-session.target" ]; };
+      Service = { Type = "oneshot"; ExecStart = "${session.systemControls}/bin/lumen-system-controls wifi-vault-retry"; UMask = "0077"; TimeoutStartSec = "5min"; StandardOutput = "null"; };
+    };
+    # Adopt the same owned unit names after a live, per-user installation.
+    xdg.configFile."systemd/user/lumen-wifi-vault-sync.service".force = lib.mkIf cfg.integrations.wifiVault.enable true;
+    xdg.configFile."systemd/user/lumen-wifi-vault-sync.timer".force = lib.mkIf cfg.integrations.wifiVault.enable true;
+    systemd.user.timers.lumen-wifi-vault-sync = lib.mkIf cfg.integrations.wifiVault.enable {
+      Unit.Description = "Retry Wi-Fi password sync when Bitwarden is unlocked";
+      Timer = { OnBootSec = "2min"; OnUnitInactiveSec = "5min"; RandomizedDelaySec = "15s"; };
       Install.WantedBy = [ "graphical-session.target" ];
     };
     systemd.user.services.lumen-calendar-sync = lib.mkIf cfg.integrations.calendar.enable {

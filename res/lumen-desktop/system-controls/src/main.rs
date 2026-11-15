@@ -1,5 +1,6 @@
 use serde_json::{Value, json};
 mod wifi;
+mod wifi_vault;
 use std::env;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -210,6 +211,14 @@ fn brightness(bus:&str, value:&str) -> Result<Value> {
 }
 fn main_result(args:&[String]) -> Result<Value> {
     let action=args.first().map(String::as_str).unwrap_or("status");
+    match action {
+        "wifi-vault-sync"=>return wifi_vault::sync(),
+        "wifi-vault-retry"=>return Ok(wifi_vault::sync().unwrap_or_else(|_|wifi_vault::status())),
+        "wifi-vault-status"=>return Ok(wifi_vault::status()),
+        "wifi-vault-unlock"=>return wifi_vault::unlock(),
+        "wifi-vault-login"=>return wifi_vault::login(),
+        _=>{},
+    }
     let path=wifi_path();
     if action.starts_with("wifi-") && wifi::available() {
         return wifi::control(action,args.get(1).map(String::as_str));
