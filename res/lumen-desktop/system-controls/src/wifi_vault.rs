@@ -126,8 +126,16 @@ pub fn schedule(){
 }
 pub fn unlock()->Result<Value>{
     let exe=env::current_exe().map_err(|_|"Unable to open vault unlock")?;
-    Command::new("foot").args(["--app-id=lumen-vault-unlock","--title=Unlock Bitwarden for Wi-Fi sync"]).arg(exe).arg("wifi-vault-login")
-        .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().map_err(|_|"Unable to open vault unlock")?;
+    // Detach the terminal from the short-lived menu helper. Keep the vault agent
+    // alive when the terminal closes so subsequent background sync can use it.
+    let mut launcher=Command::new("systemd-run");
+    launcher.args(["--user","--collect","--property=KillMode=process"]);
+    for key in ["PATH","WAYLAND_DISPLAY","DISPLAY","SWAYSOCK"] {
+        if let Ok(value)=env::var(key){launcher.arg(format!("--setenv={key}={value}"));}
+    }
+    let result=launcher.arg("foot").args(["--app-id=lumen-vault-unlock","--title=Unlock Bitwarden for Wi-Fi sync"]).arg(exe).arg("wifi-vault-login")
+        .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status().map_err(|_|"Unable to open vault unlock")?;
+    if !result.success(){return Err("Unable to open vault unlock".into());}
     Ok(json!({"ok":true}))
 }
 pub fn login()->Result<Value>{
