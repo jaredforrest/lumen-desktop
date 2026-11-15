@@ -256,11 +256,12 @@ impl Core {
         let deadline=if duration>0 {now+duration as f64/1000.}else if request.transient && duration<0 {now+7.}else{0.};
         let app=request.app.chars().take(256).collect::<String>();
         let desktop=request.desktop.chars().take(256).collect::<String>();
+        let legacy_app=if app.is_empty(){if desktop.is_empty(){"Notification".into()}else{desktop.clone()}}else{app.clone()};
         let app=notification_app(&app,&desktop);
         let actions=request.actions.chunks_exact(2).take(16).map(|pair|Action {
             id:pair[0].chars().take(256).collect(),label:pair[1].chars().take(256).collect()
         }).collect();
-        let allowed=self.focus.allows(if desktop.is_empty(){&app}else{&desktop},request.urgency);
+        let allowed=self.focus.allows(if desktop.is_empty(){&legacy_app}else{&desktop},request.urgency);
         let row=Row{id,app,desktop,summary:notification_summary(&request.summary.chars().take(1024).collect::<String>()),
             body:request.body.chars().take(8192).collect(),icon:notification_icon(&request.icon.chars().take(2048).collect::<String>()),
             image:local_image(&request.image),actions,urgency:request.urgency.min(2),resident:request.resident,
@@ -268,7 +269,9 @@ impl Core {
             unread:true,banner:allowed,delivery:timestamp_ns()?.to_string(),deadline,banner_deadline:if banner_duration>0. {now+banner_duration}else{0.},
             held:None,held_by:None};
         let group=if row.desktop.is_empty(){&row.app}else{&row.desktop};
-        let policy=self.policies.get(group).map(String::as_str).unwrap_or("banners");
+        // A readable fallback must not bypass an existing sender's delivery policy.
+        let legacy_group=if row.desktop.is_empty(){&legacy_app}else{&row.desktop};
+        let policy=self.policies.get(group).or_else(||self.policies.get(legacy_group)).map(String::as_str).unwrap_or("banners");
         if policy=="off" { effects.closed.push((id,2));effects.changed=true;self.save()?;return Ok((id,effects)); }
         let mut row=row;
         if policy!="banners" {row.banner=false;}
@@ -414,6 +417,16 @@ impl Core {
         }
         let mut incoming=request();incoming.app="notify-send".into();incoming.desktop="org.example.Editor".into();incoming.icon="text-editor".into();
         core.notify(incoming).unwrap();assert_eq!(core.rows[0].app,"org.example.Editor");assert_eq!(core.rows[0].icon,"text-editor");
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test] fn readable_sender_fallback_preserves_existing_delivery_policy() {
+        let root=fixture("identity-policy");let mut core=Core::new(root.clone(),BTreeMap::new(),false).unwrap();
+        core.set_policy("notify-send","off").unwrap();
+        let mut incoming=request();incoming.app="notify-send".into();
+        let (_,effects)=core.notify(incoming).unwrap();assert!(core.rows.is_empty());assert_eq!(effects.closed.len(),1);
+        core.set_policy("System Notifications","banners").unwrap();
+        let mut incoming=request();incoming.app="notify-send".into();
+        core.notify(incoming).unwrap();assert_eq!(core.rows.len(),1);assert!(core.rows[0].banner);
         fs::remove_dir_all(root).unwrap();
     }
     #[test] fn restore_keeps_valid_rows_and_strips_process_state() {
