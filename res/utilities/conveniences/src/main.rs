@@ -30,8 +30,8 @@ fn menu(title:&str,choices:&[&str])->Result<Option<String>> {
     Ok((success && choices.contains(&answer.as_str())).then_some(answer))
 }
 fn notify(title:&str,body:&str,image:Option<&Path>,persistent:bool,replace:Option<&str>)->Option<String> {
-    let mut command=Command::new("notify-send");command.args(["-a","Desktop conveniences"]);
-    if let Some(image)=image{command.arg("-i").arg(image);}
+    let mut command=Command::new("notify-send");command.args(["-a","Desktop Conveniences"]);
+    if let Some(image)=image{command.arg("-i").arg(image);}else{command.args(["-i","preferences-system"]);}
     if persistent{command.args(["-t","0"]);}
     if let Some(id)=replace{command.args(["-r",id]);}
     command.arg("-p").arg(title).arg(body).output().ok()

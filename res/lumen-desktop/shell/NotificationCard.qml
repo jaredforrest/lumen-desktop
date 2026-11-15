@@ -15,7 +15,8 @@ PanelSurface {
     activeFocusOnTab:true
     Accessible.role:Accessible.Button
     onNotificationChanged:timeLabel=stamp()
-    Accessible.name:notification.app+", "+notification.summary+(expandStack?", "+stackCount+" notifications. Expand stack":expanded?", details expanded":"")
+    readonly property string applicationName: {const entry=appEntry();return entry && entry.name ? entry.name : notification.app;}
+    Accessible.name:applicationName+", "+notification.summary+(expandStack?", "+stackCount+" notifications. Expand stack":expanded?", details expanded":"")
     Accessible.description:notification.body
     Accessible.onPressAction:activate()
     Keys.onReturnPressed:activate()
@@ -46,10 +47,10 @@ PanelSurface {
             AppIcon {
                 id:appIcon;objectName:"notification-application-icon"
                 width:28;height:28;sourceSize.width:56;sourceSize.height:56
-                iconSource:{const icon=root.notification.icon || "";if(icon.startsWith("file:"))return icon;const owned={calendar:"calendar",files:"files"}[(root.notification.app || "").toLowerCase()];if(owned)return Qt.resolvedUrl("reference-icons/"+owned+".svg");const entry=root.appEntry();return Quickshell.iconPath(icon || (entry?entry.icon:""),true) || Qt.resolvedUrl("icons/application.svg");}
+                iconSource:{const icon=root.notification.icon || "";if(icon.startsWith("file:"))return icon;const owned={calendar:"calendar",files:"files"}[(root.notification.app || "").toLowerCase()];if(owned)return Qt.resolvedUrl("reference-icons/"+owned+".svg");const entry=root.appEntry();return Quickshell.iconPath(icon && icon!=="application" ? icon : (entry?entry.icon:""),true) || Qt.resolvedUrl("icons/application.svg");}
                 asynchronous:true;fillMode:Image.PreserveAspectFit
             }
-            PanelLabel {width:parent.width-(optionsButton.visible?121:89);anchors.verticalCenter:parent.verticalCenter;text:root.notification.app+(root.expandStack?" · "+root.stackCount:"");elide:Text.ElideRight;textFormat:Text.PlainText;font.pixelSize:11;font.weight:Font.DemiBold}
+            PanelLabel {width:parent.width-(optionsButton.visible?121:89);anchors.verticalCenter:parent.verticalCenter;text:root.applicationName+(root.expandStack?" · "+root.stackCount:"");elide:Text.ElideRight;textFormat:Text.PlainText;font.pixelSize:11;font.weight:Font.DemiBold}
             PanelLabel {width:45;anchors.verticalCenter:parent.verticalCenter;horizontalAlignment:Text.AlignRight;text:root.timeLabel;font.pixelSize:10;color:Theme.colors.muted}
             AbstractButton {
                 id:dismissButton;objectName:"notification-dismiss";parent:root;x:4;y:-8;width:20;height:20;visible:cardHover.hovered || hovered || root.activeFocus || activeFocus || root.expanded;enabled:root.service.available;Accessible.name:"Dismiss notification"

@@ -428,7 +428,7 @@ fn git_transaction(section: &str, value: Value, application: Option<&str>, merge
         if synced { let _ = fs::remove_file(marker); }
         else {
             if let Some(commit) = &committed { fs::write(marker,format!("{commit}\n")).map_err(|e| e.to_string())?; }
-            let _ = run_command("notify-send",&["Configuration saved locally","GitHub sync is pending; it will retry automatically."],5);
+            let _ = run_command("notify-send",&["--app-name=System Settings","--app-icon=preferences-system","Configuration saved locally","GitHub sync is pending; it will retry automatically."],5);
         }
     }
     Ok(result)

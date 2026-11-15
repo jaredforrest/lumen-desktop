@@ -174,7 +174,7 @@ pub fn insert(text:&str,target:Option<&Value>,copy_only:bool) -> Result<(),Strin
 pub fn insert_or_copy(text:&str,target:Option<&Value>,copy_only:bool) {
     if let Err(error)=insert(text,target,copy_only) {
         let _=copy(text);
-        let _=run("notify-send",&["Emoji copied","Could not insert into the original app. Paste to insert."],Duration::from_secs(3));
+        let _=run("notify-send",&["--app-name=Character Viewer","--app-icon=accessories-character-map","Emoji copied","Could not insert into the original app. Paste to insert."],Duration::from_secs(3));
         eprintln!("{error}");
     }
 }

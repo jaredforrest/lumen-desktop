@@ -90,6 +90,19 @@ pub fn themed_icon(value: &str) -> String {
     if !value.is_empty() && value.chars().all(|c|c.is_alphanumeric() || "_.+-".contains(c)) { value.to_owned() }
     else { String::new() }
 }
+fn notification_app(app: &str, desktop: &str) -> String {
+    let app=app.trim();
+    if app.is_empty() || app.eq_ignore_ascii_case("notify-send") {
+        if desktop.trim().is_empty() { "System Notifications".into() } else { desktop.trim().into() }
+    } else { app.into() }
+}
+fn notification_summary(summary: &str) -> String {
+    if summary.trim().is_empty() { "Notification".into() } else { summary.into() }
+}
+fn notification_icon(icon: &str) -> String {
+    let icon=themed_icon(icon.trim());
+    if icon.is_empty() { "application".into() } else { icon }
+}
 fn bounded_text(value: &Value, key: &str, limit: usize) -> Result<String> {
     let text=value[key].as_str().ok_or("Invalid notification text")?;
     if text.chars().count()>limit || text.contains('\u{FDD0}') { return Err("Invalid notification text".into()); }
@@ -132,7 +145,7 @@ pub fn restored_row(value: &Value) -> Result<Row> {
     let transient=value["transient"].as_bool().ok_or("Invalid notification flag")?;
     let unread=value["unread"].as_bool().ok_or("Invalid notification flag")?;
     if transient { return Err("Transient notifications are not history".into()); }
-    Ok(Row { id,app,desktop,summary,body,icon:themed_icon(&icon),image:local_image(&image),
+    Ok(Row { id,app:notification_app(&app,&desktop),desktop,summary:notification_summary(&summary),body,icon:notification_icon(&icon),image:local_image(&image),
         actions:Vec::new(),urgency,resident,transient,timestamp,active:false,sender:String::new(),
         unread,banner:false,delivery:String::new(),deadline:0.,banner_deadline:0.,held:None,held_by:None })
 }
@@ -243,13 +256,13 @@ impl Core {
         let deadline=if duration>0 {now+duration as f64/1000.}else if request.transient && duration<0 {now+7.}else{0.};
         let app=request.app.chars().take(256).collect::<String>();
         let desktop=request.desktop.chars().take(256).collect::<String>();
-        let app=if app.is_empty(){if desktop.is_empty(){"Notification".into()}else{desktop.clone()}}else{app};
+        let app=notification_app(&app,&desktop);
         let actions=request.actions.chunks_exact(2).take(16).map(|pair|Action {
             id:pair[0].chars().take(256).collect(),label:pair[1].chars().take(256).collect()
         }).collect();
         let allowed=self.focus.allows(if desktop.is_empty(){&app}else{&desktop},request.urgency);
-        let row=Row{id,app,desktop,summary:request.summary.chars().take(1024).collect(),
-            body:request.body.chars().take(8192).collect(),icon:themed_icon(&request.icon.chars().take(2048).collect::<String>()),
+        let row=Row{id,app,desktop,summary:notification_summary(&request.summary.chars().take(1024).collect::<String>()),
+            body:request.body.chars().take(8192).collect(),icon:notification_icon(&request.icon.chars().take(2048).collect::<String>()),
             image:local_image(&request.image),actions,urgency:request.urgency.min(2),resident:request.resident,
             transient:request.transient,timestamp:timestamp_ms()?,active:true,sender:request.sender,
             unread:true,banner:allowed,delivery:timestamp_ns()?.to_string(),deadline,banner_deadline:if banner_duration>0. {now+banner_duration}else{0.},
@@ -388,6 +401,21 @@ impl Core {
     fn request() -> Notify { Notify {app:"Fixture".into(),replaces_id:0,icon:String::new(),summary:"Example".into(),
         body:"Body".into(),actions:Vec::new(),desktop:String::new(),image:String::new(),urgency:1,
         resident:false,transient:false,expire_timeout:-1,sender:":1.22".into()} }
+    #[test] fn missing_identity_is_filled_for_live_and_retained_notifications() {
+        let root=fixture("identity");let mut core=Core::new(root.clone(),BTreeMap::new(),false).unwrap();
+        for app in ["", "   ", "notify-send"] {
+            let mut incoming=request();incoming.app=app.into();incoming.summary="  ".into();
+            core.notify(incoming).unwrap();
+            let delivered=&core.rows[0];
+            assert_eq!(delivered.app,"System Notifications");assert_eq!(delivered.summary,"Notification");assert_eq!(delivered.icon,"application");
+            let mut saved=row(7);saved["app"]=json!(app);saved["desktop"]=json!("");saved["summary"]=json!(" ");saved["icon"]=json!("");
+            let restored=restored_row(&saved).unwrap();
+            assert_eq!(restored.app,delivered.app);assert_eq!(restored.summary,delivered.summary);assert_eq!(restored.icon,delivered.icon);
+        }
+        let mut incoming=request();incoming.app="notify-send".into();incoming.desktop="org.example.Editor".into();incoming.icon="text-editor".into();
+        core.notify(incoming).unwrap();assert_eq!(core.rows[0].app,"org.example.Editor");assert_eq!(core.rows[0].icon,"text-editor");
+        fs::remove_dir_all(root).unwrap();
+    }
     #[test] fn restore_keeps_valid_rows_and_strips_process_state() {
         let root=fixture("valid");let file=root.join("history.json");
         let mut saved=row(7);saved["active"]=json!(true);saved["sender"]=json!(":1.22");
@@ -454,7 +482,7 @@ impl Core {
         saved["image"]=json!("https://invalid.test/x.png");
         saved["icon"]=json!("https://invalid.test/icon");
         let restored=restored_row(&saved).unwrap();
-        assert!(restored.image.is_empty() && restored.icon.is_empty());
+        assert!(restored.image.is_empty());assert_eq!(restored.icon,"application");
     }
     #[test] fn focus_exceptions_keep_other_banners_suppressed() {
         let root=fixture("focus");let mut core=Core::new(root.clone(),BTreeMap::new(),false).unwrap();
