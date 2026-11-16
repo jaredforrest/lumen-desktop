@@ -21,7 +21,12 @@ fn output(program:&str,args:&[&str])->Result<String> {
     Ok(String::from_utf8_lossy(&result.stdout).trim().to_owned())
 }
 fn menu(title:&str,choices:&[&str])->Result<Option<String>> {
-    let mut child=Command::new("rofi").args(["-dmenu","-i","-no-custom","-p",title])
+    let mut command=Command::new("rofi");
+    command.args(["-dmenu","-i","-no-custom","-p",title]);
+    if matches!(title,"Screenshot"|"Delay in seconds"|"Output"|"Display") {
+        if let Some(theme)=env::var_os("LUMEN_SCREENSHOT_THEME"){command.arg("-theme").arg(theme);}
+    }
+    let mut child=command
         .stdin(Stdio::piped()).stdout(Stdio::piped()).spawn().map_err(|e|e.to_string())?;
     child.stdin.take().ok_or("Rofi input unavailable")?.write_all(choices.join("\n").as_bytes()).map_err(|e|e.to_string())?;
     let answer=child.wait_with_output().map_err(|e|e.to_string())?;
@@ -31,7 +36,9 @@ fn menu(title:&str,choices:&[&str])->Result<Option<String>> {
 }
 fn notify(title:&str,body:&str,image:Option<&Path>,persistent:bool,replace:Option<&str>)->Option<String> {
     let mut command=Command::new("notify-send");command.args(["-a","Desktop Conveniences"]);
-    if let Some(image)=image{command.arg("-i").arg(image);}else{command.args(["-i","preferences-system"]);}
+    if title.starts_with("Screenshot ") {
+        command.arg("-i").arg(env::var_os("LUMEN_SCREENSHOT_ICON").unwrap_or_else(||"camera-photo".into()));
+    }else if let Some(image)=image{command.arg("-i").arg(image);}else{command.args(["-i","preferences-system"]);}
     if persistent{command.args(["-t","0"]);}
     if let Some(id)=replace{command.args(["-r",id]);}
     command.arg("-p").arg(title).arg(body).output().ok()
@@ -272,7 +279,7 @@ fn main() {
     let arguments=env::args().skip(1).collect::<Vec<_>>();
     if let Err(error)=main_result(&arguments) {
         if arguments.first().is_none_or(|action|action!="record-worker") {
-            notify("Desktop action failed",&error,None,false,None);
+            notify(if arguments.first().is_some_and(|action|action=="capture") {"Screenshot failed"} else {"Desktop action failed"},&error,None,false,None);
         }
         eprintln!("{error}");std::process::exit(1);
     }

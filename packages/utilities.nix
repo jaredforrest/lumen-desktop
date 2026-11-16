@@ -15,6 +15,8 @@ in pkgs.writeTextFile {
     const wrapper_path = path self
     def --wrapped main [...args] {
       $env.LUMEN_UTILITIES_WRAPPER = $wrapper_path
+      $env.LUMEN_SCREENSHOT_THEME = "${../res/utilities/screenshot/picker.rasi}"
+      $env.LUMEN_SCREENSHOT_ICON = "${../res/utilities/screenshot/capture.svg}"
       $env.PATH = ((${builtins.toJSON (pkgs.lib.makeBinPath [ pkgs.sway rofiPackage characterViewer pkgs.wl-clipboard pkgs.grim pkgs.slurp pkgs.satty pkgs.wf-recorder pkgs.systemd pkgs.libnotify pkgs.coreutils ])} | split row ':') ++ $env.PATH)
       exec ${binary}/bin/lumen-utilities ...$args
     }
