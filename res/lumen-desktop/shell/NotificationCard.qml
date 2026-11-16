@@ -47,7 +47,7 @@ PanelSurface {
             AppIcon {
                 id:appIcon;objectName:"notification-application-icon"
                 width:28;height:28;sourceSize.width:56;sourceSize.height:56
-                iconSource:{const icon=root.notification.icon || "";if(icon.startsWith("file:"))return icon;const owned={calendar:"calendar",files:"files"}[(root.notification.app || "").toLowerCase()];if(owned)return Qt.resolvedUrl("reference-icons/"+owned+".svg");const entry=root.appEntry();return Quickshell.iconPath(icon && icon!=="application" ? icon : (entry?entry.icon:""),true) || Qt.resolvedUrl("icons/application.svg");}
+                iconSource:{if(root.notification.app==="Screenshot")return Qt.resolvedUrl("icons/screenshot.svg");const icon=root.notification.icon || "";if(icon.startsWith("file:"))return icon;const owned={calendar:"calendar",files:"files"}[(root.notification.app || "").toLowerCase()];if(owned)return Qt.resolvedUrl("reference-icons/"+owned+".svg");const entry=root.appEntry();return Quickshell.iconPath(icon && icon!=="application" ? icon : (entry?entry.icon:""),true) || Qt.resolvedUrl("icons/application.svg");}
                 asynchronous:true;fillMode:Image.PreserveAspectFit
             }
             PanelLabel {width:parent.width-(optionsButton.visible?121:89);anchors.verticalCenter:parent.verticalCenter;text:root.applicationName+(root.expandStack?" · "+root.stackCount:"");elide:Text.ElideRight;textFormat:Text.PlainText;font.pixelSize:11;font.weight:Font.DemiBold}

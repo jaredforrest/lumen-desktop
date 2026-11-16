@@ -35,10 +35,8 @@ fn menu(title:&str,choices:&[&str])->Result<Option<String>> {
     Ok((success && choices.contains(&answer.as_str())).then_some(answer))
 }
 fn notify(title:&str,body:&str,image:Option<&Path>,persistent:bool,replace:Option<&str>)->Option<String> {
-    let mut command=Command::new("notify-send");command.args(["-a","Desktop Conveniences"]);
-    if title.starts_with("Screenshot ") {
-        command.arg("-i").arg(env::var_os("LUMEN_SCREENSHOT_ICON").unwrap_or_else(||"camera-photo".into()));
-    }else if let Some(image)=image{command.arg("-i").arg(image);}else{command.args(["-i","preferences-system"]);}
+    let mut command=Command::new("notify-send");command.args(["-a",if title.starts_with("Screenshot ") {"Screenshot"} else {"Desktop Conveniences"}]);
+    if let Some(image)=image{command.arg("-i").arg(image);}else{command.args(["-i","preferences-system"]);}
     if persistent{command.args(["-t","0"]);}
     if let Some(id)=replace{command.args(["-r",id]);}
     command.arg("-p").arg(title).arg(body).output().ok()
