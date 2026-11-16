@@ -2,17 +2,25 @@
 use serde_json::{Value,json};
 use std::{fs, path::Path, process::Command};
 
-fn run() -> Result<(),String> {
+fn lookup() -> Result<Option<Value>,String> {
     let route=Command::new("ip").args(["-json","route","get","1.1.1.1"]).output().map_err(|e|e.to_string())?;
     let routes:Value=serde_json::from_slice(&route.stdout).map_err(|e|e.to_string())?;
     let device=routes[0]["dev"].as_str().ok_or("No usable network route")?;
     if ["wg","tun","tailscale","mullvad"].iter().any(|prefix|device.starts_with(prefix)) {
-        println!("Keeping last location while using a VPN route"); return Ok(());
+        println!("Keeping last location while using a VPN route"); return Ok(None);
     }
     let response=Command::new("curl").args(["--fail","--silent","--show-error","--max-time","20","--max-filesize","65536","https://ipwho.is/"]).output().map_err(|e|e.to_string())?;
     if !response.status.success() {return Err("Location lookup unavailable; keeping last location".into());}
     let input:Value=serde_json::from_slice(&response.stdout).map_err(|_|"Invalid location response")?;
-    let current=validate(&input)?;
+    validate(&input).map(Some)
+}
+
+fn run() -> Result<(),String> {
+    let current=match lookup() {
+        Ok(Some(current)) => current,
+        Ok(None) => return Ok(()),
+        Err(error) => { eprintln!("Keeping last location: {error}"); return Ok(()); }
+    };
     let zone=current["timezone"].as_str().ok_or("Missing timezone")?;
     // NixOS with time.timeZone=null leaves this symlink mutable. Do not follow it into the store.
     let target=Path::new("/etc/zoneinfo").join(zone);
