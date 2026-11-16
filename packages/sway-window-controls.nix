@@ -1,14 +1,19 @@
 { pkgs, effects ? false, displaySpaces ? true, ownedGeometryEvents ? true, nativeFocusGuard ? true, allDesktopProjection ? (nativeFocusGuard && displaySpaces && ownedGeometryEvents) }:
 let
+  # json-c 0.19 elides container deallocation with NDEBUG (upstream PR #936).
+  json_c = if pkgs.json_c.version == "0.19" then pkgs.json_c.overrideAttrs (old: {
+    patches = (old.patches or [ ]) ++ [ ../res/lumen-desktop/json-c-free-outside-assert.patch ];
+  }) else pkgs.json_c;
   alignedWlroots = pkgs.wlroots_0_20.overrideAttrs (old: {
     patches = (old.patches or [ ]) ++ [ ../res/lumen-desktop/wlroots-udmabuf-raster-alignment.patch ../res/lumen-desktop/wlroots-xwayland-modal-state.patch ../res/lumen-desktop/wlroots-seat-capability-leave.patch ../res/lumen-desktop/wlroots-xwayland-late-association.patch ];
   });
   compositor = if effects then pkgs.swayfx-unwrapped.override {
+    inherit json_c;
     wlroots_0_20 = alignedWlroots;
     scenefx = (pkgs.scenefx.override { wlroots_0_20 = alignedWlroots; }).overrideAttrs (old: {
       patches = (old.patches or [ ]) ++ [ ../res/lumen-desktop/scenefx-local-corner-distance.patch ../res/lumen-desktop/scenefx-explicit-shader-version.patch ../res/lumen-desktop/scenefx-transparent-blur-mask.patch ];
     });
-  } else pkgs.sway-unwrapped.override { wlroots_0_20 = alignedWlroots; };
+  } else pkgs.sway-unwrapped.override { inherit json_c; wlroots_0_20 = alignedWlroots; };
   expectedVersion = if effects then "0.6" else "1.12";
   framePatch = if effects then ../res/lumen-desktop/swayfx-traffic-lights.patch else ../res/lumen-desktop/sway-traffic-lights.patch;
 in
@@ -39,7 +44,7 @@ pkgs.sway.override {
       ${pkgs.patch}/bin/patch --batch --fuzz=0 -p1 < ${../res/lumen-desktop/sway-projection-pointer-policy.patch}
     '' + pkgs.lib.optionalString (nativeFocusGuard && displaySpaces) ''
       ${pkgs.patch}/bin/patch --batch --fuzz=0 -p1 < ${../res/lumen-desktop/sway-space-transfer.patch}
-      ${pkgs.stdenv.cc}/bin/cc -std=c11 -Wall -Wextra -Werror -pedantic -Iinclude -I${pkgs.json_c.dev}/include/json-c test/lumen_transfer_policy_test.c -L${pkgs.json_c}/lib -Wl,-rpath,${pkgs.json_c}/lib -ljson-c -o .lumen-transfer-boundary-test
+      ${pkgs.stdenv.cc}/bin/cc -std=c11 -Wall -Wextra -Werror -pedantic -Iinclude -I${json_c.dev}/include/json-c test/lumen_transfer_policy_test.c -L${json_c}/lib -Wl,-rpath,${json_c}/lib -ljson-c -o .lumen-transfer-boundary-test
       ./.lumen-transfer-boundary-test
     '' + ''
       ${pkgs.patch}/bin/patch --batch --fuzz=0 -p1 < ${../res/lumen-desktop/sway-session-lock-input-focus.patch}

@@ -97,7 +97,7 @@
  static void container_move_to_container(struct sway_container *container,
 --- /dev/null
 +++ b/sway/commands/lumen_space_transfer.c
-@@ -0,0 +1,221 @@
+@@ -0,0 +1,223 @@
 +/* Captured transfer preflight and dispatch share one compositor callback. */
 +#include <inttypes.h>
 +#include <json.h>
@@ -136,6 +136,8 @@
 + return lumen_guard_topology_digest(tree,bounded) && lumen_transfer_normalize(tree) && lumen_guard_topology_digest(tree,digest);
 +}
 +bool lumen_space_transfer_wire_ready(void) {
++ static bool verified;
++ if (verified) return true;
 + if(!lumen_focus_guard_wire_ready())return false;
 + json_object *tree=json_tokener_parse("{\"id\":1,\"type\":\"root\",\"nodes\":[{\"id\":4,\"type\":\"workspace\",\"focus\":[9,8],\"nodes\":[{\"id\":10},{\"id\":11}],\"floating_nodes\":[{\"id\":9,\"focused\":false},{\"id\":8,\"focused\":true}]}]}");
 + if(!tree)return false;
@@ -146,7 +148,7 @@
 + if(!tree)return false;
 + ready=transfer_digest(tree,digest);json_object_put(tree);
 + if(ready){for(unsigned i=0;i<32;i++)snprintf(hex+i*2,3,"%02x",digest[i]);}
-+ return ready && !strcmp(hex,"d827ac360164dfb9c15fb63c81809e6448f38e7428b2d120f33e622667f25e1e");
++ return verified = ready && !strcmp(hex,"d827ac360164dfb9c15fb63c81809e6448f38e7428b2d120f33e622667f25e1e");
 +}
 +struct input {const unsigned char *next,*end;bool failed;};
 +static const unsigned char *take(struct input *r,size_t length){
